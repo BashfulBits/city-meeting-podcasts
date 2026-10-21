@@ -1,0 +1,893 @@
+{
+  "route": "sambanova_gemma_4_31b_it_primary",
+  "role": "sibling",
+  "planned_packets": 14,
+  "counts": {},
+  "by_kind": {},
+  "choice_order_pairs": 0,
+  "choice_order_stable": 0,
+  "contract_failures": [],
+  "pending_packets": 14,
+  "attempts_recorded": 4,
+  "initial_evidence": "../sambanova_gemma_4_31b_it_primary.json",
+  "parser_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
+  "first_http200": [],
+  "retry_attempts": [
+    {
+      "attempt_file": "00-attempt-001.result.json",
+      "result": {
+        "route": "sambanova_gemma_4_31b_it_primary",
+        "role": "sibling",
+        "packet": 0,
+        "attempt": 1,
+        "started_at": "2026-10-20T23:51:43.570855+00:00",
+        "read_timeout_seconds": 720,
+        "max_tokens": 32768,
+        "worker_catalog_sha256": "52c18e6746f7c6f0dd7f5973aebaf5a9adbfdbacb06b9874e2a7c6808a3922f4",
+        "http_status": 401,
+        "http_200_terminal": false,
+        "status": "transport_error",
+        "retry_in_seconds": 3600,
+        "finished_at": "2026-10-20T23:51:43.947066+00:00"
+      },
+      "request": {
+        "model": "gemma-4-31B-it",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an independent judge. Answer every item using only the evidence given with it. Never rewrite or create a candidate. Return one JSON object with an answers array. Return each item exactly once, with id, reason, kind, and its required answer field. Copy kind from the item. Never omit the required field or put its value only in reason. For each item return its id and exactly the field its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest listed level); choose -> choice (the option letter). Fill only the field named in the item's answer_with; for choose, choice must be exactly one of the item's options. Always give a reason (at most 300 characters): start reason with at least five consecutive words copied exactly from the evidence, then briefly explain if needed. Do not surround the copied passage or paraphrases with quotation marks. Include the passage even when nothing is flagged; a reason without a real copied passage is discarded."
+          },
+          {
+            "role": "user",
+            "content": "{\"items\": [{\"id\": \"eval-41b2c58a6d7767b6-0:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: Now, the inability of the city to manage expenses down to this inflation level, given its massive purchasing power, a stagnant population, ever-increasing property values, as we all know, and, well, a bazillion dollars' worth of entertainment stuff, I just can't understand why they can't handle that. At some point, the fiscal irresponsibility has to end.\\nStated reason: A resident argues the proposed FY 2025 budget grows well beyond inflation despite the city's purchasing power and rising property values, voicing opposition as the council adopted the budget.\\nTranscript: Now, the inability of the city to manage expenses down to this inflation level, given its massive purchasing power, a stagnant population, ever-increasing property values, as we all know, and, well, a bazillion dollars' worth of entertainment stuff, I just can't understand why they can't handle that. At some point, the fiscal irresponsibility has to end.\"}, {\"id\": \"eval-41b2c58a6d7767b6-0:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: Now, the inability of the city to manage expenses down to this inflation level, given its massive purchasing power, a stagnant population, ever-increasing property values, as we all know, and, well, a bazillion dollars' worth of entertainment stuff, I just can't understand why they can't handle that. At some point, the fiscal irresponsibility has to end.\\nStated reason: A resident argues the proposed FY 2025 budget grows well beyond inflation despite the city's purchasing power and rising property values, voicing opposition as the council adopted the budget.\\nTranscript: Now, the inability of the city to manage expenses down to this inflation level, given its massive purchasing power, a stagnant population, ever-increasing property values, as we all know, and, well, a bazillion dollars' worth of entertainment stuff, I just can't understand why they can't handle that. At some point, the fiscal irresponsibility has to end.\"}, {\"id\": \"eval-41b2c58a6d7767b6-0:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: Now, the inability of the city to manage expenses down to this inflation level, given its massive purchasing power, a stagnant population, ever-increasing property values, as we all know, and, well, a bazillion dollars' worth of entertainment stuff, I just can't understand why they can't handle that. At some point, the fiscal irresponsibility has to end.\\nStated reason: A resident argues the proposed FY 2025 budget grows well beyond inflation despite the city's purchasing power and rising property values, voicing opposition as the council adopted the budget.\\nTranscript: Now, the inability of the city to manage expenses down to this inflation level, given its massive purchasing power, a stagnant population, ever-increasing property values, as we all know, and, well, a bazillion dollars' worth of entertainment stuff, I just can't understand why they can't handle that. At some point, the fiscal irresponsibility has to end.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-41b2c58a6d7767b6-1:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: May the budget reflect the moral priorities of our city to keep it safe and flourishing.\\nStated reason: In the opening invocation, a member of the clergy frames the evening's budget decisions as a question of the city's moral priorities.\\nTranscript: May the budget reflect the moral priorities of our city to keep it safe and flourishing.\"}, {\"id\": \"eval-41b2c58a6d7767b6-1:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: May the budget reflect the moral priorities of our city to keep it safe and flourishing.\\nStated reason: In the opening invocation, a member of the clergy frames the evening's budget decisions as a question of the city's moral priorities.\\nTranscript: May the budget reflect the moral priorities of our city to keep it safe and flourishing.\"}, {\"id\": \"eval-41b2c58a6d7767b6-1:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: May the budget reflect the moral priorities of our city to keep it safe and flourishing.\\nStated reason: In the opening invocation, a member of the clergy frames the evening's budget decisions as a question of the city's moral priorities.\\nTranscript: May the budget reflect the moral priorities of our city to keep it safe and flourishing.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-41b2c58a6d7767b6-2:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: We should also caution the council that all these public discussions about decreased revenue could cause unintended consequences. Namely, citizens setting their citations for a jury trial, hiring an attorney, and making the argument, although they made a traffic violation, that the city's public comments, recordings, news articles regarding citation revenue may provide enough reasonable doubt in just one juror's mind as to why the citation was issued.\\nStated reason: A police association representative warns that public discussion of declining citation revenue could give cited drivers grounds for reasonable doubt at jury trials.\\nTranscript: We should also caution the council that all these public discussions about decreased revenue could cause unintended consequences. Namely, citizens setting their citations for a jury trial, hiring an attorney, and making the argument, although they made a traffic violation, that the city's public comments, recordings, news articles regarding citation revenue may provide enough reasonable doubt in just one juror's mind as to why the citation was issued.\"}, {\"id\": \"eval-41b2c58a6d7767b6-2:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: We should also caution the council that all these public discussions about decreased revenue could cause unintended consequences. Namely, citizens setting their citations for a jury trial, hiring an attorney, and making the argument, although they made a traffic violation, that the city's public comments, recordings, news articles regarding citation revenue may provide enough reasonable doubt in just one juror's mind as to why the citation was issued.\\nStated reason: A police association representative warns that public discussion of declining citation revenue could give cited drivers grounds for reasonable doubt at jury trials.\\nTranscript: We should also caution the council that all these public discussions about decreased revenue could cause unintended consequences. Namely, citizens setting their citations for a jury trial, hiring an attorney, and making the argument, although they made a traffic violation, that the city's public comments, recordings, news articles regarding citation revenue may provide enough reasonable doubt in just one juror's mind as to why the citation was issued.\"}, {\"id\": \"eval-41b2c58a6d7767b6-2:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: We should also caution the council that all these public discussions about decreased revenue could cause unintended consequences. Namely, citizens setting their citations for a jury trial, hiring an attorney, and making the argument, although they made a traffic violation, that the city's public comments, recordings, news articles regarding citation revenue may provide enough reasonable doubt in just one juror's mind as to why the citation was issued.\\nStated reason: A police association representative warns that public discussion of declining citation revenue could give cited drivers grounds for reasonable doubt at jury trials.\\nTranscript: We should also caution the council that all these public discussions about decreased revenue could cause unintended consequences. Namely, citizens setting their citations for a jury trial, hiring an attorney, and making the argument, although they made a traffic violation, that the city's public comments, recordings, news articles regarding citation revenue may provide enough reasonable doubt in just one juror's mind as to why the citation was issued.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-41b2c58a6d7767b6-3:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: I was wanting to ask you, doesn't everyone have to be somewhere? We have a terrible problem with homeless people here, and no one even seems to acknowledge it, especially the police department.\\nStated reason: A resident tells the council that homelessness in the city goes unacknowledged and criticizes how police treat homeless people.\\nTranscript: I was wanting to ask you, doesn't everyone have to be somewhere? We have a terrible problem with homeless people here, and no one even seems to acknowledge it, especially the police department.\"}, {\"id\": \"eval-41b2c58a6d7767b6-3:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: I was wanting to ask you, doesn't everyone have to be somewhere? We have a terrible problem with homeless people here, and no one even seems to acknowledge it, especially the police department.\\nStated reason: A resident tells the council that homelessness in the city goes unacknowledged and criticizes how police treat homeless people.\\nTranscript: I was wanting to ask you, doesn't everyone have to be somewhere? We have a terrible problem with homeless people here, and no one even seems to acknowledge it, especially the police department.\"}, {\"id\": \"eval-41b2c58a6d7767b6-3:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: I was wanting to ask you, doesn't everyone have to be somewhere? We have a terrible problem with homeless people here, and no one even seems to acknowledge it, especially the police department.\\nStated reason: A resident tells the council that homelessness in the city goes unacknowledged and criticizes how police treat homeless people.\\nTranscript: I was wanting to ask you, doesn't everyone have to be somewhere? We have a terrible problem with homeless people here, and no one even seems to acknowledge it, especially the police department.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"41b2c58a6d7767b6:best:T1\", \"kind\": \"choose\", \"answer_with\": \"choice\", \"item\": \"Which of these quotes from the same meeting is the best one to publish?\\n\\nA: Now, the inability of the city to manage expenses down to this inflation level, given its massive purchasing power, a stagnant population, ever-increasing property values, as we all know, and, well, a bazillion dollars' worth of entertainment stuff, I just can't understand why they can't handle that. At some point, the fiscal irresponsibility has to end.\\nB: May the budget reflect the moral priorities of our city to keep it safe and flourishing.\\nC: We should also caution the council that all these public discussions about decreased revenue could cause unintended consequences. Namely, citizens setting their citations for a jury trial, hiring an attorney, and making the argument, although they made a traffic violation, that the city's public comments, recordings, news articles regarding citation revenue may provide enough reasonable doubt in just one juror's mind as to why the citation was issued.\\nD: I was wanting to ask you, doesn't everyone have to be somewhere? We have a terrible problem with homeless people here, and no one even seems to acknowledge it, especially the police department.\", \"options\": [\"A\", \"B\", \"C\", \"D\"]}, {\"id\": \"41b2c58a6d7767b6:best_r:T1\", \"kind\": \"choose\", \"answer_with\": \"choice\", \"item\": \"Which of these quotes from the same meeting is the best one to publish?\\n\\nA: I was wanting to ask you, doesn't everyone have to be somewhere? We have a terrible problem with homeless people here, and no one even seems to acknowledge it, especially the police department.\\nB: We should also caution the council that all these public discussions about decreased revenue could cause unintended consequences. Namely, citizens setting their citations for a jury trial, hiring an attorney, and making the argument, although they made a traffic violation, that the city's public comments, recordings, news articles regarding citation revenue may provide enough reasonable doubt in just one juror's mind as to why the citation was issued.\\nC: May the budget reflect the moral priorities of our city to keep it safe and flourishing.\\nD: Now, the inability of the city to manage expenses down to this inflation level, given its massive purchasing power, a stagnant population, ever-increasing property values, as we all know, and, well, a bazillion dollars' worth of entertainment stuff, I just can't understand why they can't handle that. At some point, the fiscal irresponsibility has to end.\", \"options\": [\"A\", \"B\", \"C\", \"D\"]}]}"
+          }
+        ],
+        "max_tokens": 32768,
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "judge_answers_v3",
+            "schema": {
+              "$defs": {
+                "ChooseAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "choose",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "choice": {
+                      "pattern": "^[A-Z]$",
+                      "title": "Choice",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "choice"
+                  ],
+                  "title": "ChooseAnswer",
+                  "type": "object"
+                },
+                "GateAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "gate",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "title": "Verdict",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "verdict"
+                  ],
+                  "title": "GateAnswer",
+                  "type": "object"
+                },
+                "GradeAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "grade",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "level": {
+                      "maximum": 10,
+                      "minimum": 0,
+                      "title": "Level",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "level"
+                  ],
+                  "title": "GradeAnswer",
+                  "type": "object"
+                },
+                "ValidateAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "validate",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "title": "Verdict",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "verdict"
+                  ],
+                  "title": "ValidateAnswer",
+                  "type": "object"
+                }
+              },
+              "additionalProperties": false,
+              "properties": {
+                "answers": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ValidateAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/GateAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/GradeAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/ChooseAnswer"
+                      }
+                    ]
+                  },
+                  "maxItems": 100,
+                  "title": "Answers",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "answers"
+              ],
+              "title": "TypedResponse",
+              "type": "object"
+            }
+          }
+        },
+        "stream": false
+      },
+      "request_sha256": "53faeac7d9d6fee9f06fa66db162c4b9dd61c72c9ecaefe441c51a55c2cececc",
+      "response": {
+        "error": {
+          "status": 401,
+          "message": "Authentication error; message redacted"
+        }
+      },
+      "response_sha256": "8f46e410d0dbbc05b0ee7f5572f34a5f47c6238f64d08ca01646e613dafa7b02"
+    },
+    {
+      "attempt_file": "01-attempt-001.result.json",
+      "result": {
+        "route": "sambanova_gemma_4_31b_it_primary",
+        "role": "sibling",
+        "packet": 1,
+        "attempt": 1,
+        "started_at": "2026-10-21T00:51:45.472426+00:00",
+        "read_timeout_seconds": 720,
+        "max_tokens": 32768,
+        "worker_catalog_sha256": "52c18e6746f7c6f0dd7f5973aebaf5a9adbfdbacb06b9874e2a7c6808a3922f4",
+        "http_status": 401,
+        "http_200_terminal": false,
+        "status": "transport_error",
+        "retry_in_seconds": 3600,
+        "finished_at": "2026-10-21T00:51:45.849813+00:00"
+      },
+      "request": {
+        "model": "gemma-4-31B-it",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an independent judge. Answer every item using only the evidence given with it. Never rewrite or create a candidate. Return one JSON object with an answers array. Return each item exactly once, with id, reason, kind, and its required answer field. Copy kind from the item. Never omit the required field or put its value only in reason. For each item return its id and exactly the field its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest listed level); choose -> choice (the option letter). Fill only the field named in the item's answer_with; for choose, choice must be exactly one of the item's options. Always give a reason (at most 300 characters): start reason with at least five consecutive words copied exactly from the evidence, then briefly explain if needed. Do not surround the copied passage or paraphrases with quotation marks. Include the passage even when nothing is flagged; a reason without a real copied passage is discarded."
+          },
+          {
+            "role": "user",
+            "content": "{\"items\": [{\"id\": \"eval-b8894534c463f6ef-0:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: And during that process in the spring, if they move forward after tonight from City Council, then the developers will be looking at their zoning changes if necessary, and all three of these would require a zoning change.\\nStated reason: Staff tells council that each of the three affordable housing projects would require a rezoning before it could proceed.\\nTranscript: And during that process in the spring, if they move forward after tonight from City Council, then the developers will be looking at their zoning changes if necessary, and all three of these would require a zoning change.\"}, {\"id\": \"eval-b8894534c463f6ef-0:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: And during that process in the spring, if they move forward after tonight from City Council, then the developers will be looking at their zoning changes if necessary, and all three of these would require a zoning change.\\nStated reason: Staff tells council that each of the three affordable housing projects would require a rezoning before it could proceed.\\nTranscript: And during that process in the spring, if they move forward after tonight from City Council, then the developers will be looking at their zoning changes if necessary, and all three of these would require a zoning change.\"}, {\"id\": \"eval-b8894534c463f6ef-0:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: And during that process in the spring, if they move forward after tonight from City Council, then the developers will be looking at their zoning changes if necessary, and all three of these would require a zoning change.\\nStated reason: Staff tells council that each of the three affordable housing projects would require a rezoning before it could proceed.\\nTranscript: And during that process in the spring, if they move forward after tonight from City Council, then the developers will be looking at their zoning changes if necessary, and all three of these would require a zoning change.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-b8894534c463f6ef-1:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: if someone has a warrant for their arrest on a municipal court, you know, through our municipal court, they will not be arrested when they go in. We want people to be able to come in, take care of that business without fear of being arrested.\\nStated reason: Staff describes the municipal court's safe harbor practice during the warrant clearance drive running through March 13.\\nTranscript: if someone has a warrant for their arrest on a municipal court, you know, through our municipal court, they will not be arrested when they go in. We want people to be able to come in, take care of that business without fear of being arrested.\"}, {\"id\": \"eval-b8894534c463f6ef-1:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: if someone has a warrant for their arrest on a municipal court, you know, through our municipal court, they will not be arrested when they go in. We want people to be able to come in, take care of that business without fear of being arrested.\\nStated reason: Staff describes the municipal court's safe harbor practice during the warrant clearance drive running through March 13.\\nTranscript: if someone has a warrant for their arrest on a municipal court, you know, through our municipal court, they will not be arrested when they go in. We want people to be able to come in, take care of that business without fear of being arrested.\"}, {\"id\": \"eval-b8894534c463f6ef-1:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: if someone has a warrant for their arrest on a municipal court, you know, through our municipal court, they will not be arrested when they go in. We want people to be able to come in, take care of that business without fear of being arrested.\\nStated reason: Staff describes the municipal court's safe harbor practice during the warrant clearance drive running through March 13.\\nTranscript: if someone has a warrant for their arrest on a municipal court, you know, through our municipal court, they will not be arrested when they go in. We want people to be able to come in, take care of that business without fear of being arrested.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-b8894534c463f6ef-2:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: we've been funding for arch and cultural brick and mortar. You need to be in the cultural and tourism district and really have brick and mortar, but there's a need for programming and groups to have some funding.\\nStated reason: A council member describes the debate over directing hotel occupancy tax dollars to brick-and-mortar institutions versus programming groups.\\nTranscript: we've been funding for arch and cultural brick and mortar. You need to be in the cultural and tourism district and really have brick and mortar, but there's a need for programming and groups to have some funding.\"}, {\"id\": \"eval-b8894534c463f6ef-2:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: we've been funding for arch and cultural brick and mortar. You need to be in the cultural and tourism district and really have brick and mortar, but there's a need for programming and groups to have some funding.\\nStated reason: A council member describes the debate over directing hotel occupancy tax dollars to brick-and-mortar institutions versus programming groups.\\nTranscript: we've been funding for arch and cultural brick and mortar. You need to be in the cultural and tourism district and really have brick and mortar, but there's a need for programming and groups to have some funding.\"}, {\"id\": \"eval-b8894534c463f6ef-2:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: we've been funding for arch and cultural brick and mortar. You need to be in the cultural and tourism district and really have brick and mortar, but there's a need for programming and groups to have some funding.\\nStated reason: A council member describes the debate over directing hotel occupancy tax dollars to brick-and-mortar institutions versus programming groups.\\nTranscript: we've been funding for arch and cultural brick and mortar. You need to be in the cultural and tourism district and really have brick and mortar, but there's a need for programming and groups to have some funding.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-b8894534c463f6ef-3:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: Last year, traffic stops increased 24% as compared to 2024, and that is over 20,000 additional traffic stops. As a consequence, it resulted in a 14% decrease in fatality crashes in Arlington in 2025 as compared to 2024.\\nStated reason: The patrol bureau commander links the council-backed increase in traffic enforcement to a drop in fatal crashes.\\nTranscript: Last year, traffic stops increased 24% as compared to 2024, and that is over 20,000 additional traffic stops. As a consequence, it resulted in a 14% decrease in fatality crashes in Arlington in 2025 as compared to 2024.\"}, {\"id\": \"eval-b8894534c463f6ef-3:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: Last year, traffic stops increased 24% as compared to 2024, and that is over 20,000 additional traffic stops. As a consequence, it resulted in a 14% decrease in fatality crashes in Arlington in 2025 as compared to 2024.\\nStated reason: The patrol bureau commander links the council-backed increase in traffic enforcement to a drop in fatal crashes.\\nTranscript: Last year, traffic stops increased 24% as compared to 2024, and that is over 20,000 additional traffic stops. As a consequence, it resulted in a 14% decrease in fatality crashes in Arlington in 2025 as compared to 2024.\"}, {\"id\": \"eval-b8894534c463f6ef-3:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: Last year, traffic stops increased 24% as compared to 2024, and that is over 20,000 additional traffic stops. As a consequence, it resulted in a 14% decrease in fatality crashes in Arlington in 2025 as compared to 2024.\\nStated reason: The patrol bureau commander links the council-backed increase in traffic enforcement to a drop in fatal crashes.\\nTranscript: Last year, traffic stops increased 24% as compared to 2024, and that is over 20,000 additional traffic stops. As a consequence, it resulted in a 14% decrease in fatality crashes in Arlington in 2025 as compared to 2024.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"b8894534c463f6ef:best:T1\", \"kind\": \"choose\", \"answer_with\": \"choice\", \"item\": \"Which of these quotes from the same meeting is the best one to publish?\\n\\nA: And during that process in the spring, if they move forward after tonight from City Council, then the developers will be looking at their zoning changes if necessary, and all three of these would require a zoning change.\\nB: if someone has a warrant for their arrest on a municipal court, you know, through our municipal court, they will not be arrested when they go in. We want people to be able to come in, take care of that business without fear of being arrested.\\nC: we've been funding for arch and cultural brick and mortar. You need to be in the cultural and tourism district and really have brick and mortar, but there's a need for programming and groups to have some funding.\\nD: Last year, traffic stops increased 24% as compared to 2024, and that is over 20,000 additional traffic stops. As a consequence, it resulted in a 14% decrease in fatality crashes in Arlington in 2025 as compared to 2024.\", \"options\": [\"A\", \"B\", \"C\", \"D\"]}, {\"id\": \"b8894534c463f6ef:best_r:T1\", \"kind\": \"choose\", \"answer_with\": \"choice\", \"item\": \"Which of these quotes from the same meeting is the best one to publish?\\n\\nA: Last year, traffic stops increased 24% as compared to 2024, and that is over 20,000 additional traffic stops. As a consequence, it resulted in a 14% decrease in fatality crashes in Arlington in 2025 as compared to 2024.\\nB: we've been funding for arch and cultural brick and mortar. You need to be in the cultural and tourism district and really have brick and mortar, but there's a need for programming and groups to have some funding.\\nC: if someone has a warrant for their arrest on a municipal court, you know, through our municipal court, they will not be arrested when they go in. We want people to be able to come in, take care of that business without fear of being arrested.\\nD: And during that process in the spring, if they move forward after tonight from City Council, then the developers will be looking at their zoning changes if necessary, and all three of these would require a zoning change.\", \"options\": [\"A\", \"B\", \"C\", \"D\"]}]}"
+          }
+        ],
+        "max_tokens": 32768,
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "judge_answers_v3",
+            "schema": {
+              "$defs": {
+                "ChooseAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "choose",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "choice": {
+                      "pattern": "^[A-Z]$",
+                      "title": "Choice",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "choice"
+                  ],
+                  "title": "ChooseAnswer",
+                  "type": "object"
+                },
+                "GateAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "gate",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "title": "Verdict",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "verdict"
+                  ],
+                  "title": "GateAnswer",
+                  "type": "object"
+                },
+                "GradeAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "grade",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "level": {
+                      "maximum": 10,
+                      "minimum": 0,
+                      "title": "Level",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "level"
+                  ],
+                  "title": "GradeAnswer",
+                  "type": "object"
+                },
+                "ValidateAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "validate",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "title": "Verdict",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "verdict"
+                  ],
+                  "title": "ValidateAnswer",
+                  "type": "object"
+                }
+              },
+              "additionalProperties": false,
+              "properties": {
+                "answers": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ValidateAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/GateAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/GradeAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/ChooseAnswer"
+                      }
+                    ]
+                  },
+                  "maxItems": 100,
+                  "title": "Answers",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "answers"
+              ],
+              "title": "TypedResponse",
+              "type": "object"
+            }
+          }
+        },
+        "stream": false
+      },
+      "request_sha256": "933bbc754f299f5f2a76db261a89be1b43940e231a915c2e71413fec0f3eef5b",
+      "response": {
+        "error": {
+          "status": 401,
+          "message": "Authentication error; message redacted"
+        }
+      },
+      "response_sha256": "8f46e410d0dbbc05b0ee7f5572f34a5f47c6238f64d08ca01646e613dafa7b02"
+    },
+    {
+      "attempt_file": "02-attempt-001.result.json",
+      "result": {
+        "route": "sambanova_gemma_4_31b_it_primary",
+        "role": "sibling",
+        "packet": 2,
+        "attempt": 1,
+        "started_at": "2026-10-21T01:51:47.707225+00:00",
+        "read_timeout_seconds": 720,
+        "max_tokens": 32768,
+        "worker_catalog_sha256": "52c18e6746f7c6f0dd7f5973aebaf5a9adbfdbacb06b9874e2a7c6808a3922f4",
+        "http_status": 401,
+        "http_200_terminal": false,
+        "status": "transport_error",
+        "retry_in_seconds": 3600,
+        "finished_at": "2026-10-21T01:51:48.535192+00:00"
+      },
+      "request": {
+        "model": "gemma-4-31B-it",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an independent judge. Answer every item using only the evidence given with it. Never rewrite or create a candidate. Return one JSON object with an answers array. Return each item exactly once, with id, reason, kind, and its required answer field. Copy kind from the item. Never omit the required field or put its value only in reason. For each item return its id and exactly the field its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest listed level); choose -> choice (the option letter). Fill only the field named in the item's answer_with; for choose, choice must be exactly one of the item's options. Always give a reason (at most 300 characters): start reason with at least five consecutive words copied exactly from the evidence, then briefly explain if needed. Do not surround the copied passage or paraphrases with quotation marks. Include the passage even when nothing is flagged; a reason without a real copied passage is discarded."
+          },
+          {
+            "role": "user",
+            "content": "{\"items\": [{\"id\": \"eval-59646234b4a138f9-0:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: my belief is those that can pay the fare rate pay the fare rate. Those that can't, we should supplement more. We are not, by federal law, allowed to do a variable rate based on income.\\nStated reason: A council member explained why an income-based fare option was not legally available before voting to approve the increase.\\nTranscript: my belief is those that can pay the fare rate pay the fare rate. Those that can't, we should supplement more. We are not, by federal law, allowed to do a variable rate based on income.\"}, {\"id\": \"eval-59646234b4a138f9-0:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: my belief is those that can pay the fare rate pay the fare rate. Those that can't, we should supplement more. We are not, by federal law, allowed to do a variable rate based on income.\\nStated reason: A council member explained why an income-based fare option was not legally available before voting to approve the increase.\\nTranscript: my belief is those that can pay the fare rate pay the fare rate. Those that can't, we should supplement more. We are not, by federal law, allowed to do a variable rate based on income.\"}, {\"id\": \"eval-59646234b4a138f9-0:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: my belief is those that can pay the fare rate pay the fare rate. Those that can't, we should supplement more. We are not, by federal law, allowed to do a variable rate based on income.\\nStated reason: A council member explained why an income-based fare option was not legally available before voting to approve the increase.\\nTranscript: my belief is those that can pay the fare rate pay the fare rate. Those that can't, we should supplement more. We are not, by federal law, allowed to do a variable rate based on income.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-59646234b4a138f9-1:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: I would like the opportunity to present a comparison of city tax revenue based on land use you can all then collectively make an informed decision on how to best steward vacant land in Arlington in a way that is holistic and fiscally responsible\\nStated reason: The applicant's representative argued the council should weigh tax revenue by land use before deciding the rezoning.\\nTranscript: I would like the opportunity to present a comparison of city tax revenue based on land use you can all then collectively make an informed decision on how to best steward vacant land in Arlington in a way that is holistic and fiscally responsible\"}, {\"id\": \"eval-59646234b4a138f9-1:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: I would like the opportunity to present a comparison of city tax revenue based on land use you can all then collectively make an informed decision on how to best steward vacant land in Arlington in a way that is holistic and fiscally responsible\\nStated reason: The applicant's representative argued the council should weigh tax revenue by land use before deciding the rezoning.\\nTranscript: I would like the opportunity to present a comparison of city tax revenue based on land use you can all then collectively make an informed decision on how to best steward vacant land in Arlington in a way that is holistic and fiscally responsible\"}, {\"id\": \"eval-59646234b4a138f9-1:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: I would like the opportunity to present a comparison of city tax revenue based on land use you can all then collectively make an informed decision on how to best steward vacant land in Arlington in a way that is holistic and fiscally responsible\\nStated reason: The applicant's representative argued the council should weigh tax revenue by land use before deciding the rezoning.\\nTranscript: I would like the opportunity to present a comparison of city tax revenue based on land use you can all then collectively make an informed decision on how to best steward vacant land in Arlington in a way that is holistic and fiscally responsible\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-59646234b4a138f9-2:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: For the on-demand service, the average cost to provide each ride is around $17 right now.\\nStated reason: A transportation staff member quantified the substantial per-ride subsidy behind the proposed fare increase.\\nTranscript: For the on-demand service, the average cost to provide each ride is around $17 right now.\"}, {\"id\": \"eval-59646234b4a138f9-2:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: For the on-demand service, the average cost to provide each ride is around $17 right now.\\nStated reason: A transportation staff member quantified the substantial per-ride subsidy behind the proposed fare increase.\\nTranscript: For the on-demand service, the average cost to provide each ride is around $17 right now.\"}, {\"id\": \"eval-59646234b4a138f9-2:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: For the on-demand service, the average cost to provide each ride is around $17 right now.\\nStated reason: A transportation staff member quantified the substantial per-ride subsidy behind the proposed fare increase.\\nTranscript: For the on-demand service, the average cost to provide each ride is around $17 right now.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-59646234b4a138f9-3:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: our HOA alone by ourselves cannot control upstream flow we cannot modify city infrastructure we cannot slow water that is released in our neighborhood from outside our boundaries yet we are the ones living with the consequences\\nStated reason: A resident argued the neighborhood could not fix stormwater damage without city engineering leadership because the problem originates in public infrastructure.\\nTranscript: our HOA alone by ourselves cannot control upstream flow we cannot modify city infrastructure we cannot slow water that is released in our neighborhood from outside our boundaries yet we are the ones living with the consequences\"}, {\"id\": \"eval-59646234b4a138f9-3:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: our HOA alone by ourselves cannot control upstream flow we cannot modify city infrastructure we cannot slow water that is released in our neighborhood from outside our boundaries yet we are the ones living with the consequences\\nStated reason: A resident argued the neighborhood could not fix stormwater damage without city engineering leadership because the problem originates in public infrastructure.\\nTranscript: our HOA alone by ourselves cannot control upstream flow we cannot modify city infrastructure we cannot slow water that is released in our neighborhood from outside our boundaries yet we are the ones living with the consequences\"}, {\"id\": \"eval-59646234b4a138f9-3:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: our HOA alone by ourselves cannot control upstream flow we cannot modify city infrastructure we cannot slow water that is released in our neighborhood from outside our boundaries yet we are the ones living with the consequences\\nStated reason: A resident argued the neighborhood could not fix stormwater damage without city engineering leadership because the problem originates in public infrastructure.\\nTranscript: our HOA alone by ourselves cannot control upstream flow we cannot modify city infrastructure we cannot slow water that is released in our neighborhood from outside our boundaries yet we are the ones living with the consequences\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"59646234b4a138f9:best:T1\", \"kind\": \"choose\", \"answer_with\": \"choice\", \"item\": \"Which of these quotes from the same meeting is the best one to publish?\\n\\nA: my belief is those that can pay the fare rate pay the fare rate. Those that can't, we should supplement more. We are not, by federal law, allowed to do a variable rate based on income.\\nB: I would like the opportunity to present a comparison of city tax revenue based on land use you can all then collectively make an informed decision on how to best steward vacant land in Arlington in a way that is holistic and fiscally responsible\\nC: For the on-demand service, the average cost to provide each ride is around $17 right now.\\nD: our HOA alone by ourselves cannot control upstream flow we cannot modify city infrastructure we cannot slow water that is released in our neighborhood from outside our boundaries yet we are the ones living with the consequences\", \"options\": [\"A\", \"B\", \"C\", \"D\"]}, {\"id\": \"59646234b4a138f9:best_r:T1\", \"kind\": \"choose\", \"answer_with\": \"choice\", \"item\": \"Which of these quotes from the same meeting is the best one to publish?\\n\\nA: our HOA alone by ourselves cannot control upstream flow we cannot modify city infrastructure we cannot slow water that is released in our neighborhood from outside our boundaries yet we are the ones living with the consequences\\nB: For the on-demand service, the average cost to provide each ride is around $17 right now.\\nC: I would like the opportunity to present a comparison of city tax revenue based on land use you can all then collectively make an informed decision on how to best steward vacant land in Arlington in a way that is holistic and fiscally responsible\\nD: my belief is those that can pay the fare rate pay the fare rate. Those that can't, we should supplement more. We are not, by federal law, allowed to do a variable rate based on income.\", \"options\": [\"A\", \"B\", \"C\", \"D\"]}]}"
+          }
+        ],
+        "max_tokens": 32768,
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "judge_answers_v3",
+            "schema": {
+              "$defs": {
+                "ChooseAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "choose",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "choice": {
+                      "pattern": "^[A-Z]$",
+                      "title": "Choice",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "choice"
+                  ],
+                  "title": "ChooseAnswer",
+                  "type": "object"
+                },
+                "GateAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "gate",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "title": "Verdict",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "verdict"
+                  ],
+                  "title": "GateAnswer",
+                  "type": "object"
+                },
+                "GradeAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "grade",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "level": {
+                      "maximum": 10,
+                      "minimum": 0,
+                      "title": "Level",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "level"
+                  ],
+                  "title": "GradeAnswer",
+                  "type": "object"
+                },
+                "ValidateAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "validate",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "title": "Verdict",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "verdict"
+                  ],
+                  "title": "ValidateAnswer",
+                  "type": "object"
+                }
+              },
+              "additionalProperties": false,
+              "properties": {
+                "answers": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ValidateAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/GateAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/GradeAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/ChooseAnswer"
+                      }
+                    ]
+                  },
+                  "maxItems": 100,
+                  "title": "Answers",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "answers"
+              ],
+              "title": "TypedResponse",
+              "type": "object"
+            }
+          }
+        },
+        "stream": false
+      },
+      "request_sha256": "b608d3ca049bd1cfcfcd81066edcc41b7e973eae341f1b7b108924eb0da1a50e",
+      "response": {
+        "error": {
+          "status": 401,
+          "message": "Authentication error; message redacted"
+        }
+      },
+      "response_sha256": "8f46e410d0dbbc05b0ee7f5572f34a5f47c6238f64d08ca01646e613dafa7b02"
+    },
+    {
+      "attempt_file": "03-attempt-001.result.json",
+      "result": {
+        "route": "sambanova_gemma_4_31b_it_primary",
+        "role": "sibling",
+        "packet": 3,
+        "attempt": 1,
+        "started_at": "2026-10-21T02:51:50.444860+00:00",
+        "read_timeout_seconds": 720,
+        "max_tokens": 32768,
+        "worker_catalog_sha256": "52c18e6746f7c6f0dd7f5973aebaf5a9adbfdbacb06b9874e2a7c6808a3922f4",
+        "http_status": 401,
+        "http_200_terminal": false,
+        "status": "transport_error",
+        "retry_in_seconds": 3600,
+        "finished_at": "2026-10-21T02:51:50.917678+00:00"
+      },
+      "request": {
+        "model": "gemma-4-31B-it",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an independent judge. Answer every item using only the evidence given with it. Never rewrite or create a candidate. Return one JSON object with an answers array. Return each item exactly once, with id, reason, kind, and its required answer field. Copy kind from the item. Never omit the required field or put its value only in reason. For each item return its id and exactly the field its kind asks for: validate -> verdict (true if supported); gate -> verdict (true if it must be held back); grade -> level (0 = lowest listed level); choose -> choice (the option letter). Fill only the field named in the item's answer_with; for choose, choice must be exactly one of the item's options. Always give a reason (at most 300 characters): start reason with at least five consecutive words copied exactly from the evidence, then briefly explain if needed. Do not surround the copied passage or paraphrases with quotation marks. Include the passage even when nothing is flagged; a reason without a real copied passage is discarded."
+          },
+          {
+            "role": "user",
+            "content": "{\"items\": [{\"id\": \"eval-32911f2064da1723-0:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: There were no enforcement mechanisms in that ordinance. Let me repeat that. There were none.\\nStated reason: A council member responded to claims that the previous ordinance offered enforceable protections.\\nTranscript: There were no enforcement mechanisms in that ordinance. Let me repeat that. There were none.\"}, {\"id\": \"eval-32911f2064da1723-0:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: There were no enforcement mechanisms in that ordinance. Let me repeat that. There were none.\\nStated reason: A council member responded to claims that the previous ordinance offered enforceable protections.\\nTranscript: There were no enforcement mechanisms in that ordinance. Let me repeat that. There were none.\"}, {\"id\": \"eval-32911f2064da1723-0:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: There were no enforcement mechanisms in that ordinance. Let me repeat that. There were none.\\nStated reason: A council member responded to claims that the previous ordinance offered enforceable protections.\\nTranscript: There were no enforcement mechanisms in that ordinance. Let me repeat that. There were none.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-32911f2064da1723-1:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: The city of Arlington has no local laws against discrimination. Victims of discrimination will be given a phone number to a federal agency to file a formal complaint, if applicable.\\nStated reason: A resident proposed city marketing language that would state the ordinance's practical effect.\\nTranscript: The city of Arlington has no local laws against discrimination. Victims of discrimination will be given a phone number to a federal agency to file a formal complaint, if applicable.\"}, {\"id\": \"eval-32911f2064da1723-1:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: The city of Arlington has no local laws against discrimination. Victims of discrimination will be given a phone number to a federal agency to file a formal complaint, if applicable.\\nStated reason: A resident proposed city marketing language that would state the ordinance's practical effect.\\nTranscript: The city of Arlington has no local laws against discrimination. Victims of discrimination will be given a phone number to a federal agency to file a formal complaint, if applicable.\"}, {\"id\": \"eval-32911f2064da1723-1:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: The city of Arlington has no local laws against discrimination. Victims of discrimination will be given a phone number to a federal agency to file a formal complaint, if applicable.\\nStated reason: A resident proposed city marketing language that would state the ordinance's practical effect.\\nTranscript: The city of Arlington has no local laws against discrimination. Victims of discrimination will be given a phone number to a federal agency to file a formal complaint, if applicable.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-32911f2064da1723-2:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: Leaving the ordinance permanently suspended would mean telling our residents, our workers, our families, our visitors, that Arlington has nothing on the books, affirming fair treatment and equal access.\\nStated reason: The mayor described the consequences of allowing the anti-discrimination ordinance to remain suspended.\\nTranscript: Leaving the ordinance permanently suspended would mean telling our residents, our workers, our families, our visitors, that Arlington has nothing on the books, affirming fair treatment and equal access.\"}, {\"id\": \"eval-32911f2064da1723-2:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: Leaving the ordinance permanently suspended would mean telling our residents, our workers, our families, our visitors, that Arlington has nothing on the books, affirming fair treatment and equal access.\\nStated reason: The mayor described the consequences of allowing the anti-discrimination ordinance to remain suspended.\\nTranscript: Leaving the ordinance permanently suspended would mean telling our residents, our workers, our families, our visitors, that Arlington has nothing on the books, affirming fair treatment and equal access.\"}, {\"id\": \"eval-32911f2064da1723-2:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: Leaving the ordinance permanently suspended would mean telling our residents, our workers, our families, our visitors, that Arlington has nothing on the books, affirming fair treatment and equal access.\\nStated reason: The mayor described the consequences of allowing the anti-discrimination ordinance to remain suspended.\\nTranscript: Leaving the ordinance permanently suspended would mean telling our residents, our workers, our families, our visitors, that Arlington has nothing on the books, affirming fair treatment and equal access.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"eval-32911f2064da1723-3:supported:T1\", \"kind\": \"validate\", \"answer_with\": \"verdict\", \"item\": \"Does the quote, as spoken in this transcript, actually say what the stated reason claims? Answer from the transcript only.\\n\\nQuote: This would be a fantastic resolution, and it would be a great statement of who we are as a city if it had not come 35 seconds after stripping Arlington residents of their basic civil rights. The words are great, the thoughts are great, but it is done on the heels of taking away civil rights.\\nStated reason: A commenter argues that the resolution's message is undercut by the council's earlier action.\\nTranscript: This would be a fantastic resolution, and it would be a great statement of who we are as a city if it had not come 35 seconds after stripping Arlington residents of their basic civil rights. The words are great, the thoughts are great, but it is done on the heels of taking away civil rights.\"}, {\"id\": \"eval-32911f2064da1723-3:publishable:T1\", \"kind\": \"gate\", \"answer_with\": \"verdict\", \"item\": \"Is this clip unsafe or unfit to publish on its own? Flag it if it exposes a member of the public's personal details, mocks or embarrasses a person, is procedural filler, or depends on context the listener will not have.\\n\\nQuote: This would be a fantastic resolution, and it would be a great statement of who we are as a city if it had not come 35 seconds after stripping Arlington residents of their basic civil rights. The words are great, the thoughts are great, but it is done on the heels of taking away civil rights.\\nStated reason: A commenter argues that the resolution's message is undercut by the council's earlier action.\\nTranscript: This would be a fantastic resolution, and it would be a great statement of who we are as a city if it had not come 35 seconds after stripping Arlington residents of their basic civil rights. The words are great, the thoughts are great, but it is done on the heels of taking away civil rights.\"}, {\"id\": \"eval-32911f2064da1723-3:usefulness:T1\", \"kind\": \"grade\", \"answer_with\": \"level\", \"item\": \"How useful is this quote to a resident who sees only the clip?\\n\\nQuote: This would be a fantastic resolution, and it would be a great statement of who we are as a city if it had not come 35 seconds after stripping Arlington residents of their basic civil rights. The words are great, the thoughts are great, but it is done on the heels of taking away civil rights.\\nStated reason: A commenter argues that the resolution's message is undercut by the council's earlier action.\\nTranscript: This would be a fantastic resolution, and it would be a great statement of who we are as a city if it had not come 35 seconds after stripping Arlington residents of their basic civil rights. The words are great, the thoughts are great, but it is done on the heels of taking away civil rights.\", \"levels\": [\"not useful\", \"somewhat useful\", \"useful\", \"very useful\"]}, {\"id\": \"32911f2064da1723:best:T1\", \"kind\": \"choose\", \"answer_with\": \"choice\", \"item\": \"Which of these quotes from the same meeting is the best one to publish?\\n\\nA: There were no enforcement mechanisms in that ordinance. Let me repeat that. There were none.\\nB: The city of Arlington has no local laws against discrimination. Victims of discrimination will be given a phone number to a federal agency to file a formal complaint, if applicable.\\nC: Leaving the ordinance permanently suspended would mean telling our residents, our workers, our families, our visitors, that Arlington has nothing on the books, affirming fair treatment and equal access.\\nD: This would be a fantastic resolution, and it would be a great statement of who we are as a city if it had not come 35 seconds after stripping Arlington residents of their basic civil rights. The words are great, the thoughts are great, but it is done on the heels of taking away civil rights.\", \"options\": [\"A\", \"B\", \"C\", \"D\"]}, {\"id\": \"32911f2064da1723:best_r:T1\", \"kind\": \"choose\", \"answer_with\": \"choice\", \"item\": \"Which of these quotes from the same meeting is the best one to publish?\\n\\nA: This would be a fantastic resolution, and it would be a great statement of who we are as a city if it had not come 35 seconds after stripping Arlington residents of their basic civil rights. The words are great, the thoughts are great, but it is done on the heels of taking away civil rights.\\nB: Leaving the ordinance permanently suspended would mean telling our residents, our workers, our families, our visitors, that Arlington has nothing on the books, affirming fair treatment and equal access.\\nC: The city of Arlington has no local laws against discrimination. Victims of discrimination will be given a phone number to a federal agency to file a formal complaint, if applicable.\\nD: There were no enforcement mechanisms in that ordinance. Let me repeat that. There were none.\", \"options\": [\"A\", \"B\", \"C\", \"D\"]}]}"
+          }
+        ],
+        "max_tokens": 32768,
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "judge_answers_v3",
+            "schema": {
+              "$defs": {
+                "ChooseAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "choose",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "choice": {
+                      "pattern": "^[A-Z]$",
+                      "title": "Choice",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "choice"
+                  ],
+                  "title": "ChooseAnswer",
+                  "type": "object"
+                },
+                "GateAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "gate",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "title": "Verdict",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "verdict"
+                  ],
+                  "title": "GateAnswer",
+                  "type": "object"
+                },
+                "GradeAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "grade",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "level": {
+                      "maximum": 10,
+                      "minimum": 0,
+                      "title": "Level",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "level"
+                  ],
+                  "title": "GradeAnswer",
+                  "type": "object"
+                },
+                "ValidateAnswer": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "title": "Reason",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "validate",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "title": "Verdict",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason",
+                    "kind",
+                    "verdict"
+                  ],
+                  "title": "ValidateAnswer",
+                  "type": "object"
+                }
+              },
+              "additionalProperties": false,
+              "properties": {
+                "answers": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ValidateAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/GateAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/GradeAnswer"
+                      },
+                      {
+                        "$ref": "#/$defs/ChooseAnswer"
+                      }
+                    ]
+                  },
+                  "maxItems": 100,
+                  "title": "Answers",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "answers"
+              ],
+              "title": "TypedResponse",
+              "type": "object"
+            }
+          }
+        },
+        "stream": false
+      },
+      "request_sha256": "83bf0496c196ca12a09b29c41491c04eda6d5a4b24c7b1eb967d3990cee8c0d8",
+      "response": {
+        "error": {
+          "status": 401,
+          "message": "Authentication error; message redacted"
+        }
+      },
+      "response_sha256": "8f46e410d0dbbc05b0ee7f5572f34a5f47c6238f64d08ca01646e613dafa7b02"
+    }
+  ]
+}

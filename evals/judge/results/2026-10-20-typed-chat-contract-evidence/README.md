@@ -86,3 +86,16 @@ and the compiled 720-second response budget. It retains the first HTTP 200 for e
 even if validation fails. Four offline scheduler checks passed. Initial shorter-timeout failures
 remain inconclusive until their first-200 retry. The baseline CLI now rejects nonempty output
 directories so reruns cannot overwrite existing request/response evidence.
+
+## First-HTTP-200 retry checkpoint
+
+The [retry checkpoint](http200-retries/README.md) includes every completed transport attempt
+and the terminal first-200 results, including failures. Seven routes have all 14 packets at
+HTTP 200. Three GLM packets echo forbidden request metadata; one secondary AI Studio packet
+changes an answer ID. These failures remain failures, and their responses are not retried.
+The earlier empty BeatAPI reply also remains terminal. CI is green; PR #2514 stays draft.
+
+The task scheduler now rotates by route, not by per-packet attempt count: a route with many
+unattempted packets cannot starve another route sharing its credential. Five offline scheduler
+checks passed, including a multi-packet fairness regression. Its graceful restart drains active
+HTTP calls before the replacement acquires the single-runner lock.

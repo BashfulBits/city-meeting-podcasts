@@ -2303,3 +2303,7 @@ route evaluations through the production parser and typed per-kind reply fields 
 PR7 calibration. Parsed sibling decisions remain usable independently of quote quality;
 adjudicator evidence remains required. See review/53 and evals/judge for the scoped change.
 No task graduation, production recovery, or calibration thresholds are implied.
+
+Draft [PR #2514](https://github.com/BashfulBits/city-meeting-podcasts/pull/2514) contains this
+judge-contract prerequisite and first-200 evaluation evidence. Route qualification and PR7
+calibration remain pending; terminal schema/ID failures are retained rather than resampled.

@@ -849,3 +849,10 @@ Using those stored sibling decisions can expose additional disagreements to the 
 adjudication selector after deployment. Stored sibling judgments remain in place. Normal
 collection/replanning of unfinished questions can produce revision-3 packets when legacy
 replies omit required answers. This local change has launched no production adjudication jobs.
+
+October 21 first-200 checkpoint for draft PR #2514: seven routes completed all 14 frozen
+packets. GLM added forbidden `answer_with` metadata in three packets; secondary AI Studio
+Gemma changed one answer ID in another packet. The strict schema/ID checks reject those
+results; no parser relaxation, fuzzy ID repair, or validator-driven retry is applied. The
+initial empty BeatAPI reply remains terminal. See the dated evals/judge retry checkpoint.
+A bounded contract remedy needs review against this retained baseline before qualification.

@@ -154,7 +154,14 @@ def main():
         return 0
     tasks, due, attempts, refresh = {}, {}, {}, {}
     account_due = {}
+    route_served = {}
     for route_id, role in ROLES.items():
+        saved_route = [json.loads(p.read_text())
+                       for p in (OUT / route_id).glob('*.result.json')]
+        route_served[route_id] = max(
+            (datetime.datetime.fromisoformat(r['started_at']).timestamp()
+             for r in saved_route if r.get('started_at')), default=0)
+
         folder = SOURCE / route_id
         for request in sorted(folder.glob('*-request.json')):
             index = int(request.name.split('-')[0])
@@ -221,7 +228,7 @@ def main():
                             attempts[key] = len(saved)
             seen_routes = set()
             for key, role in sorted(
-                tasks.items(), key=lambda pair: (attempts.get(pair[0], 0), pair[0])
+                tasks.items(), key=lambda pair: (route_served.get(pair[0][0], 0), pair[0])
             ):
                 route_id, index = key
                 if route_id in seen_routes:
@@ -232,6 +239,7 @@ def main():
                         or time.monotonic() < max(due.get(key, 0), account_due.get(account, 0))):
                     continue
                 attempts[key] += 1
+                route_served[route_id] = time.time()
                 active[pool.submit(attempt, route_id, role, index, attempts[key], refresh.get(key, False))] = key
                 busy.add(account)
             save(OUT / 'status.json', {'pid': os.getpid(), 'pending_packets': len(tasks),

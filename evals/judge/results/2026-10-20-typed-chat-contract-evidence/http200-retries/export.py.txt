@@ -1,0 +1,126 @@
+"""Publish a checkpoint of completed attempts, preserving terminal validator failures."""
+import datetime
+import hashlib
+import importlib.util
+import json
+from collections import Counter, defaultdict
+from pathlib import Path
+
+ROOT=Path.cwd()
+SOURCE=ROOT/'evals/judge/results/2026-10-20-typed-chat-contract-final'
+RETRY=Path('/private/tmp/judge-http200-retry-2026-10-20')
+OUT=ROOT/'evals/judge/results/2026-10-20-typed-chat-contract-evidence/http200-retries'
+OUT.mkdir(exist_ok=True)
+spec=importlib.util.spec_from_file_location('judge_eval',ROOT/'scripts/eval_judge_contract.py')
+e=importlib.util.module_from_spec(spec);spec.loader.exec_module(e);e.ensure_contract()
+manifest=json.loads((ROOT/'evals/judge/manifest.json').read_text())
+items={i.qid:i for unit in e.frozen_units(manifest) for i in unit}
+reports=[]
+for folder in sorted(SOURCE.iterdir()):
+    if not folder.is_dir():continue
+    original=json.loads((folder/'result.json').read_text())
+    route=e.ROUTE_REGISTRY[original['route']];role=original['role']
+    backend=(e.AdjudicatorBackend if role=='adjudicator' else e.ChatJudgeBackend)(max_total_tokens=4500,max_items=25)
+    histories=defaultdict(list);attempts=[]
+    for f in sorted((RETRY/route.route_id).glob('*.result.json')):
+        result=json.loads(f.read_text());prefix=f.name.removesuffix('.result.json')
+        history={'attempt_file':f.name,'result':result}
+        for kind in ('request','response'):
+            p=f.with_name(prefix+f'.{kind}.json')
+            if p.exists():
+                history[kind]=json.loads(p.read_text())
+                history[kind+'_sha256']=hashlib.sha256(p.read_bytes()).hexdigest()
+        attempts.append(history);histories[result['packet']].append(history)
+    first=[];totals=Counter();by_kind=defaultdict(Counter);failures=[];winners={}
+    for old in original['results']:
+        index=old['packet'];terminal=[h for h in histories[index] if h['result'].get('http_200_terminal')]
+        assert len(terminal)<=1,(route.route_id,index,'multiple terminal replies')
+        if old.get('http_status')==200:
+            assert not histories[index],(route.route_id,index,'original HTTP200 retried')
+            result=old;source='initial';request=json.loads((folder/f'{index:02d}-request.json').read_text())
+            raw=json.loads((folder/f'{index:02d}-response.json').read_text())
+        elif terminal:
+            selected=terminal[0];result=selected['result'];source=selected['attempt_file']
+            assert result['attempt']==max(h['result']['attempt'] for h in histories[index]),'later retry after HTTP200'
+            request=selected['request'];raw=selected['response']
+        else:continue
+        submitted=json.loads(request['messages'][-1]['content'])['items']
+        packet=e.Packet(f'judge:{role}',role,route.model,tuple(items[x['id']] for x in submitted))
+        evaluation=e.inspect_reply(backend,packet,raw)
+        entry={'packet':index,'source':source,'started_at':result['started_at'],
+               'max_tokens':request['max_tokens'],'evaluation':evaluation}
+        totals['first_http200_packets']+=1
+        totals['contract_pass_packets']+=bool(evaluation['contract_pass'])
+        totals['usable_packets']+=bool(evaluation['pass'])
+        for name in ('expected_items','parsed_items','quote_valid','choose_expected','parsed_choose'):
+            totals[name]+=evaluation[name]
+        for item in packet.items:by_kind[item.question.kind]['expected']+=1
+        for row in evaluation['parsed_rows']:
+            item=next(i for i in packet.items if i.question_id==row['question_id'] and i.subjects[0].subject_id==row['subject_id'])
+            cell=by_kind[row['kind']];cell['parsed']+=1
+            cell['quote_valid']+=e.quote_valid(row.get('reason'),item.evidence.text)
+            if row['kind']=='choose':winners[(row['subject_id'],row['question_id'])]=row['value']
+        if not evaluation['contract_pass']:
+            diagnostic={'packet':index,'source':source,'schema_valid':evaluation['schema_valid'],
+                        'parsed_items':evaluation['parsed_items'],'expected_items':evaluation['expected_items']}
+            try:
+                answers=e.parse_chat_response(raw).get('answers',[])
+                expected={i.qid for i in packet.items};observed={a.get('id') for a in answers}
+                diagnostic['missing_ids']=sorted(expected-observed)
+                diagnostic['unexpected_ids']=sorted(str(x) for x in observed-expected)
+                allowed={'validate':{'id','kind','reason','verdict'},'gate':{'id','kind','reason','verdict'},
+                         'grade':{'id','kind','reason','level'},'choose':{'id','kind','reason','choice'}}
+                extras=Counter(k for a in answers for k in a if k not in allowed.get(a.get('kind'),set()))
+                diagnostic['extra_fields']=dict(extras)
+            except (ValueError,TypeError,AttributeError):diagnostic['json_decode_failed']=True
+            failures.append(diagnostic)
+        first.append(entry)
+    pairs=[(v,winners[(sid,'best_r')]) for (sid,q),v in winners.items() if q=='best' and (sid,'best_r') in winners]
+    report={'route':route.route_id,'role':role,'planned_packets':original['planned_packets'],
+            'counts':dict(totals),'by_kind':{k:dict(v) for k,v in by_kind.items()},
+            'choice_order_pairs':len(pairs),'choice_order_stable':sum(a==b for a,b in pairs),
+            'contract_failures':failures,'pending_packets':original['planned_packets']-len(first),
+            'attempts_recorded':len(attempts)}
+    artifact={**report,'initial_evidence':f'../{route.route_id}.json',
+              'parser_backend_sha256':hashlib.sha256((ROOT/'citypods/judging/backends.py').read_bytes()).hexdigest(),
+              'first_http200':first,'retry_attempts':sorted(attempts,key=lambda x:x['result']['started_at'])}
+    (OUT/f'{route.route_id}.json').write_text(json.dumps(artifact,indent=2))
+    reports.append(report)
+checkpoint={'as_of':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'policy':'First HTTP200 is terminal, even if validator fails. No original HTTP200 was retried.',
+            'scope':'Checkpoint of completed attempts; pending requests continue. No calibration inference.',
+            'routes':reports}
+(OUT/'summary.json').write_text(json.dumps(checkpoint,indent=2))
+lines=['# First-HTTP-200 retry checkpoint','',f"As of {checkpoint['as_of']}. Transport retries remain active.",'',
+'Every completed transport attempt is retained in its route JSON. Initial attempts remain in the',
+'parent evidence bundle. The first HTTP 200 is selected mechanically for each packet; failed',
+'validation is terminal. Export assertions reject duplicate terminal replies or any later attempt',
+'after an HTTP 200. No validator or prompt change is made to turn these failures into passes.','',
+'Quote support is measured only on parsed rows. Sibling quote failures remain non-gating;',
+'adjudicator evidence requirements remain in force. HTTP errors and missing credentials are',
+'pending outcomes, never validator passes or validator failures. This is a frozen-fixture contract',
+'check, not a catalog-quality estimate, new gold labeling, or calibration evidence.','',
+'| Route | First 200 / planned packets | Contract pass / first 200 | Parsed / expected items | Quote-valid / parsed | Choices / expected |',
+'|---|---:|---:|---:|---:|---:|']
+for r in reports:
+ c=r['counts'];lines.append(f"| {r['route']} | {c.get('first_http200_packets',0)}/{r['planned_packets']} | {c.get('contract_pass_packets',0)}/{c.get('first_http200_packets',0)} | {c.get('parsed_items',0)}/{c.get('expected_items',0)} | {c.get('quote_valid',0)}/{c.get('parsed_items',0)} | {c.get('parsed_choose',0)}/{c.get('choose_expected',0)} |")
+lines+=['','## Observed first-200 failures','',
+'- BeatAPI DeepSeek packet 4: its initial HTTP-200 response exhausted 16,384 tokens on reasoning',
+'  and returned empty content. It remains the terminal failure and has never been retried.',
+'- OrcaRouter GLM packets 8, 9 and 10: each echoes `answer_with` on all seven answers. The current',
+'  `extra="forbid"` typed schema rejects these additional fields. The verdicts are present; this',
+'  is a contract failure, not evidence of wrong verdicts or quote-quality failure.',
+'- Secondary AI Studio Gemma packet 10: `eval-i18:supported:T1` became',
+'  `eval-i18:supported:supported:T1`. The JSON schema accepts the reply, but exact-ID coverage',
+'  fails and the backend parses six of seven items. No fuzzy ID repair is applied.','',
+'## Gates and one recommended next action each','',
+'| Gate | Evidence | Recommended next action |','|---|---|---|',
+'| HTTP response sampling: pending | See remaining packet counts; auth, missing key, Groq cap, shared-pool 429 and NVIDIA 504 blockers remain | Continue the authorized transport-only retries with backoff |',
+'| Parser contract: failures observed | The five terminal packet failures above are retained | Review a bounded contract/prompt remedy before qualifying the affected model results; preserve this baseline |',
+'| CI: passed at this check | PR #2514 checks all succeeded; local suite 6,778 passed and 17 deselected | Keep PR draft while transport evidence and route decisions are pending |',
+'| Calibration: insufficient evidence | Last targeted 13-source catalog check has zero clean paired subject-questions | Keep thresholds pending until a verified paired cohort exists |','',
+'Groq\'s one-line 65,536-to-16,384 cap proposal still awaits maintainer approval. Neither that',
+'configuration change nor any production-state recovery is included in this checkpoint.']
+(OUT/'README.md').write_text('\n'.join(lines)+'\n')
+print(checkpoint['as_of'])
+for r in reports:print(r['route'],r['counts'].get('first_http200_packets',0),r['pending_packets'],len(r['contract_failures']))

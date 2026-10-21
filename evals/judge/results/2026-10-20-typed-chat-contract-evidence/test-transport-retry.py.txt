@@ -70,3 +70,28 @@ def test_shared_account_routes_get_fair_transport_attempts(tmp_path, monkeypatch
     monkeypatch.setattr(m,'attempt',fake)
     assert m.main()==0
     assert calls==[routes[0],routes[1],routes[0]]
+
+
+def test_many_packets_cannot_starve_another_route_on_the_same_account(tmp_path, monkeypatch):
+    routes = ['openrouter_google_gemma_4_31b_it_free',
+              'openrouter_nvidia_nemotron_3_5_super_vl_free']
+    source=tmp_path/'source';out=tmp_path/'out';out.mkdir()
+    for route,count in [(routes[0],2),(routes[1],1)]:
+        folder=source/route;folder.mkdir(parents=True)
+        for index in range(count):(folder/f'{index:02d}-request.json').write_text('{}')
+        (folder/'result.json').write_text(json.dumps({'planned_packets':count,'results':[
+            {'packet':i,'http_status':503} for i in range(count)]}))
+    monkeypatch.setattr(m,'SOURCE',source);monkeypatch.setattr(m,'OUT',out)
+    monkeypatch.setattr(m,'ROLES',{r:'sibling' for r in routes})
+    monkeypatch.setattr(m.time,'sleep',lambda _:None)
+    calls=[]
+    def fake(route,role,index,number,refresh=False):
+        calls.append((route,index))
+        code=503 if route==routes[0] and index==0 and number==1 else 200
+        r={'http_200_terminal':code==200,'http_status':code,'retry_in_seconds':0}
+        p=out/route;p.mkdir(exist_ok=True)
+        (p/f'{index:02d}-attempt-{number:03d}.result.json').write_text(json.dumps(r))
+        return r
+    monkeypatch.setattr(m,'attempt',fake)
+    assert m.main()==0
+    assert calls==[(routes[0],0),(routes[1],0),(routes[0],0),(routes[0],1)]

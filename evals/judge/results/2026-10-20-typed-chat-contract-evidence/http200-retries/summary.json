@@ -1,0 +1,422 @@
+{
+  "as_of": "2026-10-21T03:36:31.796801+00:00",
+  "policy": "First HTTP200 is terminal, even if validator fails. No original HTTP200 was retried.",
+  "scope": "Checkpoint of completed attempts; pending requests continue. No calibration inference.",
+  "routes": [
+    {
+      "route": "beatapi_deepseek_v4_1_flash_free",
+      "role": "adjudicator",
+      "planned_packets": 14,
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 13,
+        "usable_packets": 13,
+        "expected_items": 158,
+        "parsed_items": 144,
+        "quote_valid": 144,
+        "choose_expected": 12,
+        "parsed_choose": 10
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 94,
+          "quote_valid": 94
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 20,
+          "quote_valid": 20
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 20,
+          "quote_valid": 20
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 10,
+          "quote_valid": 10
+        }
+      },
+      "choice_order_pairs": 5,
+      "choice_order_stable": 5,
+      "contract_failures": [
+        {
+          "packet": 4,
+          "source": "initial",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 14,
+          "json_decode_failed": true
+        }
+      ],
+      "pending_packets": 0,
+      "attempts_recorded": 0
+    },
+    {
+      "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+      "role": "adjudicator",
+      "planned_packets": 14,
+      "counts": {},
+      "by_kind": {},
+      "choice_order_pairs": 0,
+      "choice_order_stable": 0,
+      "contract_failures": [],
+      "pending_packets": 14,
+      "attempts_recorded": 45
+    },
+    {
+      "route": "gemma_4_31b_primary",
+      "role": "sibling",
+      "planned_packets": 14,
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 151,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 91
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 31
+    },
+    {
+      "route": "gemma_4_31b_secondary",
+      "role": "sibling",
+      "planned_packets": 14,
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 13,
+        "usable_packets": 13,
+        "expected_items": 158,
+        "parsed_items": 157,
+        "quote_valid": 154,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 97,
+          "quote_valid": 94
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [
+        {
+          "packet": 10,
+          "source": "10-attempt-001.result.json",
+          "schema_valid": true,
+          "parsed_items": 6,
+          "expected_items": 7,
+          "missing_ids": [
+            "eval-i18:supported:T1"
+          ],
+          "unexpected_ids": [
+            "eval-i18:supported:supported:T1"
+          ],
+          "extra_fields": {}
+        }
+      ],
+      "pending_packets": 0,
+      "attempts_recorded": 22
+    },
+    {
+      "route": "groq_qwen_3_8_27b_primary",
+      "role": "sibling",
+      "planned_packets": 14,
+      "counts": {},
+      "by_kind": {},
+      "choice_order_pairs": 0,
+      "choice_order_stable": 0,
+      "contract_failures": [],
+      "pending_packets": 14,
+      "attempts_recorded": 4
+    },
+    {
+      "route": "nvidia_deepseek_v4_1_flash_free",
+      "role": "adjudicator",
+      "planned_packets": 14,
+      "counts": {},
+      "by_kind": {},
+      "choice_order_pairs": 0,
+      "choice_order_stable": 0,
+      "contract_failures": [],
+      "pending_packets": 14,
+      "attempts_recorded": 33
+    },
+    {
+      "route": "nvidia_gemma_4_31b_it_free",
+      "role": "sibling",
+      "planned_packets": 14,
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 158,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 98
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 8
+    },
+    {
+      "route": "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
+      "role": "sibling",
+      "planned_packets": 14,
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 157,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 97
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 4
+    },
+    {
+      "route": "openrouter_google_gemma_4_31b_it_free",
+      "role": "sibling",
+      "planned_packets": 14,
+      "counts": {},
+      "by_kind": {},
+      "choice_order_pairs": 0,
+      "choice_order_stable": 0,
+      "contract_failures": [],
+      "pending_packets": 14,
+      "attempts_recorded": 211
+    },
+    {
+      "route": "openrouter_nvidia_nemotron_3_5_super_vl_free",
+      "role": "sibling",
+      "planned_packets": 14,
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 157,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 98
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 23
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 2
+    },
+    {
+      "route": "orcarouter_zai_glm_5_3_flash_free",
+      "role": "adjudicator",
+      "planned_packets": 14,
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 11,
+        "usable_packets": 11,
+        "expected_items": 158,
+        "parsed_items": 137,
+        "quote_valid": 137,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 77,
+          "quote_valid": 77
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [
+        {
+          "packet": 8,
+          "source": "08-attempt-001.result.json",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 7,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "extra_fields": {
+            "answer_with": 7
+          }
+        },
+        {
+          "packet": 9,
+          "source": "09-attempt-001.result.json",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 7,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "extra_fields": {
+            "answer_with": 7
+          }
+        },
+        {
+          "packet": 10,
+          "source": "10-attempt-001.result.json",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 7,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "extra_fields": {
+            "answer_with": 7
+          }
+        }
+      ],
+      "pending_packets": 0,
+      "attempts_recorded": 15
+    },
+    {
+      "route": "sambanova_gemma_4_31b_it_primary",
+      "role": "sibling",
+      "planned_packets": 14,
+      "counts": {},
+      "by_kind": {},
+      "choice_order_pairs": 0,
+      "choice_order_stable": 0,
+      "contract_failures": [],
+      "pending_packets": 14,
+      "attempts_recorded": 4
+    }
+  ]
+}
