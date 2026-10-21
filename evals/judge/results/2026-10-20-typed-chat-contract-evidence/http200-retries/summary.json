@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-21T13:57:59.285996+00:00",
+  "as_of": "2026-10-21T21:07:13.419970+00:00",
   "policy": "First HTTP200 is terminal, even if validator fails. No original HTTP200 was retried.",
   "scope": "Checkpoint of completed attempts; pending requests continue. No calibration inference.",
   "routes": [
@@ -64,7 +64,7 @@
       "choice_order_stable": 0,
       "contract_failures": [],
       "pending_packets": 14,
-      "attempts_recorded": 167
+      "attempts_recorded": 247
     },
     {
       "route": "gemma_4_31b_primary",
@@ -239,13 +239,43 @@
       "route": "nvidia_deepseek_v4_1_flash_free",
       "role": "adjudicator",
       "planned_packets": 14,
-      "counts": {},
-      "by_kind": {},
-      "choice_order_pairs": 0,
-      "choice_order_stable": 0,
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 158,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 98
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
       "contract_failures": [],
-      "pending_packets": 14,
-      "attempts_recorded": 135
+      "pending_packets": 0,
+      "attempts_recorded": 208
     },
     {
       "route": "nvidia_gemma_4_31b_it_free",
@@ -530,7 +560,7 @@
       "choice_order_stable": 0,
       "contract_failures": [],
       "pending_packets": 14,
-      "attempts_recorded": 15
+      "attempts_recorded": 21
     }
   ]
 }

@@ -1,6 +1,6 @@
 # First-HTTP-200 retry checkpoint
 
-As of 2026-10-21T13:57:59.285996+00:00. Transport retries remain active.
+As of 2026-10-21T21:07:13.419970+00:00. Transport retries remain active.
 
 Every completed transport attempt is retained in its route JSON. Initial attempts remain in the
 parent evidence bundle. The first HTTP 200 is selected mechanically for each packet; failed
@@ -19,7 +19,7 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
 | gemma_4_31b_primary | 14/14 | 14/14 | 158/158 | 151/158 | 12/12 |
 | gemma_4_31b_secondary | 14/14 | 13/14 | 157/158 | 154/157 | 12/12 |
 | groq_qwen_3_8_27b_primary | 14/14 | 12/14 | 135/158 | 107/135 | 10/12 |
-| nvidia_deepseek_v4_1_flash_free | 0/14 | 0/0 | 0/0 | 0/0 | 0/0 |
+| nvidia_deepseek_v4_1_flash_free | 14/14 | 14/14 | 158/158 | 158/158 | 12/12 |
 | nvidia_gemma_4_31b_it_free | 14/14 | 14/14 | 158/158 | 158/158 | 12/12 |
 | nvidia_nemotron_3_5_super_vl_120b_a12b_free | 14/14 | 14/14 | 158/158 | 157/158 | 12/12 |
 | openrouter_google_gemma_4_31b_it_free | 14/14 | 12/14 | 158/158 | 157/158 | 12/12 |
@@ -50,7 +50,7 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
 
 | Gate | Evidence | Recommended next action |
 |---|---|---|
-| HTTP response sampling: pending | See remaining packet counts; auth, missing key and NVIDIA 504 blockers remain | Continue the authorized transport-only retries with backoff |
+| HTTP response sampling: pending | See remaining packet counts; authentication and missing-key blockers remain | Continue the authorized transport-only retries with backoff |
 | Parser contract: failures observed | The nine terminal packet failures above are retained | Review a bounded contract/prompt remedy before qualifying the affected model results; preserve this baseline |
 | CI: runner setup failure | Latest test job failed before pytest because apt could not locate libvpx9; local suite 6,778 passed | Inspect the next genuine evidence push checks; keep PR draft |
 | Calibration: insufficient evidence | Last targeted 13-source catalog check has zero clean paired subject-questions | Keep thresholds pending until a verified paired cohort exists |

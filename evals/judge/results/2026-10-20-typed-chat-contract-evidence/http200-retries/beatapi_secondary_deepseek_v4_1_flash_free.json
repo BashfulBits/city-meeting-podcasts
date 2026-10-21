@@ -8,7 +8,7 @@
   "choice_order_stable": 0,
   "contract_failures": [],
   "pending_packets": 14,
-  "attempts_recorded": 167,
+  "attempts_recorded": 247,
   "initial_evidence": "../beatapi_secondary_deepseek_v4_1_flash_free.json",
   "parser_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
   "first_http200": [],
@@ -2179,6 +2179,1046 @@
         "packet": 0,
         "attempt": 126,
         "started_at": "2026-10-21T13:54:38.444315+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-127.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 127,
+        "started_at": "2026-10-21T13:59:42.306193+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-128.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 128,
+        "started_at": "2026-10-21T14:04:44.409758+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-129.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 129,
+        "started_at": "2026-10-21T14:09:48.281223+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-130.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 130,
+        "started_at": "2026-10-21T14:14:50.737829+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-131.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 131,
+        "started_at": "2026-10-21T14:19:52.761870+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-132.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 132,
+        "started_at": "2026-10-21T14:24:54.811643+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-133.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 133,
+        "started_at": "2026-10-21T14:29:56.945855+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-134.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 134,
+        "started_at": "2026-10-21T14:34:59.119485+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-135.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 135,
+        "started_at": "2026-10-21T14:40:01.334785+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-136.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 136,
+        "started_at": "2026-10-21T14:45:03.732271+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-137.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 137,
+        "started_at": "2026-10-21T14:50:05.784408+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-138.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 138,
+        "started_at": "2026-10-21T14:55:09.847686+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-139.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 139,
+        "started_at": "2026-10-21T15:00:13.379442+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-140.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 140,
+        "started_at": "2026-10-21T15:05:17.083494+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-141.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 141,
+        "started_at": "2026-10-21T15:10:19.341828+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-142.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 142,
+        "started_at": "2026-10-21T15:15:22.014646+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-143.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 143,
+        "started_at": "2026-10-21T15:20:24.714606+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-144.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 144,
+        "started_at": "2026-10-21T15:25:27.265161+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-145.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 145,
+        "started_at": "2026-10-21T15:30:29.917535+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-146.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 146,
+        "started_at": "2026-10-21T15:35:32.312041+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-147.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 147,
+        "started_at": "2026-10-21T15:40:34.775295+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-148.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 148,
+        "started_at": "2026-10-21T15:45:37.584698+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-149.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 149,
+        "started_at": "2026-10-21T15:50:40.448527+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-150.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 150,
+        "started_at": "2026-10-21T15:55:43.167132+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-151.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 151,
+        "started_at": "2026-10-21T16:00:45.255613+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-152.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 152,
+        "started_at": "2026-10-21T16:32:31.558391+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-153.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 153,
+        "started_at": "2026-10-21T16:37:35.591129+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-154.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 154,
+        "started_at": "2026-10-21T16:42:38.508557+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-155.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 155,
+        "started_at": "2026-10-21T16:47:41.478212+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-156.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 156,
+        "started_at": "2026-10-21T16:52:44.356614+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-157.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 157,
+        "started_at": "2026-10-21T16:57:47.258139+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-158.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 158,
+        "started_at": "2026-10-21T17:02:50.279029+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-159.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 159,
+        "started_at": "2026-10-21T17:07:53.013309+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-160.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 160,
+        "started_at": "2026-10-21T17:12:55.773059+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-161.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 161,
+        "started_at": "2026-10-21T17:17:58.451374+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-162.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 162,
+        "started_at": "2026-10-21T17:23:01.344846+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-163.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 163,
+        "started_at": "2026-10-21T17:28:04.319946+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-164.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 164,
+        "started_at": "2026-10-21T17:33:06.940429+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-165.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 165,
+        "started_at": "2026-10-21T17:38:09.619016+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-166.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 166,
+        "started_at": "2026-10-21T17:43:12.641565+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-167.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 167,
+        "started_at": "2026-10-21T17:48:15.628799+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-168.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 168,
+        "started_at": "2026-10-21T17:53:18.577162+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-169.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 169,
+        "started_at": "2026-10-21T17:58:21.252986+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-170.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 170,
+        "started_at": "2026-10-21T18:03:23.877341+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-171.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 171,
+        "started_at": "2026-10-21T18:08:26.749105+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-172.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 172,
+        "started_at": "2026-10-21T18:13:29.706969+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-173.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 173,
+        "started_at": "2026-10-21T18:18:32.599026+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-174.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 174,
+        "started_at": "2026-10-21T18:23:35.308625+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-175.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 175,
+        "started_at": "2026-10-21T18:28:38.324817+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-176.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 176,
+        "started_at": "2026-10-21T18:33:41.912461+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-177.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 177,
+        "started_at": "2026-10-21T18:38:44.868416+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-178.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 178,
+        "started_at": "2026-10-21T18:43:47.661607+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-179.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 179,
+        "started_at": "2026-10-21T18:48:50.603090+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-180.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 180,
+        "started_at": "2026-10-21T18:53:53.495920+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-181.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 181,
+        "started_at": "2026-10-21T18:58:56.357426+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-182.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 182,
+        "started_at": "2026-10-21T19:03:59.156784+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-183.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 183,
+        "started_at": "2026-10-21T19:09:01.973084+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-184.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 184,
+        "started_at": "2026-10-21T19:14:04.737349+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-185.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 185,
+        "started_at": "2026-10-21T19:19:07.756743+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-186.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 186,
+        "started_at": "2026-10-21T19:24:10.398215+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-187.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 187,
+        "started_at": "2026-10-21T19:29:14.059643+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-188.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 188,
+        "started_at": "2026-10-21T19:34:17.772749+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-189.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 189,
+        "started_at": "2026-10-21T19:39:21.427684+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-190.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 190,
+        "started_at": "2026-10-21T19:44:25.340816+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-191.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 191,
+        "started_at": "2026-10-21T19:49:29.128196+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-192.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 192,
+        "started_at": "2026-10-21T19:54:32.743518+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-193.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 193,
+        "started_at": "2026-10-21T19:59:36.238325+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-194.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 194,
+        "started_at": "2026-10-21T20:04:39.941079+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-195.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 195,
+        "started_at": "2026-10-21T20:09:44.000405+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-196.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 196,
+        "started_at": "2026-10-21T20:14:47.871398+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-197.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 197,
+        "started_at": "2026-10-21T20:19:51.411688+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-198.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 198,
+        "started_at": "2026-10-21T20:24:55.057129+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-199.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 199,
+        "started_at": "2026-10-21T20:29:58.933301+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-200.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 200,
+        "started_at": "2026-10-21T20:35:02.938556+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-201.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 201,
+        "started_at": "2026-10-21T20:40:05.116569+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-202.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 202,
+        "started_at": "2026-10-21T20:45:09.214880+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-203.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 203,
+        "started_at": "2026-10-21T20:50:13.234045+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-204.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 204,
+        "started_at": "2026-10-21T20:55:15.495910+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-205.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 205,
+        "started_at": "2026-10-21T21:00:18.215501+00:00",
+        "read_timeout_seconds": 720,
+        "status": "missing_key",
+        "retry_in_seconds": 300
+      }
+    },
+    {
+      "attempt_file": "00-attempt-206.result.json",
+      "result": {
+        "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+        "role": "adjudicator",
+        "packet": 0,
+        "attempt": 206,
+        "started_at": "2026-10-21T21:05:20.633227+00:00",
         "read_timeout_seconds": 720,
         "status": "missing_key",
         "retry_in_seconds": 300
