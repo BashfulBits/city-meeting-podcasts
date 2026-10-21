@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
 # Ubuntu 24.04 (noble) -- deliberately NOT the official python:3.12-slim (Debian bookworm) image.
-# ffmpeg/ffprobe are self-built (scripts/build_ffmpeg_static.sh) on GH Actions' ubuntu-latest
-# (also noble) with FFmpeg's own libraries statically linked, but the external codec/TLS
+# ffmpeg/ffprobe are self-built (scripts/build_ffmpeg_static.sh) on GH Actions' pinned ubuntu-24.04
+# (noble) with FFmpeg's own libraries statically linked, but the external codec/TLS
 # libraries link dynamically against that host's exact package versions -- see that script's
 # header comment for why (gnutls's static dependency chain isn't resolvable via apt). Ubuntu
 # noble and Debian bookworm ship different SONAMEs for some of those libraries (e.g. noble's

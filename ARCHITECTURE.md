@@ -118,6 +118,12 @@ runtime-definition changes from a digest-pinned Python base plus a checksum-pinn
 ffmpeg/ffprobe bundle. The image is pulled at step time rather than configured as a job-level
 container: if GHCR is unavailable, the job can continue on the host with the same verified static
 bundle restored through `actions/cache`; no `apt-get` or Ubuntu mirror is on the Audio critical path.
+Jobs that install the vendored FFmpeg bundle on the host, and the source-build job, explicitly
+use `ubuntu-24.04`. Its dynamically linked codec/TLS libraries require the noble ABI, including
+`libvpx9` and `libdav1d7`, matching the audio-runner container. The moving `ubuntu-latest` label
+can select Ubuntu 26.04, where those runtime package names are unavailable. Runner upgrades for
+these jobs must be coordinated with the FFmpeg bundle and container rather than applied implicitly.
+
 The ASR lane reuses that checksum-pinned static ffmpeg/ffprobe cache directly on the host, while its
 multi-gigabyte Whisper weights remain outside the runtime image in the existing Actions-cache →
 Hugging Face/B2 fallback cascade. This avoids large repeated container pulls and keeps model selection

@@ -2297,3 +2297,13 @@ uses relative paths and retains items/answers ownership. Retirement control repo
 operation/status/category diagnostics and retries only idempotent pause/resume/status transport
 failures once. No admission/reservation retries, pipeline-version changes, automatic backfill, or
 roadmap sequencing changes are introduced.
+
+
+### FFmpeg host ABI repair (2026-10-21)
+
+Operational repair, with no roadmap sequencing change: failing CI and R7 runs selected Ubuntu
+26.04 through `ubuntu-latest` and could not install `libvpx9`. CI's test job is already pinned
+on main; the remaining host consumers and the source-build job now pin `ubuntu-24.04`, matching
+the existing vendored FFmpeg bundle and audio-runner container's noble codec/TLS ABI.
+Workflow contract tests guard the build/consumer alignment. The FFmpeg URL/checksum, container
+digest and pipeline versions stay unchanged; stored artifacts are retained without backfill.
