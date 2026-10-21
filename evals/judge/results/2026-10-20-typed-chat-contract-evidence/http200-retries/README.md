@@ -1,6 +1,6 @@
 # First-HTTP-200 retry checkpoint
 
-As of 2026-10-21T03:36:31.796801+00:00. Transport retries remain active.
+As of 2026-10-21T05:48:12.620979+00:00. Transport retries remain active.
 
 Every completed transport attempt is retained in its route JSON. Initial attempts remain in the
 parent evidence bundle. The first HTTP 200 is selected mechanically for each packet; failed
@@ -18,7 +18,7 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
 | beatapi_secondary_deepseek_v4_1_flash_free | 0/14 | 0/0 | 0/0 | 0/0 | 0/0 |
 | gemma_4_31b_primary | 14/14 | 14/14 | 158/158 | 151/158 | 12/12 |
 | gemma_4_31b_secondary | 14/14 | 13/14 | 157/158 | 154/157 | 12/12 |
-| groq_qwen_3_8_27b_primary | 0/14 | 0/0 | 0/0 | 0/0 | 0/0 |
+| groq_qwen_3_8_27b_primary | 14/14 | 12/14 | 135/158 | 107/135 | 10/12 |
 | nvidia_deepseek_v4_1_flash_free | 0/14 | 0/0 | 0/0 | 0/0 | 0/0 |
 | nvidia_gemma_4_31b_it_free | 14/14 | 14/14 | 158/158 | 158/158 | 12/12 |
 | nvidia_nemotron_3_5_super_vl_120b_a12b_free | 14/14 | 14/14 | 158/158 | 157/158 | 12/12 |
@@ -38,14 +38,19 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
   `eval-i18:supported:supported:T1`. The JSON schema accepts the reply, but exact-ID coverage
   fails and the backend parses six of seven items. No fuzzy ID repair is applied.
 
+- Groq Qwen packet 5 adds forbidden `level_note` fields to three grade answers; the strict
+  schema rejects the packet. Packet 10 duplicates `eval-i18:supported:T1` and omits
+  `eval-i17:supported:T1`; duplicate-ID validation rejects it. Both first-200 replies are final.
+
 ## Gates and one recommended next action each
 
 | Gate | Evidence | Recommended next action |
 |---|---|---|
-| HTTP response sampling: pending | See remaining packet counts; auth, missing key, Groq cap, shared-pool 429 and NVIDIA 504 blockers remain | Continue the authorized transport-only retries with backoff |
-| Parser contract: failures observed | The five terminal packet failures above are retained | Review a bounded contract/prompt remedy before qualifying the affected model results; preserve this baseline |
+| HTTP response sampling: pending | See remaining packet counts; auth, missing key, shared-pool 429 and NVIDIA 504 blockers remain | Continue the authorized transport-only retries with backoff |
+| Parser contract: failures observed | The seven terminal packet failures above are retained | Review a bounded contract/prompt remedy before qualifying the affected model results; preserve this baseline |
 | CI: passed at this check | PR #2514 checks all succeeded; local suite 6,778 passed and 17 deselected | Keep PR draft while transport evidence and route decisions are pending |
 | Calibration: insufficient evidence | Last targeted 13-source catalog check has zero clean paired subject-questions | Keep thresholds pending until a verified paired cohort exists |
 
-Groq's one-line 65,536-to-16,384 cap proposal still awaits maintainer approval. Neither that
-configuration change nor any production-state recovery is included in this checkpoint.
+The maintainer approved the Groq cap correction; commit ed3f492d regenerates both catalogs.
+All 14 Groq first-200 replies used the actual v2 helper limit of 16,384. Historical attempts
+remain preserved. No production-state recovery is included in this checkpoint.
