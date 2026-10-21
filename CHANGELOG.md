@@ -15,6 +15,19 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Uncap LLM dispatch runner submissions and optimize R6 moments routing.** Removed
+  client-side `max_dispatches_per_run` throttling across all LLM lanes to rely exclusively on
+  Cloudflare Dispatch v2 daily write unit budgets and ceilings. Sized R6 moments extraction
+  with size-aware routing: small packets (<= 45,000 tokens) use Gemini 3.5 Flash Lite with
+  high-capacity routes in backup; large packets (> 45,000 tokens) prioritize GLM 5.3 Flash,
+  DeepSeek V4 Flash, and Kimi K3 with remaining models in backup, dropping ingress write units
+  from 12 to 6 per job. Removed `gemini/gemini-3.1-flash-lite` from moments to eliminate
+  contention with `chapter-agenda`.
+
+- **LLM worker dispatch concurrency tuning.** Raised `MAX_ACTIVE_BUNDLES` from 3 to 5 and
+  `MAX_IN_FLIGHT_LLM_CALLS` from 12 to 20 in `config/dispatch_tuning.yml` to reduce empty claim
+  ticks and relieve in-flight concurrency bottlenecks when slow provider calls overlap.
+
 - **Google Gemma-31B Gateway retries.** Send `cf-aig-max-attempts: 1` on both Google
   Gemma-31B project routes so the dispatch worker owns paced retries and sees provider failures.
   Spaced replay tests found quota refusals with default Gateway handling but none directly or
