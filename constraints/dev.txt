@@ -176,7 +176,7 @@ pygments==2.20.0
     # via
     #   pytest
     #   rich
-pypdf==6.19.0
+pypdf==6.21.1
     # via -r constraints/dev.in
 pyproject-hooks==1.2.0
     # via
