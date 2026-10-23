@@ -24,6 +24,7 @@ from citypods.compute.llm import (
     LLMUpstreamPassthroughError,
     dispatch_job_batch,
 )
+from citypods.compute.llm_deferred import write_deferred
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 
@@ -601,6 +602,69 @@ def test_enqueue_batch_defers_per_purpose_capacity_rejections(reason):
     assert result[0].ref.startswith(f"deferred-{reason}-")
     assert backend._daily_ingest_exhausted is False
     assert any(key.startswith("state/llm_deferred/") for key in storage.files)
+
+
+def test_a_closed_purpose_keeps_an_in_flight_handle_and_the_structured_contract():
+    """Closure must not disturb work it does not own, and must not drop a job's schema.
+
+    A recipe whose submission the registry already holds is still running at the Worker: replacing
+    its handle with a synthetic one would submit it twice (and could overwrite the pending record).
+    A genuinely new recipe takes the closure path, where the handle has to carry
+    `structured_output` -- `_reconcile_deferred` rebuilds the job from that handle, so without it
+    the retried reply would skip structured-result validation.
+    """
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = lambda url, json=None, **_kw: _mock_response(
+        status_code=200,
+        json_data={
+            "accepted": [],
+            "rejected": [
+                {"id": job["id"], "reason": "purpose_write_budget_exceeded"} for job in json["jobs"]
+            ],
+        },
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+
+    def job(recipe, purpose="r6-moments"):
+        return InferenceJob(
+            task="tag",
+            inputs={
+                "messages": [{"role": "user", "content": "meeting text"}],
+                "llm_policy": LLMRequestPolicy(purpose=purpose),
+                "structured_output": "dispatch-v2-test-pong",
+            },
+            recipe_hash=recipe,
+        )
+
+    backend.enqueue_batch([job("m1")])
+    assert backend._ingest_closed_purposes == {"r6-moments"}
+
+    in_flight = JobHandle(
+        task="tag",
+        recipe_hash="live",
+        backend="llm-dispatch-v2",
+        ref="v2-live",
+        structured_output="dispatch-v2-test-pong",
+    )
+    write_deferred(storage, "live", in_flight)
+
+    live = backend.enqueue_batch([job("live")])[0]
+    assert isinstance(live, JobHandle)
+    assert live.ref == "v2-live"
+    assert live.deferred_request is None
+
+    fresh = backend.enqueue_batch([job("fresh")])[0]
+    assert isinstance(fresh, JobHandle)
+    assert fresh.deferred_request is not None
+    assert fresh.structured_output == "dispatch-v2-test-pong"
 
 
 def test_a_spent_purpose_stops_staging_but_other_purposes_keep_submitting():

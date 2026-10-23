@@ -2158,6 +2158,14 @@ class LiteLLMBackend(Backend):
         if closed:
             for idx, reason in closed.items():
                 job = jobs[idx]
+                if idx in prior_pending:
+                    # Already in flight under its previous payload (the cache above found its
+                    # submitted handle). Keep following that one: a synthetic deferred handle
+                    # would submit the work a second time and could overwrite the pending record
+                    # while the Worker job is still running.
+                    telemetry_outcomes.append((job, "prior_pending", reason))
+                    out[idx] = prior_pending[idx]
+                    continue
                 policy = (
                     job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
                 ) or getattr(job, "policy", None)
@@ -2166,6 +2174,9 @@ class LiteLLMBackend(Backend):
                     recipe_hash=job.recipe_hash,
                     backend="llm-dispatch-v2",
                     ref=f"deferred-daily-cap-{job.recipe_hash}",
+                    # Keep the response contract: `_reconcile_deferred` rebuilds the job from it,
+                    # and without it the retried reply would skip structured-result validation.
+                    structured_output=self._structured_output(job),
                     deferred_request=DeferredLLMRequest(
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
