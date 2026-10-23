@@ -103,17 +103,17 @@ test("bundle diagnostics retain both IP observations when GeoIP fails", async ()
   const result = await observeBundleNetwork(async (url, options) => {
     calls.push(url);
     signals.push(options.signal);
-    if (url.includes("cloudflare.com")) {
+    if (url === "https://www.cloudflare.com/cdn-cgi/trace") {
       return new Response("ip=2a06:98c0:3600::103\ncolo=IAD\nloc=US");
     }
-    if (url.includes("api.aws")) return new Response("2606:4700:4700::1111");
+    if (url === "https://checkip.global.api.aws/") return new Response("2606:4700:4700::1111");
     assert.equal(url, "https://api.ip.sb/geoip/2606%3A4700%3A4700%3A%3A1111");
     return new Response("PRIVATE", { status: 429 });
   });
   assert.equal(calls.length, 3);
   assert.ok(signals.every(signal => signal === signals[0]));
-  assert.ok(calls[0].includes("api.aws"));
-  assert.ok(calls[2].includes("cloudflare.com"));
+  assert.equal(calls[0], "https://checkip.global.api.aws/");
+  assert.equal(calls[2], "https://www.cloudflare.com/cdn-cgi/trace");
   assert.equal(result.worker_probe_ip_kind, "worker_placeholder");
   assert.equal(result.external_probe_ip, "2606:4700:4700::1111");
   assert.equal(result.external_geoip_status, "http_error");

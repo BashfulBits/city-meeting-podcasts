@@ -152,3 +152,7 @@ no agenda-processing code or OCR limits were changed as part of network diagnost
 
 The independent-observation CLI review completed with zero findings. The previously failing OCR
 fixture test passed on local recheck (5.25 seconds).
+
+CodeQL flagged two URL substring checks in the diagnostic test mocks/assertions. These did not
+validate production destinations, but were replaced with exact endpoint matches throughout the
+new test file, making the mocks stricter and removing the flagged pattern.
