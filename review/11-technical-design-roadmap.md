@@ -2313,6 +2313,7 @@ No task graduation, production recovery, or calibration thresholds are implied.
 judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel accuracy
 and PR7 population calibration remain pending; terminal schema/ID failures are retained rather than resampled.
 
+
 ### FFmpeg host ABI repair (2026-10-21)
 
 Operational repair, with no roadmap sequencing change: failing CI and R7 runs selected Ubuntu
