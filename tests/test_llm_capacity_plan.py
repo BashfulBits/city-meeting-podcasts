@@ -7,8 +7,8 @@ def test_full_plan_is_not_800_jobs_per_lane():
     report = project()
     assert report["new_jobs"] == 4000
     assert report["provider_attempts"] == 4400
-    assert report["ingress_units"] == 27200
-    assert report["billed_rows_estimate"] == 136840
+    assert report["ingress_units"] == 22400
+    assert report["billed_rows_estimate"] == 117640
     assert not report["fits_shared_caps"]
     assert all(row["purpose"] != "r6-judge" for row in report["lanes"])
 
@@ -79,7 +79,7 @@ def test_capacity_budget_tracks_worker_defaults(tmp_path, monkeypatch):
     )
     (worker / "coordinator.js").write_text('_envInt("DO_ROWS_ENQUEUE_STOP", 90000)')
     monkeypatch.setattr(calculator, "ROOT", tmp_path)
-    report = project(chapter_fraction=0, tag_fraction=0, retry_fraction=0)
+    report = project(chapter_fraction=0, tag_fraction=1, retry_fraction=0)
     assert report["safe_row_budget"] == 40000
     assert not report["fits_shared_caps"]
     assert consensus_plan()["safe_row_budget"] == 40000

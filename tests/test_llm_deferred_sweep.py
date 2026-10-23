@@ -8,6 +8,7 @@ import pytest
 
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm import (
+    LLMDispatchRejectedError,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
     LLMUpstreamPassthroughError,
@@ -1075,6 +1076,48 @@ def test_sweep_exits_non_zero_when_a_submission_is_rejected(monkeypatch, capsys)
     assert "3 record(s) failed to submit" in captured.err
     # Still pending, not lost: a later sweep retries them.
     assert "they remain pending" in captured.err
+
+
+def test_sweep_retires_records_a_lane_registry_change_made_unadmissible(monkeypatch, capsys):
+    """An unadmissible record is retired, not retried forever and not reported as failed.
+
+    Live 2026-10-21: a model removed from `r6-moments` left 800 pre-change moment handles whose
+    immutable policy capsules name it. Every sweep re-submitted the oldest 800 first, the Worker
+    answered `model_not_in_lane` for each, and the run went red without ever draining them.
+    Retirement removes them so the producer's next run re-plans the item under the current lane.
+    """
+    _stub_sweep_environment(monkeypatch, [_queue_only_handle(index) for index in range(3)])
+    retired = []
+
+    def _retire(storage, snapshot, handle, error, **_kwargs):
+        retired.append((handle.recipe_hash, getattr(error, "reason", None)))
+        snapshot.mark_terminal_failure(handle.recipe_hash)
+        return 1
+
+    monkeypatch.setattr(llm_deferred_sweep, "discard_terminal_failure", _retire)
+
+    class MockBackend:
+        name = "litellm"
+        config = SimpleNamespace(dispatch_v2_url="https://dispatch.example")
+
+        def enqueue_batch(self, jobs):
+            return [LLMDispatchRejectedError("rejected", reason="model_not_in_lane") for _ in jobs]
+
+        def poll_batch(self, poll_handles):
+            return {handle.ref: None for handle in poll_handles}
+
+        def reconcile(self, handle):  # pragma: no cover - every record is retired on submission
+            raise AssertionError("a retired record must not fall through to reconcile()")
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    captured = capsys.readouterr()
+    assert '"retired_unadmissible": 3' in captured.out
+    assert '"submit_failed": 0' in captured.out
+    assert "3 retired unadmissible" in captured.out
+    assert [hash for hash, _reason in retired] == ["r-0", "r-1", "r-2"]
+    assert {reason for _hash, reason in retired} == {"model_not_in_lane"}
 
 
 def test_sweep_still_exits_zero_when_only_a_reconcile_fails(monkeypatch, capsys):

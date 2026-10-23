@@ -25,7 +25,8 @@ permissions:
 
 jobs:
   asr:
-    runs-on: ubuntu-latest
+    # Match the pinned FFmpeg bundle's Ubuntu noble codec/TLS ABI.
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     # Rebuild the discovery index + reap dead workers once before any internal pull worker claims.
     needs: reconcile

@@ -115,7 +115,8 @@ jobs:
   audio:
     needs: plan
     if: needs.plan.outputs.has_work == 'true'
-    runs-on: ubuntu-latest
+    # Match the pinned FFmpeg bundle's Ubuntu noble codec/TLS ABI.
+    runs-on: ubuntu-24.04
     # Explicit for documentation (audio-workflow review, 2026-07-19): GitHub-hosted runners already
     # hard-cap job execution at 360 minutes with or without this line, unconfigurable upward — a
     # stalled shard was previously killed by that silent platform default rather than any timeout

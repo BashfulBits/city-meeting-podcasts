@@ -160,10 +160,10 @@ def _scale_rate_limit(value: Any, multiplier: float) -> Any:
 
 
 def _validate_ai_gateway_max_attempts(value: Any, provider: str) -> int | None:
-    """Validate a provider-specific AI Gateway retry override.
+    """Validate an AI Gateway retry override.
 
     Cloudflare permits one through five attempts. Keeping the validation in the compiler prevents
-    a malformed provider entry from becoming a live header that the gateway silently ignores.
+    a malformed catalog entry from becoming a live header that the gateway silently ignores.
     """
     if value is None:
         return None
@@ -411,6 +411,7 @@ API_SHAPES = ("chat", "systemone")
 
 _WORKER_ROUTE_FIELDS = (
     "route_id",
+    "ai_gateway_max_attempts",
     # The route's PRIMARY logical model. A route listed in several pools via `also_serves`
     # appears in several model_routes_map entries, so the Worker must not infer its identity from
     # whichever pool it happens to find first (routes.js modelForRouteId).
@@ -1211,7 +1212,12 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                 "structured_output_schema_strip_keys": method["strip_schema_keys"],
             }
         )
-        if provider_cfg.get("ai_gateway_max_attempts") is not None:
+        route_attempts = route.get("ai_gateway_max_attempts")
+        if route_attempts is not None:
+            route["ai_gateway_max_attempts"] = _validate_ai_gateway_max_attempts(
+                route_attempts, f"{route['provider']} route {route_name}"
+            )
+        elif provider_cfg.get("ai_gateway_max_attempts") is not None:
             route["ai_gateway_max_attempts"] = provider_cfg["ai_gateway_max_attempts"]
         route["input_context_limit"] = int(route["input_context_limit"])
         route["output_context_limit"] = int(route["output_context_limit"])

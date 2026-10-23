@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -353,6 +354,37 @@ test("callAiGateway includes response.headers in its return value", async () => 
     assert.ok(res.headers);
     assert.equal(res.headers.get("x-ratelimit-limit-req-minute"), "0");
     assert.equal(res.headers.get("x-ratelimit-remaining-req-minute"), "0");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test("compiled Google Gemma31B routes send exactly one Gateway attempt", async () => {
+  const catalog = JSON.parse(readFileSync(new URL("../src/dispatch_limits.json", import.meta.url)));
+  const originalFetch = globalThis.fetch;
+  try {
+    const sent = [];
+    globalThis.fetch = async (url, init) => {
+      sent.push({ url, headers: init.headers });
+      return new Response(JSON.stringify({ choices: [] }), { status: 200 });
+    };
+    for (const routeId of ["gemma_4_31b_primary", "gemma_4_31b_secondary"]) {
+      await callAiGateway({
+        env: { GEMINI_API_KEY: "primary", GEMINI_API_KEY_SECONDARY: "secondary",
+          CLOUDFLARE_ACCOUNT_ID: "account", AI_GATEWAY_ID: "citypods-dispatch" },
+        route: catalog.routes_by_id[routeId],
+        payload: { messages: [{ role: "user", content: "hi" }] },
+        dispatchLimits: catalog,
+      });
+    }
+    assert.equal(sent.length, 2);
+    for (const request of sent) {
+      assert.match(request.url, /google-ai-studio/);
+      assert.equal(request.headers["cf-aig-max-attempts"], "1");
+    }
+    assert.equal(sent[0].headers.authorization, "Bearer primary");
+    assert.equal(sent[1].headers.authorization, "Bearer secondary");
   } finally {
     globalThis.fetch = originalFetch;
   }

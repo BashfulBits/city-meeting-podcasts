@@ -30,6 +30,11 @@ feedback (maintainer-authorized empirical rule, not a claim about Google's quota
 [overflow evidence][overflow-timeouts]
 records NVIDIA failures after successful route recovery. Request tuning remains unpromoted.
 
+Maintainer-directed Gateway retry follow-up (2026-10-21): explicit single-attempt handling for
+both Google Gemma-31B project routes is in PR review. Worker-owned paced recovery remains intact;
+[three-arm replay evidence](evidence/2026-10-21-gemma-gateway-retries.md) records the result and
+limitations. This does not establish the 95% producer coverage goal.
+
 [overflow-timeouts]: evidence/2026-10-20-gemma-overflow-timeouts.md
 
 Maintainer-approved judge prerequisite (2026-10-20, implementation under validation):
@@ -2304,6 +2309,15 @@ PR7 calibration. Parsed sibling decisions remain usable independently of quote q
 adjudicator evidence remains required. See review/53 and evals/judge for the scoped change.
 No task graduation, production recovery, or calibration thresholds are implied.
 
-Draft [PR #2514](https://github.com/BashfulBits/city-meeting-podcasts/pull/2514) contains this
-judge-contract prerequisite and first-200 evaluation evidence. Route qualification and PR7
-calibration remain pending; terminal schema/ID failures are retained rather than resampled.
+[PR #2514](https://github.com/BashfulBits/city-meeting-podcasts/pull/2514) contains this
+judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel accuracy
+and PR7 population calibration remain pending; terminal schema/ID failures are retained rather than resampled.
+
+### FFmpeg host ABI repair (2026-10-21)
+
+Operational repair, with no roadmap sequencing change: failing CI and R7 runs selected Ubuntu
+26.04 through `ubuntu-latest` and could not install `libvpx9`. CI's test job is already pinned
+on main; the remaining host consumers and the source-build job now pin `ubuntu-24.04`, matching
+the existing vendored FFmpeg bundle and audio-runner container's noble codec/TLS ABI.
+Workflow contract tests guard the build/consumer alignment. The FFmpeg URL/checksum, container
+digest and pipeline versions stay unchanged; stored artifacts are retained without backfill.
