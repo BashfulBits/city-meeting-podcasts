@@ -48,14 +48,14 @@ class Due:
 
 
 def _by_tier(subject: Subject, question_id: str, role: str, model: str | None) -> dict[str, Any]:
-    """The newest recorded value per tier for one judge on one question (unsupported rows out)."""
+    """Newest value per tier; only adjudicators require a passing quote check."""
     found: dict[str, Any] = {}
     for row in ledger.judgments(subject):
         if (
             row.get("question_id") == question_id
             and row.get("judge_role") == role
             and (model is None or row.get("judge_model") == model)
-            and row.get("quote_valid") is not False
+            and ledger.usable_vote(row)
             and row.get("context_tier") in TIERS
         ):
             found[row["context_tier"]] = row.get("value")

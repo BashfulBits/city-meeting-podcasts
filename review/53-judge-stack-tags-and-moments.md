@@ -622,6 +622,38 @@ from the old reasonless result. The check itself is unchanged: a fabricated quot
 was rejected: it would re-ask all of JEV's judgments and needs the adjudication helpers to filter
 ledger rows by version.
 
+### Typed chat reply validation (maintainer-approved prerequisite, 2026-10-20)
+
+Before PR7 calibration, repair the remaining choose reply failure and validate the frozen
+`evals/judge/manifest.json` against every free route serving an active or eligible chat judge,
+using local direct HTTP calls, not the Worker or production state. The maintainer explicitly
+approved these live calls. Retain requests without credentials, raw replies, strict schema results,
+the actual backend parser output, quote support and both choose orders; unavailable routes are
+inconclusive, never passes. Frozen moment inputs contain quotes/reasons rather than surrounding
+transcripts: this establishes contract behavior, not publishability accuracy or human gold.
+
+The repair adds `judge-answers-v3`: kind-specific replies require `verdict`, `level` or `choice`,
+a nonempty reason, and unique answer IDs. Reasons must copy a real passage; five unquoted
+consecutive evidence words avoid escaped-quotation failures without weakening the quote checker. Keep v1/v2 readable for old packets and reject malformed
+v3 rather than downgrading it. Use the existing per-question grade bounds and option-to-subject
+mapping. A chat-only `CHAT_REQUEST_REVISION=3` changes newly planned packet identities; JEV and
+question prompt versions stay unchanged. Already stored judgments and pending pointers are NOT
+invalidated automatically: archive/removal remains a separately approved recovery operation.
+
+Implementation scope: `citypods/judging/backends.py`, `tests/test_judging.py`, the new repeatable
+`scripts/eval_judge_contract.py` and `tests/test_eval_judge_contract.py`, frozen evaluation result
+artifacts and README, plus the lifecycle docs. No Worker runtime, quota, production-state or
+gold-label changes. On October 20 the maintainer separately approved correcting Groq Qwen's
+output limit from 65,536 to the provider-enforced 16,384 tokens and regenerating both catalogs.
+The observed HTTP 400 established the mismatch; this aligns direct calls and the v2 Worker
+without changing stored artifacts or triggering backfill. The evaluator uses compiled route schema shaping, production `route_max` and
+lane reasoning controls; any diagnostic output-cap override is explicitly recorded separately.
+The fixed input set is not re-frozen or labeled by an agent.
+
+Direct validation completed all 168 slots, with authorized provider/account substitutions;
+ten terminal packet contract failures remain recorded in the compact dated results. Do not treat HTTP success as schema success, or parsing success
+as quote support. Do not promote a route whose new contract remains unverified.
+
 ### PR7 — Calibration report and threshold proposal
 
 `python -m citypods.judging.calibrate --task <task>` computes, per question kind, from the
@@ -808,3 +840,34 @@ authority, measured by the audit and the reliability tripwires.
 ## Open questions
 
 None blocking. The capacity numbers are projections and are re-derived from PR4 data.
+
+Sibling quote policy (maintainer clarification, 2026-10-20): a parsed, structurally valid
+sibling decision remains usable when its quote is missing or invalid. Quote checks remain
+quality signals in reports and evaluation artifacts; they do not veto sibling decisions,
+probe accuracy, stability comparisons, or disagreement selection. Adjudicator decisions
+retain their evidence requirement. This applies to existing stored sibling rows on read;
+it requires no packet re-submission and does not invalidate JEV records. Required typed
+answer fields and valid option/grade bounds remain mandatory.
+
+Using those stored sibling decisions can expose additional disagreements to the normal
+adjudication selector after deployment. Stored sibling judgments remain in place. Normal
+collection/replanning of unfinished questions can produce revision-3 packets when legacy
+replies omit required answers. This local change has launched no production adjudication jobs.
+
+October 21 first-200 checkpoint for draft PR #2514: seven routes completed all 14 frozen
+packets. GLM added forbidden `answer_with` metadata in three packets; secondary AI Studio
+Gemma changed one answer ID in another packet. The strict schema/ID checks reject those
+results; no parser relaxation, fuzzy ID repair, or validator-driven retry is applied. The
+initial empty BeatAPI reply remains terminal. See the dated evals/judge retry checkpoint.
+A bounded contract remedy needs review against this retained baseline before qualification.
+
+Maintainer reaffirmation (2026-10-22): retain JEV + Gemma / JEV + Nemotron, selected by
+producer-family independence, with GLM or NVIDIA DeepSeek as the independent adjudicator.
+The direct v3 evaluation validates the response interface and does not replace these panels.
+The chat-only labeled pair report omits JEV; its alternative pair counts are supplementary.
+Non-accepted results are intended for human review; numerical admission thresholds and any
+change to the earlier automatic rejection/suppression behavior require a separate policy change.
+
+PR #2514 retains frozen inputs/gold, runnable eval/scoring tools, compact observations and
+regression fixtures. Bulk raw attempts and review logs are archived outside Git with a checksum;
+see the dated evals/judge evidence README. This does not change the panel assignments or labels.

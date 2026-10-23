@@ -3,8 +3,8 @@
 A chat judge's or adjudicator's ``reason`` must carry direct evidence: a passage copied from the
 evidence it was sent. A reason with no such passage, or with a quoted passage the evidence does
 not contain, makes the judgment *unsupported*: its row is kept (the ledger is append-only) with
-``quote_valid: false`` and every statistic ignores it. The check is mechanical on purpose: a judge
-cannot talk its way past it.
+``quote_valid: false`` as a quality signal. Parsed sibling decisions still count; adjudicator
+decisions with a failed quote check do not. The check is mechanical on purpose.
 
 What matters is that the passage is real, not how it is presented. Matching therefore ignores
 case, punctuation, whitespace and typographic differences, and the passage may be marked with any

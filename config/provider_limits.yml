@@ -776,7 +776,7 @@ routes:
     provider: groq
     upstream_model: qwen/qwen3.8-27b
     input_context_limit: 131072
-    output_context_limit: 65536
+    output_context_limit: 16384
     account_id: primary
     rpm: 30
     rpd: 1000

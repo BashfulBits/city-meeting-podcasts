@@ -101,12 +101,12 @@ def test_a_claim_needs_both_an_anchor_and_a_sibling_reading_and_is_never_asked_t
     assert _gather([ep], audited={only.item_id}) == []
 
 
-def test_unsupported_votes_do_not_count_toward_information():
+def test_bad_quote_sibling_decisions_count_toward_information():
     ep = _episode(uid="odd", llm=[])
     [subject] = _subjects(ep)
     _row(subject, "anchor", 0.95)
     _row(subject, "sibling", False, quote_valid=False)  # its quote was not in the evidence
-    assert _gather([ep]) == []
+    assert len(_gather([ep])) == 1
 
 
 def test_a_newest_judge_is_one_first_seen_recently_after_others_were():

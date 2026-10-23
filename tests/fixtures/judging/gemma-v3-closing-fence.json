@@ -1,0 +1,21 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": " {\n  \"answers\": [\n    {\n      \"id\": \"eval-b8894534c463f6ef-0:supported:T1\",\n      \"reason\": \"\\\"all three of these would require a zoning change\\\"\",\n      \"kind\": \"validate\",\n      \"verdict\": true\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-0:publishable:T1\",\n      \"reason\": \"\\\"all three of these would require a zoning change\\\"\",\n      \"kind\": \"gate\",\n      \"verdict\": false\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-0:usefulness:T1\",\n      \"reason\": \"\\\"all three of these would require a zoning change\\\"\",\n      \"kind\": \"grade\",\n      \"level\": 1\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-1:supported:T1\",\n      \"reason\": \"\\\"they will not be arrested when they go in\\\"\",\n      \"kind\": \"validate\",\n      \"verdict\": true\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-1:publishable:T1\",\n      \"reason\": \"\\\"they will not be arrested when they go in\\\"\",\n      \"kind\": \"gate\",\n      \"verdict\": false\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-1:usefulness:T1\",\n      \"reason\": \"\\\"they will not be arrested when they go in\\\"\",\n      \"kind\": \"grade\",\n      \"level\": 3\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-2:supported:T1\",\n      \"reason\": \"\\\"need for programming and groups to have some funding\\\"\",\n      \"kind\": \"validate\",\n      \"verdict\": true\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-2:publishable:T1\",\n      \"reason\": \"\\\"need for programming and groups to have some funding\\\"\",\n      \"kind\": \"gate\",\n      \"verdict\": true\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-2:usefulness:T1\",\n      \"reason\": \"\\\"need for programming and groups to have some funding\\\"\",\n      \"kind\": \"grade\",\n      \"level\": 0\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-3:supported:T1\",\n      \"reason\": \"\\\"As a consequence, it resulted in a 14% decrease\\\"\",\n      \"kind\": \"validate\",\n      \"verdict\": true\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-3:publishable:T1\",\n      \"reason\": \"\\\"As a consequence, it resulted in a 14% decrease\\\"\",\n      \"kind\": \"gate\",\n      \"verdict\": false\n    },\n    {\n      \"id\": \"eval-b8894534c463f6ef-3:usefulness:T1\",\n      \"reason\": \"\\\"As a consequence, it resulted in a 14% decrease\\\"\",\n      \"kind\": \"grade\",\n      \"level\": 3\n    },\n    {\n      \"id\": \"b8894534c463f6ef:best:T1\",\n      \"reason\": \"\\\"they will not be arrested when they go in\\\"\",\n      \"kind\": \"choose\",\n      \"choice\": \"B\"\n    },\n    {\n      \"id\": \"b8894534c463f6ef:best_r:T1\",\n      \"reason\": \"\\\"they will not be arrested when they go in\\\"\",\n      \"kind\": \"choose\",\n      \"choice\": \"C\"\n    }\n  ]\n}\n```",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1792538060,
+  "id": "qvXXariqLYjpz7IP-Mn24A8",
+  "model": "gemma-4-31b-it",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 982,
+    "prompt_tokens": 3458,
+    "total_tokens": 4440
+  }
+}

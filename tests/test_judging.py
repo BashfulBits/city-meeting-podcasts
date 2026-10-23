@@ -389,7 +389,7 @@ def test_chat_packet_identity_carries_the_request_revision_and_jev_is_unchanged(
     sibling = Packet("judge:sibling", "sibling", "google/gemma-4-31b-it", (item,))
     assert anchor.recipe_hash == legacy("anchor", "typesafe/jev-1.13")
     assert sibling.recipe_hash != legacy("sibling", "google/gemma-4-31b-it")
-    assert backends.CHAT_REQUEST_REVISION == "2"
+    assert backends.CHAT_REQUEST_REVISION == "3"
 
 
 def test_chat_judge_items_name_the_field_to_answer_and_list_choose_letters():
@@ -438,7 +438,7 @@ def test_chat_judge_parses_valid_partial_and_malformed_replies():
     )
     packet = Packet("judge:sibling", "sibling", "google/gemma-4-31b-it", (item,))
     job = ChatJudgeBackend(max_total_tokens=10_000, max_items=25).build(packet)
-    assert job.inputs["structured_output"] == "judge-answers-v2"
+    assert job.inputs["structured_output"] == "judge-answers-v3"
 
     def reply(content):
         return {"choices": [{"message": {"content": content}}]}
@@ -534,7 +534,11 @@ def answer_job(job, *, anchor_p=0.9, sibling=True, bad_quote=False):
     answers = []
     for entry in items:
         kind = entry["kind"]
-        answer = {"id": entry["id"], "reason": _quoted(entry["item"], bad=bad_quote)}
+        answer = {
+            "id": entry["id"],
+            "kind": kind,
+            "reason": _quoted(entry["item"], bad=bad_quote),
+        }
         if kind in ("validate", "gate"):
             answer["verdict"] = sibling if kind == "validate" else False
         elif kind == "grade":
@@ -1467,23 +1471,21 @@ def test_an_answer_whose_quote_is_not_in_the_evidence_is_unsupported_and_ignored
     rows = [r for r in _tag_judgments(ep) if r["judge_role"] == "adjudicator"]
     assert stats.counts["quote_invalid"] == 2
     assert {r["quote_valid"] for r in rows} == {False}  # kept, never modified or deleted
-    # An unsupported sibling answer no longer counts as a vote: the subject stops being contested
-    # on it, so the evidence of disagreement is only what is supported.
+    # Adjudicator evidence remains mandatory, independently of sibling quote quality.
     from citypods.judging import adjudication
 
     [subject] = [s for s in _subjects(ep) if s.payload.get("source_kind") == "rule"]
     assert adjudication._by_tier(subject, "supported", "adjudicator", None) == {}
 
 
-def test_only_supported_votes_decide_whether_a_subject_is_contested():
+def test_sibling_decision_counts_when_its_quote_fails():
     ep = _episode(llm=[])
     dispatch = FakeDispatch()
     runner.run([ep], _adj_ctx(dispatch))
     dispatch.answer(anchor_p=0.9, verdicts={"sibling": False}, bad_quotes=("sibling",))
     runner.run([ep], _adj_ctx(dispatch))
-    # The dissenting sibling's quote was not in the evidence: its vote is unsupported, so the
-    # subject is not contested and, with no calibration sample, nothing goes to the adjudicator.
-    assert not _adjudicator_packets(dispatch)
+    # Quote quality does not erase a parsed dissenting sibling decision.
+    assert _adjudicator_packets(dispatch)
 
 
 def test_agreeing_judges_are_adjudicated_only_in_the_calibration_sample():
@@ -1867,7 +1869,7 @@ def test_the_report_scores_probes_per_judge_and_keeps_them_out_of_live_statistic
     anchor = next(v for k, v in report["probes"].items() if "jev" in k)
     assert anchor == {"asked": 2, "scored": 2, "correct": 1, "unsupported": 0, "accuracy": 0.5}
     assert all(not k.startswith("probe") for k in report["agreement"])
-    # Unsupported (bad-quote) sibling answers are counted, not scored.
+    # Bad-quote sibling answers retain their parsed decisions and are scored.
     dispatch2 = FakeDispatch()
     ep2 = _episode(uid="ep-2", llm=[])
     runner.run([ep2], _ctx(dispatch2, probes=probes, probes_per_pass=2))
@@ -1879,7 +1881,9 @@ def test_the_report_scores_probes_per_judge_and_keeps_them_out_of_live_statistic
         for k, v in summarize([record2], probes={p.id: p.verdict for p in probes})["probes"].items()
         if "gemma" in k
     )
-    assert sibling["unsupported"] == 2 and sibling["scored"] == 0 and sibling["accuracy"] is None
+    assert (
+        sibling["unsupported"] == 2 and sibling["scored"] == 2 and sibling["accuracy"] is not None
+    )
 
 
 def test_the_stage_loads_probes_only_when_enabled(monkeypatch):
@@ -2266,3 +2270,60 @@ def test_gemma_indivisible_item_beyond_all_route_contexts_stays_blocked():
     )
     assert result.payload_too_large == 1
     assert not result.packets
+
+
+def test_typed_chat_contract_requires_the_answer_field_for_every_kind():
+    import pytest
+
+    from citypods.compute.structured import response_model
+
+    ensure_contract()
+    contract = response_model("judge-answers-v3")
+    for kind, field, value in (
+        ("validate", "verdict", True),
+        ("gate", "verdict", False),
+        ("grade", "level", 2),
+        ("choose", "choice", "B"),
+    ):
+        answer = {"id": "q", "reason": '"copied evidence passage"', "kind": kind, field: value}
+        contract.model_validate({"answers": [answer]})
+        for invalid in ({k: v for k, v in answer.items() if k != field}, {**answer, field: None}):
+            with pytest.raises(ValueError):
+                contract.model_validate({"answers": [invalid]})
+    with pytest.raises(ValueError):
+        contract.model_validate({"answers": [answer, answer]})
+    with pytest.raises(ValueError):
+        contract.model_validate({"answers": [{**answer, "choice": "Option B"}]})
+
+
+def test_typed_choose_reply_maps_both_orders_to_subjects_and_rejects_wrong_kind():
+    subjects = tuple(Subject("moment", f"s{i}", "ep", "g", None, {}) for i in range(2))
+    question = QuestionSpec("best", "choose", "Pick one")
+    items = tuple(
+        Item(
+            question,
+            "T1",
+            make_evidence("T1", "e"),
+            subjects,
+            options=choose_options(subjects, reverse=reverse),
+            order="_r" if reverse else "",
+        )
+        for reverse in (False, True)
+    )
+    packet = Packet("judge:sibling", "sibling", "google/gemma-4-31b-it", items)
+    backend = ChatJudgeBackend(max_total_tokens=10_000, max_items=25)
+    answers = [
+        {
+            "id": item.qid,
+            "reason": '"copied evidence passage"',
+            "kind": "choose",
+            "choice": "B" if item.order else "A",
+        }
+        for item in items
+    ]
+    output = {"choices": [{"message": {"content": json.dumps({"answers": answers})}}]}
+    rows = backend.parse(packet, output)
+    assert len(rows) == 4 and {row["value"] for _, row in rows} == {"s0"}
+    answers[0] = {"id": items[0].qid, "reason": "e", "kind": "validate", "verdict": True}
+    output["choices"][0]["message"]["content"] = json.dumps({"answers": answers})
+    assert len(backend.parse(packet, output)) == 2

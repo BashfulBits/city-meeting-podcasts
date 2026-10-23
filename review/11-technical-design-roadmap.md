@@ -37,6 +37,11 @@ limitations. This does not establish the 95% producer coverage goal.
 
 [overflow-timeouts]: evidence/2026-10-20-gemma-overflow-timeouts.md
 
+Maintainer-approved judge prerequisite (2026-10-20, implementation under validation):
+[review/53](53-judge-stack-tags-and-moments.md#typed-chat-reply-validation-maintainer-approved-prerequisite-2026-10-20)
+requires per-kind chat replies and direct frozen-packet validation across active/bench free routes
+before PR7. Legacy judgments remain untouched; recovery and graduation still require their gates.
+
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
 pointer to its detailed design. It exists to:
@@ -2297,6 +2302,16 @@ uses relative paths and retains items/answers ownership. Retirement control repo
 operation/status/category diagnostics and retries only idempotent pause/resume/status transport
 failures once. No admission/reservation retries, pipeline-version changes, automatic backfill, or
 roadmap sequencing changes are introduced.
+
+Judge-contract prerequisite under review (2026-10-20): the maintainer authorized direct
+route evaluations through the production parser and typed per-kind reply fields before
+PR7 calibration. Parsed sibling decisions remain usable independently of quote quality;
+adjudicator evidence remains required. See review/53 and evals/judge for the scoped change.
+No task graduation, production recovery, or calibration thresholds are implied.
+
+[PR #2514](https://github.com/BashfulBits/city-meeting-podcasts/pull/2514) contains this
+judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel accuracy
+and PR7 population calibration remain pending; terminal schema/ID failures are retained rather than resampled.
 
 
 ### FFmpeg host ABI repair (2026-10-21)

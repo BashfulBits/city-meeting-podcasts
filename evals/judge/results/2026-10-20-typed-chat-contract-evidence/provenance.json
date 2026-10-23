@@ -1,0 +1,11 @@
+{
+  "archive_file": "judge-evidence-full-827cec48.tar.gz",
+  "archive_sha256": "06ff5e3b6006be9af9c02e9ea1345f3713e6f90b4230224432ad5ef6ffc5f1f3",
+  "archive_location": "External local artifact; supplied in task handoff, not committed to Git",
+  "source_commit": "77b35a99",
+  "hashes": {
+    "evals/judge/manifest.json": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
+    "evals/judge/gold.json": "2698541f46646fa27da3891d1ab314f6af15c6fe4b7a51b0ff363217cc827f03",
+    "citypods/judging/backends.py": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68"
+  }
+}
