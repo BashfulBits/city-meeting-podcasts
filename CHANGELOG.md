@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Preserve LLM request policy through deferred sweeps.** Retain backup models and thresholds,
+  route pins, priority, remaining policy flags, explicit timeout, and output mode across durable
+  storage and reconstruction. Version incomplete legacy moments capsules as needing producer
+  replanning; hold them in the sweep and rebuild matching unsubmitted work from current inputs
+  within normal producer caps. Keep submitted jobs, newer records, and valid results intact.
+  No pipeline-version bump, quota increase, catalog-wide invalidation, or bulk backfill occurs;
+  recovery is gradual and remains subject to existing ingress and provider budgets.
+
 - **Recover moments from invalid cached LLM answers.** Preserve response schemas across batch
   quota refusals, restore the known moments contract on legacy handles, and include missing
   schemas in corrective requests. Moments rejects and conditionally evicts invalid completed
