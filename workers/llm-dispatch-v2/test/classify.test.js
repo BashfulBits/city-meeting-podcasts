@@ -907,3 +907,17 @@ test("quota diagnostic output is bounded and excludes unrestricted provider fiel
     assert.doesNotThrow(() => googleQuotaDiagnostics(malformed));
   }
 });
+
+
+test("Google Gemma INTERNAL uses durable capacity recovery without changing other 500s", () => {
+  const body = [{ error: { status: "INTERNAL", message: "Internal error encountered." } }];
+  const route = { provider: "gemini", upstream_model: "gemma-4-31b-it" };
+  const classify = (changes = {}) => classifyProviderFailure({
+    status: 500, body, headers: { "retry-after": "120" }, route, ...changes,
+  });
+  assert.equal(classify().failure_class, "upstream_capacity");
+  assert.equal(classify().retry_after_seconds, 120);
+  assert.equal(classify({ route: { ...route, provider: "nvidia" } }).failure_class, "server_error");
+  assert.equal(classify({ body: { error: { message: "input token limit exceeded" } } })
+    .failure_class, "route_input_limit");
+});

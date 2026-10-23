@@ -4033,3 +4033,58 @@ test("timeout upgrade is additive and retains route counts on warm startup", asy
     "SELECT response_timeout_routes FROM jobs WHERE id='legacy-timeout'"
   )][0].response_timeout_routes), { "slow-route": 1 });
 });
+
+
+test("Google Gemma availability has three early retries, a five-minute cap and provider floors", () => {
+  const { coordinator } = makeCoordinator();
+  const now = Date.now();
+  for (const streak of [1, 2, 3]) {
+    const delay = coordinator._googleGemmaAvailabilityBlockedUntil(streak, now) - now;
+    assert.ok(delay >= 30_000 && delay <= 60_000);
+  }
+  for (const streak of [4, 5, 6, 20]) {
+    assert.ok(coordinator._googleGemmaAvailabilityBlockedUntil(streak, now) <= now + 300_000);
+  }
+  assert.equal(coordinator._googleGemmaAvailabilityBlockedUntil(1, now, 600), now + 600_000);
+  assert.ok(coordinator._upstreamCapacityBlockedUntil(20, now, true) >= now + 86_400_000);
+});
+
+
+test("Google Gemma 503 requeues after previous failures with a short route cooldown", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-empty-2xx', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemma_4_31b_primary',
+      'ltok', 'tags', 100, 50, 'payloads/j-empty-2xx/request.json', ?, ?, 2
+    )`,
+    now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-empty-2xx",
+      lease_token: "ltok",
+      attempt_id: "att-empty",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 503,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const row = [...sql.exec("SELECT upstream_capacity_streak, blocked_until FROM routes WHERE route_id = 'gemma_4_31b_primary'")][0];
+  assert.equal(row.upstream_capacity_streak, 1);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = ?", "j-empty-2xx")][0].state, "queued");
+  assert.ok(
+    row.blocked_until >= now + 30_000 && row.blocked_until <= now + 61_000,
+    "Google availability must allow another cron opportunity"
+  );
+});

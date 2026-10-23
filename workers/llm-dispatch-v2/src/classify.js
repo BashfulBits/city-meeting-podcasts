@@ -473,6 +473,19 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
         scope: "route",
       };
     }
+    // Observed Google INTERNAL failures are availability failures, not malformed packets.
+    // Gateway retries are disabled on these routes; use the bounded durable upstream budget.
+    if (status === 500 && route?.provider === "gemini" &&
+        /^gemma-4-/.test(String(route.upstream_model || "")) &&
+        String(body?.error?.status || "").toUpperCase() === "INTERNAL" &&
+        msg === "internal error encountered.") {
+      return {
+        failure_class: "upstream_capacity",
+        rule_id: "google-gemma-internal",
+        retry_after_seconds: retryAfterSeconds,
+        scope: "route",
+      };
+    }
     if (status === 504 || (status === 503 && isProviderCapacityMessage(body, msg))) {
       return {
         failure_class: "upstream_capacity",
