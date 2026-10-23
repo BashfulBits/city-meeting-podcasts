@@ -2217,3 +2217,17 @@ usage.
   and `workers/llm-dispatch-proxy/src/index.js` — confirms BYOK against Google AI Studio's free tier
   works through AI Gateway's request-header method (`Authorization: Bearer <key>`), and that v1
   already does this in production today for the `gemini_*` free routes.
+
+
+### October 23, 2026 — partially filled heads and evicted scan frontiers
+
+The per-model allowance is corrected from four to five to match the current five-job bundle
+cap (the initial table's intended one-bundle equality). A healthy model can fill all five slots.
+Its non-ceiling first query reads five rows; ceiling-bound heads still read up to 32. The existing
+bounded extension now also serves partially filled model heads, up to the per-model and bundle
+allowance. Per-model keyset frontiers checkpoint inside claim diagnostics on
+existing accounting writes and restore after eviction; coalesced empty claims still avoid writes.
+Diagnostic `at` records the claim time. The 32-row lookahead, ingress ceilings, provider quotas,
+concurrency limits, pipeline versions, and backfill policy remain unchanged. See the
+[production investigation](evidence/2026-10-23-llm-free-tier-throughput.md) for Actions admission,
+provider exhaustion, read/write measurements, and the separate lane-ceiling policy choice.

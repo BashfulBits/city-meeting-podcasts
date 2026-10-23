@@ -458,6 +458,17 @@ individual DO states still need authoritative reconciliation, rather than cancel
 Evidence, cost contract, and post-deployment checks:
 [October 18 investigation](evidence/2026-10-18-llm-pending-accounting.md).
 
+**Bounded dispatch throughput correction (2026-10-23; implementation ready for review).**
+The stale four-job per-model allowance now matches the existing five-job bundle cap. A partially
+filled head may use its existing bounded extension; the model frontier checkpoints with claim
+diagnostics and restores after eviction. Idle-write coalescing, the 32-row lookahead, ingress,
+provider, concurrency, and free-tier row limits remain unchanged. Claim
+snapshots now carry their event time, distinguishing retained empty diagnostics from current
+route capacity. No pipeline-version bump or backfill is required. The investigation separates
+late-day reservation borrowing from exhausted lane ceilings and provider-day quotas; measured
+account reads remain within the free allowance. See the
+[production evidence and follow-ups](evidence/2026-10-23-llm-free-tier-throughput.md).
+
 **Ingress-stat accuracy follow-up (2026-10-18; proposed).** Post-deployment Actions telemetry
 matches the fresh-row ingress counter, including replays and the UTC midnight reset. The stats
 reader incorrectly unwraps an already-normalized reservation map, displaying zero per-purpose

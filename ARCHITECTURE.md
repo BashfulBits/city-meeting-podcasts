@@ -691,7 +691,14 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   cells each completion folds its calls into) -- into one rolling issue that names the lane and the config key to change.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-v2` is a separate Cloudflare Worker whose
   SQLite Durable Object coordinator holds the queue, the per-route/per-account pacing ledger and the
-  lease state ([`review/44`](review/44-bounded-bundled-llm-dispatch.md)). Producers enqueue through
+  lease state ([`review/44`](review/44-bounded-bundled-llm-dispatch.md)). Per-model candidate
+  selection reads the oldest head and at most one bounded extension while allowance remains.
+  Its five-job per-model allowance matches the five-job bundle cap, so a single healthy model
+  can fill the bundle (subject to route limits).
+  Advancing keyset frontiers checkpoint in existing claim diagnostics and resume after eviction;
+  idle-write coalescing can lose up to ten minutes of uncheckpointed progress. Exact route quota
+  checks still decide admission, and diagnostic timestamps distinguish retained empty snapshots
+  from current claims. Producers enqueue through
   its authenticated OpenAI-shaped **asynchronous** API (`LLM_MODE=dispatch` or a `queue_only` lane
   policy) and reconcile completed results into the normal `JobResult` shape. Routes, provider
   configs and multiple accounts of one provider (e.g. `GEMINI_API_KEY`/`GEMINI_API_KEY_SECONDARY`)

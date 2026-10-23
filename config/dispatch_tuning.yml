@@ -18,9 +18,10 @@
 # Keep the values numeric; the Worker reads them with Number().
 
 MAX_BUNDLE_JOBS: 5
-# Read at most this many indexed queue entries for one capacity-ranked model before moving
-# to the next model. Exact token/lane checks still run only on these small candidate sets.
-MAX_JOBS_PER_MODEL_CLAIM: 4
+# Match one bundle's allowance so a single healthy model can fill every slot. Non-ceiling
+# models start with this many indexed entries; bounded extensions may read past blocked heads.
+# The route-per-bundle and exact token/lane limits still apply to all selected jobs.
+MAX_JOBS_PER_MODEL_CLAIM: 5
 # When every route of a model that currently has capacity carries a hard_input_ceiling, the
 # claim reads up to this many queue entries (oldest first) to find jobs small enough for one
 # of them, instead of stopping at the first MAX_JOBS_PER_MODEL_CLAIM. Without it a handful of

@@ -382,8 +382,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this.sql = ctx?.storage?.sql || ctx?.sql;
     this._schemaReady = false;
     // Per model: where the last stuck-head extended read stopped (see claimDispatchWindow). In
-    // memory only; a restart simply begins again just past the head.
-    this._claimFrontier = new Map();
+    // memory between checkpoints; restored from persisted claim diagnostics after eviction.
+    // Checkpointing rides on existing claim accounting, including idle-write coalescing.
+    this._claimFrontier = null;
 
     let readiness;
     try {
@@ -5003,6 +5004,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const leaseDurationMs = this._leaseDurationMs();
       const EMPTY = LLMSchedulerDO.EMPTY_CLAIM_RESULT;
       const diagnostics = {
+        at: now,
         active_bundles: 0,
         orphan_bundles_reaped: 0,
         drained_jobs: 0,
@@ -5031,13 +5033,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // queued_job_count delta so the counter costs no extra billed row.
       let reapedToQueued = 0;
       const recordEmpty = (reason, extra = {}) => {
-        const snapshot = { ...diagnostics, ...extra };
+        const snapshot = {
+          ...diagnostics, ...extra,
+          candidate_frontiers: Object.fromEntries(this._claimFrontier || []),
+        };
         // Leases reaped this tick went back to queued; no new leases.
         this._recordClaimOutcome(now, "empty", reason, snapshot, 0, 0, reapedToQueued);
         return { ...EMPTY, claim_result: "empty", claim_reason: reason, claim_diagnostics: snapshot };
       };
       const recordClaimed = (jobs) => {
         diagnostics.chosen_jobs = jobs;
+        diagnostics.candidate_frontiers = Object.fromEntries(this._claimFrontier || []);
         // The bundle, lease and queued counters ride on the same scheduler UPDATE: one billed
         // row per claim.
         this._recordClaimOutcome(
@@ -5046,6 +5052,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
 
       const sched = this._rollUtcDayIfNeeded(now);
+      if (this._claimFrontier === null) {
+        const saved = parseJsonObject(sched.last_claim_diagnostics_json).candidate_frontiers;
+        this._claimFrontier = new Map(Object.entries(saved || {}).filter(([model, key]) =>
+          structuralCatalog.model_routes_map?.[model] && key &&
+          Number.isFinite(key.priority) && Number.isFinite(key.created_at) &&
+          typeof key.job_id === "string"));
+      }
       const rowsToday = this._rowsWrittenToday(sched);
       const activeBundleCount = this._activeBundles().size;
       const activeLeasedJobs = Number([...sql.exec(
@@ -5366,7 +5379,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // A stuck head. The oldest rows can all be jobs this tick's free routes cannot take (too
         // big for the idle routes, the roomy routes busy), which hid every placeable job behind
         // them: the claim re-read the same four rows each tick and dispatched nothing while the
-        // Google Gemma routes idled (2026-10-18). When nothing from the head was accepted, read on
+        // Google Gemma routes idled (2026-10-18). While the model allowance is unfilled, read on
         // from a per-model frontier that advances each stuck tick (a deterministic keyset over the
         // queue order, so it walks the whole queue and wraps), up to the lookahead's worth of extra
         // rows. The head is still read first every tick, so oldest-first service is unchanged.
@@ -5517,7 +5530,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         if (
           extended ||
-          acceptedForModel > 0 ||
+          acceptedForModel >= maxJobsPerModelClaim ||
           // Jobs over every live route's ceiling leave the queue (failed below), so the next tick's
           // head is fresh without reading on.
           oversizeJobs.length > oversizeAtStart ||

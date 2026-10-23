@@ -22,6 +22,7 @@ function createMockEnv(overrides = {}) {
     CRON_TICK_SECONDS: "60",
     MAX_BUNDLES_PER_UTC_DAY: "1000",
     MAX_BUNDLE_JOBS: "4",
+    MAX_JOBS_PER_MODEL_CLAIM: "4",
     MAX_LEASES_PER_UTC_DAY: "4000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",

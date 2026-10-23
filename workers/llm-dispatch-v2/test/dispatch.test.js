@@ -3601,6 +3601,56 @@ test("a head of jobs no free route can take does not hide placeable jobs behind 
   assert.ok(plan.jobs.every((job) => job.id.startsWith("small-") && job.route_id === "tight"));
 });
 
+test("compiled per-model allowance can fill a five-job bundle from one healthy model", async () => {
+  const route = { provider: "acme", upstream_model: "m", free: true, rpm: 60,
+    rpd: 1000, tpm: 500000, input_context_limit: 100000, output_context_limit: 2000 };
+  const catalog = { model_routes_map: { "acme/m": ["a", "b"] },
+    routes_by_id: { a: { ...route, route_id: "a" }, b: { ...route, route_id: "b" } } };
+  const { coordinator, sql } = makeCoordinator({ MAX_BUNDLE_JOBS: "5",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "3", DISPATCH_LIMITS_OVERRIDE: catalog });
+  await coordinator.enqueueBatch([...Array(6).keys()].map((i) => makeJob(`fill-${i}`, {
+    policy_json: JSON.stringify({ allowed_models: ["acme/m"], allow_paid: false }) })));
+  const limits = [];
+  const exec = sql.exec.bind(sql);
+  sql.exec = (query, ...params) => {
+    if (query.includes("job_models.priority AS jm_priority")) limits.push(params.at(-1));
+    return exec(query, ...params);
+  };
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.jobs.length, 5, "the compiled allowance must not strand the fifth slot");
+  assert.deepEqual(limits, [5], "one bundle-sized head suffices without an extended scan");
+  for (const routeId of ["a", "b"]) {
+    assert.ok(plan.jobs.filter((job) => job.route_id === routeId).length <= 3);
+  }
+});
+
+test("a partially fillable head keeps looking for jobs to fill the model allowance", async () => {
+  const { coordinator, sql, now, policy } = await stuckHeadFixture({
+    MAX_JOBS_PER_MODEL_CLAIM: "3", MAX_CANDIDATE_LOOKAHEAD: "5" });
+  sql.exec("UPDATE routes SET blocked_until = ? WHERE route_id = 'roomy'", now + 3_600_000);
+  const jobs = [...Array(5).keys()].map((i) => makeJob(`partial-${i}`, {
+    input_token_estimate: i === 0 ? 1000 : 12000,
+    policy_json: policy, created_at: now - 100_000 + i }));
+  jobs.push(...[0, 1].map((i) => makeJob(`z-later-${i}`, {
+    input_token_estimate: 1000, policy_json: policy, created_at: now - 1000 + i })));
+  await coordinator.enqueueBatch(jobs);
+  const reads = [];
+  const exec = sql.exec.bind(sql);
+  sql.exec = (query, ...params) => {
+    const rows = exec(query, ...params);
+    if (query.includes("job_models.priority AS jm_priority")) {
+      reads.push({ limit: params.at(-1), rows: rows.length });
+    }
+    return rows;
+  };
+  const plan = await coordinator.claimDispatchWindow(now + 1, 30);
+  assert.deepEqual(plan.jobs.map((job) => job.id), ["partial-0", "z-later-0", "z-later-1"]);
+  assert.equal(plan.claim_diagnostics.extended_scans, 1);
+  assert.equal(plan.claim_diagnostics.at, now + 1);
+  assert.deepEqual(reads, [{ limit: 5, rows: 5 }, { limit: 5, rows: 2 }],
+    "one head and one extension retain the existing per-model read bound");
+});
+
 test("the stuck-head frontier advances each tick and wraps at the end of the queue", async () => {
   const { coordinator, now, policy } = await stuckHeadFixture({
     MAX_JOBS_PER_MODEL_CLAIM: "2", MAX_CANDIDATE_LOOKAHEAD: "5" });
@@ -3635,6 +3685,20 @@ test("a ceiling-bound model's full, unclaimable head also advances the frontier"
     claimed.push(...plan.jobs.map((job) => job.id));
   }
   assert.deepEqual(claimed, ["small-last"]);
+});
+
+test("a cold coordinator resumes the last persisted stuck-head frontier", async () => {
+  const { coordinator, sql, now, policy } = await stuckHeadFixture({
+    MAX_JOBS_PER_MODEL_CLAIM: "2", MAX_CANDIDATE_LOOKAHEAD: "3" });
+  sql.exec("UPDATE routes SET blocked_until = ? WHERE route_id = 'roomy'", now + 3_600_000);
+  const jobs = [...Array(8).keys()].map((i) => makeJob(`big-${i}`, {
+    input_token_estimate: 12000, policy_json: policy }));
+  jobs.push(makeJob("small-last", { input_token_estimate: 1000, policy_json: policy }));
+  await coordinator.enqueueBatch(jobs);
+  assert.equal((await coordinator.claimDispatchWindow(now + 1, 30)).jobs.length, 0);
+  const restarted = new LLMSchedulerDO(coordinator.ctx, coordinator.env);
+  const plan = await restarted.claimDispatchWindow(now + 60_000, 30);
+  assert.deepEqual(plan.jobs.map((job) => job.id), ["small-last"]);
 });
 
 test("the claim's eligibility filter uses the learned admission ratio, not the catalog prior", async () => {
