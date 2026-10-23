@@ -63,7 +63,7 @@ function fakeFetch(store, { gatewayStatus = 200, gatewayBody = null } = {}) {
   };
 }
 
-function makeEnv(overrides = {}) {
+function makeEnv(overrides = {}, coordinatorOverrides = {}) {
   const { storage } = createMockSqlStorage();
   const coordinatorEnv = {
     MAX_JOBS_PER_UTC_DAY: "5000",
@@ -81,6 +81,7 @@ function makeEnv(overrides = {}) {
     MAX_429_BACKOFF_SECONDS: "1",
     ESTIMATED_CALL_DURATION_CEILING_SECONDS: "1",
     DISPATCH_LIMITS_OVERRIDE: CATALOG,
+    ...coordinatorOverrides,
   };
   const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(coordinatorEnv));
   return {
@@ -111,8 +112,8 @@ function makeEnv(overrides = {}) {
   };
 }
 
-async function enqueueOneJob(env, jobId, store) {
-  const payload = { model: "gemini/gemini-flash-lite", messages: [{ role: "user", content: "hi" }] };
+async function enqueueOneJob(env, jobId, store, model = "gemini/gemini-flash-lite") {
+  const payload = { model, messages: [{ role: "user", content: "hi" }] };
   store.set(`payloads/${jobId}/request.json`, JSON.stringify(payload));
   const req = new Request("http://localhost/v2/jobs:enqueue-batch", {
     method: "POST",
@@ -123,7 +124,7 @@ async function enqueueOneJob(env, jobId, store) {
           id: jobId,
           idempotency_key: `key-${jobId}`,
           request_digest: `digest-${jobId}`,
-          policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false }),
+          policy_json: JSON.stringify({ allowed_models: [model], allow_paid: false }),
           prompt_family: "tags",
           input_token_estimate: 500,
           max_output_token_estimate: 200,
@@ -302,8 +303,8 @@ test("scheduled() does nothing when B2 credentials are not configured", async ()
 // --------------------------------------------------------------------------------------------
 
 /** Drive one job all the way to `completed`, leaving its payload+result in the B2 store. */
-async function completeOneJob(env, store, jobId) {
-  await enqueueOneJob(env, jobId, store);
+async function completeOneJob(env, store, jobId, model) {
+  await enqueueOneJob(env, jobId, store, model);
   const waits = [];
   await worker.scheduled({ scheduledTime: Date.now() }, env, { waitUntil: (p) => waits.push(p) });
   await Promise.all(waits);
@@ -386,4 +387,143 @@ test("the executor's lease fence admits a call only if it can finish inside the 
   );
   assert.equal(legacy.lease_expires_at, 841_000);
   assert.equal(current.lease_expires_at, 5);
+});
+
+// Cloudflare allows six simultaneous connections per invocation. Dispatch may use all six lanes, so
+// cleanup (which runs in the same invocation) must wait until a lane has closed its connection.
+test("cleanup waits for a free connection slot when dispatch runs six lanes", async () => {
+  const models = [0, 1, 2, 3, 4, 5].map((i) => `gemini/m${i}`);
+  const catalog = {
+    ...CATALOG,
+    model_routes_map: Object.fromEntries(models.map((m, i) => [m, [`route-${i}`]])),
+    routes_by_id: Object.fromEntries(models.map((m, i) => [`route-${i}`,
+      { ...CATALOG.routes_by_id["route-a"], upstream_model: `m${i}` }])),
+  };
+  const limits = { DISPATCH_LIMITS_OVERRIDE: catalog };
+  const env = makeEnv({
+    ...limits, CLEANUP_INTERVAL_MINUTES: "60", MAX_BUNDLE_JOBS: "6",
+    MAX_JOBS_PER_MODEL_CLAIM: "6", MAX_CONCURRENT_ROUTE_LANES: "6", MAX_RESPONSE_SECONDS: "60",
+  }, {
+    ...limits, MAX_BUNDLE_JOBS: "6", MAX_JOBS_PER_MODEL_CLAIM: "6",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1", MAX_CONCURRENT_ROUTE_LANES: "6",
+  });
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = fakeFetch(store);
+    // An aged completed job leaves two B2 objects for cleanup to delete.
+    const resultKey = await completeOneJob(env, store, "old", "gemini/m0");
+    env.LLM_SCHEDULER.getByName()._getSql().exec("UPDATE jobs SET updated_at = ? WHERE id = 'old'",
+      Date.now() - 40 * 86_400_000);
+
+    for (const [i, model] of models.entries()) {
+      const jobId = `lane-${i}`;
+      store.set(`payloads/${jobId}/request.json`,
+        JSON.stringify({ model, messages: [{ role: "user", content: "hi" }] }));
+      const res = await worker.fetch(new Request("http://localhost/v2/jobs:enqueue-batch", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer secret-token" },
+        body: JSON.stringify({ jobs: [{ id: jobId, idempotency_key: `key-${jobId}`,
+          request_digest: `digest-${jobId}`, prompt_family: "tags", input_token_estimate: 500,
+          max_output_token_estimate: 200, payload_key: `payloads/${jobId}/request.json`,
+          policy_json: JSON.stringify({ allowed_models: [model], allow_paid: false }) }] }),
+      }), env);
+      assert.equal(res.status, 200);
+    }
+
+    const heldCalls = [];
+    let openCalls = 0;
+    const deletes = [];
+    const base = fakeFetch(store);
+    globalThis.fetch = async (url, init = {}) => {
+      const parsed = new URL(url);
+      if (parsed.host === B2_HOST) {
+        if (init.method === "DELETE") deletes.push(openCalls);
+        return base(url, init);
+      }
+      openCalls += 1;
+      await new Promise((resolve) => heldCalls.push(resolve));
+      openCalls -= 1;
+      return base(url, init);
+    };
+    const until = async (condition) => {
+      for (let i = 0; i < 500 && !condition(); i += 1) await new Promise((r) => setTimeout(r, 5));
+      assert.ok(condition(), "condition not reached");
+    };
+
+    const waits = [];
+    await worker.scheduled({ scheduledTime: Date.UTC(2026, 7, 27, 13, 0) }, env,
+      { waitUntil: (p) => waits.push(p) });
+    await until(() => heldCalls.length === 6);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(deletes, [], "cleanup must not open a connection while six lanes are open");
+    assert.ok(store.has(resultKey));
+
+    heldCalls.shift()(); // the first lane's call returns and its connection closes
+    await until(() => deletes.length > 0);
+    assert.ok(deletes.every((open) => open <= 5), `cleanup ran beside ${deletes} open calls`);
+    for (const release of heldCalls.splice(0)) release();
+    await Promise.all(waits);
+    assert.equal(store.has(resultKey), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the Gemma network probe waits for a free connection slot when dispatch runs six lanes", async () => {
+  const models = [0, 1, 2, 3, 4, 5].map((i) => (i === 0 ? "gemini/gemma-4-31b" : `gemini/m${i}`));
+  const catalog = {
+    ...CATALOG,
+    model_routes_map: Object.fromEntries(models.map((m, i) => [m, [`route-${i}`]])),
+    routes_by_id: Object.fromEntries(models.map((m, i) => [`route-${i}`,
+      { ...CATALOG.routes_by_id["route-a"], upstream_model: m.split("/")[1] }])),
+  };
+  const limits = { DISPATCH_LIMITS_OVERRIDE: catalog };
+  const env = makeEnv({
+    ...limits, MAX_BUNDLE_JOBS: "6", MAX_JOBS_PER_MODEL_CLAIM: "6",
+    MAX_CONCURRENT_ROUTE_LANES: "6", MAX_RESPONSE_SECONDS: "60",
+  }, {
+    ...limits, MAX_BUNDLE_JOBS: "6", MAX_JOBS_PER_MODEL_CLAIM: "6",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1", MAX_CONCURRENT_ROUTE_LANES: "6",
+  });
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = fakeFetch(store);
+    for (const [i, model] of models.entries()) await enqueueOneJob(env, `lane-${i}`, store, model);
+    const heldCalls = [];
+    let openCalls = 0;
+    const probes = [];
+    const base = fakeFetch(store);
+    globalThis.fetch = async (url, init = {}) => {
+      const parsed = new URL(url);
+      if (parsed.host === B2_HOST) return base(url, init);
+      if (!parsed.host.includes("generativelanguage") && !parsed.host.includes("gateway")) {
+        probes.push(openCalls); // diagnostic request (Cloudflare trace, AWS, GeoIP)
+        return new Response("", { status: 500 });
+      }
+      openCalls += 1;
+      await new Promise((resolve) => heldCalls.push(resolve));
+      openCalls -= 1;
+      return base(url, init);
+    };
+    const until = async (condition) => {
+      for (let i = 0; i < 500 && !condition(); i += 1) await new Promise((r) => setTimeout(r, 5));
+      assert.ok(condition(), "condition not reached");
+    };
+    const waits = [];
+    // 12:31 is not a cleanup minute, so the probe is allowed.
+    await worker.scheduled({ scheduledTime: Date.UTC(2026, 7, 27, 12, 31) }, env,
+      { waitUntil: (p) => waits.push(p) });
+    await until(() => heldCalls.length === 6);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(probes, [], "probe must not open a connection beside six lanes");
+    heldCalls.shift()();
+    await until(() => probes.length > 0);
+    assert.ok(probes.every((open) => open <= 5), `probe ran beside ${probes} open calls`);
+    for (const release of heldCalls.splice(0)) release();
+    await Promise.all(waits);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

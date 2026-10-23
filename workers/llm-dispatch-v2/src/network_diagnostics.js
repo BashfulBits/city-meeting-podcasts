@@ -115,7 +115,8 @@ export async function observeIndependentNetwork(
 }
 
 export async function observeBundleNetwork(fetchImpl = fetch) {
-  // Five inference lanes leave one of Workers' six connections for diagnostic traffic.
+  // The caller starts this only once a lane has settled when six lanes run, so at most five
+  // inference lanes plus this probe's single connection are open.
   // Serialize all three requests under one deadline; never compete for a seventh connection.
   const signal = AbortSignal.timeout(2000);
   // Prioritize independent evidence; a slow Cloudflare trace must not consume its deadline.

@@ -191,6 +191,15 @@ ceiling, not a free variable (see immediately below). This does not change the d
 cron-pull either way; the real target is ~5,000/day, comfortably reachable even at a modest bundle
 size across 1,440 daily ticks.
 
+> **Superseded 2026-10-23 (maintainer-approved deviation): `MAX_CONCURRENT_ROUTE_LANES` is now 6.**
+> The one-slot margin below is replaced by an explicit gate: `scheduled()` starts dispatch and
+> cleanup together, but cleanup (one connection at a time -- its two B2 deletes are sequential)
+> waits until dispatch has fewer than six lanes open, i.e. until the first lane settles when
+> dispatch runs all six. `validateConfig` now rejects only more than 6. Cleanup ticks (every
+> `CLEANUP_INTERVAL_MINUTES`) therefore start later when six lanes run; they never queue behind
+> them. Unproven: whether a Worker-to-DO call counts toward the 6, which this gate also covers
+> for cleanup's DO calls but not for in-lane `attemptStarted`/`authorizeRetry` calls.
+
 **Cloudflare's per-invocation connection limit hard-caps route diversity per bundle — this is a
 platform fact, not a profiling variable.** Every Worker invocation — Free and Paid alike, this does
 not improve with a plan upgrade — may have **at most six outbound connections simultaneously waiting
@@ -278,7 +287,7 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_BUNDLE_JOBS` | 4 | Maximum LLM calls claimed by one Worker cron |
 | `MAX_JOBS_PER_MODEL_CLAIM` | 4 | Maximum indexed candidates read for one capacity-ranked model; equal to one bundle, so exact token/lane admission never evaluates an arbitrary global-queue prefix |
 | `MAX_JOBS_PER_ROUTE_PER_BUNDLE` | 4 | Allows a paced same-route sequence when it fits |
-| `MAX_CONCURRENT_ROUTE_LANES` | 5 | Hard cap on distinct routes (concurrent lanes) per bundle — stays under Cloudflare's 6-simultaneous-connection-per-invocation ceiling (identical on Free and Paid; see "Cloudflare connection and subrequest limits" below) |
+| `MAX_CONCURRENT_ROUTE_LANES` | 5 (6 since 2026-10-23) | Hard cap on distinct routes (concurrent lanes) per bundle — stays under Cloudflare's 6-simultaneous-connection-per-invocation ceiling (identical on Free and Paid; see "Cloudflare connection and subrequest limits" below) |
 | `DISPATCH_WINDOW_SECONDS` | 25 | Latest planned provider-call start after a cron tick |
 | `CRON_TICK_SECONDS` | 60 | Existing Worker dispatch cadence; bounds new-work latency |
 | `MAX_ACTIVE_BUNDLES` | 2 | Bound for partially completed or abandoned dispatch plans |
@@ -1803,7 +1812,7 @@ function validateConfig(env):
   # Cloudflare's simultaneous-connection ceiling is 6/invocation on every plan (Free and Paid) --
   # this does NOT relax with a plan upgrade, unlike CPU time and subrequest count below. Fail closed
   # with headroom rather than trusting the initial-value table never drifts.
-  assert(env.MAX_CONCURRENT_ROUTE_LANES <= 5,
+  assert(env.MAX_CONCURRENT_ROUTE_LANES <= 6,  # was 5 until 2026-10-23; cleanup now gated
          "MAX_CONCURRENT_ROUTE_LANES must leave headroom under Cloudflare's fixed 6-simultaneous-" +
          "connection-per-invocation limit (same on Free and Paid) -- see review/44 'Cloudflare " +
          "connection and subrequest limits'")
