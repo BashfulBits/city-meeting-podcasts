@@ -8,3 +8,5 @@
 - `PURGE_BATCH_LIMIT` 15 -> 14: the larger bundle (12 dispatch B2 calls) plus cleanup's two deletes
   per job must stay within `validateConfig`'s 40-subrequest budget (28 + 12 = 40). Cleanup drains
   2,016 jobs/day instead of 2,160.
+- `MAX_CONCURRENT_ROUTE_LANES` 5 -> 6, so a six-job bundle at one lease per route can span six
+  routes instead of stopping at five, leaving room for non-Flash-Lite routes beside Flash-Lite.
