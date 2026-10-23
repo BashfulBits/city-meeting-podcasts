@@ -117,3 +117,25 @@ or production-cadence change was made during this investigation.
 [pr]: https://github.com/BashfulBits/city-meeting-podcasts/pull/2532
 [moments]: https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/39981197227
 [sweep]: https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/39981389351
+
+## Implementation follow-up
+
+The follow-up patch serializes the full declared LLM policy, preserves request metadata while
+changing only deadline/queue semantics, and restores explicit output mode and timeout when the
+sweep rebuilds jobs. Empty physical-route pins remain distinct from unrestricted pins.
+A new request-metadata marker is written for complete capsules; legacy capsules retain version
+zero even when re-saved. This is storage metadata, not a model/prompt/pipeline version.
+
+The sweep and singleton reconciliation hold legacy unsubmitted moments capsules rather than
+submit guessed/incomplete routing and output budgets. The producer, after rebuilding current
+source inputs, may conditionally remove the exact matching unsubmitted record under the existing
+record lock and reserve its normal capped new-work slot. A newer handle or completion is
+preserved; unavailable state refunds the slot and defers safely. Retry ceilings remain enforced.
+Already-submitted work is not cancelled or reset.
+
+Recovery is gradual and still requires ingress/provider headroom. A legacy capsule whose recipe
+no longer matches the current producer recipe is not blindly rewritten: the producer creates
+its current recipe independently, and the obsolete capsule remains subject to normal TTL cleanup.
+No catalog-wide invalidation, quota increase, pipeline-version bump, or bulk production deletion
+is performed. Replanning uses current authorized model policy and the current output reservation,
+rather than declaring an old 16,384-token reservation sufficient for longer answers.

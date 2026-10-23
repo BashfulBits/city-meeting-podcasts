@@ -1285,3 +1285,104 @@ def test_invalid_completed_result_keeps_cache_if_audit_write_fails(monkeypatch):
     with pytest.raises(OSError):
         discard_completed_result(storage, "bad", result, error=ValueError())
     assert look_up_deferred(storage, "bad") == result
+
+
+def test_deferred_round_trip_preserves_every_policy_field_and_request_metadata():
+    policy = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3.5-flash-lite",),
+        allow_paid=True,
+        allow_experimental=True,
+        deadline_at=NOW,
+        purpose="r6-moments",
+        require_direct=True,
+        submit_next=True,
+        allow_batch=False,
+        allow_dispatch_overflow=True,
+        queue_only=True,
+        timeout_class="fast",
+        priority=0,
+        backup_models=("zai/glm-5.3-flash",),
+        backup_after_attempts=2,
+        allowed_route_ids=("pinned-route",),
+    )
+    handle = JobHandle(
+        task="moment-extraction",
+        recipe_hash="all-fields",
+        backend="llm-dispatch-v2",
+        ref="deferred:test",
+        structured_output="moment-extraction",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "test"},),
+            policy=policy,
+            timeout=720,
+            max_tokens_mode="route_max",
+            output_token_budget=36864,
+        ),
+    )
+    storage = MemStorage()
+    write_deferred(storage, handle.recipe_hash, handle)
+    assert look_up_deferred(storage, handle.recipe_hash) == handle
+    assert not llm_deferred.needs_moments_replan(look_up_deferred(storage, handle.recipe_hash))
+
+
+def test_legacy_moments_replan_never_deletes_a_newer_submission_or_completion():
+    from dataclasses import replace
+
+    storage = MemStorage()
+    legacy = JobHandle(
+        task="moment-extraction",
+        recipe_hash="legacy",
+        backend="llm-dispatch-v2",
+        ref="deferred:old",
+        structured_output="moment-extraction",
+        deferred_request=DeferredLLMRequest(
+            messages=(), policy=LLMRequestPolicy(), metadata_version=0
+        ),
+    )
+    write_deferred(storage, legacy.recipe_hash, legacy)
+    submitted = replace(legacy, ref="accepted-job", deferred_request=None)
+    write_deferred(storage, legacy.recipe_hash, submitted)
+    assert not llm_deferred.discard_legacy_moments_request(storage, legacy)
+    assert look_up_deferred(storage, legacy.recipe_hash) == submitted
+    completed = JobResult(task=legacy.task, recipe_hash=legacy.recipe_hash, output={})
+    write_deferred(storage, legacy.recipe_hash, completed)
+    assert not llm_deferred.discard_legacy_moments_request(storage, legacy)
+    assert look_up_deferred(storage, legacy.recipe_hash) == completed
+
+
+@pytest.mark.parametrize("routes", [None, ()])
+def test_deferred_route_pin_none_and_empty_are_distinct(routes):
+    storage = MemStorage()
+    handle = _pending_handle("pins")
+    from dataclasses import replace
+
+    handle = replace(
+        handle,
+        deferred_request=replace(
+            handle.deferred_request,
+            policy=replace(handle.deferred_request.policy, allowed_route_ids=routes),
+        ),
+    )
+    write_deferred(storage, "pins", handle)
+    assert look_up_deferred(storage, "pins").deferred_request.policy.allowed_route_ids == routes
+
+
+def test_missing_capsule_version_stays_legacy_across_rewrites():
+    import json
+    from dataclasses import replace
+
+    storage = MemStorage()
+    handle = replace(
+        _pending_handle("legacy-format"),
+        task="moment-extraction",
+        structured_output="moment-extraction",
+    )
+    write_deferred(storage, handle.recipe_hash, handle)
+    raw = _read_json(storage, deferred_key(handle.recipe_hash))
+    raw.pop("request_metadata_version")
+    _write_json(storage, deferred_key(handle.recipe_hash), json.dumps(raw).encode())
+    legacy = look_up_deferred(storage, handle.recipe_hash)
+    assert legacy.deferred_request.metadata_version == 0
+    assert llm_deferred.needs_moments_replan(legacy)
+    write_deferred(storage, handle.recipe_hash, legacy)
+    assert look_up_deferred(storage, handle.recipe_hash).deferred_request.metadata_version == 0

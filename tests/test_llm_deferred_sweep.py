@@ -928,6 +928,17 @@ def test_sweep_batches_legacy_queue_only_v2_submissions(monkeypatch, capsys):
         )
         for index in range(3)
     ]
+    handles.append(
+        JobHandle(
+            task="moment-extraction",
+            recipe_hash="old-moments",
+            backend="llm-dispatch-v2",
+            ref="deferred:old",
+            deferred_request=DeferredLLMRequest(
+                messages=(), policy=LLMRequestPolicy(queue_only=True), metadata_version=0
+            ),
+        )
+    )
     monkeypatch.setattr(
         llm_deferred_sweep, "load_deferred_snapshot", lambda *_args, **_kwargs: _snapshot(handles)
     )
@@ -971,7 +982,9 @@ def test_sweep_batches_legacy_queue_only_v2_submissions(monkeypatch, capsys):
     assert all(job.inputs["max_tokens"] == 321 for job in submitted)
     assert all(job.inputs["llm_policy"].queue_only for job in submitted)
     assert reconciled == []
-    assert '"v1_dispatched": 0' in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert '"v1_dispatched": 0' in output
+    assert '"legacy_replan_required": 1' in output
 
 
 def test_sweep_does_not_retain_batch_poll_response_bodies_in_logs(monkeypatch, capsys):
@@ -1264,3 +1277,23 @@ assert response_model('agenda-chapter-title-equivalence') is not None
         ],
         check=True,
     )
+
+
+@pytest.mark.parametrize("purpose", ["r6-moments", "chapter-agenda", "city-onboarding"])
+def test_deadline_adjustment_changes_only_policy_deadline_or_queue_mode(purpose):
+    deferred = DeferredLLMRequest(
+        messages=(),
+        policy=LLMRequestPolicy(purpose=purpose),
+        timeout=720,
+        max_tokens_mode="route_max",
+        output_token_budget=36864,
+    )
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="deadline",
+        backend="litellm",
+        ref="deferred:x",
+        deferred_request=deferred,
+    )
+    updated = llm_deferred_sweep._with_sweep_deadline(handle, datetime.now(UTC))
+    assert replace(updated.deferred_request, policy=deferred.policy) == deferred

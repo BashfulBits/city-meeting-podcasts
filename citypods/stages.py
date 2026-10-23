@@ -1384,10 +1384,16 @@ def _moment_source(
 def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, sample: str) -> str:
     """Reserve the shared R6 budget only for a genuinely new queue admission."""
     from citypods.compute.base import JobHandle, JobResult
-    from citypods.compute.llm_deferred import look_up_deferred, terminal_failure_budget_exhausted
+    from citypods.compute.llm_deferred import (
+        discard_legacy_moments_request,
+        look_up_deferred,
+        needs_moments_replan,
+        terminal_failure_budget_exhausted,
+    )
 
     existing = look_up_deferred(ctx.storage, recipe_hash)
-    if isinstance(existing, JobHandle):
+    replan = isinstance(existing, JobHandle) and needs_moments_replan(existing)
+    if isinstance(existing, JobHandle) and not replan:
         stats.defer("llm-pending", sample=sample)
         return "pending"
     if isinstance(existing, JobResult):
@@ -1403,6 +1409,20 @@ def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, s
             stats.defer("rollout-dispatch-cap", sample=sample)
             return "cap"
         ctx.moment_dispatches += 1
+    if replan:
+        try:
+            removed = discard_legacy_moments_request(ctx.storage, existing)
+        except Exception:  # noqa: BLE001 - unavailable state must not trigger a new submission.
+            with ctx.moment_dispatch_lock:
+                ctx.moment_dispatches -= 1
+            stats.defer("llm-replan-unavailable", sample=sample)
+            return "pending"
+        if not removed:
+            with ctx.moment_dispatch_lock:
+                ctx.moment_dispatches -= 1
+            stats.defer("llm-pending", sample=sample)
+            return "pending"
+        stats.quality("legacy-request-replanned")
     return "admitted"
 
 
