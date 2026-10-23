@@ -1,711 +1,713 @@
-[
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
+{
+  "as_of": "2026-10-23T03:35:42.556773+00:00",
+  "policy": "First HTTP200 is terminal, even if validator fails. No original HTTP200 was retried.",
+  "scope": "Completed first-HTTP-200 run, including explicitly authorized provider/account substitutions. No retry pending; no population-calibration inference.",
+  "routes": [
+    {
+      "route": "beatapi_deepseek_v4_1_flash_free",
+      "role": "adjudicator",
+      "planned_packets": 14,
+      "actual_routes": [
+        "beatapi_deepseek_v4_1_flash_free"
+      ],
+      "actual_credentials": [
+        "BEATAPI_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 13,
+        "usable_packets": 13,
+        "expected_items": 158,
+        "parsed_items": 144,
+        "quote_valid": 144,
+        "choose_expected": 12,
+        "parsed_choose": 10
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 94,
+          "quote_valid": 94
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 20,
+          "quote_valid": 20
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 20,
+          "quote_valid": 20
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 10,
+          "quote_valid": 10
+        }
+      },
+      "choice_order_pairs": 5,
+      "choice_order_stable": 5,
+      "contract_failures": [
+        {
+          "packet": 4,
+          "source": "initial",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 14,
+          "json_decode_failed": true
+        }
+      ],
+      "pending_packets": 0,
+      "attempts_recorded": 0
+    },
+    {
+      "route": "beatapi_secondary_deepseek_v4_1_flash_free",
+      "role": "adjudicator",
+      "planned_packets": 14,
+      "actual_routes": [
         "beatapi_secondary_deepseek_v4_1_flash_free"
       ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "beatapi_deepseek_v4_1_flash_free",
-    "role": "adjudicator",
-    "counts": {
-      "planned_items": 158,
-      "http_200_packets": 14,
-      "contract_pass_packets": 13,
-      "usable_packets": 13,
-      "http_200_items": 158,
-      "parsed_items": 144,
-      "quote_valid_items": 144,
-      "choose_expected": 12,
-      "choose_parsed": 10
-    },
-    "api_base": "https://api.beatapi.io/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {
-      "validate": {
-        "http_200_expected": 98,
-        "parsed": 94,
-        "quote_valid": 94
-      },
-      "gate": {
-        "http_200_expected": 24,
-        "parsed": 20,
-        "quote_valid": 20
-      },
-      "grade": {
-        "http_200_expected": 24,
-        "parsed": 20,
-        "quote_valid": 20
-      },
-      "choose": {
-        "http_200_expected": 12,
-        "parsed": 10,
-        "quote_valid": 10
-      }
-    },
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
+      "actual_credentials": [
+        "BEATAPI_API_KEY"
       ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "beatapi_secondary_deepseek_v4_1_flash_free",
-    "role": "adjudicator",
-    "counts": {
-      "planned_items": 158,
-      "missing_key": 14
-    },
-    "api_base": "https://api.beatapi.io/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {},
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 13,
+        "usable_packets": 13,
+        "expected_items": 158,
+        "parsed_items": 156,
+        "quote_valid": 156,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 96,
+          "quote_valid": 96
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [
+        {
+          "packet": 5,
+          "source": "05-attempt-004.result.json",
+          "schema_valid": true,
+          "parsed_items": 14,
+          "expected_items": 16,
+          "missing_ids": [
+            "eval-e0:supported:T1",
+            "eval-e1:supported:T1"
+          ],
+          "unexpected_ids": [],
+          "missing_kind_answers": 0,
+          "extra_fields": {}
+        }
       ],
-      "live": true
+      "pending_packets": 0,
+      "attempts_recorded": 366
     },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "gemma_4_31b_primary",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_200_packets": 1,
-      "contract_pass_packets": 1,
-      "usable_packets": 1,
-      "http_200_items": 14,
-      "parsed_items": 14,
-      "quote_valid_items": 14,
-      "choose_expected": 2,
-      "choose_parsed": 2,
-      "http_503_packets": 1,
-      "route_stopped_after_http_503": 12
-    },
-    "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
-    "chat_path": "/chat/completions",
-    "by_kind": {
-      "validate": {
-        "http_200_expected": 4,
-        "parsed": 4,
-        "quote_valid": 4
-      },
-      "gate": {
-        "http_200_expected": 4,
-        "parsed": 4,
-        "quote_valid": 4
-      },
-      "grade": {
-        "http_200_expected": 4,
-        "parsed": 4,
-        "quote_valid": 4
-      },
-      "choose": {
-        "http_200_expected": 2,
-        "parsed": 2,
-        "quote_valid": 2
-      }
-    },
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
+    {
+      "route": "gemma_4_31b_primary",
+      "role": "sibling",
+      "planned_packets": 14,
+      "actual_routes": [
+        "gemma_4_31b_primary"
       ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "gemma_4_31b_secondary",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_200_packets": 1,
-      "contract_pass_packets": 1,
-      "usable_packets": 1,
-      "http_200_items": 14,
-      "parsed_items": 14,
-      "quote_valid_items": 14,
-      "choose_expected": 2,
-      "choose_parsed": 2,
-      "http_503_packets": 1,
-      "route_stopped_after_http_503": 12
-    },
-    "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
-    "chat_path": "/chat/completions",
-    "by_kind": {
-      "validate": {
-        "http_200_expected": 4,
-        "parsed": 4,
-        "quote_valid": 4
-      },
-      "gate": {
-        "http_200_expected": 4,
-        "parsed": 4,
-        "quote_valid": 4
-      },
-      "grade": {
-        "http_200_expected": 4,
-        "parsed": 4,
-        "quote_valid": 4
-      },
-      "choose": {
-        "http_200_expected": 2,
-        "parsed": 2,
-        "quote_valid": 2
-      }
-    },
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
+      "actual_credentials": [
+        "GEMINI_API_KEY"
       ],
-      "live": true
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 151,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 91
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 31
     },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "groq_qwen_3_8_27b_primary",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_400_packets": 1,
-      "route_stopped_after_http_400": 13
-    },
-    "api_base": "https://api.groq.com/openai/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {},
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
+    {
+      "route": "gemma_4_31b_secondary",
+      "role": "sibling",
+      "planned_packets": 14,
+      "actual_routes": [
+        "gemma_4_31b_secondary"
       ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "nvidia_deepseek_v4_1_flash_free",
-    "role": "adjudicator",
-    "counts": {
-      "planned_items": 158,
-      "ReadTimeout": 1,
-      "route_stopped_after_transport_failure": 13
-    },
-    "api_base": "https://integrate.api.nvidia.com/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {},
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
+      "actual_credentials": [
+        "GEMINI_API_KEY_SECONDARY"
       ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "nvidia_gemma_4_31b_it_free",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_200_packets": 6,
-      "contract_pass_packets": 6,
-      "usable_packets": 6,
-      "http_200_items": 86,
-      "parsed_items": 86,
-      "quote_valid_items": 86,
-      "choose_expected": 12,
-      "choose_parsed": 12,
-      "ReadTimeout": 1,
-      "route_stopped_after_transport_failure": 7
-    },
-    "api_base": "https://integrate.api.nvidia.com/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {
-      "validate": {
-        "http_200_expected": 26,
-        "parsed": 26,
-        "quote_valid": 26
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 13,
+        "usable_packets": 13,
+        "expected_items": 158,
+        "parsed_items": 157,
+        "quote_valid": 154,
+        "choose_expected": 12,
+        "parsed_choose": 12
       },
-      "gate": {
-        "http_200_expected": 24,
-        "parsed": 24,
-        "quote_valid": 24
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 97,
+          "quote_valid": 94
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
       },
-      "grade": {
-        "http_200_expected": 24,
-        "parsed": 24,
-        "quote_valid": 24
-      },
-      "choose": {
-        "http_200_expected": 12,
-        "parsed": 12,
-        "quote_valid": 12
-      }
-    },
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [
+        {
+          "packet": 10,
+          "source": "10-attempt-001.result.json",
+          "schema_valid": true,
+          "parsed_items": 6,
+          "expected_items": 7,
+          "missing_ids": [
+            "eval-i18:supported:T1"
+          ],
+          "unexpected_ids": [
+            "eval-i18:supported:supported:T1"
+          ],
+          "missing_kind_answers": 0,
+          "extra_fields": {}
+        }
       ],
-      "live": true
+      "pending_packets": 0,
+      "attempts_recorded": 22
     },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_200_packets": 10,
-      "contract_pass_packets": 10,
-      "usable_packets": 10,
-      "http_200_items": 131,
-      "parsed_items": 131,
-      "quote_valid_items": 131,
-      "choose_expected": 12,
-      "choose_parsed": 12,
-      "ReadTimeout": 1,
-      "route_stopped_after_transport_failure": 3
-    },
-    "api_base": "https://integrate.api.nvidia.com/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {
-      "validate": {
-        "http_200_expected": 71,
-        "parsed": 71,
-        "quote_valid": 71
-      },
-      "gate": {
-        "http_200_expected": 24,
-        "parsed": 24,
-        "quote_valid": 24
-      },
-      "grade": {
-        "http_200_expected": 24,
-        "parsed": 24,
-        "quote_valid": 24
-      },
-      "choose": {
-        "http_200_expected": 12,
-        "parsed": 12,
-        "quote_valid": 12
-      }
-    },
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
-      ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "openrouter_google_gemma_4_31b_it_free",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_429_packets": 1,
-      "route_stopped_after_http_429": 13
-    },
-    "api_base": "https://openrouter.ai/api/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {},
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
-      ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "openrouter_nvidia_nemotron_3_5_super_vl_free",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_200_packets": 12,
-      "contract_pass_packets": 12,
-      "usable_packets": 12,
-      "http_200_items": 145,
-      "parsed_items": 145,
-      "quote_valid_items": 144,
-      "choose_expected": 12,
-      "choose_parsed": 12,
-      "http_502_packets": 2
-    },
-    "api_base": "https://openrouter.ai/api/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {
-      "validate": {
-        "http_200_expected": 85,
-        "parsed": 85,
-        "quote_valid": 85
-      },
-      "gate": {
-        "http_200_expected": 24,
-        "parsed": 24,
-        "quote_valid": 23
-      },
-      "grade": {
-        "http_200_expected": 24,
-        "parsed": 24,
-        "quote_valid": 24
-      },
-      "choose": {
-        "http_200_expected": 12,
-        "parsed": 12,
-        "quote_valid": 12
-      }
-    },
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
-      ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "orcarouter_zai_glm_5_3_flash_free",
-    "role": "adjudicator",
-    "counts": {
-      "planned_items": 158,
-      "http_429_packets": 1,
-      "route_stopped_after_http_429": 13
-    },
-    "api_base": "https://api.orcarouter.ai/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {},
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "a730589809211377b8e5f67969340552216908cda01518396342f3c4391a0a76",
-      "harness_sha256": "fcfec06750d578024a197a1b0533ac59846afe5144c06a0530081d7948abdefd",
-      "routes": [
-        "gemma_4_31b_primary",
-        "gemma_4_31b_secondary",
-        "sambanova_gemma_4_31b_it_primary",
-        "groq_qwen_3_8_27b_primary",
-        "openrouter_google_gemma_4_31b_it_free",
-        "openrouter_nvidia_nemotron_3_5_super_vl_free",
-        "nvidia_deepseek_v4_1_flash_free",
-        "nvidia_gemma_4_31b_it_free",
-        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_secondary_deepseek_v4_1_flash_free"
-      ],
-      "live": true
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "sambanova_gemma_4_31b_it_primary",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_401_packets": 1,
-      "route_stopped_after_http_401": 13
-    },
-    "api_base": "https://api.sambanova.ai/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {},
-    "recorded_packets": 14,
-    "planned_packets": 14
-  },
-  {
-    "run": "2026-10-20-typed-chat-contract-final-qwen-diagnostic",
-    "metadata_at_request_time": {
-      "request_revision": "3",
-      "contract": "judge-answers-v3",
-      "manifest_sha256": "9f42c3ee247d5dc0101a95c05f8fd12f8540b0e3a737c7b729db744b8aec79bf",
-      "git_sha": "f9def2a3befe0c44fd1e114bec1698448ae3c797",
-      "backend_sha256": "62c70021cd2ed5e471f290dbd35da16d2b5a5d2212ba8bb38c349e1881adb163",
-      "harness_sha256": "4d24699d495c4dc32d95e17163179c3cc21a15c9ef3661fa01bdc485bab107ca",
-      "routes": [
+    {
+      "route": "groq_qwen_3_8_27b_primary",
+      "role": "sibling",
+      "planned_packets": 14,
+      "actual_routes": [
         "groq_qwen_3_8_27b_primary"
       ],
-      "live": true,
-      "diagnostic_output_cap": 16384
-    },
-    "replay_backend_sha256": "057569b37ce507764f93e808c42e8ea851ee0f21eaa608d4d879d15087e8ff68",
-    "replay_harness_sha256": "4c773fb263eda18d6c7ee902891267a5045af7149338f99c652f9608bb02b2c3",
-    "route": "groq_qwen_3_8_27b_primary",
-    "role": "sibling",
-    "counts": {
-      "planned_items": 158,
-      "http_200_packets": 4,
-      "contract_pass_packets": 4,
-      "usable_packets": 4,
-      "http_200_items": 56,
-      "parsed_items": 56,
-      "quote_valid_items": 56,
-      "choose_expected": 8,
-      "choose_parsed": 8,
-      "http_429_packets": 1,
-      "route_stopped_after_http_429": 9
-    },
-    "api_base": "https://api.groq.com/openai/v1",
-    "chat_path": "/chat/completions",
-    "by_kind": {
-      "validate": {
-        "http_200_expected": 16,
-        "parsed": 16,
-        "quote_valid": 16
+      "actual_credentials": [
+        "GROQ_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 12,
+        "usable_packets": 12,
+        "expected_items": 158,
+        "parsed_items": 135,
+        "quote_valid": 107,
+        "choose_expected": 12,
+        "parsed_choose": 10
       },
-      "gate": {
-        "http_200_expected": 16,
-        "parsed": 16,
-        "quote_valid": 16
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 85,
+          "quote_valid": 74
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 20,
+          "quote_valid": 13
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 20,
+          "quote_valid": 12
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 10,
+          "quote_valid": 8
+        }
       },
-      "grade": {
-        "http_200_expected": 16,
-        "parsed": 16,
-        "quote_valid": 16
-      },
-      "choose": {
-        "http_200_expected": 8,
-        "parsed": 8,
-        "quote_valid": 8
-      }
+      "choice_order_pairs": 5,
+      "choice_order_stable": 5,
+      "contract_failures": [
+        {
+          "packet": 5,
+          "source": "05-attempt-001.result.json",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 16,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "missing_kind_answers": 0,
+          "extra_fields": {
+            "level_note": 3
+          }
+        },
+        {
+          "packet": 10,
+          "source": "10-attempt-001.result.json",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 7,
+          "missing_ids": [
+            "eval-i17:supported:T1"
+          ],
+          "unexpected_ids": [],
+          "missing_kind_answers": 0,
+          "extra_fields": {}
+        }
+      ],
+      "pending_packets": 0,
+      "attempts_recorded": 22
     },
-    "recorded_packets": 14,
-    "planned_packets": 14
-  }
-]
+    {
+      "route": "nvidia_deepseek_v4_1_flash_free",
+      "role": "adjudicator",
+      "planned_packets": 14,
+      "actual_routes": [
+        "nvidia_deepseek_v4_1_flash_free"
+      ],
+      "actual_credentials": [
+        "NVIDIA_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 158,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 98
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 208
+    },
+    {
+      "route": "nvidia_gemma_4_31b_it_free",
+      "role": "sibling",
+      "planned_packets": 14,
+      "actual_routes": [
+        "nvidia_gemma_4_31b_it_free"
+      ],
+      "actual_credentials": [
+        "NVIDIA_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 158,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 98
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 8
+    },
+    {
+      "route": "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
+      "role": "sibling",
+      "planned_packets": 14,
+      "actual_routes": [
+        "nvidia_nemotron_3_5_super_vl_120b_a12b_free"
+      ],
+      "actual_credentials": [
+        "NVIDIA_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 157,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 97
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 4
+    },
+    {
+      "route": "openrouter_google_gemma_4_31b_it_free",
+      "role": "sibling",
+      "planned_packets": 14,
+      "actual_routes": [
+        "openrouter_google_gemma_4_31b_it_free"
+      ],
+      "actual_credentials": [
+        "OPENROUTER_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 12,
+        "usable_packets": 12,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 157,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 97
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [
+        {
+          "packet": 7,
+          "source": "07-attempt-043.result.json",
+          "schema_valid": false,
+          "parsed_items": 13,
+          "expected_items": 13,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "missing_kind_answers": 13,
+          "extra_fields": {}
+        },
+        {
+          "packet": 9,
+          "source": "09-attempt-034.result.json",
+          "schema_valid": false,
+          "parsed_items": 7,
+          "expected_items": 7,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "missing_kind_answers": 7,
+          "extra_fields": {}
+        }
+      ],
+      "pending_packets": 0,
+      "attempts_recorded": 778
+    },
+    {
+      "route": "openrouter_nvidia_nemotron_3_5_super_vl_free",
+      "role": "sibling",
+      "planned_packets": 14,
+      "actual_routes": [
+        "openrouter_nvidia_nemotron_3_5_super_vl_free"
+      ],
+      "actual_credentials": [
+        "OPENROUTER_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 157,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 98
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 23
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 2
+    },
+    {
+      "route": "orcarouter_zai_glm_5_3_flash_free",
+      "role": "adjudicator",
+      "planned_packets": 14,
+      "actual_routes": [
+        "orcarouter_zai_glm_5_3_flash_free"
+      ],
+      "actual_credentials": [
+        "ORCAROUTER_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 11,
+        "usable_packets": 11,
+        "expected_items": 158,
+        "parsed_items": 137,
+        "quote_valid": 137,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 77,
+          "quote_valid": 77
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [
+        {
+          "packet": 8,
+          "source": "08-attempt-001.result.json",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 7,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "missing_kind_answers": 0,
+          "extra_fields": {
+            "answer_with": 7
+          }
+        },
+        {
+          "packet": 9,
+          "source": "09-attempt-001.result.json",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 7,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "missing_kind_answers": 0,
+          "extra_fields": {
+            "answer_with": 7
+          }
+        },
+        {
+          "packet": 10,
+          "source": "10-attempt-001.result.json",
+          "schema_valid": false,
+          "parsed_items": 0,
+          "expected_items": 7,
+          "missing_ids": [],
+          "unexpected_ids": [],
+          "missing_kind_answers": 0,
+          "extra_fields": {
+            "answer_with": 7
+          }
+        }
+      ],
+      "pending_packets": 0,
+      "attempts_recorded": 15
+    },
+    {
+      "route": "sambanova_gemma_4_31b_it_primary",
+      "role": "sibling",
+      "planned_packets": 14,
+      "actual_routes": [
+        "nvidia_gemma_4_31b_it_free"
+      ],
+      "actual_credentials": [
+        "NVIDIA_API_KEY"
+      ],
+      "counts": {
+        "first_http200_packets": 14,
+        "contract_pass_packets": 14,
+        "usable_packets": 14,
+        "expected_items": 158,
+        "parsed_items": 158,
+        "quote_valid": 158,
+        "choose_expected": 12,
+        "parsed_choose": 12
+      },
+      "by_kind": {
+        "validate": {
+          "expected": 98,
+          "parsed": 98,
+          "quote_valid": 98
+        },
+        "gate": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "grade": {
+          "expected": 24,
+          "parsed": 24,
+          "quote_valid": 24
+        },
+        "choose": {
+          "expected": 12,
+          "parsed": 12,
+          "quote_valid": 12
+        }
+      },
+      "choice_order_pairs": 6,
+      "choice_order_stable": 6,
+      "contract_failures": [],
+      "pending_packets": 0,
+      "attempts_recorded": 44
+    }
+  ]
+}

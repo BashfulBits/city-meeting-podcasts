@@ -108,7 +108,8 @@ Zero out of 35 negatives still has a Wilson 95% upper bound of 9.9%; this select
 justify a production guarantee. Recommend holding eval-i2 for maintainer review and validating
 the chosen pair on a disjoint human-labeled holdout before adopting a numerical false-accept cap.
 
-All pair counts, item IDs, per-stratum results, route/account attribution and intervals are in comparison.json.
+Recompute pair counts, false-accept IDs and intervals from observations.json with
+`scripts/score_judge_pairs.py`; the external archive retains the detailed historical report.
 No production policy/configuration is changed. No failed HTTP-200 reply is retried.
 
 Label review: i2 is currently false for Parks and recreation; T1 describes the city Parks and

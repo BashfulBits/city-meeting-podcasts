@@ -650,7 +650,8 @@ without changing stored artifacts or triggering backfill. The evaluator uses com
 lane reasoning controls; any diagnostic output-cap override is explicitly recorded separately.
 The fixed input set is not re-frozen or labeled by an agent.
 
-Local validation is in progress. Do not treat HTTP success as schema success, or parsing success
+Direct validation completed all 168 slots, with authorized provider/account substitutions;
+ten terminal packet contract failures remain recorded in the compact dated results. Do not treat HTTP success as schema success, or parsing success
 as quote support. Do not promote a route whose new contract remains unverified.
 
 ### PR7 — Calibration report and threshold proposal
@@ -866,3 +867,7 @@ The direct v3 evaluation validates the response interface and does not replace t
 The chat-only labeled pair report omits JEV; its alternative pair counts are supplementary.
 Non-accepted results are intended for human review; numerical admission thresholds and any
 change to the earlier automatic rejection/suppression behavior require a separate policy change.
+
+PR #2514 retains frozen inputs/gold, runnable eval/scoring tools, compact observations and
+regression fixtures. Bulk raw attempts and review logs are archived outside Git with a checksum;
+see the dated evals/judge evidence README. This does not change the panel assignments or labels.

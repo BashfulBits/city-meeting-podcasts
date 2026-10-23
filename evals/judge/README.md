@@ -174,22 +174,21 @@ Retry attempts must be recorded separately; never repeat an HTTP-200 packet to o
 validation result. Quota backoff and missing/invalid credentials remain explicit pending states.
 
 The reusable baseline harness is single-pass and refuses any nonempty output directory in either
-plan or live mode. It does not implement an automatic retry loop. For this explicitly authorized
-October 20 run, the separate task-scoped transport scheduler is retained as
-`results/2026-10-20-typed-chat-contract-evidence/transport-retry.py.txt`, with its four offline
-scheduler checks beside it. It resumes pending packets without changing the original artifacts,
-honors provider backoff, serializes shared credentials fairly, and treats the first HTTP 200 as
-terminal independently of validator outcome. The scheduler's state is local until attempts finish;
-its hard-coded task paths make it an audit artifact, not a general CLI replacement.
+plan or live mode. It does not implement an automatic retry loop. The task-scoped transport scheduler and its tests are retained in the external raw-evidence
+archive, rather than as repository source. It is not a supported replacement CLI.
 
 [Initial route evidence and retry protocol](results/2026-10-20-typed-chat-contract-evidence/README.md)
-retains failures and pending routes alongside parsed answers. Transport retries remain ongoing.
+summarizes all completed slots, preserved failures and authorized substitutions. Transport retries
+are complete; no failed HTTP-200 reply was resampled.
 
 ## October 22 labeled judge-pair comparison
 
-[Offline pair report](results/2026-10-20-typed-chat-contract-evidence/labeled-pairs/README.md)
+[Offline pair report](results/2026-10-20-typed-chat-contract-evidence/PAIR_RESULTS.md)
 replays first-HTTP-200 responses against the existing 53 definite labels. It compares distinct
 logical models under two-positive admission, with all other outcomes sent to human review.
 The report separates synthetic, planted controls and real adjudicated labels, includes intervals
 and invalid-packet sensitivity, and preserves route/account substitutions. This is development-set
 selection evidence; catalog population calibration and held-out validation remain separate.
+
+Raw transport evidence is archived outside Git. See the dated evidence README for reusable
+evaluation and offline scoring commands, compact decisions, provenance and archive checksum.
