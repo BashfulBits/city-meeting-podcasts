@@ -693,3 +693,9 @@ the Free subrequest budget; it adds no R2/DO writes and does not delay provider 
 IP is Cloudflare trace-reported (and can be a fixed Worker placeholder), not proof of Google's
 incoming connection. See the evidence
 notes for field meanings and the remaining upstream-trace requirement.
+
+The maintainer delegated selection of independent diagnostics: the same bounded set now observes
+AWS CheckIP's public source IP and obtains country/ASN from IP.SB for that explicit address. Both
+external calls share a two-second deadline and need no token. The Free-budget guard reserves all
+three possible diagnostic requests (Cloudflare trace, AWS, GeoIP), still skipping cleanup ticks.
+Independent geolocation is evidence for the observed Worker connection, not Google's own view.

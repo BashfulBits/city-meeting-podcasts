@@ -1,12 +1,23 @@
-/** Fixed Cloudflare diagnostic endpoint: reports Worker-to-Cloudflare trace facts, not Google's connection. */
+/** Cloudflare trace facts describe this probe connection, not Google-facing egress. */
 const TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace";
 
 export function networkProbeAllowed(env, jobCount, scheduledTime) {
   if (!Number.isFinite(scheduledTime)) return false;
   const cleanup = Number(env.CLEANUP_INTERVAL_MINUTES || 10);
   if (new Date(scheduledTime).getUTCMinutes() % cleanup === 0) return false;
-  // Payload GET + result PUT + initial provider call + authorized 429 retries, plus one probe.
-  return jobCount * (3 + Number(env.MAX_429_RETRIES ?? 1)) + 1 <= 50;
+  // Payload GET + result PUT + initial provider call + authorized 429 retries,
+  // plus three diagnostic requests.
+  return jobCount * (3 + Number(env.MAX_429_RETRIES ?? 1)) + 3 <= 50;
+}
+
+/** Accept literal addresses only; never let a probe reply supply a hostname or URL. */
+function normalizedIp(value) {
+  if (typeof value !== "string" || value.length > 45) return null;
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(value) && value.split(".")
+    .every(part => Number(part) <= 255 && (part === "0" || !part.startsWith("0")))) return value;
+  if (!value.includes(":") || !/^[a-f0-9:]+$/i.test(value)) return null;
+  try { return new URL(`https://[${value}]/`).hostname.slice(1, -1); }
+  catch { return null; }
 }
 
 export function parseNetworkTrace(text) {
@@ -14,34 +25,29 @@ export function parseNetworkTrace(text) {
     const at = line.indexOf("=");
     return at < 0 ? ["", ""] : [line.slice(0, at), line.slice(at + 1)];
   }));
-  const ip = values.ip || "";
-  const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(ip) &&
-    ip.split(".").every(part => Number(part) <= 255);
-  const ipv6 = ip.includes(":") && /^[a-f0-9:]{2,45}$/i.test(ip);
-  let placeholder = false;
-  if (ipv6) {
-    try { placeholder = new URL(`https://[${ip}]/`).hostname === "[2a06:98c0:3600::103]"; }
-    catch { /* Invalid trace IP is not treated as a known placeholder. */ }
-  }
+  const ip = normalizedIp(values.ip);
   return {
-    worker_probe_ip: ipv4 || ipv6 ? ip : null,
-    worker_probe_ip_kind: placeholder ? "worker_placeholder" : ipv4 || ipv6 ? "trace_reported" : null,
+    worker_probe_ip: ip,
+    worker_probe_ip_kind: ip === "2a06:98c0:3600::103" ? "worker_placeholder"
+      : ip ? "trace_reported" : null,
     worker_probe_colo: /^[A-Z]{3}$/.test(values.colo || "") ? values.colo : null,
     worker_probe_country: /^[A-Z]{2}$/.test(values.loc || "") ? values.loc : null,
   };
 }
 
-export async function observeExecutionNetwork(fetchImpl = fetch) {
+/** Fixed public diagnostic endpoints only, no redirects, bounded reads and a shared deadline. */
+async function readProbe(url, maxBytes, signal, fetchImpl) {
   try {
-    const response = await fetchImpl(TRACE_URL, {
-      redirect: "error", signal: AbortSignal.timeout(2000),
+    const response = await fetchImpl(url, {
+      redirect: "error", signal,
+      headers: { "user-agent": "Citypods-Network-Diagnostics/1.0" },
     });
     if (!response.ok) {
       await response.body?.cancel();
-      return { probe_status: "http_error", probe_http_status: response.status };
+      return { status: "http_error", http_status: response.status };
     }
     const reader = response.body?.getReader();
-    if (!reader) return { probe_status: "empty" };
+    if (!reader) return { status: "empty" };
     const decoder = new TextDecoder();
     let bytes = 0;
     let text = "";
@@ -50,19 +56,72 @@ export async function observeExecutionNetwork(fetchImpl = fetch) {
         const { done, value } = await reader.read();
         if (done) break;
         bytes += value.byteLength;
-        if (bytes > 4096) return { probe_status: "oversize" };
+        if (bytes > maxBytes) return { status: "oversize" };
         text += decoder.decode(value, { stream: true });
       }
-      text += decoder.decode();
-      const facts = parseNetworkTrace(text);
-      return { probe_status: facts.worker_probe_ip ? "ok" : "invalid", ...facts };
+      return { status: "ok", text: text + decoder.decode() };
     } finally {
       await reader.cancel().catch(() => {});
       reader.releaseLock();
     }
   } catch {
-    return { probe_status: "unavailable" };
+    return { status: "unavailable" };
   }
+}
+
+export async function observeExecutionNetwork(
+  fetchImpl = fetch, signal = AbortSignal.timeout(2000),
+) {
+  const reply = await readProbe(TRACE_URL, 4096, signal, fetchImpl);
+  if (reply.status !== "ok") return {
+    probe_status: reply.status,
+    ...(reply.http_status == null ? {} : { probe_http_status: reply.http_status }),
+  };
+  const facts = parseNetworkTrace(reply.text);
+  return { probe_status: facts.worker_probe_ip ? "ok" : "invalid", ...facts };
+}
+
+export async function observeIndependentNetwork(
+  fetchImpl = fetch, signal = AbortSignal.timeout(2000),
+) {
+  // One deadline covers AWS plus the dependent GeoIP lookup, not two independent waits.
+  const reply = await readProbe("https://checkip.global.api.aws/", 256, signal, fetchImpl);
+  const base = { external_probe_source: "aws_checkip" };
+  if (reply.status !== "ok") return { ...base, external_probe_status: reply.status,
+    ...(reply.http_status == null ? {} : { external_probe_http_status: reply.http_status }) };
+  const ip = normalizedIp(reply.text.trim());
+  if (!ip || ip === "2a06:98c0:3600::103") return { ...base, external_probe_status: "invalid" };
+  const facts = { ...base, external_probe_status: "ok", external_probe_ip: ip,
+    external_geoip_source: "ip_sb_maxmind" };
+  // Query the explicit AWS-observed IP, not IP.SB's view of a separate outbound connection.
+  const geo = await readProbe(
+    `https://api.ip.sb/geoip/${encodeURIComponent(ip)}`, 4096, signal, fetchImpl,
+  );
+  if (geo.status !== "ok") return { ...facts, external_geoip_status: geo.status,
+    ...(geo.http_status == null ? {} : { external_geoip_http_status: geo.http_status }) };
+  let body;
+  try { body = JSON.parse(geo.text); }
+  catch { return { ...facts, external_geoip_status: "invalid" }; }
+  if (!body || normalizedIp(body.ip) !== ip) {
+    return { ...facts, external_geoip_status: "ip_mismatch" };
+  }
+  const organization = body.asn_organization;
+  return { ...facts, external_geoip_status: "ok",
+    external_country_code: /^[A-Z]{2}$/.test(body.country_code || "") ? body.country_code : null,
+    external_asn: Number.isSafeInteger(body.asn) && body.asn > 0 ? body.asn : null,
+    external_asn_organization: typeof organization === "string" && organization.length <= 120 &&
+      !/[\x00-\x1f\x7f]/.test(organization) ? organization : null,
+  };
+}
+
+export async function observeBundleNetwork(fetchImpl = fetch) {
+  // Five inference lanes leave one of Workers' six connections for diagnostic traffic.
+  // Serialize all three requests under one deadline; never compete for a seventh connection.
+  const signal = AbortSignal.timeout(2000);
+  // Prioritize independent evidence; a slow Cloudflare trace must not consume its deadline.
+  const external = await observeIndependentNetwork(fetchImpl, signal);
+  const trace = await observeExecutionNetwork(fetchImpl, signal);
+  return { ...trace, ...external };
 }
 
 /** Header facts and a fixed signature only; never log provider messages or arbitrary headers. */
@@ -79,7 +138,8 @@ export function gatewayNetworkFacts(response) {
     gateway_colo: validRay ? ray.split("-").at(-1).toUpperCase() : null,
     provider_error_status: statuses.has(error?.status) ? error.status : null,
     provider_error_signature: message.includes("user location is not supported for the api use")
-      ? "unsupported_location" : error?.status === "INTERNAL" && message === "internal error encountered."
+      ? "unsupported_location"
+      : error?.status === "INTERNAL" && message === "internal error encountered."
         ? "google_internal" : message.includes("high demand") ? "high_demand" : null,
   };
 }

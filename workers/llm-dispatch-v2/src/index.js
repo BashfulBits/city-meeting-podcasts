@@ -21,7 +21,7 @@ import { B2Client } from "./b2.js";
 import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
 import { apiShapeFor } from "./api_shapes.js";
 import {
-  gatewayNetworkFacts, networkProbeAllowed, observeExecutionNetwork,
+  gatewayNetworkFacts, networkProbeAllowed, observeBundleNetwork,
 } from "./network_diagnostics.js";
 import { classifyProviderFailure, googleQuotaDiagnostics } from "./classify.js";
 import {
@@ -1303,14 +1303,14 @@ async function runScheduledDispatch(env, scheduledTime) {
 
   const googleGemmaRoutes = plan.jobs.map(job => routeForId(job.route_id, dispatchLimits))
     .filter(route => route?.provider === "gemini" && /^gemma-4-/.test(route.upstream_model || ""));
-  // One bounded observation per qualifying bundle, concurrently with inference. No R2/DO writes.
+  // One bounded diagnostic set per qualifying bundle, concurrently with inference. No R2/DO writes.
   // The probe IP is NOT the AI Gateway-to-Google IP; bundle ID joins it to individual attempts.
   const networkObservation = googleGemmaRoutes.length === 0 ? Promise.resolve() :
     (networkProbeAllowed(env, plan.jobs.length, scheduledTime)
-      ? observeExecutionNetwork() : Promise.resolve({ probe_status: "skipped_budget" }))
+      ? observeBundleNetwork() : Promise.resolve({ probe_status: "skipped_budget" }))
       .then(facts => console.info(JSON.stringify({
         event: "gemma_execution_network", bundle_id: plan.bundle_id,
-        observed_at: Date.now(), network_path: "worker_to_cloudflare_trace", ...facts,
+        observed_at: Date.now(), network_path: "worker_to_cloudflare_trace_and_aws", ...facts,
       })));
 
   const lanes = new Map();

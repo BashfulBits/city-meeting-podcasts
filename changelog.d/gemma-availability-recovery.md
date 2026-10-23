@@ -3,8 +3,9 @@
   a five-minute cooldown cap, honoring provider Retry-After. Other routes and all quota/concurrency
   limits remain unchanged. Existing persisted cooldowns require operational reconciliation after
   deployment. No pipeline version bump or stored artifact invalidation occurs.
-- **Google Gemma network diagnostics.** attempts log the account alias, Gateway Ray/colo and fixed
-  provider-error signature. One bounded, best-effort Cloudflare trace probe per qualifying bundle
-  records trace-reported IP/location, labeling the known synthetic Worker IP. These facts are
-  explicitly distinct from Google's incoming connection.
-  Cleanup ticks skip probes; no R2/DO writes, credentials, prompts or output text are added to logs.
+- **Google Gemma network diagnostics.** Attempts log the account alias, Gateway Ray/colo and fixed
+  provider-error signature. A bounded diagnostic set compares Cloudflare trace facts with an
+  AWS-observed public IP and IP.SB country/ASN lookup of that exact address. Synthetic Worker IPs
+  are labeled; observations remain distinct from Google's incoming connection. Cleanup ticks skip
+  probes and all three requests fit the Free subrequest budget. No R2/DO writes, credentials,
+  prompts or output text are added to logs.
