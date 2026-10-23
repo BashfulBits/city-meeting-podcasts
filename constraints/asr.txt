@@ -144,7 +144,7 @@ narwhals==2.24.0
     # via scikit-learn
 networkx==3.6.1
     # via torch
-nltk==3.10.3
+nltk==3.10.4
     # via whisperx
 numpy==2.5.2
     # via
