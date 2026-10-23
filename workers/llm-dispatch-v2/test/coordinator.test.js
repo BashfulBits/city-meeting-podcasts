@@ -3799,6 +3799,7 @@ async function googleQuotaFixture(t, count = 2, input = 11000) {
   const catalog = { routes_by_id: { [routeId]: route }, model_routes_map: { gemma: [routeId] },
     providers: { gemini: {} }, model_aliases: {} };
   const fixture = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog, MAX_JOBS_PER_UTC_DAY: "100",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "2",
     INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({ "judge:sibling": {
       reserved_write_units: 0, daily_write_units: 1000000,
     } }),

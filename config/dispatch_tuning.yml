@@ -31,7 +31,7 @@ MAX_CANDIDATE_LOOKAHEAD: 32
 # A route answering 410 Gone (retired model) is stood down this long. A 404 is treated as a
 # transient upstream fault (escalating 15s-5min cooldown) -- see classify.js rule 8.
 ROUTE_UNAVAILABLE_BLOCK_SECONDS: 21600
-MAX_JOBS_PER_ROUTE_PER_BUNDLE: 2
+MAX_JOBS_PER_ROUTE_PER_BUNDLE: 1
 MAX_CONCURRENT_ROUTE_LANES: 5
 # Raised 25 -> 30 on 2026-09-23: the largest value validateConfig's lease identity allows
 # (DISPATCH_WINDOW + MAX_RESPONSE 720 + FINALIZATION_RESERVE 90 <= LEASE_DURATION 840). The

@@ -695,7 +695,7 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   selection reads the oldest head and at most one bounded extension while allowance remains.
   Its six-job per-model allowance matches the six-job bundle cap (the Free plan's six
   simultaneous outbound connections), so a single healthy model can fill the bundle, subject to
-  `MAX_JOBS_PER_ROUTE_PER_BUNDLE` (2), which counts each route (e.g. AI Studio primary and
+  `MAX_JOBS_PER_ROUTE_PER_BUNDLE` (1), which counts each route (e.g. AI Studio primary and
   secondary) separately.
   Advancing keyset frontiers checkpoint in existing claim diagnostics and resume after eviction;
   idle-write coalescing can lose up to ten minutes of uncheckpointed progress. Exact route quota
