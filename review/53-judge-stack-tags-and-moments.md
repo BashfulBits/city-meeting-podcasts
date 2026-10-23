@@ -897,3 +897,12 @@ Step 2's matched-candidate analysis is complete; PR #2528 records its replayable
 Step 3 revalidates the stale-row/pending-pointer recovery proposal using fresh read-only state.
 Production archive/removal remains a separate approval, followed by normal shadow collection.
 PR7 policy implementation and task graduation retain their separately documented gates.
+
+Approved recovery completed (2026-10-23): the [revalidation outcome](evidence/2026-10-23-judge-recovery-revalidation.md)
+records verified removal of 6,665 stale/stale-dependent chat judgments and 42 pending
+adjudicator references across 32 sources, with exact-removal archives and no skipped entries.
+All 128,695 JEV judgments, two original calibration judgments, six newer paired cases,
+unknown-provenance pointers and unrelated state were preserved. Because B2 lacks CAS, the
+maintainer explicitly approved a temporary source-writer maintenance window; all workflow states
+were restored. CF v2 payload/result processing remained independent and running. Normal shadow
+collection resumes; no manual dispatch, JEV backfill, quota change or authority-mode flip occurred.

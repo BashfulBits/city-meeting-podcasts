@@ -1,5 +1,7 @@
 # Judge recovery revalidation — October 23, 2026
 
+**Current status: approved cleanup applied and verified; workflow states restored.**
+
 Step 2's matched-panel evaluation is complete in PR #2528; its CI checks passed. The maintainer
 then approved automatic resolution through the retained panels and an independent adjudicator,
 longer-context JEV on disagreements, and a small audit sample. See review/53's dated amendment.
@@ -75,3 +77,37 @@ plan above is insufficient on this backend. A separate temporary maintenance win
 requested: pause state-writing workflows, let active runs finish without cancelling them,
 re-read/rebase the approved removals, verify while quiescent, and restore prior workflow states.
 The archive is ready; live removal must not proceed while concurrent writes remain possible.
+
+## Cleanup applied and verified
+
+The maintainer approved the temporary maintenance window. The final window coordinated 39
+previously active B2-access workflows, waited for source writers to be quiescent, and restored
+those workflows afterward. The initial wider pause was also fully restored before source edits.
+City discovery was excluded after verifying its queued run's actual code only reads episode
+source state. No runs were cancelled. All 71 original workflow enabled/disabled states were
+compared afterward and matched their original settings.
+
+The Cloudflare v2 executor continued running: it writes provider replies under `results/` and
+handles job payload/result storage, not `state/sources/<source>/episodes.json`. Those keys and
+Worker job records were not changed by this cleanup. The maintenance guard concerned writers
+to the episode source objects, rather than every writer to the B2 bucket.
+
+All 32 source updates passed immediate remote readback verification. Exactly 6,665 judgments
+and 42 pending references were removed; there were zero changed/ambiguous-entry skips. Each
+update reread current source data, removed only exact approved row/reference matches, and
+archived its exact delta before writing. No saved proposal entry or stale snapshot was uploaded.
+An independent before/after multiset audit verified all other rows and foreign content unchanged.
+It counted 128,695 preserved JEV judgments and two preserved original calibration judgments.
+All six previously identified paired cases were checked and preserved as exact rows.
+
+Per-source before/after hashes, exact-removal archive keys, counts, workflow-state restoration,
+and independent verification are in the external `apply-live/` subdirectory of the recovery
+artifact. The completion receipt was also uploaded and hash-verified:
+under `state/archive/judge-recovery-2026-10-23/`, with filename
+`completion-fe8ef2fd6d2697e0833113f866ba3f652484003568d102ef3bb228e92524e833.json`.
+
+Normal scheduled shadow collection can now re-plan the missing chat cells using request
+revision 3. This recovery re-asks no JEV cells, dispatches no manual workflow or Worker jobs,
+changes no quota policy, and does not activate admission authority. The existing hourly monitor
+will report meaningful fresh-collection progress and calibration evidence/proposals; cleanup
+completion is not itself sufficient evidence to graduate tags or moments.
