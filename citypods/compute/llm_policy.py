@@ -89,6 +89,8 @@ class DeferredLLMRequest:
     # ``"route_max"`` when the job asked for the route's own output limit (see
     # ``route_output_tokens``); a rebuilt job must keep it or it truncates at its reservation.
     max_tokens_mode: str | None = None
+    # 0 denotes a legacy persisted capsule that predates complete request/policy preservation.
+    metadata_version: int = 1
 
 
 @dataclass(frozen=True)

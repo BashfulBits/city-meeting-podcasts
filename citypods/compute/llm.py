@@ -43,6 +43,7 @@ from citypods.compute.llm_budget import (
 )
 from citypods.compute.llm_deferred import (
     look_up_deferred,
+    needs_moments_replan,
     structural_recovery_context,
     terminal_failure_retry_allowed,
     terminal_recovery_generation,
@@ -1981,6 +1982,8 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
         deferred = handle.deferred_request
         assert deferred is not None
+        if needs_moments_replan(handle):
+            return None
         messages = [dict(message) for message in deferred.messages]
         inputs: dict[str, Any] = {"messages": messages, "max_tokens": deferred.output_token_budget}
         if deferred.timeout is not None:

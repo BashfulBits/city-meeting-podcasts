@@ -24,7 +24,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -701,29 +701,43 @@ def _index_ready(storage) -> bool:
 
 
 def _serialize_policy(policy: LLMRequestPolicy) -> dict[str, Any]:
-    return {
-        "allowed_models": (
-            list(policy.allowed_models) if policy.allowed_models is not None else None
-        ),
-        "allow_paid": policy.allow_paid,
-        "deadline_at": policy.deadline_at.isoformat() if policy.deadline_at is not None else None,
-        "purpose": policy.purpose,
-        "timeout_class": policy.timeout_class,
-        "queue_only": policy.queue_only,
-    }
+    data = asdict(policy)
+    data["deadline_at"] = policy.deadline_at.isoformat() if policy.deadline_at is not None else None
+    return data
 
 
 def _deserialize_policy(data: Mapping[str, Any]) -> LLMRequestPolicy:
-    allowed = data.get("allowed_models")
-    deadline = data.get("deadline_at")
-    return LLMRequestPolicy(
-        allowed_models=tuple(allowed) if allowed is not None else None,
-        allow_paid=bool(data.get("allow_paid", False)),
-        deadline_at=datetime.fromisoformat(deadline) if deadline else None,
-        purpose=str(data.get("purpose", "")),
-        timeout_class=("fast" if data.get("timeout_class") == "fast" else "long"),
-        queue_only=bool(data.get("queue_only", False)),
-    )
+    values = {
+        field.name: data[field.name] for field in fields(LLMRequestPolicy) if field.name in data
+    }
+    for name in ("allowed_models", "backup_models", "allowed_route_ids"):
+        if name not in values:
+            continue
+        if values[name] is None and name != "backup_models":
+            continue
+        value = values[name]
+        if not isinstance(value, (list, tuple)) or any(not isinstance(v, str) for v in value):
+            raise ValueError(f"invalid deferred policy {name}")
+        values[name] = tuple(value)
+    defaults = LLMRequestPolicy()
+    for field in fields(LLMRequestPolicy):
+        if isinstance(getattr(defaults, field.name), bool) and field.name in values:
+            if not isinstance(values[field.name], bool):
+                raise ValueError(f"invalid deferred policy {field.name}")
+    if "priority" in values and (
+        type(values["priority"]) is not int or values["priority"] not in (0, 1)
+    ):
+        raise ValueError("invalid deferred policy priority")
+    threshold = values.get("backup_after_attempts")
+    if threshold is not None and (type(threshold) is not int or threshold < 0):
+        raise ValueError("invalid deferred backup threshold")
+    if "timeout_class" in values and values["timeout_class"] not in ("fast", "long"):
+        raise ValueError("invalid deferred timeout class")
+    if "purpose" in values and not isinstance(values["purpose"], str):
+        raise ValueError("invalid deferred purpose")
+    deadline = values.get("deadline_at")
+    values["deadline_at"] = datetime.fromisoformat(deadline) if deadline else None
+    return LLMRequestPolicy(**values)
 
 
 def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
@@ -756,6 +770,7 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
         # Without these a rebuilt job fell back to the 1,024-token default margin and the
         # direct-call default timeout, dropping the job's own budget and deadline.
         record["output_token_budget"] = deferred.output_token_budget
+        record["request_metadata_version"] = deferred.metadata_version
         if deferred.timeout is not None:
             record["timeout"] = deferred.timeout
         if deferred.max_tokens_mode is not None:
@@ -792,7 +807,11 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
             if "messages" in data and "policy" in data:
                 budget = data.get("output_token_budget")
                 timeout = data.get("timeout")
+                version = data.get("request_metadata_version", 0)
+                if type(version) is not int or version < 0:
+                    return None
                 deferred = DeferredLLMRequest(
+                    metadata_version=version,
                     messages=tuple(data["messages"]),
                     policy=_deserialize_policy(data["policy"]),
                     # Records written before these fields existed keep the old defaults.
@@ -926,6 +945,29 @@ def look_up_deferred(
     SDK-level retries, so a stalled connection fails in seconds (``StorageReadUnavailable``)
     instead of waiting out the default 60 s timeouts and several retries."""
     return _decode_record(_read_json(storage, deferred_key(recipe_hash), deadline_at=deadline_at))
+
+
+def needs_moments_replan(handle: JobHandle) -> bool:
+    """Only proven-unsubmitted moments capsules may be rebuilt by their current producer."""
+    return (
+        handle.task == "moment-extraction"
+        and handle.deferred_request is not None
+        and handle.deferred_request.metadata_version < 1
+    )
+
+
+def discard_legacy_moments_request(storage, expected: JobHandle) -> bool:
+    """Under the shared record lock, remove only the exact unsubmitted legacy capsule."""
+    if not needs_moments_replan(expected):
+        return False
+    with _deferred_record_lock(storage, expected.recipe_hash):
+        key = deferred_key(expected.recipe_hash)
+        data = _read_json(storage, key)
+        if _decode_record(data) != expected:
+            return False
+        storage.delete(key)
+        _best_effort_delete_index(storage, data, expected.recipe_hash)
+        return True
 
 
 def discard_deferred(storage, recipe_hash: str, *, expected_ref: str | None = None) -> bool:
@@ -1577,6 +1619,8 @@ __all__ = [
     "MAX_TERMINAL_FAILURE_RETRIES",
     "discard_terminal_failure",
     "discard_deferred",
+    "needs_moments_replan",
+    "discard_legacy_moments_request",
     "discard_completed_result",
     "deferred_key",
     "deferred_failure_key",

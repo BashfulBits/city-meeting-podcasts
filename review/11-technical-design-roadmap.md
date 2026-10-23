@@ -458,6 +458,17 @@ individual DO states still need authoritative reconciliation, rather than cancel
 Evidence, cost contract, and post-deployment checks:
 [October 18 investigation](evidence/2026-10-18-llm-pending-accounting.md).
 
+**Deferred request fidelity (2026-10-23; implementation ready for review).**
+Persist all LLM policy fields and retain explicit timeouts/output mode through sweep deadline
+adjustment and reconstruction. A request-metadata format marker distinguishes new complete
+capsules from legacy records; it is not a pipeline version and changes no recipe identity.
+The sweep holds incomplete, unsubmitted legacy moments capsules for producer-led replanning.
+The moments producer conditionally removes only the exact matching unsubmitted record after
+reserving a normal capped slot, then rebuilds from current source inputs and lane policy.
+Submitted jobs and valid results remain reusable. No quota, model pool, cadence, or backfill
+change; legacy work recovers gradually on eligible producer visits. See the
+[pending-deferral investigation](evidence/2026-10-23-moments-pending-deferrals.md).
+
 **Moments invalid-cache recovery (2026-10-23; implementation ready for review).**
 Batch HTTP 429 and per-job quota deferrals retain their response contract. Legacy moments handles
 restore the known task contract on read, including already-submitted work; corrective requests
