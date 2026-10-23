@@ -697,6 +697,9 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   simultaneous outbound connections), so a single healthy model can fill the bundle, subject to
   `MAX_JOBS_PER_ROUTE_PER_BUNDLE` (1), which counts each route (e.g. AI Studio primary and
   secondary) separately.
+  A bundle may span six route lanes, Cloudflare's six-connection limit per invocation; the
+  same-invocation cleanup waits for the first lane to settle (and deletes sequentially) so it
+  never opens a seventh.
   Advancing keyset frontiers checkpoint in existing claim diagnostics and resume after eviction;
   idle-write coalescing can lose up to ten minutes of uncheckpointed progress. Exact route quota
   checks still decide admission, and diagnostic timestamps distinguish retained empty snapshots

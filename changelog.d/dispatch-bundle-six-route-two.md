@@ -8,6 +8,9 @@
 - `PURGE_BATCH_LIMIT` 15 -> 14: the larger bundle (12 dispatch B2 calls) plus cleanup's two deletes
   per job must stay within `validateConfig`'s 40-subrequest budget (28 + 12 = 40). Cleanup drains
   2,016 jobs/day instead of 2,160.
-- `MAX_CONCURRENT_ROUTE_LANES` stays 5: `validateConfig` rejects more, reserving one of
-  Cloudflare's six simultaneous connections. With one lease per route, a bundle therefore holds
-  at most five jobs; the sixth `MAX_BUNDLE_JOBS` slot is headroom only.
+- `MAX_CONCURRENT_ROUTE_LANES` 5 -> 6 so a six-job bundle at one lease per route spans six
+  routes (non-Flash-Lite beside Flash-Lite). `validateConfig` now rejects only more than 6. To
+  stay within Cloudflare's six simultaneous connections, the same-invocation cleanup now waits
+  until dispatch has fewer than six lanes open (the first lane settling) and deletes a job's two
+  B2 objects one at a time instead of together. Cleanup on a six-lane tick starts later, never
+  concurrently with a sixth connection.

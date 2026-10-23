@@ -46,11 +46,11 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
-  // MAX_CONCURRENT_ROUTE_LANES > 5
+  // MAX_CONCURRENT_ROUTE_LANES > 6 (Cloudflare's simultaneous-connection limit)
   assert.throws(() =>
     validateConfig(
       createMockEnv({
-        MAX_CONCURRENT_ROUTE_LANES: "6",
+        MAX_CONCURRENT_ROUTE_LANES: "7",
       })
     )
   );

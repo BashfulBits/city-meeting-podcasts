@@ -29,6 +29,9 @@ import {
 
 export { LLMSchedulerDO };
 
+// Cloudflare: simultaneous connections waiting for response headers per invocation (Free and Paid).
+const MAX_INVOCATION_CONNECTIONS = 6;
+
 function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -194,9 +197,9 @@ export function validateConfig(env) {
     );
   }
 
-  if (maxConcurrentLanes > 5) {
+  if (maxConcurrentLanes > MAX_INVOCATION_CONNECTIONS) {
     throw new Error(
-      `Invalid config: MAX_CONCURRENT_ROUTE_LANES (${maxConcurrentLanes}) must leave headroom under Cloudflare's ` +
+      `Invalid config: MAX_CONCURRENT_ROUTE_LANES (${maxConcurrentLanes}) must not exceed Cloudflare's ` +
       "fixed 6-simultaneous-connection-per-invocation limit (same on Free and Paid)"
     );
   }
@@ -1265,7 +1268,7 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
  * just-in-time (no B2 access before a job's own wait_ms elapses, no bulk pre-fetch -- see the
  * unit's own "do not" guardrails), and report every attempt in one completeBatch call.
  */
-async function runScheduledDispatch(env) {
+async function runScheduledDispatch(env, releaseCleanup = () => {}) {
   const b2 = b2ClientFromEnv(env);
   if (!b2) {
     console.error("scheduled: B2 credentials not configured; cannot execute claimed plan");
@@ -1300,6 +1303,11 @@ async function runScheduledDispatch(env) {
     lanes.get(job.route_id).push(job);
   }
 
+  // Cleanup shares this invocation's six-connection budget (one connection at a time). With fewer
+  // than six lanes there is always a free slot; with six, cleanup waits for the first lane to
+  // settle (its connection closed), leaving at most five lanes plus cleanup's one.
+  if (lanes.size < MAX_INVOCATION_CONNECTIONS) releaseCleanup();
+
   const results = [];
   // Promise.allSettled over independent lanes -- safe without a separate concurrency limiter
   // because claimDispatchWindow already caps distinct routes at MAX_CONCURRENT_ROUTE_LANES (see
@@ -1307,6 +1315,7 @@ async function runScheduledDispatch(env) {
   await Promise.allSettled(
     [...lanes.entries()].map(async ([, laneJobs]) => {
       const laneState = { receivedAt, predecessorActualStart: null, retryBarrier: null };
+      try {
       for (const job of laneJobs) {
         let result;
         try {
@@ -1330,6 +1339,9 @@ async function runScheduledDispatch(env) {
           laneState.predecessorActualStart = Date.now();
         }
         if (result !== null) results.push(result);
+      }
+      } finally {
+        releaseCleanup();
       }
     })
   );
@@ -1355,13 +1367,17 @@ async function runScheduledDispatch(env) {
  * COMPLETED_RETENTION_DAYS, so this can never delete a result a client has not had the chance
  * to read.
  */
-async function runScheduledCleanup(env, scheduledTime) {
+async function runScheduledCleanup(env, scheduledTime, dispatchSlotFree = Promise.resolve()) {
   const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 10);
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
   // Cloudflare always supplies scheduledTime for a real cron firing. Without it we cannot know
   // where in the cadence we are, so skip rather than run this on every single tick.
   if (!Number.isFinite(scheduledTime)) return;
   if (new Date(scheduledTime).getUTCMinutes() % intervalMinutes !== 0) return;
+
+  // Every connection cleanup opens (coordinator RPCs included) waits until dispatch has a free
+  // slot -- see runScheduledDispatch.
+  await dispatchSlotFree;
 
   const coordinator = getCoordinator(env);
   // Hourly exact recount of the queued-job counter (maintained by explicit deltas, not triggers).
@@ -1391,7 +1407,8 @@ async function runScheduledCleanup(env, scheduledTime) {
   for (const job of jobs) {
     const keys = [job.payload_key, job.result_key].filter(Boolean);
     try {
-      await Promise.all(keys.map((key) => b2.delete(key)));
+      // Sequential, not Promise.all: cleanup holds one connection at a time (see above).
+      for (const key of keys) await b2.delete(key);
       purgedIds.push(job.id);
     } catch (err) {
       // Leave this job in 'purge_pending' and retry it next run rather than confirming a purge
@@ -1436,13 +1453,17 @@ export default {
     // that log entry). Catch and log with full detail here, matching describeError's existing use
     // everywhere else in this file, rather than adding yet another incident where the actual
     // error was thrown away by the runtime's own reporting.
+    let releaseCleanup;
+    const dispatchSlotFree = new Promise((resolve) => { releaseCleanup = resolve; });
     ctx.waitUntil(
-      runScheduledDispatch(env).catch((err) => {
-        console.error(`scheduled: runScheduledDispatch failed: ${describeError(err)}`);
-      })
+      runScheduledDispatch(env, releaseCleanup)
+        .catch((err) => {
+          console.error(`scheduled: runScheduledDispatch failed: ${describeError(err)}`);
+        })
+        .finally(releaseCleanup)
     );
     ctx.waitUntil(
-      runScheduledCleanup(env, event?.scheduledTime).catch((err) => {
+      runScheduledCleanup(env, event?.scheduledTime, dispatchSlotFree).catch((err) => {
         console.error(`scheduled: runScheduledCleanup failed: ${describeError(err)}`);
       })
     );
