@@ -269,6 +269,8 @@ def test_v2_schema_correction_stages_corrected_payload_and_acks_source():
     assert corrected.ref == "corrected-v2"
     retry_request = mock_session.post.call_args_list[0].kwargs["json"]
     corrected_payload = json.loads(storage.files[retry_request["corrected_payload_key"]])
+    assert corrected_payload["structured_output"]["name"] == "dispatch-v2-test-pong"
+    assert "properties" in corrected_payload["structured_output"]["schema"]
     assert corrected_payload["messages"][-1]["role"] == "user"
     assert "failed local schema validation" in corrected_payload["messages"][-1]["content"]
     assert len(mock_session.post.call_args_list) == 1
@@ -1566,7 +1568,9 @@ def test_collector_keeps_accepted_job_durable_for_failure_reconciliation(poll_er
     assert PerModelBatchingBackends.submission_errors(outcomes) == []
     handle = outcomes[0].result
     assert isinstance(handle, JobHandle)
-    assert look_up_deferred(storage, job.recipe_hash) == handle
+    restored = look_up_deferred(storage, job.recipe_hash)
+    assert restored.ref == handle.ref
+    assert restored.structured_output == "moment-extraction"
     backend.poll_batch.assert_not_called()
     # The same error remains observable by the existing reconciliation path.
     assert isinstance(backend.poll_batch([handle])[handle.ref], poll_error)
@@ -2656,3 +2660,51 @@ def test_poll_batch_rejects_invalid_absence_proofs(body):
     handle = JobHandle(task="tag", recipe_hash="r", ref="gone", backend="llm-dispatch-v2")
     assert isinstance(backend.poll_batch([handle])["gone"], _LLMBatchItemError)
     assert not storage.files
+
+
+@pytest.mark.parametrize("refusal", ["http429", "purpose_write_budget_exceeded"])
+def test_quota_deferral_preserves_structured_contract_through_sweep(refusal):
+    from citypods.compute.llm_deferred import look_up_deferred
+    from scripts.llm_deferred_sweep import _job_from_deferred_handle
+
+    storage = MockStorage()
+    session = MagicMock()
+
+    def post(url, json=None, **kwargs):
+        if refusal == "http429":
+            return _mock_response(status_code=429)
+        return _mock_response(
+            json_data={
+                "accepted": [],
+                "rejected": [{"id": row["id"], "reason": refusal} for row in json["jobs"]],
+            }
+        )
+
+    session.post.side_effect = post
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        storage=storage,
+        http_session=session,
+    )
+    job = InferenceJob(
+        task="tag",
+        recipe_hash="schema-deferral",
+        inputs={
+            "messages": [{"role": "user", "content": "hello"}],
+            "structured_output": "dispatch-v2-test-pong",
+            "llm_policy": LLMRequestPolicy(
+                allowed_models=("gemini/gemini-3-flash-preview",),
+                queue_only=True,
+                purpose="r6-moments",
+            ),
+        },
+    )
+    handle = backend.enqueue_batch([job])[0]
+    assert handle.structured_output == "dispatch-v2-test-pong"
+    write_deferred(storage, job.recipe_hash, handle)
+    restored = look_up_deferred(storage, job.recipe_hash)
+    rebuilt = _job_from_deferred_handle(restored)
+    assert rebuilt.inputs["structured_output"] == "dispatch-v2-test-pong"

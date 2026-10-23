@@ -2356,6 +2356,7 @@ class LiteLLMBackend(Backend):
                     recipe_hash=job.recipe_hash,
                     backend="llm-dispatch-v2",
                     ref=f"deferred-429-{job.recipe_hash}",
+                    structured_output=self._structured_output(job),
                     deferred_request=DeferredLLMRequest(
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
@@ -2499,6 +2500,7 @@ class LiteLLMBackend(Backend):
                         recipe_hash=job.recipe_hash,
                         backend="llm-dispatch-v2",
                         ref=f"deferred-{reason}-{job.recipe_hash}",
+                        structured_output=self._structured_output(job),
                         deferred_request=DeferredLLMRequest(
                             messages=tuple(_messages(job)),
                             policy=policy or LLMRequestPolicy(),
@@ -3322,6 +3324,12 @@ class LiteLLMBackend(Backend):
             )
         corrected_payload = dict(payload)
         corrected_payload["messages"] = corrected_messages
+        if handle.structured_output and not corrected_payload.get("structured_output"):
+            # Legacy quota deferrals lost the contract before the original payload was staged.
+            corrected_payload["structured_output"] = {
+                "name": handle.structured_output,
+                "schema": response_model(handle.structured_output).model_json_schema(),
+            }
         canonical_payload = json.dumps(corrected_payload, sort_keys=True)
         # Keep this key stable across a lost HTTP response and a client retry. The corrected
         # payload is deterministic, so overwriting this one source-specific object cannot change

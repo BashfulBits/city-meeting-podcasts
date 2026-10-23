@@ -79,3 +79,23 @@ job admissions, Worker completions, and the existing pending backlog.
 
 [earlier]: https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/39964198701
 [later]: https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/39981197227
+
+## Implementation follow-up
+
+The proposed fix preserves contracts on both remaining batch quota-refusal paths, restores the
+known moments contract when decoding legacy pending records, and puts a missing schema into
+corrective payloads. Local moments schema errors use conditional cache removal with audit-first
+failure accounting. Each stored generation is charged once even if deletion fails and is retried;
+the existing three-failure recipe gate stops repeated malformed generations. No input, model,
+prompt, or pipeline identity changes. Recovery is gradual as producers revisit affected recipes.
+
+Regression coverage includes schema round trips through both refusal paths and sweep rebuilds,
+legacy submitted-handle decoding, audit/delete failures, retry exhaustion, preservation of newer
+records, and a moments stage that rejects a cached result then finalizes a fresh answer under the
+same recipe. All mocked scenarios are offline. The original investigation did not mutate live
+cache records; deployment will enable normal bounded producer recovery.
+
+CLI review found one additional starvation risk: exhausted recipes could consume a producer slot
+before the backend applied its retry gate. Admission now checks the failure budget before slot
+reservation; structural route-generation checks still run in the backend with full request context.
+Regressions cover exhausted markers, the numeric ceiling, and non-exhausted structural markers.
