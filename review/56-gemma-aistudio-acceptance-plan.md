@@ -659,3 +659,43 @@ retry budgets, classification, quota/pacing, deadlines and packing unchanged. Ot
 models retain their defaults. Existing queued jobs use the new transport setting when dispatched;
 stored payloads/artifacts are not rewritten, and there is no pipeline version bump or backfill.
 Production adoption requires a merged PR and verified rollout, followed by a fresh cohort.
+
+
+## Google availability recovery policy (2026-10-23, maintainer approved)
+
+The maintainer explicitly approved faster Google-only recovery after reviewing the trade-off:
+more probes during sustained outages in exchange for faster recovery from transient 500/503s.
+This supersedes the day-scale saturation ladder only for Google Gemma HTTP 500/503 availability
+failures. It does not restore hidden Gateway retries or alter rate, token, concurrency or free-only
+limits. Google Gemma's exact `500 INTERNAL: Internal error encountered.` uses the existing bounded
+upstream budget (eight retries), as the observed 503 high-demand signature already does.
+
+The first three consecutive availability failures leave the route eligible after 30–60 seconds;
+later failures use approximately 48–60, 96–120, 192–240, then at most 300 seconds. Claims still run
+once per minute and require quota and concurrency headroom; eligibility is not a promise of an
+immediate call. A provider Retry-After remains an authoritative floor, even above five minutes.
+Success resets the existing route streak. Other providers, Google 429s and non-availability errors
+retain their existing policies. Jobs retain their finite shared transient budget.
+
+Existing persisted cooldowns are not silently rewritten: deployment must explicitly reconcile the
+old Google 503 block if it remains in force. The October 23 snapshot at approximately 20:47 UTC
+showed the secondary Google Gemma route blocked until October 24 19:38 UTC with last status 503.
+No production cooldown, deployment, provider request or quota change was performed locally.
+
+See [the investigation evidence](evidence/2026-10-23-gemma-availability.md) for location findings,
+verified response examples, measurement limits and the recovery rollout checks.
+
+
+The maintainer also requested IP/location telemetry in the same PR. Attempts now correlate the
+configured account alias, Gateway Ray/colo and bounded error signatures with a per-bundle Worker
+network observation. The two-second, 4 KiB Cloudflare trace probe skips cleanup ticks and respects
+the Free subrequest budget; it adds no R2/DO writes and does not delay provider starts. Its observed
+IP is Cloudflare trace-reported (and can be a fixed Worker placeholder), not proof of Google's
+incoming connection. See the evidence
+notes for field meanings and the remaining upstream-trace requirement.
+
+The maintainer delegated selection of independent diagnostics: the same bounded set now observes
+AWS CheckIP's public source IP and obtains country/ASN from IP.SB for that explicit address. Both
+external calls share a two-second deadline and need no token. The Free-budget guard reserves all
+three possible diagnostic requests (Cloudflare trace, AWS, GeoIP), still skipping cleanup ticks.
+Independent geolocation is evidence for the observed Worker connection, not Google's own view.

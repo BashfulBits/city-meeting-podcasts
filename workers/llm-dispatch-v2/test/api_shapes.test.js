@@ -223,6 +223,7 @@ test("Google Gemma logs each actual call without response text", async () => {
   const route = { ...CHAT, provider: "gemini", upstream_model: "gemma-4-31b-it" };
   const job = {
     id: "google-job", route_id: "google-route", lease_token: "google-lease",
+    diagnostic_bundle_id: "google-bundle",
     lease_expires_at: Date.now() + 600_000, input_token_estimate: 12000,
     admitted_input_estimate: 12500, reserved_input_estimate: 15500,
     attempt_ordinal: 1, prompt_family: "judge:sibling", purpose: "judge:sibling",
@@ -241,12 +242,16 @@ test("Google Gemma logs each actual call without response text", async () => {
       message: "Quota exceeded for metric: " +
         "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
         "limit: 16000, model: gemma-4-31b Please retry in 32.154473808s. PRIVATE_ERROR",
-    } }]), { status: 429, headers: { "cf-aig-log-id": "gateway-id" } });
+    } }]), { status: 429, headers: { "cf-aig-log-id": "gateway-id", "cf-ray": "1234567890abcdef-IAD" } });
     const failure = await call();
     assert.equal(failure.failureClass, "own_tpm");
     assert.equal(events.length, 1);
     assert.equal(events[0].event, "gemma_provider_attempt");
     assert.equal(events[0].attempt_ordinal, 1);
+    assert.equal(events[0].bundle_id, "google-bundle");
+    assert.equal(events[0].provider_account_id, "primary");
+    assert.equal(events[0].gateway_cf_ray, "1234567890abcdef-IAD");
+    assert.equal(events[0].gateway_colo, "IAD");
     assert.equal(events[0].quota.message_requested, null);
     assert.equal(events[0].quota.message_limit, 16000);
     assert.equal(events[0].gateway_correlation_id, "gateway-id");

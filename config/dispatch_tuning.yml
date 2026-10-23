@@ -110,8 +110,8 @@ UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS: 300
 # unusable replies keep the 15 s to 300 s ladder above.
 UPSTREAM_CAPACITY_SATURATED_COOLDOWN_SECONDS: 60
 UPSTREAM_CAPACITY_SATURATED_MAX_COOLDOWN_SECONDS: 86400
-# AI Gateway handles the fast five-attempt retry series. A final 5xx gets one durable
-# fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
+# Google Gemma has Gateway attempts=1 and a dedicated availability recovery ladder (review/56).
+# Other generic 5xx errors get one durable fallback on a later cron. The route waits 60 seconds,
 # growing to at most five minutes if this outer retry budget is raised.
 MAX_UPSTREAM_CAPACITY_RETRIES: 8
 # A reply cut off at its output limit on a job pinned to one model (per_model judge lanes) recurs
