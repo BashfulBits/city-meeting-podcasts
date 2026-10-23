@@ -59,3 +59,19 @@ An approved apply must archive exact removals, re-read and rebase each source-ow
 all intervening additions, and use conditional writes. Skip changed/ambiguous entries; never upload
 a saved source or proposed entry wholesale. Do not delete registry records, cancel Worker jobs,
 re-ask JEV, or dispatch workflows as part of this recovery proposal.
+
+## Approved archive completed; live cleanup awaits writer coordination
+
+The maintainer approved the cleanup and requested progress notifications for fresh collection
+and calibration. All 6,665 proposed judgments and 42 pending references were archived to 32
+content-addressed objects under `state/archive/judge-recovery-2026-10-23/`; every upload was
+read back and hash-verified. The local approved-archive-summary.json retains exact keys/checksums.
+No live source objects have been modified.
+
+The apply review exposed an incorrect assumption in the proposal: B2 does not enforce conditional
+writes (`citypods/storage/s3.py` explicitly marks it non-CAS). The existing maintenance mutex
+coordinates chapter work, not all judge/source writers. Therefore the conditional-write apply
+plan above is insufficient on this backend. A separate temporary maintenance window has been
+requested: pause state-writing workflows, let active runs finish without cancelling them,
+re-read/rebase the approved removals, verify while quiescent, and restore prior workflow states.
+The archive is ready; live removal must not proceed while concurrent writes remain possible.
