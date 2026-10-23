@@ -458,6 +458,16 @@ individual DO states still need authoritative reconciliation, rather than cancel
 Evidence, cost contract, and post-deployment checks:
 [October 18 investigation](evidence/2026-10-18-llm-pending-accounting.md).
 
+**Moments invalid-cache recovery (2026-10-23; implementation ready for review).**
+Batch HTTP 429 and per-job quota deferrals retain their response contract. Legacy moments handles
+restore the known task contract on read, including already-submitted work; corrective requests
+restore missing schema payloads. Moments schema failures conditionally discard the exact cached
+answer after durable failure accounting, respecting the existing three-failure limit. Storage
+failures retain recoverable state; unrelated/newer results and quality rejections remain intact.
+No pipeline bump, catalog-wide invalidation, quota increase, or backfill is required. Existing bad
+recipes recover on their next eligible producer visit, within normal ingress/provider budgets.
+See the [investigation and reproduction](evidence/2026-10-23-moments-invalid-cache.md).
+
 **Bounded dispatch throughput correction (2026-10-23; implementation ready for review).**
 The stale four-job per-model allowance now matches the existing five-job bundle cap. A partially
 filled head may use its existing bounded extension; the model frontier checkpoints with claim

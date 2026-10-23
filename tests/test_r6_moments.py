@@ -355,3 +355,106 @@ def test_the_tagger_output_budget_leaves_room_for_reasoning_on_every_route():
         for route_id in catalog["model_routes_map"][model]:
             route = catalog["routes_by_id"][route_id]
             assert route["output_context_limit"] >= TAG_OUTPUT_TOKEN_BUDGET, route_id
+
+
+@pytest.mark.parametrize(
+    "bad_output",
+    [
+        {"choices": [{"message": {"content": '{"summary": []}'}}]},
+        {"choices": [{"message": {"content": "not JSON"}}]},
+        [],
+    ],
+)
+def test_moments_recover_a_bad_cached_answer_under_the_same_recipe(monkeypatch, bad_output):
+
+    from citypods.compute.llm_deferred import look_up_deferred
+    from citypods.stages import MomentsStage
+    from tests.test_stages import _city
+
+    storage = MemStorage()
+    storage.put_cas(
+        "transcript.vtt", b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello.\n", "text/vtt"
+    )
+    monkeypatch.setattr("citypods.moments.recipe_hash", lambda **kwargs: "same-recipe")
+    bad = JobResult(
+        task="moment-extraction",
+        recipe_hash="same-recipe",
+        output=bad_output,
+    )
+    write_deferred(storage, "same-recipe", bad)
+
+    class Backend:
+        name = "fake"
+        new_calls = 0
+
+        def run_inference(self, job):
+            existing = look_up_deferred(storage, job.recipe_hash)
+            if existing is not None:
+                return existing
+            self.new_calls += 1
+            result = JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={
+                    "choices": [{"message": {"content": "{}"}}],
+                },
+            )
+            write_deferred(storage, job.recipe_hash, result)
+            return result
+
+    backend = Backend()
+    ctx = StageContext(
+        storage=storage, ffmpeg=None, max_kbps=96, dry_run=False, moment_backend=backend
+    )
+    ep = Episode(
+        guid="episode",
+        uid="episode",
+        title="Meeting",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        transcript_key="transcript.vtt",
+        video_url="https://example.com/meeting",
+    )
+    stage = MomentsStage()
+    failed = stage.process(None, _city(), [ep], ctx)
+    assert len(failed.errors) == 1
+    assert backend.new_calls == 0
+    assert look_up_deferred(storage, "same-recipe") is None
+    recovered = stage.process(None, _city(), [ep], ctx)
+    assert recovered.ran == 1
+    assert backend.new_calls == 1
+    assert ep.moments_llm_recipe_hash == "same-recipe"
+
+
+@pytest.mark.parametrize(
+    "status,count,expected",
+    [
+        ("exhausted", 3, "exhausted"),
+        ("retryable", 3, "exhausted"),
+        ("structural_blocked", 0, "admitted"),
+    ],
+)
+def test_moments_retry_ceiling_does_not_spend_new_work_slots(status, count, expected):
+    import json
+
+    from citypods.compute.llm_deferred import deferred_failure_key
+
+    storage = MemStorage()
+    storage.put_cas(
+        deferred_failure_key("blocked"),
+        json.dumps(
+            {
+                "status": status,
+                "failure_count": count,
+            }
+        ).encode(),
+        "application/json",
+    )
+    ctx = StageContext(
+        storage=storage, ffmpeg=None, max_kbps=96, dry_run=False, moment_max_dispatches=1
+    )
+    stats = StageStats("moments")
+    assert _admit_r6_dispatch(ctx, stats, "blocked", "episode") == expected
+    if expected == "exhausted":
+        assert ctx.moment_dispatches == 0
+        assert _admit_r6_dispatch(ctx, stats, "fresh", "other") == "admitted"
+    assert ctx.moment_dispatches == 1

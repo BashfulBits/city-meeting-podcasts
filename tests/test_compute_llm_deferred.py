@@ -1234,3 +1234,54 @@ def test_weekly_pointer_refresh_reaches_handles_with_no_remaining_index():
     assert look_up_v2_deferred_ref(storage, handle.ref) == handle
     audit, _ = llm_deferred.load_pending_audit_snapshot(storage)
     assert list(audit.pending()) == [handle]
+
+
+@pytest.mark.parametrize(
+    "task,expected",
+    [
+        ("moment-extraction", "moment-extraction"),
+        ("tag", None),
+    ],
+)
+def test_legacy_pending_moments_restore_the_known_contract(task, expected):
+    storage = MemStorage()
+    handle = JobHandle(task=task, recipe_hash="legacy", backend="llm-dispatch-v2", ref="old")
+    write_deferred(storage, "legacy", handle)
+    assert look_up_deferred(storage, "legacy").structured_output == expected
+
+
+def test_invalid_completed_results_exhaust_existing_retry_budget():
+    storage = MemStorage()
+    result = JobResult(task="moment-extraction", recipe_hash="bad", output={"wrong": []})
+    for attempt in range(llm_deferred.MAX_TERMINAL_FAILURE_RETRIES):
+        write_deferred(storage, "bad", result, now=NOW + timedelta(seconds=attempt))
+        assert discard_completed_result(storage, "bad", result, error=ValueError("private text"))
+        marker = _read_json(storage, deferred_failure_key("bad"))
+        assert marker["failure_count"] == attempt + 1
+        assert "private text" not in marker["last_error"]
+    assert not terminal_failure_retry_allowed(storage, "bad")
+
+
+def test_invalid_completed_result_failed_delete_is_not_counted_twice(monkeypatch):
+    storage = MemStorage()
+    result = JobResult(task="moment-extraction", recipe_hash="bad", output={"wrong": []})
+    write_deferred(storage, "bad", result)
+    original_delete = storage.delete
+    monkeypatch.setattr(storage, "delete", lambda key: (_ for _ in ()).throw(OSError("offline")))
+    with pytest.raises(OSError):
+        discard_completed_result(storage, "bad", result, error=ValueError())
+    monkeypatch.setattr(storage, "delete", original_delete)
+    assert discard_completed_result(storage, "bad", result, error=ValueError())
+    assert _read_json(storage, deferred_failure_key("bad"))["failure_count"] == 1
+
+
+def test_invalid_completed_result_keeps_cache_if_audit_write_fails(monkeypatch):
+    storage = MemStorage()
+    result = JobResult(task="moment-extraction", recipe_hash="bad", output={"wrong": []})
+    write_deferred(storage, "bad", result)
+    monkeypatch.setattr(
+        storage, "put_file", lambda *args: (_ for _ in ()).throw(OSError("offline"))
+    )
+    with pytest.raises(OSError):
+        discard_completed_result(storage, "bad", result, error=ValueError())
+    assert look_up_deferred(storage, "bad") == result

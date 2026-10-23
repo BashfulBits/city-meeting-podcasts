@@ -1124,6 +1124,7 @@ class MomentsStage(LLMProducerStage):
     ) -> StageStats:
         from citypods.chapters import episode_served_chapters
         from citypods.compute.base import InferenceJob, JobHandle, JobResult
+        from citypods.compute.llm_deferred import discard_completed_result
         from citypods.compute.llm_policy import LLMRequestPolicy
         from citypods.moments import (
             MOMENTS_CONTRACT,
@@ -1239,7 +1240,7 @@ class MomentsStage(LLMProducerStage):
                 timeout_class="long",
             )
             admission = _admit_r6_dispatch(ctx, stats, moments_recipe, ep.uid or ep.guid)
-            if admission in {"pending", "cap"}:
+            if admission in {"pending", "cap", "exhausted"}:
                 work.defer("queued" if admission == "pending" else "policy_held")
                 continue
             try:
@@ -1253,9 +1254,15 @@ class MomentsStage(LLMProducerStage):
                 if isinstance(outcome, JobHandle):
                     stats.defer("llm-pending", sample=ep.uid or ep.guid)
                     continue
-                if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
+                if not isinstance(outcome, JobResult):
                     raise ValueError("moment backend returned an invalid result")
-                payload = response_payload(outcome.output)
+                try:
+                    if not isinstance(outcome.output, dict):
+                        raise ValueError("moment result is not an object")
+                    payload = response_payload(outcome.output)
+                except (ValueError, TypeError) as exc:
+                    discard_completed_result(ctx.storage, moments_recipe, outcome, error=exc)
+                    raise ValueError("moment response failed schema validation") from None
                 model = str(outcome.model or allowed_models[0])
             except Exception as exc:  # noqa: BLE001 - one bad model response cannot stop a feed.
                 work.defer("errored")
@@ -1377,7 +1384,7 @@ def _moment_source(
 def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, sample: str) -> str:
     """Reserve the shared R6 budget only for a genuinely new queue admission."""
     from citypods.compute.base import JobHandle, JobResult
-    from citypods.compute.llm_deferred import look_up_deferred
+    from citypods.compute.llm_deferred import look_up_deferred, terminal_failure_budget_exhausted
 
     existing = look_up_deferred(ctx.storage, recipe_hash)
     if isinstance(existing, JobHandle):
@@ -1385,6 +1392,9 @@ def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, s
         return "pending"
     if isinstance(existing, JobResult):
         return "cached"
+    if terminal_failure_budget_exhausted(ctx.storage, recipe_hash):
+        stats.defer("llm-retry-exhausted", sample=sample)
+        return "exhausted"
     with ctx.moment_dispatch_lock:
         if (
             ctx.moment_max_dispatches is not None
