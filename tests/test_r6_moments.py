@@ -307,14 +307,16 @@ def test_captions_show_only_words_spoken_inside_the_clip():
     assert caption_text(_SEGMENTS, 105.0, 111.0) == _SEGMENTS[0]["text"]
 
 
-def test_the_moments_output_budget_leaves_room_for_reasoning_on_every_route():
-    # At 4,096 a reasoning model spent the whole budget thinking and returned empty content.
+def test_the_moments_output_reservation_covers_real_reasoning_use():
+    # At 4,096 a reasoning model spent the whole budget thinking and returned empty content; at
+    # 16,384 the reservation was below what these models actually write (p90 35,313 on OrcaRouter
+    # GLM 5.3 Flash), so TPM admission under-counted every call (llm-budget-monitor #1870).
     import json as _json
     from pathlib import Path as _Path
 
     from citypods.compute.llm_lanes import lane_for
 
-    assert _moments.MOMENTS_OUTPUT_TOKEN_BUDGET >= 16_384
+    assert _moments.MOMENTS_OUTPUT_TOKEN_BUDGET >= 36_864
     catalog = _json.loads(
         (
             _Path(__file__).resolve().parents[1]
@@ -322,9 +324,16 @@ def test_the_moments_output_budget_leaves_room_for_reasoning_on_every_route():
         ).read_text()
     )
     for model in lane_for("r6-moments").models:
-        for route_id in catalog["model_routes_map"][model]:
-            route = catalog["routes_by_id"][route_id]
-            assert route["output_context_limit"] >= _moments.MOMENTS_OUTPUT_TOKEN_BUDGET, route_id
+        # A route whose own output limit is below the lane's reservation cannot serve a moments
+        # job at all (routeFitsContext: `outputTokens <= outputLimit`), which is the honest
+        # outcome -- it would truncate the answer. Every model must still have one that can.
+        capable = [
+            route_id
+            for route_id in catalog["model_routes_map"][model]
+            if catalog["routes_by_id"][route_id]["output_context_limit"]
+            >= _moments.MOMENTS_OUTPUT_TOKEN_BUDGET
+        ]
+        assert capable, model
 
 
 def test_the_tagger_output_budget_leaves_room_for_reasoning_on_every_route():

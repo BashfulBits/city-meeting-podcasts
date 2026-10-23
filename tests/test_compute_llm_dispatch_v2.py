@@ -18,6 +18,7 @@ from citypods.compute.llm import (
     LiteLLMBackend,
     LLMBackendConfig,
     LLMBackendError,
+    LLMDispatchRejectedError,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
     LLMUpstreamPassthroughError,
@@ -600,6 +601,101 @@ def test_enqueue_batch_defers_per_purpose_capacity_rejections(reason):
     assert result[0].ref.startswith(f"deferred-{reason}-")
     assert backend._daily_ingest_exhausted is False
     assert any(key.startswith("state/llm_deferred/") for key in storage.files)
+
+
+def test_a_spent_purpose_stops_staging_but_other_purposes_keep_submitting():
+    """A budget rejection closes that lane only, and closed means no further staging.
+
+    One `build` submits several lanes' stages through this same backend, so closing the whole
+    process would drop another lane's work for the day; but leaving the spent lane open makes
+    every later call pay for a payload upload the Worker has already said it will refuse (the
+    sweep did that for its whole backlog, ~85 s of B2 writes per 1,000-job chunk).
+    """
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = lambda url, json=None, **_kw: _mock_response(
+        status_code=200,
+        json_data={
+            "accepted": [],
+            "rejected": [
+                {"id": job["id"], "reason": "purpose_write_budget_exceeded"} for job in json["jobs"]
+            ],
+        },
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+
+    def job(recipe, purpose):
+        return InferenceJob(
+            task="tag",
+            inputs={
+                "messages": [{"role": "user", "content": "meeting text"}],
+                "llm_policy": LLMRequestPolicy(purpose=purpose),
+            },
+            recipe_hash=recipe,
+        )
+
+    first = backend.enqueue_batch([job("m1", "r6-moments")])
+    assert isinstance(first[0], JobHandle) and first[0].deferred_request is not None
+    assert backend._ingest_closed_purposes == {"r6-moments"}
+    assert backend._daily_ingest_exhausted is False
+    assert session.post.call_count == 1
+    staged = len(storage.files)
+
+    # Same lane again: still a retryable deferred handle, but no request and no new upload.
+    again = backend.enqueue_batch([job("m2", "r6-moments")])
+    assert isinstance(again[0], JobHandle) and again[0].deferred_request is not None
+    assert session.post.call_count == 1
+    assert len(storage.files) == staged
+
+    # A different lane in the same process is unaffected.
+    other = backend.enqueue_batch([job("t1", "topic-tags:tagger")])
+    assert isinstance(other[0], JobHandle) and other[0].deferred_request is not None
+    assert session.post.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["model_not_in_lane", "purpose_not_registered", "route_id_not_in_model_pool"],
+)
+def test_a_lane_registry_rejection_is_reported_as_terminal(reason):
+    """These cannot be cleared by resubmitting the same immutable record (see the sweep, which
+    retires it so the producer re-plans), so they are typed apart from a transport failure."""
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = lambda url, json=None, **_kw: _mock_response(
+        status_code=200,
+        json_data={
+            "accepted": [],
+            "rejected": [{"id": job["id"], "reason": reason} for job in json["jobs"]],
+        },
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag", inputs={"messages": [{"role": "user", "content": "x"}]}, recipe_hash="stale"
+    )
+
+    result = backend.enqueue_batch([job])[0]
+
+    assert isinstance(result, LLMDispatchRejectedError)
+    assert isinstance(result, LLMBackendError)
+    assert result.reason == reason
+    # Terminal for the record, not for its lane's budget: nothing is closed by it.
+    assert backend._ingest_closed_purposes == set()
+    assert backend._daily_ingest_exhausted is False
 
 
 def test_enqueue_batch_mixed_accepted_and_rejected():

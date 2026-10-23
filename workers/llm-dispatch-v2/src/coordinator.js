@@ -805,7 +805,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           if (!Number.isFinite(reserved) || reserved <= 0) return sum;
           return sum + Math.max(0, reserved - (usage.get(other) || 0));
         }, 0);
-        const globalAvailable = this._maxIngressWriteUnitsPerUtcDay() - otherReservations - unitsToday;
+        const globalAvailable =
+          this._maxIngressWriteUnitsPerUtcDay() -
+          this._withheldReservationUnits(otherReservations, now) -
+          unitsToday;
         const laneAvailable = Number.isFinite(daily) && daily >= 0 ? daily - used : Infinity;
         // The smallest job this lane submits (compiled from its model list); 3 + 1 by default.
         const minUnits = Number(config.write_units_per_job) || 4;
@@ -1510,6 +1513,36 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return Number.isFinite(configured) && configured > 0
       ? configured
       : this._maxJobsPerUtcDay() * 4;
+  }
+
+  /**
+   * The share of another lane's *unspent* reservation this admission may borrow, in [0, 1].
+   *
+   * A reservation protects one lane's capacity for the whole UTC day, and admission withholds it
+   * from everyone else for exactly that long. Late in the day that protection stops paying off:
+   * an unspent reservation can no longer be used by the lane it was held for, so keeping it back
+   * only refuses work that had the day's remaining budget to run in. Borrow progressively --
+   * nothing while more than half the day is left, half with 12 hours to the rollover, and
+   * everything in the last 6 hours -- so the reserve still does its job through the productive
+   * part of the day and the tail is spent instead of discarded.
+   */
+  _reservationBorrowFraction(now = Date.now()) {
+    // Epoch milliseconds are UTC-midnight aligned, so `now % day` is the time elapsed since
+    // 00:00 UTC today and this is the time left until the next rollover.
+    const remainingMs = 86_400_000 - (now % 86_400_000);
+    if (remainingMs <= 6 * 3_600_000) return 1;
+    if (remainingMs <= 12 * 3_600_000) return 0.5;
+    return 0;
+  }
+
+  /**
+   * The part of `unspentOtherReservations` this admission must still withhold (rounds up, so a
+   * borrow never withholds less than the schedule allows).
+   */
+  _withheldReservationUnits(unspentOtherReservations, now = Date.now()) {
+    const borrowed = this._reservationBorrowFraction(now);
+    if (borrowed >= 1) return 0;
+    return Math.ceil(Math.max(0, unspentOtherReservations) * (1 - borrowed));
   }
 
   /**
@@ -2883,7 +2916,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           continue;
         }
         // A purpose may consume its own reserved write budget plus globally unreserved headroom,
-        // but must leave every other configured purpose enough capacity to use its reservation.
+        // but must leave every other configured purpose enough capacity to use its reservation
+        // -- except for the part of it the end-of-day schedule releases back to whoever can still
+        // run work (`_reservationBorrowFraction`).
         const otherReservations = Object.entries(ingressReservations).reduce(
           (sum, [otherPurpose, config]) => {
             if (otherPurpose === purpose) return sum;
@@ -2893,7 +2928,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           },
           0
         );
-        if (ingressWriteUnits + newlyAdmittedWriteUnits + writeUnits > maxIngressWriteUnits - otherReservations) {
+        const withheldReservations = this._withheldReservationUnits(otherReservations, now);
+        if (
+          ingressWriteUnits + newlyAdmittedWriteUnits + writeUnits >
+          maxIngressWriteUnits - withheldReservations
+        ) {
           rejected.push({ id: job.id, reason: "ingress_write_budget_reserved" });
           continue;
         }
@@ -3106,7 +3145,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         )][0]?.write_units || 0;
         return sum + Math.max(0, reserved - used);
       }, 0);
-      if ((sched.ingress_write_units_today || 0) + writeUnits > maxIngressWriteUnits - otherReservations) {
+      const withheldReservations = this._withheldReservationUnits(otherReservations, now);
+      if (
+        (sched.ingress_write_units_today || 0) + writeUnits >
+        maxIngressWriteUnits - withheldReservations
+      ) {
         return { status: "ingress_write_budget_reserved" };
       }
 

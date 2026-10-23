@@ -132,8 +132,19 @@ MOMENTS_MAX_SECONDS = 90.0
 # with ``max_tokens_mode: "route_max"``, so the route's own output limit (bounded by
 # MAX_ROUTE_OUTPUT_TOKENS) reaches the provider. A fixed cap only truncates -- at 4,096 GLM 5.3
 # Flash spent every token reasoning and returned EMPTY content (finish_reason "length", AI Gateway
-# 2026-09-25) -- so the cap is the route's, and this number only sizes TPM admission.
-MOMENTS_OUTPUT_TOKEN_BUDGET = 16_384
+# 2026-09-25) -- so the cap is the route's.
+#
+# The reservation, though, is what TPM admission is charged for, and it can never exceed this
+# number (``outputReserveFor`` takes min(this, the route's calibrated output forecast)). At 16,384
+# it was below real use: 12 of 19 calls on OrcaRouter's GLM 5.3 Flash wrote more than their
+# reservation (p90 35,313) and 8 of 16 on its DeepSeek V4 Flash (p90 25,016), so every one of
+# those calls under-counted the token bucket by up to 2x (llm-budget-monitor #1870, 2026-10-22).
+# 36,864 covers the higher p90 with room for the p95 x 1.25 forecast. Routes whose own output
+# limit is smaller (the two 16,384-output BeatAPI DeepSeek routes) are statically ineligible for a
+# moments job rather than silently truncating one; every model in the lane keeps a capable route.
+# Not in the recipe hash (nothing re-extracts), and route_max means the provider still receives
+# the route's limit, not this number.
+MOMENTS_OUTPUT_TOKEN_BUDGET = 36_864
 MOMENTS_PADDING_SECONDS = 1.5
 MOMENTS_FRAMING_PROFILE = "social-vertical-opencv-mouth-motion-v1"
 
