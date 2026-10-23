@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+from pathlib import Path
 
+import pytest
+
+from citypods import availability_review
 from citypods.availability_digest import (
     DIGEST_ISSUE_MARKER,
+    DIGEST_STATE_NAME,
     DIGEST_STATE_SCHEMA_VERSION,
     EVIDENCE_SCHEMA_VERSION,
     Candidate,
@@ -21,7 +27,8 @@ from citypods.availability_digest import (
     updated_digest_state,
 )
 from citypods.availability_review import _candidate_body, mark_pending, package_evidence
-from citypods.review_issues import checked_decisions
+from citypods.records import load_records
+from citypods.review_issues import append_bounded_envelope, checked_decisions
 
 
 def test_evidence_and_digest_state_use_independent_schema_version_constants():
@@ -120,7 +127,7 @@ def test_h16_candidate_body_cannot_turn_provider_text_into_a_decision():
 
 def _write_source(state_dir, key, episodes):
     src = state_dir / "sources" / key
-    src.mkdir(parents=True)
+    src.mkdir(parents=True, exist_ok=True)
     (src / "episodes.json").write_text(json.dumps({"schema_version": 2, "episodes": episodes}))
 
 
@@ -333,6 +340,79 @@ def test_proxy_cmd_is_low_bitrate_mono_and_trims_on_request():
     assert "-af" not in base
     trimmed = proxy_ffmpeg_cmd("https://x/m.mp4", "/tmp/o.m4a", trim=True)
     assert "-af" in trimmed and "silenceremove" in trimmed[trimmed.index("-af") + 1]
+
+
+# --- review ingest -------------------------------------------------------------------------------
+
+
+def _write_issue(tmp_path: Path, body: str, *, issue: int = 1) -> argparse.Namespace:
+    path = tmp_path / "issue.md"
+    path.write_text(body, encoding="utf-8")
+    return argparse.Namespace(
+        issue_body_file=path,
+        issue_number=issue,
+        issue_url=f"https://github.com/o/r/issues/{issue}",
+        actor="reviewer",
+        site_config="config/site_config.yml",
+        output_dir=str(tmp_path / "docs"),
+    )
+
+
+def _checked_body(*, state="confirmed_empty", fingerprint="fp", decision="Confirm empty") -> str:
+    evidence = {
+        "uid": "u1",
+        "source_key": "src",
+        "state": state,
+        "detector_version": "1",
+        "source_fingerprint": fingerprint,
+        "canonical_source_url": "https://city.gov/watch/u1",
+    }
+    body, _ = append_bounded_envelope(
+        _candidate_body(evidence),
+        family="h16",
+        candidate_id=f"u1:{fingerprint}:1:{state}",
+        surface="child",
+    )
+    return body.replace(f"- [ ] {decision}", f"- [x] {decision}", 1)
+
+
+@pytest.fixture
+def ingest_state_dir(tmp_path, monkeypatch):
+    state_dir = tmp_path / "state"
+    monkeypatch.setattr("citypods.config.load_site_config", lambda _path: {})
+    monkeypatch.setattr("citypods.state.resolve_state_dir", lambda _site, _out: state_dir)
+    monkeypatch.setattr("citypods.storage.make_storage", lambda *_a, **_k: None)
+    monkeypatch.setattr("citypods.statesync.pull_state", lambda *_a, **_k: None)
+    monkeypatch.setattr("citypods.statesync.push_records_merged", lambda *_a, **_k: None)
+    monkeypatch.setattr("citypods.statesync.push_state", lambda *_a, **_k: None)
+    _write_source(
+        state_dir, "src", {"u1": _rec("u1", "suspected_empty", override="confirmed_empty")}
+    )
+    return state_dir
+
+
+def test_ingest_accepts_a_decision_against_the_effective_override_state(tmp_path, ingest_state_dir):
+    """#2315: the digest publishes ``operator_override or state``, so a candidate whose verdict is
+    already operator-resolved must still be ingestable. Comparing the raw ``state`` field made
+    every such checked decision fail as "stale", stranding the child open indefinitely."""
+    assert availability_review.ingest(_write_issue(tmp_path, _checked_body())) == 0
+    av = load_records(ingest_state_dir, "src")["u1"]["media_availability"]
+    assert av["state"] == "suspected_empty"  # the detector verdict itself stays untouched
+    assert av["operator_override"] == "confirmed_empty"
+    assert "GitHub review #1 by @reviewer: Confirm empty" in av["operator_reason"]
+    ledger = json.loads((ingest_state_dir / DIGEST_STATE_NAME).read_text())
+    assert ledger["reviews"]["u1:fp:1:confirmed_empty"]["status"] == "resolved"
+
+
+def test_ingest_still_rejects_changed_source_bytes(tmp_path, ingest_state_dir):
+    with pytest.raises(ValueError, match="field source_fingerprint"):
+        availability_review.ingest(_write_issue(tmp_path, _checked_body(fingerprint="rotated")))
+
+
+def test_ingest_still_rejects_a_changed_effective_state(tmp_path, ingest_state_dir):
+    _write_source(ingest_state_dir, "src", {"u1": _rec("u1", "suspected_empty")})
+    with pytest.raises(ValueError, match="field state"):
+        availability_review.ingest(_write_issue(tmp_path, _checked_body()))
 
 
 # --- digest ledger -------------------------------------------------------------------------------

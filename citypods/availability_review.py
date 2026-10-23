@@ -133,10 +133,18 @@ def ingest(args: argparse.Namespace) -> int:
     if not isinstance(raw, dict):
         raise ValueError("H16 candidate is no longer present in durable records")
     av = raw.get("media_availability") if isinstance(raw.get("media_availability"), dict) else {}
-    for key in ("state", "detector_version", "source_fingerprint"):
+    prior = _availability_from_rec(raw)
+    # The digest renders each candidate's *effective* verdict (``operator_override or state``), so
+    # validate the marker against that same projection. Comparing the raw ``state`` field instead
+    # made every candidate whose verdict had already been operator-resolved (e.g. an empty
+    # recording confirmed in an earlier review) look stale, so its checked decision could never be
+    # applied and the child stayed open indefinitely (#2315).
+    durable_state = prior.effective_state() if prior else av.get("state")
+    if candidate.get("state") != durable_state:
+        raise ValueError("H16 candidate differs from durable media availability field state")
+    for key in ("detector_version", "source_fingerprint"):
         if candidate.get(key) != av.get(key):
             raise ValueError(f"H16 candidate differs from durable media availability field {key}")
-    prior = _availability_from_rec(raw)
     target = CONFIRMED_EMPTY if decision == "Confirm empty" else AVAILABLE
     rationale_match = re.search(r"(?mi)^Rationale \(optional\):\s*(.+)$", body)
     rationale = rationale_match.group(1).strip() if rationale_match else decision
