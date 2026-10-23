@@ -15,6 +15,25 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Typed judge answers and live contract evaluation.** New chat packets require per-kind
+  answer fields, including a choose letter; legacy replies remain readable. Add a direct frozen
+  evaluation harness that records raw responses, schema/parser coverage and quote support by route.
+  Chat request revision 3 changes newly planned sibling/adjudicator packet identities only.
+  Stored judgments and pending pointers are left as-is; there is no automatic catalog backfill,
+  JEV re-ask, question prompt-version bump or production-state cleanup.
+
+- **Sibling quote policy.** Count parsed sibling decisions independently of quote quality,
+  including stored rows; preserve quote failure metrics and the adjudicator evidence gate.
+  Stored sibling judgments are not invalidated.
+  Newly usable stored votes may expose additional disagreements for normal adjudication.
+
+- **Groq Qwen output limit.** Correct the route maximum to the provider-enforced 16,384 tokens
+  and regenerate the Python and v2 Worker catalogs. Existing stored artifacts remain unchanged.
+
+- **Labeled judge-pair analysis.** Compare saved first responses against frozen gold with
+  two-positive acceptance, false-accept counts, review coverage and uncertainty; preserve
+  invalid-packet outcomes and distinguish authorized provider/account substitutions.
+
 - **Ingress reservations are released as the UTC day ends, and a spent lane stops staging.**
   `enqueueBatch`, `schemaRetry` and `ingressStatus` all admit a job against the global write budget
   minus every *other* lane's unspent `reserved_write_units`. Measured live on 2026-10-22 21:40 UTC,
