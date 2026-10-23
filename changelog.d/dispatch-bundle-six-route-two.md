@@ -14,3 +14,5 @@
   until dispatch has fewer than six lanes open (the first lane settling) and deletes a job's two
   B2 objects one at a time instead of together. Cleanup on a six-lane tick starts later, never
   concurrently with a sixth connection.
+- The Gemma network probe (diagnostics) shares that one slot: on a six-lane bundle it starts only
+  after the first lane settles. It is never run on a cleanup tick, so the two do not overlap.

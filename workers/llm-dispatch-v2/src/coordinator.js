@@ -1836,7 +1836,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return now + Math.min(maxCooldown * 1000, Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5)));
   }
 
-  /** AI Gateway already made its own short retry series, so this is a small durable outer budget. */
+  /** Three early cron retry opportunities, then at most five minutes; quotas still gate claims. */
+  _googleGemmaAvailabilityBlockedUntil(streak, now, retryAfterSeconds = null) {
+    const delay = streak <= 3 ? 30_000 + Math.random() * 30_000
+      : Math.min(300_000, 60_000 * 2 ** Math.min(streak - 4, 3)) * (0.8 + Math.random() * 0.2);
+    const providerFloor = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? retryAfterSeconds * 1000 : 0;
+    return now + Math.ceil(Math.max(delay, providerFloor));
+  }
+
+
   /** Retry budget for failures the provider caused (upstream saturation, gateway limits).
    * Larger than the 5xx budget on purpose: these clear on their own and cost us nothing to wait
    * out, whereas failing the job throws away work that was already admitted and paid for. */
@@ -6835,16 +6844,24 @@ export class LLMSchedulerDO extends DurableObjectBase {
               result.failure_class === "upstream_capacity" &&
               Number(ledger.blocked_until) > now;
             const streak = (ledger.upstream_capacity_streak || 0) + (alreadyCooling ? 0 : 1);
+            const failedRoute = this._dispatchLimits().routes_by_id?.[job.lease_route_id];
+            const googleAvailability = failedRoute?.provider === "gemini" &&
+              /^gemma-4-/.test(String(failedRoute.upstream_model || "")) &&
+              [500, 503].includes(result.provider_status_code);
+            const nextBlock = googleAvailability
+              ? this._googleGemmaAvailabilityBlockedUntil(streak, now, result.retry_after_seconds)
+              : this._upstreamCapacityBlockedUntil(
+                  streak, now, result.failure_class === "upstream_capacity"
+                );
             sql.exec(
               `UPDATE routes SET upstream_capacity_streak = ?,
                                  blocked_until = MAX(COALESCE(blocked_until, 0), ?),
                                  last_provider_status = ? WHERE route_id = ?`,
               streak,
-              alreadyCooling ? 0 : this._upstreamCapacityBlockedUntil(
-                streak,
-                now,
-                result.failure_class === "upstream_capacity"
-              ),
+              alreadyCooling
+                ? (googleAvailability && Number.isFinite(result.retry_after_seconds) &&
+                    result.retry_after_seconds > 0 ? now + result.retry_after_seconds * 1000 : 0)
+                : nextBlock,
               result.provider_status_code ?? null,
               job.lease_route_id
             );

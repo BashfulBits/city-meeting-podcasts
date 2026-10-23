@@ -20,6 +20,9 @@ import {
 import { B2Client } from "./b2.js";
 import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
 import { apiShapeFor } from "./api_shapes.js";
+import {
+  gatewayNetworkFacts, networkProbeAllowed, observeBundleNetwork,
+} from "./network_diagnostics.js";
 import { classifyProviderFailure, googleQuotaDiagnostics } from "./classify.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
@@ -917,6 +920,10 @@ function logGemmaAttempt({
     : null;
   console.info(JSON.stringify({
     event: "gemma_provider_attempt",
+    bundle_id: job.diagnostic_bundle_id ?? null,
+    provider_account_id: /^[a-zA-Z0-9_-]{1,64}$/.test(route.account_id || "")
+      ? route.account_id : null,
+    ...gatewayNetworkFacts(response),
     job_id: job.id,
     request_digest: job.request_digest ?? null,
     lease_token: job.lease_token,
@@ -1162,6 +1169,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
       provider_status_code: response.status,
       gateway_correlation_id: response.correlationId,
       failure_class: cls.failure_class,
+      retry_after_seconds: cls.retry_after_seconds ?? null,
       rule_id: cls.rule_id,
       scope: cls.scope,
     },
@@ -1268,7 +1276,7 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
  * just-in-time (no B2 access before a job's own wait_ms elapses, no bulk pre-fetch -- see the
  * unit's own "do not" guardrails), and report every attempt in one completeBatch call.
  */
-async function runScheduledDispatch(env, releaseCleanup = () => {}) {
+async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {}) {
   const b2 = b2ClientFromEnv(env);
   if (!b2) {
     console.error("scheduled: B2 credentials not configured; cannot execute claimed plan");
@@ -1296,17 +1304,33 @@ async function runScheduledDispatch(env, releaseCleanup = () => {}) {
   const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;
   const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
 
+  // The invocation's sixth connection is shared by the Gemma network probe (never on a cleanup
+  // tick) and cleanup (only on one), so at most one of them uses it. With fewer than six lanes it
+  // is free at once; with six it opens when the first lane settles and closes its connection.
+  let openSlot;
+  const slotFree = new Promise((resolve) => { openSlot = resolve; });
+  const releaseSlot = () => { openSlot(); releaseCleanup(); };
+  if (new Set(plan.jobs.map((job) => job.route_id)).size < MAX_INVOCATION_CONNECTIONS) releaseSlot();
+
+  const googleGemmaRoutes = plan.jobs.map(job => routeForId(job.route_id, dispatchLimits))
+    .filter(route => route?.provider === "gemini" && /^gemma-4-/.test(route.upstream_model || ""));
+  // One bounded diagnostic set per qualifying bundle, concurrently with inference. No R2/DO writes.
+  // The probe IP is NOT the AI Gateway-to-Google IP; bundle ID joins it to individual attempts.
+  const networkObservation = googleGemmaRoutes.length === 0 ? Promise.resolve() :
+    (networkProbeAllowed(env, plan.jobs.length, scheduledTime)
+      ? slotFree.then(() => observeBundleNetwork())
+      : Promise.resolve({ probe_status: "skipped_budget" }))
+      .then(facts => console.info(JSON.stringify({
+        event: "gemma_execution_network", bundle_id: plan.bundle_id,
+        observed_at: Date.now(), network_path: "worker_to_cloudflare_trace_and_aws", ...facts,
+      })));
+
   const lanes = new Map();
   const leaseDurationMs = Number(env.LEASE_DURATION_SECONDS || 840) * 1000;
   for (const job of withLeaseDeadlines(plan.jobs, claimNow, leaseDurationMs)) {
     if (!lanes.has(job.route_id)) lanes.set(job.route_id, []);
-    lanes.get(job.route_id).push(job);
+    lanes.get(job.route_id).push({ ...job, diagnostic_bundle_id: plan.bundle_id });
   }
-
-  // Cleanup shares this invocation's six-connection budget (one connection at a time). With fewer
-  // than six lanes there is always a free slot; with six, cleanup waits for the first lane to
-  // settle (its connection closed), leaving at most five lanes plus cleanup's one.
-  if (lanes.size < MAX_INVOCATION_CONNECTIONS) releaseCleanup();
 
   const results = [];
   // Promise.allSettled over independent lanes -- safe without a separate concurrency limiter
@@ -1341,11 +1365,12 @@ async function runScheduledDispatch(env, releaseCleanup = () => {}) {
         if (result !== null) results.push(result);
       }
       } finally {
-        releaseCleanup();
+        releaseSlot();
       }
     })
   );
 
+  await networkObservation;
   try {
     await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results);
   } catch (err) {
@@ -1456,7 +1481,7 @@ export default {
     let releaseCleanup;
     const dispatchSlotFree = new Promise((resolve) => { releaseCleanup = resolve; });
     ctx.waitUntil(
-      runScheduledDispatch(env, releaseCleanup)
+      runScheduledDispatch(env, event?.scheduledTime, releaseCleanup)
         .catch((err) => {
           console.error(`scheduled: runScheduledDispatch failed: ${describeError(err)}`);
         })

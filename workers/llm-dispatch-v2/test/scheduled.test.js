@@ -469,3 +469,61 @@ test("cleanup waits for a free connection slot when dispatch runs six lanes", as
     globalThis.fetch = originalFetch;
   }
 });
+
+test("the Gemma network probe waits for a free connection slot when dispatch runs six lanes", async () => {
+  const models = [0, 1, 2, 3, 4, 5].map((i) => (i === 0 ? "gemini/gemma-4-31b" : `gemini/m${i}`));
+  const catalog = {
+    ...CATALOG,
+    model_routes_map: Object.fromEntries(models.map((m, i) => [m, [`route-${i}`]])),
+    routes_by_id: Object.fromEntries(models.map((m, i) => [`route-${i}`,
+      { ...CATALOG.routes_by_id["route-a"], upstream_model: m.split("/")[1] }])),
+  };
+  const limits = { DISPATCH_LIMITS_OVERRIDE: catalog };
+  const env = makeEnv({
+    ...limits, MAX_BUNDLE_JOBS: "6", MAX_JOBS_PER_MODEL_CLAIM: "6",
+    MAX_CONCURRENT_ROUTE_LANES: "6", MAX_RESPONSE_SECONDS: "60",
+  }, {
+    ...limits, MAX_BUNDLE_JOBS: "6", MAX_JOBS_PER_MODEL_CLAIM: "6",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1", MAX_CONCURRENT_ROUTE_LANES: "6",
+  });
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = fakeFetch(store);
+    for (const [i, model] of models.entries()) await enqueueOneJob(env, `lane-${i}`, store, model);
+    const heldCalls = [];
+    let openCalls = 0;
+    const probes = [];
+    const base = fakeFetch(store);
+    globalThis.fetch = async (url, init = {}) => {
+      const parsed = new URL(url);
+      if (parsed.host === B2_HOST) return base(url, init);
+      if (!parsed.host.includes("generativelanguage") && !parsed.host.includes("gateway")) {
+        probes.push(openCalls); // diagnostic request (Cloudflare trace, AWS, GeoIP)
+        return new Response("", { status: 500 });
+      }
+      openCalls += 1;
+      await new Promise((resolve) => heldCalls.push(resolve));
+      openCalls -= 1;
+      return base(url, init);
+    };
+    const until = async (condition) => {
+      for (let i = 0; i < 500 && !condition(); i += 1) await new Promise((r) => setTimeout(r, 5));
+      assert.ok(condition(), "condition not reached");
+    };
+    const waits = [];
+    // 12:31 is not a cleanup minute, so the probe is allowed.
+    await worker.scheduled({ scheduledTime: Date.UTC(2026, 7, 27, 12, 31) }, env,
+      { waitUntil: (p) => waits.push(p) });
+    await until(() => heldCalls.length === 6);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(probes, [], "probe must not open a connection beside six lanes");
+    heldCalls.shift()();
+    await until(() => probes.length > 0);
+    assert.ok(probes.every((open) => open <= 5), `probe ran beside ${probes} open calls`);
+    for (const release of heldCalls.splice(0)) release();
+    await Promise.all(waits);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
