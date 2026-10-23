@@ -2326,3 +2326,8 @@ on main; the remaining host consumers and the source-build job now pin `ubuntu-2
 the existing vendored FFmpeg bundle and audio-runner container's noble codec/TLS ABI.
 Workflow contract tests guard the build/consumer alignment. The FFmpeg URL/checksum, container
 digest and pipeline versions stay unchanged; stored artifacts are retained without backfill.
+
+Judge recovery step 3 (2026-10-23): [fresh bounded revalidation](evidence/2026-10-23-judge-recovery-revalidation.md)
+rebuilds the local proposal from 32 changed sources. Archive/removal of 6,665 stale or
+stale-dependent judgments and 42 pending references remains separately approval-gated.
+JEV rows, original calibration rows and unknown-provenance pointers are preserved.

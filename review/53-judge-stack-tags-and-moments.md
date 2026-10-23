@@ -878,3 +878,22 @@ joins historical JEV T1 probabilities to frozen typed-chat decisions. Both retai
 human review. Adjudicator disagreement counts require quotes and expose the retained `i2` error.
 Historical prompt/context differences and small selection-set uncertainty preclude a production
 false-accept guarantee. No production policy or labels change; population PR7 remains separate.
+
+### Maintainer-approved automatic resolution follow-up (2026-10-23)
+
+The maintainer accepted the matched-panel results and approved retaining JEV + Gemma /
+JEV + Nemotron, using longer-context JEV on disagreements, and trusting the selected independent
+GLM or NVIDIA DeepSeek adjudicator to resolve contested cases without mandatory human review
+for every admission. Preserve a small audit sample. This supersedes the blanket human-review
+intention recorded above; it does not silently activate authority mode or remove validation gates.
+Missing or invalid adjudicator answers remain unresolved, not confident negative judgments.
+
+Measure the combined context-escalation/adjudication rule before claiming improved counts.
+The existing tag task already escalates JEV probabilities in [0.3, 0.7] to T2, including
+agreement cases; disagreement-triggered escalation must not accidentally remove that behavior.
+The adjudicator must remain independent of producer and sibling families and retain quote checks.
+
+Step 2's matched-candidate analysis is complete; PR #2528 records its replayable evidence.
+Step 3 revalidates the stale-row/pending-pointer recovery proposal using fresh read-only state.
+Production archive/removal remains a separate approval, followed by normal shadow collection.
+PR7 policy implementation and task graduation retain their separately documented gates.
