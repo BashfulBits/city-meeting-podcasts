@@ -20,6 +20,9 @@ import {
 import { B2Client } from "./b2.js";
 import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
 import { apiShapeFor } from "./api_shapes.js";
+import {
+  gatewayNetworkFacts, networkProbeAllowed, observeExecutionNetwork,
+} from "./network_diagnostics.js";
 import { classifyProviderFailure, googleQuotaDiagnostics } from "./classify.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
@@ -914,6 +917,10 @@ function logGemmaAttempt({
     : null;
   console.info(JSON.stringify({
     event: "gemma_provider_attempt",
+    bundle_id: job.diagnostic_bundle_id ?? null,
+    provider_account_id: /^[a-zA-Z0-9_-]{1,64}$/.test(route.account_id || "")
+      ? route.account_id : null,
+    ...gatewayNetworkFacts(response),
     job_id: job.id,
     request_digest: job.request_digest ?? null,
     lease_token: job.lease_token,
@@ -1266,7 +1273,7 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
  * just-in-time (no B2 access before a job's own wait_ms elapses, no bulk pre-fetch -- see the
  * unit's own "do not" guardrails), and report every attempt in one completeBatch call.
  */
-async function runScheduledDispatch(env) {
+async function runScheduledDispatch(env, scheduledTime) {
   const b2 = b2ClientFromEnv(env);
   if (!b2) {
     console.error("scheduled: B2 credentials not configured; cannot execute claimed plan");
@@ -1294,11 +1301,23 @@ async function runScheduledDispatch(env) {
   const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;
   const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
 
+  const googleGemmaRoutes = plan.jobs.map(job => routeForId(job.route_id, dispatchLimits))
+    .filter(route => route?.provider === "gemini" && /^gemma-4-/.test(route.upstream_model || ""));
+  // One bounded observation per qualifying bundle, concurrently with inference. No R2/DO writes.
+  // The probe IP is NOT the AI Gateway-to-Google IP; bundle ID joins it to individual attempts.
+  const networkObservation = googleGemmaRoutes.length === 0 ? Promise.resolve() :
+    (networkProbeAllowed(env, plan.jobs.length, scheduledTime)
+      ? observeExecutionNetwork() : Promise.resolve({ probe_status: "skipped_budget" }))
+      .then(facts => console.info(JSON.stringify({
+        event: "gemma_execution_network", bundle_id: plan.bundle_id,
+        observed_at: Date.now(), network_path: "worker_to_cloudflare_trace", ...facts,
+      })));
+
   const lanes = new Map();
   const leaseDurationMs = Number(env.LEASE_DURATION_SECONDS || 840) * 1000;
   for (const job of withLeaseDeadlines(plan.jobs, claimNow, leaseDurationMs)) {
     if (!lanes.has(job.route_id)) lanes.set(job.route_id, []);
-    lanes.get(job.route_id).push(job);
+    lanes.get(job.route_id).push({ ...job, diagnostic_bundle_id: plan.bundle_id });
   }
 
   const results = [];
@@ -1335,6 +1354,7 @@ async function runScheduledDispatch(env) {
     })
   );
 
+  await networkObservation;
   try {
     await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results);
   } catch (err) {
@@ -1438,7 +1458,7 @@ export default {
     // everywhere else in this file, rather than adding yet another incident where the actual
     // error was thrown away by the runtime's own reporting.
     ctx.waitUntil(
-      runScheduledDispatch(env).catch((err) => {
+      runScheduledDispatch(env, event?.scheduledTime).catch((err) => {
         console.error(`scheduled: runScheduledDispatch failed: ${describeError(err)}`);
       })
     );

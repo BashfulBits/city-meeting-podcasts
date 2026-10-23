@@ -684,3 +684,12 @@ No production cooldown, deployment, provider request or quota change was perform
 
 See [the investigation evidence](evidence/2026-10-23-gemma-availability.md) for location findings,
 verified response examples, measurement limits and the recovery rollout checks.
+
+
+The maintainer also requested IP/location telemetry in the same PR. Attempts now correlate the
+configured account alias, Gateway Ray/colo and bounded error signatures with a per-bundle Worker
+network observation. The two-second, 4 KiB Cloudflare trace probe skips cleanup ticks and respects
+the Free subrequest budget; it adds no R2/DO writes and does not delay provider starts. Its observed
+IP is Cloudflare trace-reported (and can be a fixed Worker placeholder), not proof of Google's
+incoming connection. See the evidence
+notes for field meanings and the remaining upstream-trace requirement.

@@ -65,7 +65,40 @@ project. Roll back the Google-specific classifier/cooldown if attempts rise with
 
 ## Local validation
 
-- Worker suite: 562 tests passed, including classifier scoping, continued durable requeue after
+- Worker suite: 567 tests passed, including classifier scoping, continued durable requeue after
   earlier failures, early retry timing, capped cooldown, and provider Retry-After floors.
-- Dispatch compiler suite: 80 tests passed.
+- Dispatch compiler suite: 80 tests passed; full Python suite: 6,888 passed, 17 deselected.
 - Whole-repository Ruff lint and format checks passed. No live inference calls were made.
+
+## Follow-up: IP and location telemetry requested by the maintainer
+
+Every `gemma_provider_attempt` log now includes `bundle_id`, the configured `provider_account_id`,
+`gateway_cf_ray`, `gateway_colo`, and fixed `provider_error_status` / `provider_error_signature`
+fields. The signature distinguishes unsupported location, INTERNAL and high demand without
+logging arbitrary provider messages. The existing Gateway log ID and job ID remain available.
+The configured account ID is a local catalog alias, not a key or Google project number.
+
+A `gemma_execution_network` event joins by bundle ID and reports `worker_probe_ip`,
+`worker_probe_colo`, and `worker_probe_country`. Its fixed endpoint is Cloudflare's public
+`/cdn-cgi/trace`; it reports Worker-to-Cloudflare trace facts, NOT Gateway-to-Google egress. Different
+outbound connections may take different paths. Neither the probe IP nor Gateway Ray colo proves
+which IP or country Google saw. Cloudflare still needs the Gateway log ID to trace that hop.
+
+There is at most one probe per claimed Google Gemma bundle, not per job or retry. It has a two-second
+timeout, a 4 KiB response bound, no redirects, and runs concurrently with inference. Cleanup ticks
+and unknown scheduled times skip the probe. A conservative per-bundle subrequest calculation also
+skips it if provider calls/retries and B2 traffic would exceed 50 requests. No R2/DO writes or
+provider inference calls are added by the observation. Probe failure is logged as a fixed status
+and does not fail the jobs; API keys, prompts, outputs and arbitrary trace fields are excluded.
+
+Compare failures and successes by provider account, Gateway colo, Worker probe location and bundle.
+Repeated location failures from one observation group can establish a useful correlation, not
+proof of the Google-facing source IP. Include the exact Gateway log IDs in a support trace.
+
+Cloudflare can substitute a fixed Worker IP in cross-zone traffic. The observation therefore
+labels `worker_probe_ip_kind=worker_placeholder` for `2a06:98c0:3600::103`; other values are
+`trace_reported`, not verified Google egress addresses. The country is likewise trace-reported.
+See https://developers.cloudflare.com/fundamentals/reference/http-headers/ for this limitation.
+
+CodeRabbit CLI review found no initial issues; the telemetry follow-up found one changelog-title
+format nit. Both entry titles now follow the documented period-inside-bold format.
