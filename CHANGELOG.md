@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **H16 availability review: operator-overridden candidates now ingest.** The weekly digest
+  publishes a candidate's *effective* verdict (`operator_override or state`), but `ingest` compared
+  the issue marker against the raw `state` field. Every child whose recording had already been
+  confirmed in an earlier review was therefore rejected as a stale candidate: the decision was not
+  stored, the child never closed, and the batch stayed open with no visible error (#2315). Ingest
+  now validates against the same effective verdict the digest rendered, while still rejecting a
+  changed source fingerprint, detector version, or verdict.
+
 - **Typed judge answers and live contract evaluation.** New chat packets require per-kind
   answer fields, including a choose letter; legacy replies remain readable. Add a direct frozen
   evaluation harness that records raw responses, schema/parser coverage and quote support by route.
