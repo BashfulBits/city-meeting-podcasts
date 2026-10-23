@@ -40,18 +40,31 @@ def read_original(path):
         return {}  # The original runner can be publishing a summary concurrently.
 
 
+def effective_route(route):
+    if route.route_id == 'sambanova_gemma_4_31b_it_primary':
+        return e.ROUTE_REGISTRY['nvidia_gemma_4_31b_it_free']
+    return route
+
+
+def credential_env(route):
+    route = effective_route(route)
+    if route.route_id == 'beatapi_secondary_deepseek_v4_1_flash_free':
+        return 'BEATAPI_API_KEY'  # Explicit human authorization; local evaluation only.
+    return route.api_key_env
+
+
 def key_for(route, refresh=False):
-    key = '' if refresh else os.environ.get(route.api_key_env, '').strip()
+    key = '' if refresh else os.environ.get(credential_env(route), '').strip()
     if not key:
         try:
             r = subprocess.run(['security', 'find-generic-password', '-a', os.environ.get('USER', ''),
-                                '-s', f'citypods/{route.api_key_env}', '-w'],
+                                '-s', f'citypods/{credential_env(route)}', '-w'],
                                capture_output=True, text=True)
             if r.returncode == 0:
                 key = r.stdout.strip()
         except FileNotFoundError:
             pass
-    return key or os.environ.get(route.api_key_env, '').strip()
+    return key or os.environ.get(credential_env(route), '').strip()
 
 
 def worker_cap(route_id, body):
@@ -87,20 +100,23 @@ def retry_after(response, raw):
 
 
 def attempt(route_id, role, index, attempt_number, refresh=False):
-    route = e.ROUTE_REGISTRY[route_id]
+    requested_route = e.ROUTE_REGISTRY[route_id]
+    route = effective_route(requested_route)
     folder = OUT / route_id
     folder.mkdir(exist_ok=True)
     prefix = folder / f'{index:02d}-attempt-{attempt_number:03d}'
-    result = {'route': route_id, 'role': role, 'packet': index, 'attempt': attempt_number,
+    result = {'route': route_id, 'actual_route': route.route_id,
+              'route_override': route.route_id != route_id, 'role': role, 'packet': index, 'attempt': attempt_number,
               'started_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-              'read_timeout_seconds': TIMEOUT}
+              'read_timeout_seconds': TIMEOUT, 'credential_env_used': credential_env(route),
+              'credential_override': credential_env(route) != route.api_key_env}
     key = key_for(route, refresh)
     if not key:
         result.update(status='missing_key', retry_in_seconds=300)
         save(prefix.with_suffix('.result.json'), result)
         return result
-    body = json.loads((SOURCE / route_id / f'{index:02d}-request.json').read_text())
-    body['max_tokens'] = worker_cap(route_id, body)
+    body = json.loads((SOURCE / route.route_id / f'{index:02d}-request.json').read_text())
+    body['max_tokens'] = worker_cap(route.route_id, body)
     body['stream'] = False
     result['max_tokens'] = body['max_tokens']
     result['worker_catalog_sha256'] = hashlib.sha256(
@@ -181,8 +197,10 @@ def main():
                 ended = latest.get('finished_at', latest.get('started_at'))
                 wait = max(0, datetime.datetime.fromisoformat(ended).timestamp()
                            + latest.get('retry_in_seconds', 60) - time.time())
+                if effective_route(e.ROUTE_REGISTRY[route_id]).route_id != latest.get('actual_route', route_id):
+                    wait = 0  # Human-authorized route change resolves the prior auth wait.
                 due[key] = time.monotonic() + wait
-                account = e.ROUTE_REGISTRY[route_id].api_key_env
+                account = credential_env(e.ROUTE_REGISTRY[route_id])
                 account_due[account] = max(account_due.get(account, 0), due[key])
                 refresh[key] = latest.get('http_status') == 401
     active = {}
@@ -194,7 +212,7 @@ def main():
                 key = active.pop(future)
                 result = future.result()
                 route_id, index = key
-                account = e.ROUTE_REGISTRY[route_id].api_key_env
+                account = credential_env(e.ROUTE_REGISTRY[route_id])
                 wait = result.get('retry_in_seconds', 60)
                 due[key] = time.monotonic() + wait
                 account_due[account] = time.monotonic() + wait
@@ -202,13 +220,13 @@ def main():
                 if result.get('http_200_terminal'):
                     tasks.pop(key)
                 print(json.dumps({k:v for k,v in result.items() if k != 'evaluation'}), flush=True)
-            busy = {e.ROUTE_REGISTRY[r].api_key_env for r, _ in active.values()}
+            busy = {credential_env(e.ROUTE_REGISTRY[r]) for r, _ in active.values()}
             original_busy = set()
             for route_id in ROLES:
                 p = SOURCE / route_id / 'result.json'
                 d = read_original(p)
                 if len(d.get('results', [])) < d.get('planned_packets', 14):
-                    original_busy.add(e.ROUTE_REGISTRY[route_id].api_key_env)
+                    original_busy.add(credential_env(e.ROUTE_REGISTRY[route_id]))
             # Original routes can finish while this retry runner is active. Never retry a
             # packet that has since obtained its first HTTP 200 in the original process.
             for route_id, role in ROLES.items():
@@ -234,7 +252,7 @@ def main():
                 if route_id in seen_routes:
                     continue
                 seen_routes.add(route_id)
-                account = e.ROUTE_REGISTRY[route_id].api_key_env
+                account = credential_env(e.ROUTE_REGISTRY[route_id])
                 if (len(active) >= 4 or account in busy or account in original_busy
                         or time.monotonic() < max(due.get(key, 0), account_due.get(account, 0))):
                     continue

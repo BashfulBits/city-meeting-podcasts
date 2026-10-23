@@ -12,3 +12,7 @@
 
 - **Groq Qwen output limit.** Correct the route maximum to the provider-enforced 16,384 tokens
   and regenerate the Python and v2 Worker catalogs. Existing stored artifacts remain unchanged.
+
+- **Labeled judge-pair analysis.** Compare saved first responses against frozen gold with
+  two-positive acceptance, false-accept counts, review coverage and uncertainty; preserve
+  invalid-packet outcomes and distinguish authorized provider/account substitutions.

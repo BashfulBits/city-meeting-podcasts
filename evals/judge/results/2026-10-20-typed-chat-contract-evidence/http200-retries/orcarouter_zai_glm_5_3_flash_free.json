@@ -2,6 +2,12 @@
   "route": "orcarouter_zai_glm_5_3_flash_free",
   "role": "adjudicator",
   "planned_packets": 14,
+  "actual_routes": [
+    "orcarouter_zai_glm_5_3_flash_free"
+  ],
+  "actual_credentials": [
+    "ORCAROUTER_API_KEY"
+  ],
   "counts": {
     "first_http200_packets": 14,
     "contract_pass_packets": 11,
@@ -352,7 +358,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 1,
@@ -624,7 +633,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 2,
@@ -896,7 +908,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 3,
@@ -1168,7 +1183,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 4,
@@ -1440,7 +1458,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 5,
@@ -1748,7 +1769,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 6,
@@ -2074,7 +2098,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 7,
@@ -2346,7 +2373,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 8,
@@ -2365,7 +2395,10 @@
         "contract_pass": false,
         "quotes_all_valid": false,
         "pass": false
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 9,
@@ -2384,7 +2417,10 @@
         "contract_pass": false,
         "quotes_all_valid": false,
         "pass": false
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 10,
@@ -2403,7 +2439,10 @@
         "contract_pass": false,
         "quotes_all_valid": false,
         "pass": false
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 11,
@@ -2549,7 +2588,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 12,
@@ -2695,7 +2737,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 13,
@@ -2823,7 +2868,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "orcarouter_zai_glm_5_3_flash_free",
+      "credential_env_used": "ORCAROUTER_API_KEY",
+      "credential_override": false
     }
   ],
   "retry_attempts": [

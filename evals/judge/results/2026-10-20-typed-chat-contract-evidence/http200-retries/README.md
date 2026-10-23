@@ -1,6 +1,6 @@
 # First-HTTP-200 retry checkpoint
 
-As of 2026-10-21T21:07:13.419970+00:00. Transport retries remain active.
+As of 2026-10-23T03:35:42.556773+00:00. All requested packet slots reached HTTP 200, including authorized substitutions.
 
 Every completed transport attempt is retained in its route JSON. Initial attempts remain in the
 parent evidence bundle. The first HTTP 200 is selected mechanically for each packet; failed
@@ -15,7 +15,7 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
 | Route | First 200 / planned packets | Contract pass / first 200 | Parsed / expected items | Quote-valid / parsed | Choices / expected |
 |---|---:|---:|---:|---:|---:|
 | beatapi_deepseek_v4_1_flash_free | 14/14 | 13/14 | 144/158 | 144/144 | 10/12 |
-| beatapi_secondary_deepseek_v4_1_flash_free | 0/14 | 0/0 | 0/0 | 0/0 | 0/0 |
+| beatapi_secondary_deepseek_v4_1_flash_free | 14/14 | 13/14 | 156/158 | 156/156 | 12/12 |
 | gemma_4_31b_primary | 14/14 | 14/14 | 158/158 | 151/158 | 12/12 |
 | gemma_4_31b_secondary | 14/14 | 13/14 | 157/158 | 154/157 | 12/12 |
 | groq_qwen_3_8_27b_primary | 14/14 | 12/14 | 135/158 | 107/135 | 10/12 |
@@ -25,7 +25,7 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
 | openrouter_google_gemma_4_31b_it_free | 14/14 | 12/14 | 158/158 | 157/158 | 12/12 |
 | openrouter_nvidia_nemotron_3_5_super_vl_free | 14/14 | 14/14 | 158/158 | 157/158 | 12/12 |
 | orcarouter_zai_glm_5_3_flash_free | 14/14 | 11/14 | 137/158 | 137/137 | 12/12 |
-| sambanova_gemma_4_31b_it_primary | 0/14 | 0/0 | 0/0 | 0/0 | 0/0 |
+| sambanova_gemma_4_31b_it_primary | 14/14 | 14/14 | 158/158 | 158/158 | 12/12 |
 
 ## Observed first-200 failures
 
@@ -46,12 +46,16 @@ check, not a catalog-quality estimate, new gold labeling, or calibration evidenc
   13 decisions, but the required v3 schema fails. Packet 9 similarly omits kind on seven
   answers; compatibility parses seven. Both first HTTP 200 replies remain terminal.
 
+- Primary-key BeatAPI substitution packet 5 has exact-ID coverage failure: 14/16 items parse.
+  It is terminal. SambaNova slots used NVIDIA; secondary BeatAPI slots used the primary key.
+  These substitutions do not validate the unavailable original provider/account.
+
 ## Gates and one recommended next action each
 
 | Gate | Evidence | Recommended next action |
 |---|---|---|
-| HTTP response sampling: pending | See remaining packet counts; authentication and missing-key blockers remain | Continue the authorized transport-only retries with backoff |
-| Parser contract: failures observed | The nine terminal packet failures above are retained | Review a bounded contract/prompt remedy before qualifying the affected model results; preserve this baseline |
+| HTTP response sampling: complete | All 168 slots reached first HTTP 200 using authorized substitutions | Compare distinct logical model pairs against existing labels |
+| Parser contract: failures observed | The ten terminal packet failures above are retained | Review a bounded contract/prompt remedy before qualifying the affected model results; preserve this baseline |
 | CI: runner setup failure | Latest test job failed before pytest because apt could not locate libvpx9; local suite 6,778 passed | Inspect the next genuine evidence push checks; keep PR draft |
 | Calibration: insufficient evidence | Last targeted 13-source catalog check has zero clean paired subject-questions | Keep thresholds pending until a verified paired cohort exists |
 

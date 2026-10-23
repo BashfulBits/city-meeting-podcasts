@@ -184,3 +184,12 @@ its hard-coded task paths make it an audit artifact, not a general CLI replaceme
 
 [Initial route evidence and retry protocol](results/2026-10-20-typed-chat-contract-evidence/README.md)
 retains failures and pending routes alongside parsed answers. Transport retries remain ongoing.
+
+## October 22 labeled judge-pair comparison
+
+[Offline pair report](results/2026-10-20-typed-chat-contract-evidence/labeled-pairs/README.md)
+replays first-HTTP-200 responses against the existing 53 definite labels. It compares distinct
+logical models under two-positive admission, with all other outcomes sent to human review.
+The report separates synthetic, planted controls and real adjudicated labels, includes intervals
+and invalid-packet sensitivity, and preserves route/account substitutions. This is development-set
+selection evidence; catalog population calibration and held-out validation remain separate.

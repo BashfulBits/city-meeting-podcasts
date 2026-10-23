@@ -2,6 +2,12 @@
   "route": "gemma_4_31b_secondary",
   "role": "sibling",
   "planned_packets": 14,
+  "actual_routes": [
+    "gemma_4_31b_secondary"
+  ],
+  "actual_credentials": [
+    "GEMINI_API_KEY_SECONDARY"
+  ],
   "counts": {
     "first_http200_packets": 14,
     "contract_pass_packets": 13,
@@ -328,7 +334,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 1,
@@ -600,7 +609,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 2,
@@ -872,7 +884,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 3,
@@ -1144,7 +1159,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 4,
@@ -1416,7 +1434,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 5,
@@ -1724,7 +1745,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 6,
@@ -2068,7 +2092,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 7,
@@ -2322,7 +2349,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 8,
@@ -2468,7 +2498,10 @@
         "contract_pass": true,
         "quotes_all_valid": false,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 9,
@@ -2614,7 +2647,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 10,
@@ -2742,7 +2778,10 @@
         "contract_pass": false,
         "quotes_all_valid": false,
         "pass": false
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 11,
@@ -2888,7 +2927,10 @@
         "contract_pass": true,
         "quotes_all_valid": false,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 12,
@@ -3034,7 +3076,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     },
     {
       "packet": 13,
@@ -3162,7 +3207,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "gemma_4_31b_secondary",
+      "credential_env_used": "GEMINI_API_KEY_SECONDARY",
+      "credential_override": false
     }
   ],
   "retry_attempts": [

@@ -2,6 +2,12 @@
   "route": "openrouter_google_gemma_4_31b_it_free",
   "role": "sibling",
   "planned_packets": 14,
+  "actual_routes": [
+    "openrouter_google_gemma_4_31b_it_free"
+  ],
+  "actual_credentials": [
+    "OPENROUTER_API_KEY"
+  ],
   "counts": {
     "first_http200_packets": 14,
     "contract_pass_packets": 12,
@@ -335,7 +341,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 1,
@@ -607,7 +616,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 2,
@@ -879,7 +891,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 3,
@@ -1151,7 +1166,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 4,
@@ -1423,7 +1441,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 5,
@@ -1731,7 +1752,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 6,
@@ -2075,7 +2099,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 7,
@@ -2329,7 +2356,10 @@
         "contract_pass": false,
         "quotes_all_valid": true,
         "pass": false
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 8,
@@ -2475,7 +2505,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 9,
@@ -2621,7 +2654,10 @@
         "contract_pass": false,
         "quotes_all_valid": true,
         "pass": false
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 10,
@@ -2767,7 +2803,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 11,
@@ -2913,7 +2952,10 @@
         "contract_pass": true,
         "quotes_all_valid": false,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 12,
@@ -3059,7 +3101,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     },
     {
       "packet": 13,
@@ -3187,7 +3232,10 @@
         "contract_pass": true,
         "quotes_all_valid": true,
         "pass": true
-      }
+      },
+      "actual_route": "openrouter_google_gemma_4_31b_it_free",
+      "credential_env_used": "OPENROUTER_API_KEY",
+      "credential_override": false
     }
   ],
   "retry_attempts": [
