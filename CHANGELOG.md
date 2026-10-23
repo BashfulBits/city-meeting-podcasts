@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Recover moments from invalid cached LLM answers.** Preserve response schemas across batch
+  quota refusals, restore the known moments contract on legacy handles, and include missing
+  schemas in corrective requests. Moments rejects and conditionally evicts invalid completed
+  answers after durable failure accounting, using the existing three-failure recipe limit.
+  Exhausted recipes do not consume producer slots. Storage interruptions remain recoverable.
+  No pipeline-version bump or catalog-wide backfill occurs; affected recipes retry gradually
+  within normal producer and provider budgets.
+
 - **Fill bounded LLM dispatch windows more effectively.** Match the stale four-job per-model
   allowance to the existing five-job bundle cap so one healthy model can fill every slot.
   Partially filled model heads can use their existing bounded queue extension, and coordinator
