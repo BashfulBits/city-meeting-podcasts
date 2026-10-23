@@ -53,7 +53,7 @@ Production's configured dispatch ceiling stays unchanged:
 
 | Guard | Value | Effect |
 | --- | ---: | --- |
-| `MAX_BUNDLE_JOBS` | 5 | Maximum calls in one claimed bundle |
+| `MAX_BUNDLE_JOBS` | 6 | Maximum calls in one claimed bundle |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,400 | Maximum daily claimed bundles |
 | Configured mechanical ceiling | 7,000 calls/day | No reduction in the dispatch ceiling |
 | `MAX_ACTIVE_BUNDLES` | 3 | Bounded active-bundle summary population |

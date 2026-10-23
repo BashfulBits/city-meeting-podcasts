@@ -3601,14 +3601,14 @@ test("a head of jobs no free route can take does not hide placeable jobs behind 
   assert.ok(plan.jobs.every((job) => job.id.startsWith("small-") && job.route_id === "tight"));
 });
 
-test("compiled per-model allowance can fill a five-job bundle from one healthy model", async () => {
+test("compiled per-model allowance can fill a six-job bundle from one healthy model", async () => {
   const route = { provider: "acme", upstream_model: "m", free: true, rpm: 60,
     rpd: 1000, tpm: 500000, input_context_limit: 100000, output_context_limit: 2000 };
   const catalog = { model_routes_map: { "acme/m": ["a", "b"] },
     routes_by_id: { a: { ...route, route_id: "a" }, b: { ...route, route_id: "b" } } };
-  const { coordinator, sql } = makeCoordinator({ MAX_BUNDLE_JOBS: "5",
+  const { coordinator, sql } = makeCoordinator({ MAX_BUNDLE_JOBS: "6",
     MAX_JOBS_PER_ROUTE_PER_BUNDLE: "3", DISPATCH_LIMITS_OVERRIDE: catalog });
-  await coordinator.enqueueBatch([...Array(6).keys()].map((i) => makeJob(`fill-${i}`, {
+  await coordinator.enqueueBatch([...Array(7).keys()].map((i) => makeJob(`fill-${i}`, {
     policy_json: JSON.stringify({ allowed_models: ["acme/m"], allow_paid: false }) })));
   const limits = [];
   const exec = sql.exec.bind(sql);
@@ -3617,8 +3617,8 @@ test("compiled per-model allowance can fill a five-job bundle from one healthy m
     return exec(query, ...params);
   };
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
-  assert.equal(plan.jobs.length, 5, "the compiled allowance must not strand the fifth slot");
-  assert.deepEqual(limits, [5], "one bundle-sized head suffices without an extended scan");
+  assert.equal(plan.jobs.length, 6, "the compiled allowance must not strand the sixth slot");
+  assert.deepEqual(limits, [6], "one bundle-sized head suffices without an extended scan");
   for (const routeId of ["a", "b"]) {
     assert.ok(plan.jobs.filter((job) => job.route_id === routeId).length <= 3);
   }

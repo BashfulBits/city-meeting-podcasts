@@ -17,11 +17,11 @@
 #
 # Keep the values numeric; the Worker reads them with Number().
 
-MAX_BUNDLE_JOBS: 5
+MAX_BUNDLE_JOBS: 6
 # Match one bundle's allowance so a single healthy model can fill every slot. Non-ceiling
 # models start with this many indexed entries; bounded extensions may read past blocked heads.
 # The route-per-bundle and exact token/lane limits still apply to all selected jobs.
-MAX_JOBS_PER_MODEL_CLAIM: 5
+MAX_JOBS_PER_MODEL_CLAIM: 6
 # When every route of a model that currently has capacity carries a hard_input_ceiling, the
 # claim reads up to this many queue entries (oldest first) to find jobs small enough for one
 # of them, instead of stopping at the first MAX_JOBS_PER_MODEL_CLAIM. Without it a handful of
@@ -31,7 +31,7 @@ MAX_CANDIDATE_LOOKAHEAD: 32
 # A route answering 410 Gone (retired model) is stood down this long. A 404 is treated as a
 # transient upstream fault (escalating 15s-5min cooldown) -- see classify.js rule 8.
 ROUTE_UNAVAILABLE_BLOCK_SECONDS: 21600
-MAX_JOBS_PER_ROUTE_PER_BUNDLE: 3
+MAX_JOBS_PER_ROUTE_PER_BUNDLE: 2
 MAX_CONCURRENT_ROUTE_LANES: 5
 # Raised 25 -> 30 on 2026-09-23: the largest value validateConfig's lease identity allows
 # (DISPATCH_WINDOW + MAX_RESPONSE 720 + FINALIZATION_RESERVE 90 <= LEASE_DURATION 840). The
@@ -139,12 +139,12 @@ MAX_ATTEMPT_PRUNE_PER_TICK: 50
 # the same invocation -- validateConfig enforces this bound against both knobs together.
 #
 # Every 10 minutes since 2026-09-24 (60 -> 12 on 2026-09-23, then 10): 6 runs/hour x
-# PURGE_BATCH_LIMIT 15 = 2,160 jobs/day. Completed jobs the client retires by consumption
+# PURGE_BATCH_LIMIT 14 = 2,016 jobs/day. Completed jobs the client retires by consumption
 # never reach cleanup, so this drains failed jobs, ack fallbacks and the acked backlog; it
 # pauses past DO_ROWS_ENQUEUE_STOP and resumes after the reset. The per-run limit cannot
 # rise (subrequests), so the cadence does.
 CLEANUP_INTERVAL_MINUTES: 10
-PURGE_BATCH_LIMIT: 15
+PURGE_BATCH_LIMIT: 14
 # Admission-time allowance subtracted from the dispatch window: a job is admitted only if its
 # planned start + this value <= the window's end. Lowered 20 -> 2 on 2026-09-23. At 20 it
 # left only the first 5s of a 25s window usable, although nothing downstream needs the CALL to
