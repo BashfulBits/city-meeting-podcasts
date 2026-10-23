@@ -871,3 +871,10 @@ change to the earlier automatic rejection/suppression behavior require a separat
 PR #2514 retains frozen inputs/gold, runnable eval/scoring tools, compact observations and
 regression fixtures. Bulk raw attempts and review logs are archived outside Git with a checksum;
 see the dated evals/judge evidence README. This does not change the panel assignments or labels.
+
+Matched-candidate panel follow-up: the [JEV panel report](../evals/judge/results/2026-10-20-typed-chat-contract-evidence/JEV_PANELS.md)
+joins historical JEV T1 probabilities to frozen typed-chat decisions. Both retained panels accept
+16 positive and zero negative labels at the 0.5 evaluation reference; every other outcome is for
+human review. Adjudicator disagreement counts require quotes and expose the retained `i2` error.
+Historical prompt/context differences and small selection-set uncertainty preclude a production
+false-accept guarantee. No production policy or labels change; population PR7 remains separate.

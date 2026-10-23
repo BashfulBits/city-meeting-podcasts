@@ -2310,8 +2310,12 @@ adjudicator evidence remains required. See review/53 and evals/judge for the sco
 No task graduation, production recovery, or calibration thresholds are implied.
 
 [PR #2514](https://github.com/BashfulBits/city-meeting-podcasts/pull/2514) contains this
-judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel accuracy
-and PR7 population calibration remain pending; terminal schema/ID failures are retained rather than resampled.
+judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel analysis is now recorded in the
+[panel report](../evals/judge/results/2026-10-20-typed-chat-contract-evidence/JEV_PANELS.md):
+both retained panels accept 16 positives and zero negatives on 53 definite selection-set labels
+at the 0.5 reference cutoff. Independent adjudicator counterfactuals retain an observed false
+positive, so disputes remain for human review. PR7 population calibration remains separate;
+terminal schema/ID failures are retained rather than resampled.
 
 
 ### FFmpeg host ABI repair (2026-10-21)
