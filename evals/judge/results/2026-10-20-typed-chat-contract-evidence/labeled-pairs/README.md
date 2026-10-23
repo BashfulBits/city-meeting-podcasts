@@ -85,7 +85,15 @@ This avoids counting provider/account repeats or the authorized substitutions as
 
 ## Recommendation and limits
 
-Keep the two-positive decision rule, with every other outcome sent to human review.
+Retain the agreed routine panels: JEV + Gemma for rule/non-Google producers and JEV +
+Nemotron for Google producers. GLM or NVIDIA DeepSeek remains the adjudicator, independent
+of the producer and sibling families. Qwen stays an eligible sibling alternative.
+This chat-only comparison omits JEV and producer eligibility; it does not replace those panels.
+The next matched accuracy analysis must compare JEV with each eligible sibling.
+Non-accepted outcomes go to human review per the maintainer clarification; this PR does not
+change production admission thresholds or implement a suppression policy.
+
+The following alternative-pair counts are diagnostic, not a panel recommendation:
 Native NVIDIA Gemma + native NVIDIA DeepSeek accepts 18/53: 17 true accepts and one false accept
 (eval-i2), leaving 35/53 for review. Its false-accept rate is 1/35; Wilson 95% interval 0.5%-14.5%.
 On the 13 real adjudicated items alone it accepts 8: seven true and one false; the five real

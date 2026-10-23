@@ -859,3 +859,10 @@ Gemma changed one answer ID in another packet. The strict schema/ID checks rejec
 results; no parser relaxation, fuzzy ID repair, or validator-driven retry is applied. The
 initial empty BeatAPI reply remains terminal. See the dated evals/judge retry checkpoint.
 A bounded contract remedy needs review against this retained baseline before qualification.
+
+Maintainer reaffirmation (2026-10-22): retain JEV + Gemma / JEV + Nemotron, selected by
+producer-family independence, with GLM or NVIDIA DeepSeek as the independent adjudicator.
+The direct v3 evaluation validates the response interface and does not replace these panels.
+The chat-only labeled pair report omits JEV; its alternative pair counts are supplementary.
+Non-accepted results are intended for human review; numerical admission thresholds and any
+change to the earlier automatic rejection/suppression behavior require a separate policy change.
