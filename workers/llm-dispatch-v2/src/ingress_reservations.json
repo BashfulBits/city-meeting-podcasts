@@ -81,24 +81,24 @@
     },
     "r6-moments": {
       "reserved_write_units": 916,
-      "daily_write_units": 9600,
+      "daily_write_units": 4800,
       "max_queued_jobs": 3200,
       "models": [
-        "gemini/gemini-3.8-flash",
-        "gemini/gemini-3.7-flash",
-        "gemini/gemini-3.6-flash",
-        "gemini/gemini-3.5-flash",
         "zai/glm-5.3-flash",
-        "gemini/gemini-3.5-flash-lite",
-        "gemini/gemini-3.1-flash-lite",
         "deepseek/deepseek-v4-flash",
         "moonshotai/kimi-k3"
       ],
-      "backup_models": [],
-      "backup_after_attempts": null,
+      "backup_models": [
+        "gemini/gemini-3.5-flash-lite",
+        "gemini/gemini-3.8-flash",
+        "gemini/gemini-3.7-flash",
+        "gemini/gemini-3.6-flash",
+        "gemini/gemini-3.5-flash"
+      ],
+      "backup_after_attempts": 2,
       "dispatch_shape": "pooled",
       "reasoning": {},
-      "write_units_per_job": 12
+      "write_units_per_job": 6
     },
     "remedy:p3": {
       "reserved_write_units": 0,

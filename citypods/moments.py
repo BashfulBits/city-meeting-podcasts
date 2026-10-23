@@ -39,16 +39,59 @@ MOMENTS_PIPELINE_VERSION = "2"
 # `deepseek/deepseek-v4-pro` alias (which pointed at NVIDIA's v4.1) replaced by OrcaRouter's v4:
 # NVIDIA's v4.1 returns empty content to any `response_format` (verified live 2026-09-24). GLM 5.3
 # Flash (OrcaRouter, AA 41.8, 800/day, 1M context) added the same day for capacity.
-COUNCIL_MOMENT_MODELS = (
+# Sizing threshold based on empirical token length (chars / 4):
+MOMENT_SIZE_THRESHOLD_TOKENS = 45_000
+
+# 1. Short / Medium Packets (<= 45,000 input tokens)
+# Shortest models that fit:
+MOMENT_SHORT_PRIMARY_MODELS = ("gemini/gemini-3.5-flash-lite",)
+# Backup models: remaining high-capacity routes
+MOMENT_SHORT_BACKUP_MODELS = (
+    "zai/glm-5.3-flash",
+    "deepseek/deepseek-v4-flash",
+    "moonshotai/kimi-k3",
     "gemini/gemini-3.8-flash",
     "gemini/gemini-3.7-flash",
     "gemini/gemini-3.6-flash",
     "gemini/gemini-3.5-flash",
+)
+
+# 2. Large Packets (> 45,000 input tokens)
+# Top 3 highest-capacity models with low external contention:
+MOMENT_LARGE_PRIMARY_MODELS = (
     "zai/glm-5.3-flash",
     "deepseek/deepseek-v4-flash",
     "moonshotai/kimi-k3",
 )
-DEFAULT_MOMENT_MODELS = ("gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flash-lite")
+# Backup models: remaining high-context models
+MOMENT_LARGE_BACKUP_MODELS = (
+    "gemini/gemini-3.5-flash-lite",
+    "gemini/gemini-3.8-flash",
+    "gemini/gemini-3.7-flash",
+    "gemini/gemini-3.6-flash",
+    "gemini/gemini-3.5-flash",
+)
+
+
+def select_moment_models(
+    input_tokens: int,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return (allowed_models, backup_models) based on packet input token size.
+
+    Packets <= 45,000 tokens use the shortest models that fit (Gemini 3.5 Flash Lite)
+    with high-capacity routes in backup.
+    Packets > 45,000 tokens prioritize the top 3 high-capacity models with low external
+    lane contention (GLM 5.3 Flash, DeepSeek V4 Flash, Kimi K3) with the remaining
+    high-context models in backup.
+    """
+    if input_tokens <= MOMENT_SIZE_THRESHOLD_TOKENS:
+        return MOMENT_SHORT_PRIMARY_MODELS, MOMENT_SHORT_BACKUP_MODELS
+    return MOMENT_LARGE_PRIMARY_MODELS, MOMENT_LARGE_BACKUP_MODELS
+
+
+# Backward-compatible aliases
+COUNCIL_MOMENT_MODELS = MOMENT_LARGE_PRIMARY_MODELS
+DEFAULT_MOMENT_MODELS = MOMENT_SHORT_PRIMARY_MODELS
 # Derived from the project's goals (VISION: legible, shareable civic process; quote-driven, never
 # editorialized; "national highlights" of strong public comment, officials doing the work well, and
 # transparently quoted opposition). Pull quotes become captioned 9:16 share clips, so each must
@@ -523,6 +566,13 @@ def response_payload(output: Mapping[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
+    "COUNCIL_MOMENT_MODELS",
+    "DEFAULT_MOMENT_MODELS",
+    "MOMENT_LARGE_BACKUP_MODELS",
+    "MOMENT_LARGE_PRIMARY_MODELS",
+    "MOMENT_SHORT_BACKUP_MODELS",
+    "MOMENT_SHORT_PRIMARY_MODELS",
+    "MOMENT_SIZE_THRESHOLD_TOKENS",
     "MOMENTS_CONTRACT",
     "MOMENTS_MAX_SECONDS",
     "MOMENTS_MIN_SECONDS",
@@ -540,5 +590,6 @@ __all__ = [
     "quote_safety_gate",
     "response_payload",
     "recipe_hash",
+    "select_moment_models",
     "transcript_region",
 ]

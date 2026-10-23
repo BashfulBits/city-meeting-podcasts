@@ -1126,8 +1126,6 @@ class MomentsStage(LLMProducerStage):
         from citypods.compute.base import InferenceJob, JobHandle, JobResult
         from citypods.compute.llm_policy import LLMRequestPolicy
         from citypods.moments import (
-            COUNCIL_MOMENT_MODELS,
-            DEFAULT_MOMENT_MODELS,
             MOMENTS_CONTRACT,
             MOMENTS_OUTPUT_TOKEN_BUDGET,
             MOMENTS_PROMPT_VERSION,
@@ -1140,30 +1138,18 @@ class MomentsStage(LLMProducerStage):
             parse_words_sidecar,
             recipe_hash,
             response_payload,
+            select_moment_models,
         )
 
         stats = StageStats(self.name)
         self.census(city, episodes, ctx)
         if ctx.moment_backend is None or ctx.storage is None:
             return stats
-        backend_config = getattr(ctx.moment_backend, "config", None)
-        configured = tuple(
-            str(model)
-            for model in (
-                [getattr(backend_config, "model", "")]
-                + list(getattr(backend_config, "additional_models", ()) or ())
-            )
-            if model
-        )
         family = str(city.extra.get("meeting_family") or "default")
         rollout = (ctx.moment_evaluation_config or {}).get("rollout_meeting_families") or []
         rollout_families = {str(value) for value in rollout}
         if rollout_families and family not in rollout_families:
             return stats
-        allowed_models = COUNCIL_MOMENT_MODELS if family == "council" else DEFAULT_MOMENT_MODELS
-        allowed_models = (
-            tuple(model for model in allowed_models if model in configured) or allowed_models
-        )
         ensure_moment_contract()
 
         for ep in episodes:
@@ -1204,19 +1190,6 @@ class MomentsStage(LLMProducerStage):
             agenda_key = (ep.links or {}).get("agenda_text_artifact_key")
             agenda_data = _read_storage_bytes(ctx.storage, agenda_key or "")
             agenda_text = (agenda_data or b"").decode("utf-8", errors="replace")[:80_000]
-            moments_recipe = recipe_hash(
-                transcript_key=ep.transcript_key,
-                transcript_words_key=ep.transcript_words_key,
-                chapters=chapter_rows,
-                agenda_text_key=agenda_key,
-                route_models=allowed_models,
-                meeting_family=family,
-                evaluation_policy="candidate-generation-v1",
-            )
-            if ep.moments_llm_recipe_hash == moments_recipe:
-                work.consumed(reused=True)
-                stats.reused += 1
-                continue
             messages = [
                 {"role": "system", "content": MOMENTS_SYSTEM_PROMPT},
                 {
@@ -1232,6 +1205,24 @@ class MomentsStage(LLMProducerStage):
                     ),
                 },
             ]
+            from citypods.compute.llm_policy import estimate_tokens
+
+            input_tokens = estimate_tokens(messages)
+            allowed_models, backup_models = select_moment_models(input_tokens)
+
+            moments_recipe = recipe_hash(
+                transcript_key=ep.transcript_key,
+                transcript_words_key=ep.transcript_words_key,
+                chapters=chapter_rows,
+                agenda_text_key=agenda_key,
+                route_models=allowed_models,
+                meeting_family=family,
+                evaluation_policy="candidate-generation-v1",
+            )
+            if ep.moments_llm_recipe_hash == moments_recipe:
+                work.consumed(reused=True)
+                stats.reused += 1
+                continue
             inputs: dict[str, Any] = {
                 "messages": messages,
                 "structured_output": MOMENTS_CONTRACT,
@@ -1240,6 +1231,8 @@ class MomentsStage(LLMProducerStage):
             }
             inputs["llm_policy"] = LLMRequestPolicy(
                 allowed_models=allowed_models,
+                backup_models=backup_models,
+                backup_after_attempts=2,
                 allow_paid=False,
                 purpose="r6-moments",
                 queue_only=True,

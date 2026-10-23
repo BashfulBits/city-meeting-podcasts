@@ -19,7 +19,8 @@ permissions:
 
 jobs:
   evaluate:
-    runs-on: ubuntu-latest
+    # Match the pinned FFmpeg bundle's Ubuntu noble codec/TLS ABI.
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       # H15 sample/evaluate clips candidate audio with ffmpeg before scoring -- without this the

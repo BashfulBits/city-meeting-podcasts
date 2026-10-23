@@ -1148,3 +1148,28 @@ def test_kimi_max_controls_match_python_worker_without_changing_defaults():
         route = routes["nvidia_kimi_k3_free"]
         assert route["reasoning_controls"] == {"max": {"reasoning_effort": "max"}}
         assert route.get("request_params") is None
+
+
+def test_gateway_route_attempt_override_precedes_provider_default(monkeypatch):
+    raw = compile_llm_limits.yaml.safe_load(compile_llm_limits.INPUT_YAML.read_text())
+    raw["providers"]["gemini"]["ai_gateway_max_attempts"] = 3
+    monkeypatch.setattr(compile_llm_limits.yaml, "safe_load", lambda *_: raw)
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)
+    python_routes = {
+        route["route_id"]: route for route in compile_llm_limits._python_routes(compiled)["routes"]
+    }
+    for catalog in [worker["routes_by_id"], python_routes]:
+        assert catalog["gemma_4_31b_primary"]["ai_gateway_max_attempts"] == 1
+        assert catalog["gemma_4_31b_secondary"]["ai_gateway_max_attempts"] == 1
+        assert catalog["gemma_4_26b_primary"]["ai_gateway_max_attempts"] == 3
+
+
+@pytest.mark.parametrize("value", [0, 6, True, "1", 1.5])
+def test_gateway_route_attempt_override_rejects_invalid_values(monkeypatch, value):
+    raw = compile_llm_limits.yaml.safe_load(compile_llm_limits.INPUT_YAML.read_text())
+    route = next(r for r in raw["routes"] if r["route_id"] == "gemma_4_31b_primary")
+    route["ai_gateway_max_attempts"] = value
+    monkeypatch.setattr(compile_llm_limits.yaml, "safe_load", lambda *_: raw)
+    with pytest.raises(ValueError, match="ai_gateway_max_attempts must be an integer"):
+        compile_llm_limits.compile_limits()

@@ -8,12 +8,12 @@
 #
 # Precedence at runtime (src/tuning.js): a Cloudflare variable or secret of the same name still wins
 # (a deliberate incident-time override), then this file, then the literal fallback at the read site.
-# Account-, URL- and credential-specific values (AI_GATEWAY_ID, provider keys, B2 settings, the bearer
-# token) are NOT here and never belong in the repository.
+# Account-, URL- and credential-specific values (AI_GATEWAY_ID, provider keys, B2 settings,
+# the bearer token) are NOT here and never belong in the repository.
 #
 # Daily DO row-write thresholds (DO_ROWS_ENQUEUE_STOP 90000, DO_ROWS_CLAIM_STOP 97000,
-# DO_ROWS_OPTIONAL_STOP 99000) remain code defaults on purpose (see write_budget.js); override only for
-# a deliberate incident response. Keep them out of this file.
+# DO_ROWS_OPTIONAL_STOP 99000) remain code defaults on purpose (see write_budget.js);
+# override only for a deliberate incident response. Keep them out of this file.
 #
 # Keep the values numeric; the Worker reads them with Number().
 
@@ -45,9 +45,9 @@ CRON_TICK_SECONDS: 60
 # caps remain unchanged, and MAX_IN_FLIGHT_LLM_CALLS plus the per-provider/per-route concurrency
 # limits remain the admission safety boundaries.
 MAX_ACTIVE_BUNDLES: 5
-# Live telemetry exhausted the eight-call gate while only two of three bundles were active.
+# Raised from 8 to 12 and from 12 to 20 to relieve in_flight_call_limit bottlenecks.
 # Per-provider and per-route limits remain the admission safety boundaries.
-MAX_IN_FLIGHT_LLM_CALLS: 12
+MAX_IN_FLIGHT_LLM_CALLS: 20
 # 1,400 of the 1,440 daily cron ticks may claim a bundle (validateConfig requires it stay
 # under the tick count). Bundles are a concurrency/overlap knob; the daily dispatch limit is
 # DO_ROWS_CLAIM_STOP below.

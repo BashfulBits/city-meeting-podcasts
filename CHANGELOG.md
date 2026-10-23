@@ -15,6 +15,35 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Restore FFmpeg runtime package installation.** Pin the remaining host FFmpeg jobs and
+  the FFmpeg source-build job to Ubuntu 24.04, matching the existing bundle's codec/TLS ABI.
+  GitHub's `ubuntu-latest` migration to Ubuntu 26.04 caused `libvpx9` installation failures.
+  CI's test job was already pinned separately. Workflow tests prevent build/consumer drift.
+  FFmpeg bytes, pipeline versions and stored artifacts are unchanged; no backfill is triggered.
+
+- **Uncap LLM dispatch runner submissions and optimize R6 moments routing.** Removed
+  client-side `max_dispatches_per_run` throttling across all LLM lanes to rely exclusively on
+  Cloudflare Dispatch v2 daily write unit budgets and ceilings. Sized R6 moments extraction
+  with size-aware routing: small packets (<= 45,000 tokens) use Gemini 3.5 Flash Lite with
+  high-capacity routes in backup; large packets (> 45,000 tokens) prioritize GLM 5.3 Flash,
+  DeepSeek V4 Flash, and Kimi K3 with remaining models in backup, dropping ingress write units
+  from 12 to 6 per job. Removed `gemini/gemini-3.1-flash-lite` from moments to eliminate
+  contention with `chapter-agenda`.
+
+- **LLM worker dispatch concurrency tuning.** Raised `MAX_ACTIVE_BUNDLES` from 3 to 5 and
+  `MAX_IN_FLIGHT_LLM_CALLS` from 12 to 20 in `config/dispatch_tuning.yml` to reduce empty claim
+  ticks and relieve in-flight concurrency bottlenecks when slow provider calls overlap.
+
+- **Google Gemma-31B Gateway retries.** Send `cf-aig-max-attempts: 1` on both Google
+  Gemma-31B project routes so the dispatch worker owns paced retries and sees provider failures.
+  Spaced replay tests found quota refusals with default Gateway handling but none directly or
+  with an explicit one-attempt header. Add validated route-level catalog overrides and retain
+  provider defaults for other routes. Quotas, pacing, packing, request bodies, deadlines, and
+  worker retry budgets remain unchanged. No pipeline version bump or artifact backfill.
+- **CI FFmpeg compatibility.** Pin the test job to Ubuntu 24.04 so the checksum-pinned FFmpeg
+  build can install its required `libvpx9` runtime during GitHub's `ubuntu-latest` migration.
+  Production runner images and the FFmpeg binary/checksum remain unchanged.
+
 - **Correlated Gemma packing feedback.** Size chat judge packets using complete serialized
   requests, including prompts, item framing, and structured contracts. Add bounded downward Gemma
   packing feedback from Google TPM-refused packets that later succeed on NVIDIA above 16k combined

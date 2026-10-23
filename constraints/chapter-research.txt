@@ -6,7 +6,7 @@
 #
 beautifulsoup4==4.15.0
     # via -r constraints/chapter-research.in
-certifi==2026.7.22
+certifi==2026.10.19
     # via requests
 charset-normalizer==3.4.9
     # via requests
@@ -29,7 +29,7 @@ numpy==2.5.1
     #   scipy
 opencv-python-headless==5.0.0.93
     # via -r constraints/chapter-research.in
-pillow==12.3.0
+pillow==13.0.0
     # via -r constraints/chapter-research.in
 pypdf==6.19.0
     # via -r constraints/chapter-research.in
