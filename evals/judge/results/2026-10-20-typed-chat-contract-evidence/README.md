@@ -62,3 +62,10 @@ explicit live-output command in the example, mark the checkpoint complete, and p
 provider/account substitutions when replaying the raw archive. The latter has a regression test.
 Raw review logs are external task artifacts rather than committed repository files.
 All 43 removed tracked evidence files were verified byte-for-byte against the external archive.
+
+## Agreed panels including JEV
+
+See [JEV_PANELS.md](JEV_PANELS.md) for the completed matched-candidate
+comparison and independent adjudicator counterfactuals. `scripts/score_jev_panels.py` joins
+saved JEV probabilities and chat decisions offline. observations.json also retains per-answer
+quote validity for adjudicator scoring; missing quote metadata must abstain.

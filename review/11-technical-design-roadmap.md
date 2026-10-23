@@ -2331,8 +2331,12 @@ adjudicator evidence remains required. See review/53 and evals/judge for the sco
 No task graduation, production recovery, or calibration thresholds are implied.
 
 [PR #2514](https://github.com/BashfulBits/city-meeting-podcasts/pull/2514) contains this
-judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel accuracy
-and PR7 population calibration remain pending; terminal schema/ID failures are retained rather than resampled.
+judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel analysis is now recorded in the
+[panel report](../evals/judge/results/2026-10-20-typed-chat-contract-evidence/JEV_PANELS.md):
+both retained panels accept 16 positives and zero negatives on 53 definite selection-set labels
+at the 0.5 reference cutoff. Independent adjudicator counterfactuals retain an observed false
+positive, so disputes remain for human review. PR7 population calibration remains separate;
+terminal schema/ID failures are retained rather than resampled.
 
 
 ### FFmpeg host ABI repair (2026-10-21)
@@ -2343,3 +2347,10 @@ on main; the remaining host consumers and the source-build job now pin `ubuntu-2
 the existing vendored FFmpeg bundle and audio-runner container's noble codec/TLS ABI.
 Workflow contract tests guard the build/consumer alignment. The FFmpeg URL/checksum, container
 digest and pipeline versions stay unchanged; stored artifacts are retained without backfill.
+
+Judge recovery step 3 (2026-10-23): [fresh bounded revalidation](evidence/2026-10-23-judge-recovery-revalidation.md)
+rebuilds the local proposal from 32 changed sources. The maintainer approved and the agent completed archive/removal of 6,665 stale or
+stale-dependent judgments and 42 pending references, with zero skips and verified readbacks.
+JEV rows, original calibration rows, six newer paired cases and unknown-provenance pointers
+were preserved; all workflow states were restored after the approved maintenance window.
+Fresh scheduled shadow collection and PR7 measurement remain next; authority is unchanged.
