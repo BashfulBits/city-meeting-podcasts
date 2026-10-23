@@ -187,6 +187,31 @@ _DEFERRED_INGRESS_REASONS = frozenset(
 # stops building and submitting more work instead of paying for each job's rejection.
 _INGRESS_CLOSED_REASONS = frozenset({"daily_cap_exceeded", "daily_row_budget", "queue_full"})
 
+# Rejections that close only the purpose that hit them. Both are that lane's own admission
+# arithmetic (its daily write units, or the global budget after every other lane's reservation),
+# so closing the whole process would also stop a second lane running in the same build -- while
+# leaving it open means paying to stage a batch the Worker has already said it will refuse, which
+# is what the deferred sweep did every six hours for its whole backlog (~85 s of B2 writes per
+# 1,000-job chunk) once its lane's day was spent.
+_INGRESS_PURPOSE_CLOSED_REASONS = frozenset(
+    {"purpose_write_budget_exceeded", "ingress_write_budget_reserved"}
+)
+
+# Rejections resubmitting the same record can never clear: the Worker's lane registry and this
+# job's own immutable policy capsule (its purpose, model pool and route pins) were both fixed when
+# it was written, so a `llm_lanes` change since then leaves the record permanently unadmissible.
+# Left pending, a handful of them sit at the head of the deferred registry and turn every sweep
+# red forever (2026-10-21: 800 moment handles predating a model change, `model_not_in_lane` on
+# every run). A typed rejection lets the sweep retire the record so the producer re-plans it.
+_TERMINAL_INGRESS_REASONS = frozenset(
+    {
+        "purpose_not_registered",
+        "model_not_in_lane",
+        "route_id_not_in_model_pool",
+        "backup_after_attempts_below_lane_minimum",
+    }
+)
+
 # --- Cloudflare AI Gateway (direct transport only) ---------------------------------------------
 # The gateway is an observability shim, not a routing decision: it proxies to the same upstream
 # and returns the same body, so enabling it must never change an LLM reply. It is therefore on by
@@ -266,6 +291,20 @@ def _pacing_wait_seconds(
 
 class LLMBackendError(RuntimeError):
     """A safe, provider-agnostic adapter error (provider response bodies are not exposed)."""
+
+
+class LLMDispatchRejectedError(LLMBackendError):
+    """The ingress Worker refused one job for a reason that record itself cannot change.
+
+    Distinct from a transient admission limit (``_DEFERRED_INGRESS_REASONS``, which stays pending
+    for a later run): here the Worker's current lane registry and the job's own immutable policy
+    capsule cannot both be satisfied, so only a fresh plan -- a new recipe, under the lane as it
+    is configured now -- can run the work. ``reason`` is the Worker's own rejection reason.
+    """
+
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 class LLMStructuredOutputError(LLMBackendError):
@@ -868,6 +907,10 @@ class LiteLLMBackend(Backend):
         # short-circuit every job for the rest of its run, even long after the server-side cap
         # reset and had headroom again.
         self._daily_ingest_exhausted_day: str | None = None
+        # Purposes whose own ingress budget the Worker has already refused today. Scoped per
+        # purpose rather than process-wide: one `build` runs several lanes' stages through this
+        # same backend, and one lane's spent budget must not drop another lane's work.
+        self._ingest_closed_purposes: set[str] = set()
 
     def _reset_daily_ingest_state_if_new_day(self) -> None:
         today = datetime.now(UTC).date().isoformat()
@@ -878,11 +921,36 @@ class LiteLLMBackend(Backend):
         if stale_day:
             self._daily_ingest_exhausted = False
             self._daily_ingest_admitted = 0
+            self._ingest_closed_purposes.clear()
         self._daily_ingest_exhausted_day = today
 
     def _mark_daily_ingest_exhausted(self) -> None:
         self._daily_ingest_exhausted = True
         self._daily_ingest_exhausted_day = datetime.now(UTC).date().isoformat()
+
+    def _mark_purpose_ingest_exhausted(self, purpose: str) -> None:
+        """Stop building submissions for one lane whose ingress budget is spent today."""
+        self._ingest_closed_purposes.add(purpose)
+        self._daily_ingest_exhausted_day = datetime.now(UTC).date().isoformat()
+
+    def _ingest_closed_reason(self, job: InferenceJob) -> str | None:
+        """Why this process must not build another submission for ``job``, if it must not.
+
+        Checked before payload staging so a closed ingress costs nothing: the job still yields a
+        deferred handle (the item is retryable tomorrow), but no B2 write and no request happen.
+        """
+        if self._daily_ingest_exhausted:
+            return "client_daily_ingest_cap"
+        if (
+            self.config.daily_ingest_cap is not None
+            and self._daily_ingest_admitted >= self.config.daily_ingest_cap
+        ):
+            return "client_daily_ingest_cap"
+        policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+        purpose = getattr(policy, "purpose", None)
+        if isinstance(purpose, str) and purpose and purpose in self._ingest_closed_purposes:
+            return f"client_{purpose}_ingest_closed"
+        return None
 
     def _available_transports(self) -> frozenset[str]:
         """Which transports route selection may use from *this instance*.
@@ -2080,12 +2148,24 @@ class LiteLLMBackend(Backend):
             )
             return [cast("JobResult | JobHandle", r) for r in out]
 
-        if self._daily_ingest_exhausted or (
-            self.config.daily_ingest_cap is not None
-            and self._daily_ingest_admitted >= self.config.daily_ingest_cap
-        ):
-            for idx in uncached_indices:
+        # Ingress this process already knows is closed costs nothing from here on: no payload is
+        # staged and no request is made, and the job still yields a retryable deferred handle.
+        closed: dict[int, str] = {}
+        for idx in uncached_indices:
+            reason = self._ingest_closed_reason(jobs[idx])
+            if reason is not None:
+                closed[idx] = reason
+        if closed:
+            for idx, reason in closed.items():
                 job = jobs[idx]
+                if idx in prior_pending:
+                    # Already in flight under its previous payload (the cache above found its
+                    # submitted handle). Keep following that one: a synthetic deferred handle
+                    # would submit the work a second time and could overwrite the pending record
+                    # while the Worker job is still running.
+                    telemetry_outcomes.append((job, "prior_pending", reason))
+                    out[idx] = prior_pending[idx]
+                    continue
                 policy = (
                     job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
                 ) or getattr(job, "policy", None)
@@ -2094,6 +2174,9 @@ class LiteLLMBackend(Backend):
                     recipe_hash=job.recipe_hash,
                     backend="llm-dispatch-v2",
                     ref=f"deferred-daily-cap-{job.recipe_hash}",
+                    # Keep the response contract: `_reconcile_deferred` rebuilds the job from it,
+                    # and without it the retried reply would skip structured-result validation.
+                    structured_output=self._structured_output(job),
                     deferred_request=DeferredLLMRequest(
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
@@ -2102,16 +2185,18 @@ class LiteLLMBackend(Backend):
                         max_tokens_mode=_job_max_tokens_mode(job),
                     ),
                 )
-                telemetry_outcomes.append((job, "client_daily_cap", "client_daily_ingest_cap"))
-            record_enqueue_outcomes(
-                telemetry_outcomes,
-                elapsed_seconds=time.monotonic() - enqueue_started,
-                payload_stage_seconds=0.0,
-                request_seconds=0.0,
-                persist_seconds=0.0,
-                transport_retries=0,
-            )
-            return [cast("JobResult | JobHandle", r) for r in out]
+                telemetry_outcomes.append((job, "client_ingress_closed", reason))
+            uncached_indices = [idx for idx in uncached_indices if idx not in closed]
+            if not uncached_indices:
+                record_enqueue_outcomes(
+                    telemetry_outcomes,
+                    elapsed_seconds=time.monotonic() - enqueue_started,
+                    payload_stage_seconds=0.0,
+                    request_seconds=0.0,
+                    persist_seconds=0.0,
+                    transport_retries=0,
+                )
+                return [cast("JobResult | JobHandle", r) for r in out]
 
         if not self.config.dispatch_v2_url:
             for idx in uncached_indices:
@@ -2395,11 +2480,20 @@ class LiteLLMBackend(Backend):
                 if reason in _DEFERRED_INGRESS_REASONS:
                     deferred_count += 1
                     telemetry_outcomes.append((job, "deferred", reason))
-                    if reason in _INGRESS_CLOSED_REASONS:
-                        self._mark_daily_ingest_exhausted()
                     policy = (
                         job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
                     ) or getattr(job, "policy", None)
+                    purpose = getattr(policy, "purpose", None)
+                    if reason in _INGRESS_CLOSED_REASONS:
+                        self._mark_daily_ingest_exhausted()
+                    elif (
+                        reason in _INGRESS_PURPOSE_CLOSED_REASONS
+                        and isinstance(purpose, str)
+                        and purpose
+                    ):
+                        # Only this lane is spent: keep building for every other purpose this
+                        # process runs, but stop paying to stage work this one cannot submit.
+                        self._mark_purpose_ingest_exhausted(purpose)
                     handle = JobHandle(
                         task=job.task,
                         recipe_hash=job.recipe_hash,
@@ -2435,7 +2529,12 @@ class LiteLLMBackend(Backend):
                 else:
                     rejected_count += 1
                     telemetry_outcomes.append((job, "rejected", reason))
-                    out[idx] = LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
+                    message = f"LLM dispatch v2 rejected job {job_id}: {reason}"
+                    out[idx] = (
+                        LLMDispatchRejectedError(message, reason=reason)
+                        if reason in _TERMINAL_INGRESS_REASONS
+                        else LLMBackendError(message)
+                    )
 
         def _persist_deferred(item: tuple[int, JobHandle]) -> None:
             idx, handle = item
@@ -3754,6 +3853,7 @@ __all__ = [
     "BatchingDispatchBackend",
     "LLMBackendConfig",
     "LLMBackendError",
+    "LLMDispatchRejectedError",
     "LLMDispatchTerminalError",
     "LLMDispatchMissingError",
     "LLMStructuredOutputError",

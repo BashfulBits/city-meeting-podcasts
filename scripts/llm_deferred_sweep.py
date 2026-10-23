@@ -33,6 +33,7 @@ from citypods.compute.llm import (
     LiteLLMBackend,
     LLMBackendConfig,
     LLMDispatchMissingError,
+    LLMDispatchRejectedError,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
     _enqueue_batch_with_retry,
@@ -364,6 +365,11 @@ def main(argv: list[str] | None = None) -> int:
     # and no later run picks it up on its own, so a sweep that reports success while silently
     # dropping submissions is the same defect the producer lanes were just fixed for.
     submit_failed = 0
+    # Records retired because the Worker says this record can never be admitted (its own policy
+    # capsule names a purpose/model the lane registry has since changed). Retiring is not a
+    # submission failure: nothing is left to retry, and the producer re-plans the item under the
+    # current lane. Counted apart so the run stays green while the retirements remain visible.
+    retired_unadmissible = 0
     recovered_terminal_failures = 0
     seen_pending: set[str] = set()
     exhausted_capacity: set[tuple] = set()
@@ -626,7 +632,20 @@ def main(argv: list[str] | None = None) -> int:
                 for (handle, _upgraded), result in zip(chunk, queued_results, strict=True):
                     handled_recipe_hashes.add(handle.recipe_hash)
                     seen_pending.add(handle.recipe_hash)
-                    if isinstance(result, Exception):
+                    if isinstance(result, LLMDispatchRejectedError):
+                        # The record's immutable policy capsule cannot be admitted by the lane
+                        # registry as it stands now, so resubmitting it can never succeed. Retire
+                        # it instead of leaving it at the head of the registry forever. The
+                        # marker still allows MAX_TERMINAL_FAILURE_RETRIES fresh plans, which
+                        # covers an ingress deploy that lags the lane config the producer read.
+                        discarded = discard_terminal_failure(storage, snapshot, handle, result)
+                        retired_unadmissible += 1
+                        print(
+                            f"llm-deferred-sweep: {handle.recipe_hash} retired unadmissible "
+                            f"record ({result.reason}); marker writes={discarded}",
+                            file=sys.stderr,
+                        )
+                    elif isinstance(result, Exception):
                         failed += 1
                         submit_failed += 1
                         print(
@@ -779,6 +798,7 @@ def main(argv: list[str] | None = None) -> int:
         "completed": completed,
         "failed": failed,
         "submit_failed": submit_failed,
+        "retired_unadmissible": retired_unadmissible,
         "pruned": pruned,
         "remaining": _pending_breakdown(snapshot.pending(), legacy_backend=legacy_backend),
         "snapshot": {
@@ -801,7 +821,8 @@ def main(argv: list[str] | None = None) -> int:
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
         f"{still_pending} still pending observations, {failed} failed "
         f"({recovered_terminal_failures} terminally recovered), "
-        f"{submit_failed} never submitted, {pruned} pruned, {remaining} "
+        f"{submit_failed} never submitted, {retired_unadmissible} retired unadmissible, "
+        f"{pruned} pruned, {remaining} "
         f"remaining, {v2_unobserved} v2 unobserved, {len(snapshot.unavailable_reads)} unavailable"
     )
     for signature, skipped in sorted(skipped_by_pool.items(), key=lambda item: -item[1]):

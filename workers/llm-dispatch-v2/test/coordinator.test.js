@@ -563,7 +563,11 @@ test("enqueueBatch enforces daily cap with partial admission", async () => {
   assert.deepEqual(res.rejected, [{ id: "j3", reason: "daily_cap_exceeded" }]);
 });
 
-test("ingress reservations preserve write capacity for another purpose", async () => {
+test("ingress reservations preserve write capacity for another purpose", async (t) => {
+  // Pinned to 04:00 UTC (20 hours left in the day): the end-of-day borrow releases nothing that
+  // early, so this is the plain reserve-preserving rule. Without the pin the assertions would
+  // change with the wall clock -- see `_reservationBorrowFraction`.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-22T04:00:00Z") });
   const { coordinator, sql } = makeCoordinator({
     MAX_JOBS_PER_UTC_DAY: "100",
     MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "8",
@@ -592,6 +596,61 @@ test("ingress reservations preserve write capacity for another purpose", async (
   const tags = await coordinator.enqueueBatch([job("tags", "topic-tags")]);
   assert.deepEqual(tags.accepted, [{ id: "tags", submitted_id: "tags" }]);
   assert.equal([...sql.exec("SELECT ingress_write_units_today FROM scheduler")][0].ingress_write_units_today, 8);
+});
+
+test("_reservationBorrowFraction releases nothing, half, then all of the reserve", () => {
+  const { coordinator } = makeCoordinator({});
+  const at = (iso) => coordinator._reservationBorrowFraction(Date.parse(iso));
+  const withheld = (iso) => coordinator._withheldReservationUnits(10, Date.parse(iso));
+
+  assert.equal(at("2026-10-22T00:00:00Z"), 0);
+  assert.equal(at("2026-10-22T11:59:59Z"), 0);
+  assert.equal(at("2026-10-22T12:00:00Z"), 0.5);
+  assert.equal(at("2026-10-22T17:59:59Z"), 0.5);
+  assert.equal(at("2026-10-22T18:00:00Z"), 1);
+  assert.equal(at("2026-10-22T23:59:59Z"), 1);
+
+  // Withheld rounds up, so a half-open reserve still holds the larger half back.
+  assert.equal(withheld("2026-10-22T04:00:00Z"), 10);
+  assert.equal(withheld("2026-10-22T13:00:00Z"), 5);
+  assert.equal(withheld("2026-10-22T21:00:00Z"), 0);
+  assert.equal(coordinator._withheldReservationUnits(3, Date.parse("2026-10-22T13:00:00Z")), 2);
+  assert.equal(coordinator._withheldReservationUnits(0, Date.parse("2026-10-22T04:00:00Z")), 0);
+});
+
+test("an idle lane's reserve becomes spendable as the UTC day runs out", async (t) => {
+  // 12 total write units, 4 per job, and an idle lane reserving 5 of them. Early in the day the
+  // reserve withholds 5 (headroom 7: one job) -- then 3 at the 12-hour mark (headroom 9: two),
+  // then nothing (headroom 12: three). This is the point of the schedule: an unspent reservation
+  // in the day's last hours can no longer be used by the lane it protects.
+  const job = (id) => ({
+    id,
+    idempotency_key: `${id}-key`,
+    request_digest: `${id}-digest`,
+    policy_json: JSON.stringify({ allowed_models: ["unknown-model"], purpose: "chapter-agenda" }),
+    prompt_family: "test",
+    input_token_estimate: 1,
+    max_output_token_estimate: 1,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  const admitted = async (iso) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.parse(iso) });
+    const { coordinator } = makeCoordinator({
+      MAX_JOBS_PER_UTC_DAY: "100",
+      MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "12",
+      INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
+        "topic-tags": { reserved_write_units: 5 },
+        "chapter-agenda": { daily_write_units: 100 },
+      }),
+    });
+    const res = await coordinator.enqueueBatch([job("a"), job("b"), job("c")]);
+    t.mock.timers.reset();
+    return res.accepted.length;
+  };
+
+  assert.equal(await admitted("2026-10-22T04:00:00Z"), 1);
+  assert.equal(await admitted("2026-10-22T13:00:00Z"), 2);
+  assert.equal(await admitted("2026-10-22T21:00:00Z"), 3);
 });
 
 test("schemaRetry obeys the same ingress write budget as enqueueBatch", async () => {
