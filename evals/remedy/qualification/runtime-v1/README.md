@@ -153,3 +153,7 @@ receipts without retrying either request; all source/profile checks, the cumulat
 ledger and shared controller lock remain enforced. Any different access/profile/identity hold
 or unknown outcome blocks continuation. This approval does not authorize another experiment,
 modified prompts or production behavior. No routing policy has been chosen by this continuation.
+
+RQ11/RQ12 are now measured; all12 initial cases have answers. See the final section of
+`RESULTS.md` and `completion-summary.json` for acceptance-aware rates and PR-versus-issue counts.
+The terminal JEV limits remain documented. No further requests or routing changes are enabled.

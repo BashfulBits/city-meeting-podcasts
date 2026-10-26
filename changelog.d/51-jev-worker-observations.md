@@ -404,3 +404,8 @@ Record the explicit untouched-case continuation authority for RQ11/RQ12 within t
 48-attempt ledger. Preserve the exact terminal input-length failures and all prior outputs;
 use the shared controller/lock and source/profile checks. No remedy output policy is activated.
 Continuation safety checks passed; full offline suite:6,920 passed,17 deselected.
+
+Complete the remaining runtime challenge cases under the approved cumulative budget:37 attempts,
+36 judgments and two terminal JEV input holds/failures. With RQ06 accepted,2/6 proposed PRs are
+wrong; both adjudicators are wrong2/5 on their same answered cases. Keep original scores and
+compact observations; production routing and remedy creation remain unchanged pending review.

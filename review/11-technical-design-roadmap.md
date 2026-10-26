@@ -2800,3 +2800,18 @@ RQ09/RQ10 terminal input-length holds remain pinned and are not retried or short
 `evals/remedy/continue_runtime_qualification.py` uses the original controller, lock, source hashes,
 pauses, reservations, transport and scoring; new unknown/auth/profile holds stop continuation.
 No production merge, deployment, role admission or remedy PR/issue creation is authorized here.
+
+### Runtime challenge completed to terminal coverage (October 26)
+
+The authorized untouched-case continuation completed RQ11/RQ12. All12 initial cases answered;
+37/48 attempts total,36 completed judgments, one terminal JEV input-length HTTP400 and one
+additional pre-send input hold. Owned pauses restored; no unknown requests. RQ11 correctly chose
+manual review. RQ12 wrongly proposed a new feed against the approved manual/archive control,
+but exact-consensus checks left an issue candidate. RQ06's observed union is separately accepted.
+Acceptance-aware Gemini error4/7 and JEV selected-proposal error2/5; on the same five answered
+cases both are wrong2/5. Candidate output is6 PRs (4 acceptable/2 wrong),4 issues and2 input holds.
+These describe a reused historical challenge, not production accuracy or human review efficacy.
+See `evals/remedy/qualification/runtime-v1/{RESULTS.md,completion-summary.json}` and compact
+`observed-continuation.json`. Original scores unchanged. Output-policy selection remains with
+the maintainer; no admission, production routing, merge, deployment or remedy creation occurred.
+6,920 offline tests passed (17 deselected); whole Ruff/format passed.
