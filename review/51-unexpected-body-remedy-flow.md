@@ -5122,3 +5122,16 @@ neutral initial-proposal captions; the legacy plan remains byte-compatible. Runt
 bindings were refreshed; this does not qualify any role.29 focused tests and6,913 full offline
 tests passed (17 deselected); whole Ruff/format passed. Contract qualification and admissions
 remain held pending reviewed expectations, authorized measurement and assessed results.
+
+### Runtime challenge expectations approved (October 26)
+
+The maintainer confirmed RQ01–RQ12; exact instruction and reviewed spec/input/expectation/review
+hashes are in `evals/remedy/qualification/runtime-v1/outcome-acceptance.json`. RQ04/RQ05 accept
+the current manual fallback and also a correct automatic resolution with complete feed/recording
+scope. No validator adjustment or guard bypass is requested now. RQ07's new-feed expectation and
+RQ12's manual-control fallback are confirmed; no feed is created by this review decision.
+
+The offline builder can attach the approval after checking exact reviewed bytes and generate
+approved expectation metadata. Original draft and gold remain unchanged; no model answer is
+repaired. Expected-outcome approval is separate from execution: the 48-attempt budget remains
+unapproved, no inference ran, and runtime qualification, admissions and activation remain held.

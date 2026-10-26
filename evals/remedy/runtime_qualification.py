@@ -85,7 +85,42 @@ def expected_check(decision, evidence):
     )
 
 
-def build(spec_path, output):
+def apply_acceptance(path, spec_path, output, expected):
+    """Attach the reviewed case decision without granting any inference authority."""
+    acceptance = json.loads(path.read_text())
+    actual = {row["case_id"] for row in expected}
+    if (
+        set(acceptance["approved_case_ids"]) != actual
+        or len(acceptance["approved_case_ids"]) != len(actual)
+        or acceptance["approved_spec_sha256"] != sha(spec_path)
+        or acceptance["reviewed_model_inputs_sha256"] != sha(output / "model-inputs.json")
+        or acceptance["reviewed_expected_draft_sha256"]
+        != sha(output / "expected-decisions-draft.json")
+    ):
+        raise ValueError("outcome acceptance does not match the exact reviewed packet")
+    approved = []
+    for row in expected:
+        approved.append(
+            {
+                **row,
+                "approved": True,
+                "outcome_acceptance": acceptance["case_dispositions"].get(row["case_id"], {}),
+            }
+        )
+    write(
+        output / "expected-decisions-approved.json",
+        dict(
+            status="expected_outcomes_approved_only",
+            acceptance_sha256=sha(path),
+            cases=approved,
+            call_budget_approved=False,
+            runtime_qualified=False,
+        ),
+    )
+    return acceptance
+
+
+def build(spec_path, output, acceptance_path=None):
     spec = json.loads(spec_path.read_text())
     assert spec["status"] == "draft_not_approved"
     for path, expected in spec["inputs"].items():
@@ -235,6 +270,9 @@ def build(spec_path, output):
         )
     write(output / "model-inputs.json", dict(version=1, cases=inputs))
     write(output / "expected-decisions-draft.json", dict(status="unapproved", cases=expected))
+    acceptance = (
+        apply_acceptance(acceptance_path, spec_path, output, expected) if acceptance_path else None
+    )
     budget = dict(
         initial_requests=2 * len(cards),
         conditional_judge_requests_max=2 * len(cards),
@@ -251,13 +289,33 @@ def build(spec_path, output):
         ],
     )
     review = render(cards, budget)
+    if acceptance:
+        review = (
+            "# Expected outcomes approved — inference budget pending\n\n"
+            "All RQ01–RQ12 expected outcomes were approved by the maintainer on October26.\n"
+            "RQ04/RQ05: current manual fallback is accepted; correct automatic resolution is\n"
+            "also acceptable with the full feed set and exact recordings. No validator change.\n"
+            "RQ07: new-feed expectation confirmed; no feed publication authorized.\n"
+            "RQ12: manual control accepted.\n\n"
+            "No inference budget, runtime qualification, admission or activation is approved.\n"
+            "The original review text below is retained as historical context; its pending\n"
+            "questions are superseded by the acceptance record and approved expectation file.\n\n"
+            + review
+        )
     (output / "REVIEW.md").write_text(review)
     write(
         output / "run-plan-draft.json",
         dict(
-            status="awaiting_expected_outcomes_and_budget_approval",
+            status=(
+                "expected_outcomes_approved_awaiting_budget"
+                if acceptance
+                else "awaiting_expected_outcomes_and_budget_approval"
+            ),
             approved=False,
             execution_enabled=False,
+            expected_outcomes_approved=bool(acceptance),
+            call_budget_approved=False,
+            outcome_acceptance_sha256=sha(acceptance_path) if acceptance_path else None,
             budget=budget,
             measurement_transport="direct-single-attempt, runtime-generated payloads",
             automatic_worker_queue_retries_authorized=False,
@@ -425,5 +483,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, default=SPEC)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--acceptance", type=Path)
     args = parser.parse_args()
-    build(args.spec, args.output)
+    build(args.spec, args.output, args.acceptance)

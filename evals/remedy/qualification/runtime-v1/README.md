@@ -1,13 +1,17 @@
-# Runtime-contract challenge — expected outcomes awaiting review
+# Runtime-contract challenge — outcomes approved; inference budget pending
 
 This packet tests the actual P3 prompt/schema/role plan on twelve real historical source findings.
 It is a bounded challenge, with source-family overlap and some reused recordings, not an
-independent production-admission holdout. No expected answer or call budget is approved yet.
+independent production-admission holdout. The maintainer approved all RQ01–RQ12 expectations
+on October26; `outcome-acceptance.json` records the exact instruction and reviewed hashes.
+The separate inference budget is not approved.
 
 Retain `cases-draft.json` (curated selections and draft expectations) and the reusable builder:
 
 ```bash
-PYTHONPATH="$PWD" python evals/remedy/runtime_qualification.py --output /tmp/p3-runtime-review
+PYTHONPATH="$PWD" python evals/remedy/runtime_qualification.py \
+  --acceptance evals/remedy/qualification/runtime-v1/outcome-acceptance.json \
+  --output /tmp/p3-runtime-review
 ```
 
 The output directory must not exist. The builder verifies the retained inventory/cohort hashes,
@@ -82,3 +86,21 @@ created by preparation or by approval of this challenge. Publication and activat
 The offline preflight also corrected stale Sol/GLM option captions in the selected runtime JEV
 plan to neutral initial A/B captions; legacy captions stay unchanged. That exact updated runtime
 contract is what this packet binds, not the previous evaluated body-selection/JEV question set.
+
+## Expected-outcome approval — October 26
+
+The immutable draft is now approved by the separate `outcome-acceptance.json` authority record;
+its original pending fields are historical, not an unresolved review request. The approved-mode
+builder checks the exact curated spec, model-input bytes and original draft expectation bytes
+against the reviewed hashes before generating `expected-decisions-approved.json`.
+
+All twelve expected outcomes are confirmed. RQ04/RQ05 accept the existing manual fallback and
+also accept a correct automatic resolution with the full feed set and exact recording scope.
+No validator correction or bypass is requested now; revisit only if review volume warrants it.
+RQ07 is confirmed as a new-feed expectation, without authorizing actual feed creation. RQ12's
+manual-control fallback is accepted. Original semantic targets and dataset gold are unchanged.
+
+Generated plans record expected_outcomes_approved=true while execution_enabled=false and
+call_budget_approved=false. Approving expected outcomes does not qualify the runtime prompt,
+create evidence of model performance, waive ordinary model admission, activate production or
+spend the proposed maximum 48 single-attempt provider requests.
