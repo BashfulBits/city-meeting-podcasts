@@ -160,3 +160,8 @@ The October26 runtime-payload challenge stopped on a JEV input-length hold after
 Review `qualification/runtime-v1/RESULTS.md` and compact `observed-results.json` for the failed
 contract-transfer baseline. Prior pair acceptance does not waive the new wrong automatic outcomes.
 The read-only `score_runtime_qualification.py` recomputes quality from the frozen local ledger.
+
+For the repeatable concise-prompt runtime reevaluation, use
+`prepare_runtime_reevaluation.py` and `qualification/runtime-v2/README.md`. The generator rebuilds
+all12 cases, verifies unchanged expectations, records hashes, and audits each judge payload.
+Generated packets remain local/ignored; the fresh run does not replace the failed baseline.

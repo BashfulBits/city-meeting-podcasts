@@ -22,9 +22,9 @@ def summarize(directory, plan_path, authority_path):
         c["case_id"]: c
         for c in read(plan_path.parent / "expected-decisions-approved.json")["cases"]
     }
-    intents = [read(p) for p in sorted(directory.glob("*-intent.json"))]
+    intents = [read(p) for p in sorted(directory.rglob("*-intent.json"))]
     rows = []
-    for path in sorted(directory.glob("*-result.json")):
+    for path in sorted(directory.rglob("*-result.json")):
         try:
             rows.append(read(path))
         except json.JSONDecodeError:
@@ -113,14 +113,14 @@ def freeze_additional(directory, plan_path, authority_path, baseline_path, outpu
 
     with (directory / "controller.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        for intent in directory.glob("*-intent.json"):
+        for intent in directory.rglob("*-intent.json"):
             result = intent.with_name(intent.name.replace("-intent.json", "-result.json"))
             if not result.exists() or read(result).get("provider_outcome") == "unknown":
                 raise ValueError("cannot freeze unresolved provider requests")
         baseline = read(baseline_path)
         known = {(r["case_id"], r["role"]) for r in baseline["observed_results"]}
         results = []
-        for path in sorted(directory.glob("*-result.json")):
+        for path in sorted(directory.rglob("*-result.json")):
             row = read(path)
             if (row["case_id"], row["role"]) in known:
                 old = next(

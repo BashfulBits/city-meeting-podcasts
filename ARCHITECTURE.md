@@ -2171,3 +2171,12 @@ P3 accepts one maintainer-approved returned-model alias: requested
 `z-ai/glm-5.3-flash-free` may return `zai-org/glm-5.3-flash` only on
 `orcarouter_zai_glm_5_3_flash_free`. This identity policy applies to report-only/live checks,
 binds into runtime evidence and preserves the actual returned ID; it grants no admission.
+
+The selected P3 remedy role plan's concise prompt revision sends source evidence once per
+adjudicator. Gemini receives one A/B proposal pair; JEV receives one choice instruction plus
+one evidence object. Legacy prompts remain readable/unchanged. JEV recipes include changed
+instruction/data identity, and runtime qualification binds the context builder and revision.
+The same shared factories generate evaluation and runtime payloads; the Python reevaluation
+builder records frozen inputs/hashes and audits duplication offline. This does not admit any
+role or change production shadow/report-only routing. See review/51 and
+`evals/remedy/qualification/runtime-v2/README.md`.

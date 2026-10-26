@@ -630,3 +630,73 @@ def test_evaluation_adapter_preserves_feed_set_and_one_recording_scope():
         adapt_evaluated_body_selection(answer | {"feed_slugs": ["invented"]}, case)
     held = adapt_evaluated_body_selection(answer | {"missing_evidence": ["ownership"]}, case)
     assert held.action == "manual_review"
+
+
+def test_concise_adjudicators_keep_each_evidence_block_once():
+    from citypods.audit_remedy import P3_ROLE_PLANS, _compact_evidence
+    from citypods.remedy_p3_runner import _adjudication_context
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    evidence = _evidence()
+    evidence["historical_archive"] = {"note": "unique_archive_marker"}
+    votes = [_vote(role) for role in plan.initial]
+    context = _adjudication_context(votes, evidence, plan.name)
+    assert set(context) == {"initial_proposals", "archive_context"}
+    taxonomy = json.dumps(_compact_evidence(evidence)["existing_feeds"], sort_keys=True)
+    chat = _chat_job(
+        role="gemini",
+        role_plan=plan.name,
+        finding_id="f0",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        evidence=evidence,
+        extra_context=context,
+    )
+    prompt = chat.inputs["messages"][0]["content"]
+    assert prompt.count(taxonomy) == 1
+    assert prompt.count("unique_archive_marker") == 1
+    assert all(v.route_id not in prompt for v in votes)
+    job, _, item = _jev_job(
+        role_plan=plan.name,
+        finding_id="f0",
+        initial_votes=tuple(votes),
+        evidence=evidence,
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        extra_context=context,
+    )
+    wire = next(iter(job.inputs["systemone"]["questions"].values()))["instructions"]
+    assert wire.count(taxonomy) == 1
+    assert wire.count(item.question.instruction) == 1
+    assert wire.count("unique_archive_marker") == 1
+    data = json.loads(item.evidence.text)
+    assert data["source_evidence"] == _compact_evidence(evidence)
+    assert "initial_proposals" not in data
+    assert data["A"] == votes[0].decision.model_dump(mode="json")
+    assert data["B"] == votes[1].decision.model_dump(mode="json")
+
+
+def test_concise_jev_recipe_changes_when_actual_proposal_changes():
+    from citypods.audit_remedy import P3_ROLE_PLANS
+    from citypods.remedy_p3_runner import _adjudication_context
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    evidence = _evidence()
+    votes = [_vote(role) for role in plan.initial]
+
+    def build(current):
+        return _jev_job(
+            role_plan=plan.name,
+            finding_id="f0",
+            initial_votes=tuple(current),
+            evidence=evidence,
+            evidence_hash="a" * 64,
+            policy_hash="b" * 64,
+            extra_context=_adjudication_context(current, evidence, plan.name),
+        )[0]
+
+    original = build(votes)
+    changed = votes[0].model_copy(
+        update={"decision": votes[0].decision.model_copy(update={"rationale": "Changed candidate"})}
+    )
+    assert build([changed, votes[1]]).recipe_hash != original.recipe_hash

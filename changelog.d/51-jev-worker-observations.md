@@ -409,3 +409,17 @@ Complete the remaining runtime challenge cases under the approved cumulative bud
 36 judgments and two terminal JEV input holds/failures. With RQ06 accepted,2/6 proposed PRs are
 wrong; both adjudicators are wrong2/5 on their same answered cases. Keep original scores and
 compact observations; production routing and remedy creation remain unchanged pending review.
+
+Remove repeated evidence from the selected runtime adjudication prompts and make instructions
+concise. Preserve full taxonomy, legacy prompts, existing scoring and production shadow gates.
+Version JEV request identity and bind context construction to reviewed evidence. Add repeatable
+Python packet generation and duplication audits for a fresh, approved twelve-case evaluation.
+
+Preserve the concise evaluation's initial429 as availability evidence. Record the separately
+approved one-retry exception after the provider cooldown, scheduled continuation, shared48-attempt
+cap and stop-on-new-hold behavior. Both original evaluation pauses were restored; no quality
+judgment or production activation is claimed from the blocked attempt.
+
+Final concise-prompt/retry validation:6,924 full offline tests passed (17 deselected),40 focused
+prompt/safety checks passed, and whole-repository Ruff/format/diff checks passed. Two independently
+generated eight-file packets were byte-identical. No inference beyond the single held429 attempt.

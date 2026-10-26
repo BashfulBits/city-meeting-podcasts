@@ -5199,3 +5199,42 @@ See `evals/remedy/qualification/runtime-v1/{RESULTS.md,completion-summary.json}`
 `observed-continuation.json`. Original scores unchanged. Output-policy selection remains with
 the maintainer; no admission, production routing, merge, deployment or remedy creation occurred.
 6,920 offline tests passed (17 deselected); whole Ruff/format passed.
+
+### Concise, nonduplicated prompt reevaluation authorized (October 26)
+
+The maintainer requested another evaluation with nonduplicated, clear/concise prompts and Python
+packet generation. `evals/remedy/prepare_runtime_reevaluation.py` rebuilds the same12 cases from
+retained sources, proves unchanged expectations/validator checks, pins sources and execution
+paths, and audits every prospective judge packet for duplicate taxonomy/instructions. Two eight-
+file builds were byte-identical. Audit-only prior proposals never become new inference results.
+Instructions and scope are in `evals/remedy/qualification/runtime-v2/{README.md,run-approval.json}`.
+
+Only the selected plan uses the concise revision: one source object and one proposal pair per
+judge, no repeated taxonomy/history/context or doubled JEV instruction/evidence block. The full
+taxonomy is preserved. Initial chat instructions are shorter; existing target slugs and proposed
+new-feed metadata are distinguished without adding case-specific truth. Legacy prompts remain
+unchanged; JEV recipe identity binds new instruction/data and runtime bindings cover context code.
+The prior oversized audit bundles now estimate11,328/11,145 tokens versus roughly44–45k.
+
+Fresh48-attempt cap, no repeats/retries, same models/schema/validator/comparator/profiles and
+primary free routes. The original executor controls a separate ledger; actual judge packets
+come only from fresh initial answers. Prior scores and RQ06 acceptance remain separate. Production
+stays shadow/report_only with empty admissions; no routing decision, merge or activation.
+
+### Concise run availability hold and one delayed retry approved (October 26)
+
+The first RQ01 Flash attempt returned OrcaRouter429 `free_rate_limited`; no model judgment.
+Provider retry-after13,556 seconds gives a not-before time2026-10-27T00:00:00.503737Z (7pm Central
+October26). Owned provider pauses restored with0errors; no unknown intent or active controller.
+`qualification/runtime-v2/observed-hold.json` preserves the failure; no quality claim follows it.
+The maintainer explicitly approved one delayed retry and scheduled continuation within the same
+48-attempt cap, stopping on another rate limit. `retry-approval.json` pins exact evidence/authority
+and `evals/remedy/retry_runtime_qualification.py`; the immutable retry uses approved-retry/ and
+recursive accounting/spacing. Every other case/role remains single-attempt. The heartbeat
+complete-concise-remedy-evaluation is quiet before cooldown and deletes itself on completion,
+cancellation or a new hold. No paid fallback, secondary account, prompt/profile change, production
+activation or automatic output-policy choice.40 focused safety/prompt tests passed.
+
+Final concise-prompt/retry validation:6,924 full offline tests passed (17 deselected),40 focused
+prompt/safety checks passed, and whole-repository Ruff/format/diff checks passed. Two independently
+generated eight-file packets were byte-identical. No inference beyond the single held429 attempt.
