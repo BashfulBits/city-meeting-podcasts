@@ -5094,3 +5094,31 @@ separate gates; config stays shadow/report_only/empty admissions. No live call o
 Alias-policy verification:117 targeted tests and6,911 full offline tests passed
 (17 deselected); whole-repository Ruff/format and diff checks passed. Production remains
 shadow/report_only with no admissions; compact experimental outcomes were not rewritten.
+
+### Runtime-contract challenge prepared for review (October 26)
+
+Prepared twelve real historical source/finding cases using retained recording/inventory data
+and current source-scoped feed policy: three unions, three exact-recording joint inclusions,
+one proposed new body/feed direction, and five manual controls. The curated draft and rerun guide
+are `evals/remedy/qualification/runtime-v1/{cases-draft.json,README.md}`; the reusable offline
+builder is `evals/remedy/runtime_qualification.py`. Generated review cards, inputs, provenance,
+validator checks and hash-bound run plan stay ignored/local, not committed run artifacts.
+
+Expected outcomes and budget remain unapproved. RQ04/RQ05 expose existing P&Z/CPAC taxonomy
+validator holds without dropping correct feed memberships. RQ07 requires review of the new body
+direction; RQ12 requires reviewing the archive-policy/manual boundary absent from the prompt.
+Mirrored native clips are counted once for evidence frequency, with all original identities
+retained; no stored recording is deleted or rewritten. Source overlap/reused observations are
+explicit: this is a bounded challenge, not an independent admission holdout.
+
+Proposed budget is24 initial plus at most24 conditional judge requests,48 provider attempts
+maximum with no retries. Direct single-attempt measurement of runtime-generated payloads keeps
+that cap enforceable; ordinary Worker queue retries are not silently included. Worker end-to-end
+validation remains separate. Adjudicators receive actual proposals only and may have no coverage
+if there are no disagreements. No live calls, credentials, deployment or activation occurred.
+
+Offline preflight corrected stale Sol/GLM captions in the selected runtime JEV A/B options to
+neutral initial-proposal captions; the legacy plan remains byte-compatible. Runtime evidence
+bindings were refreshed; this does not qualify any role.29 focused tests and6,913 full offline
+tests passed (17 deselected); whole Ruff/format passed. Contract qualification and admissions
+remain held pending reviewed expectations, authorized measurement and assessed results.

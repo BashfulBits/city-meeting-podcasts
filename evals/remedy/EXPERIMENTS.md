@@ -147,3 +147,11 @@ full validation passed 6,902 Python tests (17 deselected) and 572 Worker tests. 
 repository validation, use `ruff check .`, `ruff format --check .` and `pytest -q`; run `npm test`
 in `workers/llm-dispatch-v2`. The offline commands above specifically verify evidence retention
 and reconstruction without relying on ignored local files.
+
+## Runtime-contract challenge preparation
+
+The next unapproved twelve-case source/finding challenge is described in
+[qualification/runtime-v1/README.md](qualification/runtime-v1/README.md). Its curated draft
+expectations and reusable builder are tracked; generated review/input/preflight files stay local.
+This separately tests runtime-generated prompts/schema rather than assuming the earlier answer
+projection transferred accuracy. It is not an independent production holdout or live approval.

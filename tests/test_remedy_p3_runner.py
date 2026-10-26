@@ -334,6 +334,30 @@ def test_role_plan_rejects_self_adjudication():
         replace(P3_ROLE_PLANS["flash-deepseek-v2"], chat="deepseek")
 
 
+@pytest.mark.parametrize(
+    "plan,roles,captions",
+    [
+        ("legacy-sol-v1", ("sol", "glm_flash"), ("Sol proposal", "GLM Flash proposal")),
+        (
+            "flash-deepseek-v2",
+            ("glm_flash", "deepseek"),
+            ("Initial proposal A", "Initial proposal B"),
+        ),
+    ],
+)
+def test_runtime_jev_choice_captions_follow_role_plan(plan, roles, captions):
+    _, _, item = _jev_job(
+        role_plan=plan,
+        finding_id="f0",
+        initial_votes=tuple(_vote(r) for r in roles),
+        evidence=_evidence(),
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        extra_context={},
+    )
+    assert item.options[:2] == (("A", captions[0]), ("B", captions[1]))
+
+
 def test_isolated_plan_is_held_before_any_backend_or_production_storage(monkeypatch, tmp_path):
     import hashlib
 

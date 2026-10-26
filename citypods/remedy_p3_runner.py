@@ -386,8 +386,8 @@ def _jev_job(
         evidence=Evidence("T0", text, evidence_hash[:32]),
         subjects=(subject,),
         options=(
-            ("A", "Sol proposal"),
-            ("B", "GLM Flash proposal"),
+            ("A", "Sol proposal" if role_plan == "legacy-sol-v1" else "Initial proposal A"),
+            ("B", "GLM Flash proposal" if role_plan == "legacy-sol-v1" else "Initial proposal B"),
             ("C", "Neither complete proposal is supported"),
             ("D", "Evidence is insufficient"),
         ),

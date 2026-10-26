@@ -235,7 +235,7 @@
         "project_evidence": null,
         "manifest_hash": null,
         "gold_hash": null,
-        "prompt_hash": "1ad4691e68d85fee4844e7f61e12a60e4ceca4ae7c16837b62048ed815f62fe2",
+        "prompt_hash": "5093374f5e1d3d7a938665aaaeb8441c6177f5173cccb13c5785d3b6cbef03f9",
         "schema_hash": "5b1fd1aa1a9cc554bcd0645817285b9daf38d4a8e5dad5921053ab6df1a86154",
         "catalog_hash": "06f05c9ab2a5873b21a6e6c96925c9d10c65b719710ea71a721ce1eb7c951faf",
         "reviewed_result_paths": [],
@@ -250,7 +250,7 @@
         "accepted_returned_model_ids": [
           "jev-1.13-free"
         ],
-        "prompt_hash": "1ad4691e68d85fee4844e7f61e12a60e4ceca4ae7c16837b62048ed815f62fe2",
+        "prompt_hash": "5093374f5e1d3d7a938665aaaeb8441c6177f5173cccb13c5785d3b6cbef03f9",
         "schema_hash": "5b1fd1aa1a9cc554bcd0645817285b9daf38d4a8e5dad5921053ab6df1a86154",
         "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
         "catalog_hash": "06f05c9ab2a5873b21a6e6c96925c9d10c65b719710ea71a721ce1eb7c951faf",

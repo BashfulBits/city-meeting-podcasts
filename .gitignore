@@ -73,3 +73,6 @@ scratch/
 /evals/remedy/results/glm-full-2026-10-24/all-pairs-final.md
 
 !/evals/remedy/results/accepted-pairs-2026-10-24/adoption/glm-alias-acceptance.json
+
+# Runtime qualification review files are generated; retain the builder and curated draft instead.
+/evals/remedy/results/runtime-qualification-2026-10-26/
