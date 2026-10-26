@@ -1190,6 +1190,26 @@ GitHub, feed-write or admission-override path; it supplies an empty trusted-admi
 therefore fails closed. A future trusted dispatch integration must supply validated runtime
 admissions and remains separate from this report-only replay tool.
 
+The unmerged admission-integration follow-up also provides an explicit `flash-deepseek-v2`
+role plan (Flash/DeepSeek initial, Gemini/JEV adjudication) alongside strict legacy replay.
+Requests, observations, A/B ordering and reports share that immutable plan. Version2 observations
+bind its hash; version1 observations retain their original payload/ID and stage/route contracts.
+Reviewed project-evidence loading checks repository-local SHA256 anchors, raw source hashes and
+runtime prompt/schema/catalog/profile bindings. JEV's alternative evidence scope is limited to
+manual report-only remedy choices; generic admission still requires comparable AA evidence.
+
+`scripts/remedy_p3_daily.py --report-only-plan ... --plan-sha256 ...` selects a separate reviewed
+manual/report-only configuration without modifying production config. It fails before backend or
+storage initialization when admissions are absent. An admitted one-finding run writes immutable
+local observations, intent/receipt files and Worker handles; inference stays queue-only through
+the shared Worker DO. Unknown intents cannot be resubmitted. This path neither writes the
+production ledger nor pretends a provider pause supplies CAS. Ordinary daily ledger writes keep
+their existing CAS guard. Current production remains shadowed with empty admissions: the local exact
+Gemini free route is registered in its own `gemini/gemini-3.8-flash-free` pool, preserving
+discovery and the shared Gemini pool. Its Worker deployment, serving-identity review and
+runtime-contract transfer evidence are still gates. The offline adapter replay creates bounded
+single-recording candidates or manual holds; source-wide policy validation remains mandatory.
+
 `citypods.remedy_p3_observations` persists completed P3 Worker responses as strict,
 content-addressed objects under `state/remedy/p3-observations/<source>/`. Appends and reconstruction
 use the shared remedy maintenance lease and verify the object after writing. Repeated collection of
@@ -1220,6 +1240,50 @@ are stored as an additive typed event field under the remedy lease. Old events o
 retain their existing canonical IDs. A terminal disposition closes its issue; a future-evidence
 hold stays open. The publisher does not merge PRs or write feed configuration on main. No P3 calls
 or publication are enabled by the repository's current shadow configuration.
+Four maintainer-approved JEV Worker observations on 2026-10-19 returned the pinned route and
+upstream identity, each in one attempt. This evaluation lane uses the Worker's DO queue, local handles/receipts
+and B2 payloads. An initial attempt to use the Python client's optional R2 registry failed after
+Worker acceptance; read-only recovery retained the result without resubmission. No R2 bucket is
+required for this operational lane. JEV systemone receives only model/state/questions; its 1,024
+output tokens are a scheduling reservation, not an upstream cap. See review/51's qualification
+record; this evidence does not itself admit routes or enable publication.
+
+The subsequent approved three-chat-route observation set is incomplete: the pinned Sol job
+remained queued after two Worker dispatch attempts without a result; GLM Flash and DeepSeek
+were not submitted. This operational evidence does not admit the chat routes. Admission preflight
+also found that `p3_enabled` supplies no evaluation context to a validator that requires it, while
+the generic JEV benchmark and production storage/lease contracts need a scoped maintainer design
+before activation. See review/51 and the retained `chat-summary.json` receipt history.
+
+The maintainer subsequently authorized cancellation and an identical fresh Sol availability
+retry. The DO confirmed cancellation before the new operational job identity was submitted;
+payload/request digest equality is recorded. Availability failures are not calibration-quality
+outcomes and do not invalidate accepted P1 evidence. See review/51 for the retry receipt chain.
+
+
+Review/51 operational status, 2026-10-21: a fresh Worker poll reports the authorized Sol retry
+`af2b9092-bddc-4c40-a289-6bb3ffb497d7` as failed, with one recorded dispatch attempt and no
+returned model, answer or terminal reason. This supplies no quality score and does not change
+accepted P1 calibration evidence. The local controller ended its 45-minute window on October 19;
+it is no longer running. Resuming the already-approved GLM Flash observation was rejected at
+enqueue with `ingress_write_budget_reserved`; no provider call was made. DeepSeek remains
+unsubmitted at the shared admission gate. Keep the exact pins/settings and resume after Worker
+ingress capacity is available, without bypassing its budget or creating another Sol retry.
+The four JEV observations remain complete; admissions and shadow/report-only settings are
+unchanged. Latest receipts and status are retained in the results directory's `chat-summary.json`.
+
+A separately authorized one-shot diagnostic uses exact-route Worker pauses at October 23
+23:50 UTC and direct local observations from October 24 00:01 UTC. Local frozen requests reuse
+shared structured shaping and DO reservation, with no R2 registry. One-hour expiry and owned-pause
+restoration bound the window; direct receipts do not substitute for Worker-served admission.
+See review/51 and `midnight-local-plan.md`. Production configuration remains unchanged.
+
+The one-shot midnight local phase made zero provider calls: route-level drain succeeded, but
+provider-wide in-flight checks remained busy. The controller preserved a no-call outcome for each
+route and restored/readback-verified its owned pauses. Selected-route pauses do not establish
+exclusive provider-account access; a primary BeatAPI provider pause would also affect JEV and
+requires separate maintainer approval. No calibration quality or production admission changed.
+
 Remedy publication planning (review/51 P4, report-only): `citypods/remedy_queue.py` plans what the
 P3 publisher would open, update or leave queued within `config/remedy.yml`'s limits (packing, rolling
 week, open caps, round-robin by city, stable decision markers and branches); the publisher records it

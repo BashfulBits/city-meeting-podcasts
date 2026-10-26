@@ -1041,9 +1041,11 @@ def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
     secondary = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi_secondary"]
     chat = [r for r in beatapi if r["api_shape"] != "systemone"]
     assert chat and all(r["tier"] == "backup" for r in chat)
-    # The second account carries the same five chat routes, on its own window, and never
-    # yields: JEV runs on the primary account.
-    assert len(secondary) == len(chat)
+    # Keep the five historical secondary rows unchanged. The new review/51 Gemini route
+    # is primary-only; do not mirror it onto the banned secondary account.
+    old_primary = [r for r in chat if r["route_id"] != "beatapi_gemini_3_8_flash_free"]
+    assert len(secondary) == len(old_primary) == 5
+    assert {r["upstream_model"] for r in secondary} == {r["upstream_model"] for r in old_primary}
     assert all(r["tier"] == "backup" and not r["yields_to"] for r in secondary)
     # JEV is the account's primary (review/53 PR2); the chat backups yield to it.
     jev = worker["routes_by_id"]["beatapi_jev_1_13_free"]
@@ -1148,6 +1150,24 @@ def test_kimi_max_controls_match_python_worker_without_changing_defaults():
         route = routes["nvidia_kimi_k3_free"]
         assert route["reasoning_controls"] == {"max": {"reasoning_effort": "max"}}
         assert route.get("request_params") is None
+
+
+def test_review51_gemini_free_route_is_exact_and_keeps_account_controls():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)
+    route = worker["routes_by_id"]["beatapi_gemini_3_8_flash_free"]
+    assert route["upstream_model"] == "gemini-3.8-flash-free"
+    assert route["model"] == "gemini/gemini-3.8-flash-free"
+    assert route["route_id"] not in worker["model_routes_map"]["gemini/gemini-3.8-flash"]
+    assert route["free"] is True
+    assert route["account_id"] == "primary"
+    assert route["tier"] == "backup"
+    assert route["yields_to"] == ["beatapi_jev_1_13_free"]
+    assert route["structured_output_method"] == "prompt_only"
+    assert route["output_context_limit"] == 16384
+    assert route.get("rpd") is None  # No provider-promised daily allowance is invented.
+    assert worker["providers"]["beatapi"]["concurrency"] == 1
+    assert worker["providers"]["beatapi"]["rpm"] == 1
 
 
 def test_gateway_route_attempt_override_precedes_provider_default(monkeypatch):

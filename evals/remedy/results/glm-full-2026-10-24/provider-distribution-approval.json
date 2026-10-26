@@ -1,0 +1,10 @@
+{
+  "authorization": "Both NVIDIA and BeatAPI now have free routes to full GLM. Feel free to pause both providers and distribute to both and see which has more capacity.",
+  "beatapi_model": "glm-5.3-free",
+  "nvidia_model": "z-ai/glm-5.3",
+  "beatapi_partition": "even original manifest indices",
+  "nvidia_partition": "odd original manifest indices",
+  "distinct_cases": 60,
+  "single_flight_per_provider": true,
+  "spacing_seconds": 65
+}

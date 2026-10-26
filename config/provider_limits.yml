@@ -1412,6 +1412,29 @@ routes:
   # tokens and a smaller limit would drop the routes from those lanes. Yielding to JEV while it
   # has queued work ships with the JEV route (review/49 P1).
   # ==========================================
+  # Local registration for review/51; deployment/admission remain separately gated.
+  # Exact free ID verified by 60 original-prompt answers and 7 adjudication answers (Oct24).
+  # Provider publishes no free-route context limit:128k is a conservative placeholder, not
+  # a measured guarantee. Keep the evaluated16k output profile; do not inherit paid limits.
+  - route_id: beatapi_gemini_3_8_flash_free
+    model: beatapi/gemini-3.8-flash-free
+    model_key: gemini/gemini-3.8-flash-free
+    provider: beatapi
+    tier: backup
+    yields_to: [beatapi_jev_1_13_free]
+    upstream_model: gemini-3.8-flash-free
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-24"
+    upstream_429_default: upstream_capacity
+    structured_output_method: prompt_only
+
   - route_id: beatapi_deepseek_v4_flash_free
     model: beatapi/deepseek-v4-flash
     model_key: deepseek/deepseek-v4-flash

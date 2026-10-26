@@ -1468,6 +1468,174 @@ admission. The route catalog lists JEV's 4,096-token output context limit; that 
 evidence of the effective per-request reservation. Preserve shadow mode and empty admissions until
 the exact serving identities and effective Worker settings are verified against that decision.
 
+**JEV Worker qualification observations (2026-10-19; four complete, not admitted).** The maintainer
+approved four frozen disagreement packets and explicitly accepted the existing bounded Worker
+retry policy after preflight established that `num_retries: 0` does not disable Worker retries.
+The first packet, Dallas Streets August 22, 2023, was accepted as Worker job
+`42fc88cb-97b0-4f53-8c73-e00f0b691796` and completed in one provider attempt. The Worker status
+returned `typesafe/jev-1.13` on `beatapi_jev_1_13_free`; the raw provider response returned
+`jev-1.13-free`, choice B, support A 0.35 / B 0.71, and usage 16,617 input / 172 output tokens.
+This establishes observed route/upstream identity for one remedy-shaped Worker call, not model
+family verification or admission. The request snapshot records 1,024 output tokens, long timeout,
+no reasoning/temperature override and zero client retries; the response does not echo effective
+parameter controls, so requested settings must not be represented as independently observed ones.
+
+After acceptance, the shared Python client's optional deferred-handle registry failed with
+`NoSuchBucket`. Read-only Worker polling recovered completion and a B2 read retained the raw
+result; the accepted recipe was not resubmitted. The maintainer clarified that this operational
+lane uses the Worker's DO coordinator, not an R2 coordination bucket. The earlier local bucket
+404 does not establish a missing production dependency. Continue the approved jobs through the
+existing Worker enqueue/poll endpoints, keeping handles and receipts locally; B2 holds request
+and result payloads. Do not create an R2 bucket or change production configuration.
+
+The existing pause/resume/status/reserve endpoints coordinate out-of-band direct provider calls.
+These qualification jobs stay inside the DO queue and its account-wide pacing; pausing BeatAPI
+would also stop their Worker claims, so this run does not pause it or call providers directly.
+The shared `JevBackend` still constructs each packet with purpose `remedy:p3`, and the existing
+Python payload/policy/digest builders retain the exact physical pin. The controller never
+resubmits an ambiguous intent, adds retries or changes concurrency. This is an evaluation-only
+transport adaptation, not a second JEV wire client or a change to the production daily caller.
+
+The systemone wire adapter sends only `model`, `state` and `questions`; it accepts no output cap,
+reasoning or temperature controls. Thus 1,024 is the scheduler's output reservation, not an
+upstream generation cap. Long timeout and the existing Worker retry policy apply at the Worker,
+while `num_retries: 0` is a client setting. The raw provider reply does not independently echo
+those controls. Requests, approved case hashes, acceptance/status receipts, raw results and
+summary are under `evals/remedy/results/worker-qualification-2026-10-19/`. Admissions and
+shadow/report-only configuration remain unchanged.
+
+All four authorized jobs subsequently completed, each in one provider attempt, returning the
+pinned route `beatapi_jev_1_13_free`, logical model `typesafe/jev-1.13` and raw upstream
+`jev-1.13-free`. Every packet returned its choice and both independent support probabilities.
+The four calls used 40,588 input and 676 output tokens in total. No provider pause, direct call,
+manual retry, route fallback, R2 write or production admission was used on the corrected path.
+
+| Packet | JEV choice | Support A / B | Provider attempts |
+|---|---|---|---|
+| Dallas Streets, August 22, 2023 | B | 0.35 / 0.71 | 1 |
+| Eagle Mountain-Saginaw ISD / Fort Worth joint | A | 0.57 / 0.19 | 1 |
+| Citizen Advisory Committee, June 1, 2007 | C (neither) | 0.12 / 0.09 | 1 |
+| Environmental Task Force | B | 0.22 / 0.50 | 1 |
+
+These are route/wire observations, not a new accuracy acceptance or independent serving-family
+attestation. `summary.json` links the four Worker IDs and exact result files;
+`wire-profile.json` distinguishes local adapter provenance from provider-echoed fields. Whole-repo
+Ruff lint/format pass; the offline suite passes 6,733 tests (17 deselected). Next proposed gate is
+one frozen Worker identity observation on each approved chat route, with request snapshots in
+`proposed-chat-jobs.json`; these three jobs are not authorized or submitted. The maintainer still
+must decide identity holds/exceptions and admissions before activation.
+
+**Approved chat-route identity observations (2026-10-19; Sol pending operational gate).**
+The maintainer approved the three frozen requests in `proposed-chat-jobs.json`, sequentially with
+16,384 output tokens, provider-default reasoning, no temperature override, the existing bounded
+Worker retry policy and no manual retries. The DO accepted Sol job
+`dc2104bc-24fd-4116-9c10-eead417bf597` at 19:18:38 UTC. At 19:35:18 UTC it had returned from
+leased to queued, with two recorded Worker dispatch attempts and no terminal result or returned
+upstream identity. This is not a qualified observation or a proven provider timeout: the poll
+receipt does not expose the upstream failure cause. GLM Flash and DeepSeek remain unsubmitted.
+No second Sol recipe, route fallback, provider pause, cancellation or config change was made.
+
+The recommended next operational decision is to cancel this stalled Sol job before completing
+the other two already-approved observations. Cancellation is not authorized yet; the accepted
+job remains queued and may retry under the existing approved Worker policy. Exact request,
+handle and status history are retained in `chat-summary.json` and `chat-sol-*` files under the
+same results directory. Whole-repo Ruff lint/format pass; 6,733 offline tests pass (17 deselected).
+
+Admission preflight also identifies separate design gates in `admission-preflight.md`:
+`p3_enabled` omits the evaluation context that production `validate_admission` requires;
+the generic schema requires dated comparable AA evidence not supplied for JEV by these artifacts;
+and the production daily script's CAS storage/lease contract needs reconciliation with the
+maintainer's DO-coordination direction. Do not fabricate benchmark data, bypass validation or
+invent a replacement lease path. The unapproved identity-exception proposal is documented in
+`identity-decision-proposal.md`, contingent on matching completed observations. These findings do
+not authorize implementation or activation. Preserve empty admissions, shadow mode and report-only
+publication until the scoped design and subsequent production steps are explicitly approved.
+
+**Availability recovery direction (2026-10-19).** The maintainer explicitly directed cancellation
+and one fresh Sol attempt, clarifying that transient availability failures do not count against
+model calibration. The Worker confirmed cancellation of
+`dc2104bc-24fd-4116-9c10-eead417bf597` with no in-flight job; its last pre-cancel poll showed three
+Worker dispatch attempts and no completion. Preserve its receipts as operational evidence only:
+no answer was scored and the accepted P1 calibration evidence is unchanged.
+
+A fresh approved Sol job, `af2b9092-bddc-4c40-a289-6bb3ffb497d7`, uses the exact original payload
+and request digest, with a distinct operational recipe/idempotency identity after confirmed
+cancellation. `chat-sol-retry-equivalence.json` records that comparison; original intents and
+handles are retained. Route, frozen input, prompt/schema, 16,384 output tokens, provider-default
+reasoning, temperature omission, timeout and bounded Worker retry policy are unchanged. This is
+an authorized availability retry, not a new model configuration, score penalty or admission.
+GLM Flash and DeepSeek remain the subsequent approved sequential observations.
+At 19:45:12 UTC the fresh Sol job was queued with one Worker dispatch attempt and no answer.
+A bounded local controller follows the existing handle every 30 seconds for at most 45 minutes,
+then, on completion, advances GLM Flash and DeepSeek with the agreed 60-second spacing. It adds
+no fresh Sol retry. A terminal failure/hold or controller error stops local advancement; queued
+Worker jobs are not automatically cancelled. Receipts remain append-only. Full verification:
+6,733 offline tests passed (17 deselected), whole-repo Ruff lint/format passed.
+
+
+Review/51 operational status, 2026-10-21: a fresh Worker poll reports the authorized Sol retry
+`af2b9092-bddc-4c40-a289-6bb3ffb497d7` as failed, with one recorded dispatch attempt and no
+returned model, answer or terminal reason. This supplies no quality score and does not change
+accepted P1 calibration evidence. The local controller ended its 45-minute window on October 19;
+it is no longer running. Resuming the already-approved GLM Flash observation was rejected at
+enqueue with `ingress_write_budget_reserved`; no provider call was made. DeepSeek remains
+unsubmitted at the shared admission gate. Keep the exact pins/settings and resume after Worker
+ingress capacity is available, without bypassing its budget or creating another Sol retry.
+The four JEV observations remain complete; admissions and shadow/report-only settings are
+unchanged. Latest receipts and status are retained in the results directory's `chat-summary.json`.
+
+
+**Authorized one-shot local window (2026-10-23).** The maintainer requested pauses of the exact
+Sol, GLM Flash and DeepSeek routes at October 23 23:50 UTC, followed by local requests beginning
+October 24 00:01 UTC (October 23 6:50 p.m. / 7:01 p.m. Central). Two COUNT=1 thread follow-ups are
+active. `midnight-local-plan.md` and `midnight-local-schedule.json` under the same results directory
+record timing, exact frozen requests and ownership-safe cleanup; `midnight_local.py` implements
+prepare/pause/run phases. No calls or pauses are performed during preparation.
+Read-only preflight confirms all three targets exist and report a next-day reset before 00:01 UTC.
+Validation: whole-repo Ruff lint/format passed; 6,733 offline tests and five targeted checks passed.
+
+This explicitly authorizes one direct local provider call per exact route for evaluation only,
+using the frozen prompt/schema, shared route shaping, 16,384 output tokens, provider-default
+reasoning, no temperature override, a 720-second hard response bound and zero retries/fallback.
+It supersedes Worker-only transport for this one-off diagnostic, not for production P3. Direct
+receipts are not Worker-served identity receipts and do not automatically resolve admissions.
+
+The Worker's admission/write day and all three configured route-day boundaries use UTC.
+OrcaRouter's official free-model documentation confirms a 00:00 UTC daily request reset.
+BeatAPI's official free-model documentation promises per-minute successful-request limits,
+not a daily allowance or midnight reset. Do not promise BeatAPI availability after midnight.
+Sources: https://docs.orcarouter.ai/routing/free-models and https://docs.beatapi.io/free-models.
+
+The pause phase sets one-hour expiry on only the three requested route scopes. The direct phase
+requires acknowledged pauses, bounded drain, current capacity and Worker reserve receipts;
+foreign/global/provider pauses are honored, and only this run's owned route pauses are resumed.
+The primary BeatAPI account still shares JEV capacity: no wider pause, concurrency increase,
+account substitution or top-up is authorized. Busy/contended/failed calls are operational evidence,
+not negative calibration labels. A missed scheduled window fails closed. Production shadow mode,
+empty admissions and report-only publication remain unchanged.
+
+**Midnight pause executed (2026-10-23, 23:50 UTC).** All three exact route pauses were
+acknowledged and readback-verified, with zero selected in-flight jobs. Leases expire at about
+October 24 00:50:15 UTC. No LLM call was made, no provider/global/JEV pause was added, and
+production configuration is unchanged. Receipts are in `midnight-local-2026-10-24/` under the
+results directory. The completed pause follow-up was deleted; the 00:01 UTC local-run follow-up
+remains scheduled and owns restoration of these route pauses after its bounded run.
+
+**Midnight local phase completed without calls (2026-10-24, 00:01 UTC).** The prepared run
+started in its approved window. All three routes passed the selected-route drain step, but each
+subsequent provider-wide in-flight check was busy, so every observation recorded
+`provider_busy_no_call`. No provider HTTP request, reservation or model answer occurred; no
+calibration-quality score changes. This demonstrates that pausing selected chat routes does not
+isolate their provider accounts from other Worker traffic, including JEV on primary BeatAPI.
+
+All three owned route pauses were resumed in the finally block with zero restoration errors and
+readback-verified absent. Foreign pauses were not changed. Results, run summary and restoration
+readback are retained under `midnight-local-2026-10-24/`. The completed local-run follow-up was
+deleted, so neither one-shot automation remains scheduled. Any retry requiring provider-wide
+quiescence is a new production-affecting scope decision: primary BeatAPI includes JEV, and the
+maintainer has not authorized that broader pause. No config, admissions, quota ceilings or
+publication settings changed.
+
 **P3 dispatch cadence and adapter decision (maintainer, 2026-10-15):** the P3 runner will use the
 Worker for all four model calls. Give P3 its own daily scheduled invocation; the existing feed-health
 audit is already daily, while review/49's weekly judge audit is a separate workflow and keeps its
@@ -4605,3 +4773,304 @@ Prompt-comparison verification2026-10-14:125 targeted checks and6201 full offlin
 tests passed,16deselected. Whole Ruff/format555 files, fragments and diff checks clean.
 Read-only Worker and shared-quota preflight confirms all three routes available;
 launch uses normal coordination. No provider requests occurred during preflight.
+
+
+October 24 follow-up: the maintainer renewed the request to pause the three routes and submit
+outstanding jobs. Direct execution remained blocked by other provider routes. The three frozen
+requests were therefore accepted by the existing Worker DO queue, which retains account pacing:
+Sol `71fa5a0c-6a39-4699-8efd-891d818a59c4`, GLM Flash
+`bb603c63-0468-4866-93bb-c8e13b2d2cfc`, DeepSeek
+`31160a2c-5fe9-4c56-a247-0ad4a9daca00`. All three were queued at readback; acceptance is not
+completion or calibration evidence. Temporary exact-route pauses were restored, with zero owned
+pauses remaining. No provider/JEV/global pause or production admission changed. Receipts are in
+`evals/remedy/results/worker-qualification-2026-10-19/queue-followup-2026-10-24/`.
+
+
+October 24 completion investigation: the maintainer requested persistent exact-route pauses and
+periodic progress until the outstanding observations finish. All three queued evaluation jobs
+were confirmed cancelled before direct calls, avoiding duplicate execution. The direct Sol
+request returned HTTP 404 (`not_found`, `retryable: false`); an authenticated model-list read
+also omitted the pinned `gpt-6.1-sol-free` ID. This is availability evidence, not calibration
+quality evidence. GLM Flash and DeepSeek remain under the local completion controller. Exact
+route pauses are renewed with expiring one-hour leases; no provider/global/JEV pause was added.
+Raw bounded contention snapshots, cancellation and response receipts are preserved under
+`evals/remedy/results/worker-qualification-2026-10-19/completion-investigation/`.
+A five-minute thread heartbeat reports progress and safely resumes only without an active
+controller or existing call intent. No production admission or merge has occurred.
+
+
+October 24, 00:42 UTC: the direct DeepSeek V4.1 Flash observation completed with HTTP 200,
+exact returned model identity and a schema-valid answer. It assigned the Streets and
+Transportation Subcommittee to both its dedicated feed and the Bond Program family feed.
+This is a parsed observation, not a new calibration score or serving-family attestation.
+GLM Flash still awaits drain; Sol remains blocked by the documented unavailable pinned alias.
+
+
+October 24, 00:47 UTC completion readback: all three direct requests have returned; the controller
+has exited. GLM Flash returned HTTP 200 and a schema-valid answer, but its response model was
+`zai-org/glm-5.3-flash`, differing from pinned `z-ai/glm-5.3-flash-free`; identity acceptance
+remains held. DeepSeek returned its exact pinned identity. GLM selected only the dedicated
+Streets feed; DeepSeek selected both the dedicated and Bond Program family feeds. Sol returned
+a non-retryable unavailable-model 404. None of these observations creates an admission or
+serving-family attestation. Pauses remain active pending maintainer disposition of both holds;
+the heartbeat now renews pauses and reports status without restarting the finished controller.
+
+
+### Approved Sol replacement — October 23, 2026 Central
+
+The maintainer approved the proposed reassignment: Gemini 3.8 Flash Free on BeatAPI replaces
+Sol as initial assignment A; GLM Flash remains initial B, and DeepSeek V4.1 Flash plus JEV 1.13
+remain adjudicators. This supersedes the October 15 pinned Sol role. Sol historical results
+remain preserved; its current unavailability is not a calibration failure.
+
+The maintainer also approved a temporary BeatAPI provider pause, explicitly including JEV,
+for the new candidate's frozen 60-case evaluation. The candidate is not registered in the
+deployed Worker and is not falsely charged to another route. The evaluation uses provider
+pause/drain, single-flight, 65-second spacing, zero hidden retries and immutable request intents.
+See `evals/remedy/results/gemini-replacement-2026-10-24/`. The original assignment prompt and
+all 60 cases are frozen; gold is used only offline. Existing GLM original-prompt observations
+supply paired comparisons. Any new disagreement must bind its actual changed A/B proposals;
+old adjudicator answers cannot be relabeled as judgments of Gemini's response.
+
+This approves the assignment change and necessary evaluation, not production admission.
+Provider-default is not a named High/Max effort claim. Exact route support, identity, task
+quality and trusted admission loading remain evidence gates. Production stays shadowed.
+
+
+The maintainer additionally approved pausing the secondary BeatAPI API key to parallelize the
+evaluation. The original controller stopped between calls after two results with no unresolved
+intent. The remaining cases are split deterministically: even manifest indices use primary, odd
+indices use secondary. There are 60 total cases, not 60 per account. Each account keeps separate
+provider pause ownership, single-flight, 65-second spacing, controller lock and response provenance.
+Existing results remain immutable; the secondary key does not repeat primary results.
+
+
+October 23, 2026 Central (02:28 UTC October 24): the replacement Gemini route completed all
+60 frozen original-prompt cases with schema-valid answers. Final initial-role score is 36/40
+assignment cases, 15/15 policy controls and 3/5 unknown-owner guardrails. Against the existing
+GLM original-prompt answers, action/feed scoring gives 53 correct agreements, four shared wrong
+agreements and three disagreements. These are reused historical cases, not a new held-out
+qualification. Four wrong consensus outcomes remain a limitation of disagreement-only escalation.
+The secondary account stopped after a provider ban; no secondary retry occurred. The maintainer
+explicitly authorized finishing with primary, which completed the remaining cases and transient
+timeout retry. Primary collection ended and restored its owned provider pause.
+
+The three actual Gemini/GLM disagreement packets were frozen using the existing deterministic
+evidence expansion: 12 retrieved URLs, no retrieval errors. DeepSeek/JEV adjudication is now
+running on primary only, with bounded requests and DO route reservations under an approved
+provider pause. Earlier Sol/GLM judgments are not reused for changed proposals. Route admission,
+identity acceptance, production activation and P4/P5 remain gated. See final initial-pair score
+and adjudication artifacts under `evals/remedy/results/gemini-replacement-2026-10-24/`.
+
+
+October 23 Central: full GLM 5.3 evaluation authorized by maintainer after the all-pair
+comparison showed GLM Flash/DeepSeek had fewer shared errors than Gemini/GLM Flash. The exact
+BeatAPI `glm-5.3-free` ID is enabled for primary; 60 original-prompt frozen cases are running
+under the previously approved provider-pause coordination pattern and existing parameters.
+`evals/remedy/results/glm-full-2026-10-24/score.py` compares full GLM and Flash against DeepSeek
+and Gemini on the same completed-case intersection. This is measurement, not a role promotion.
+
+The prior Gemini/GLM disagreement adjudication completed: all three were correctly resolved
+by DeepSeek/JEV agreement. Retrospective action/feed model gates therefore yield 56 correct
+outcomes and four incorrect shared agreements, not production qualification. The four initial
+shared errors bypass adjudication and remain a limitation. Full GLM testing examines whether
+a different initial pair reduces these errors without discarding earlier raw evidence.
+
+
+Maintainer explicitly approved both NVIDIA and BeatAPI provider pauses and distributed full
+GLM measurement. NVIDIA catalogue verifies full `z-ai/glm-5.3`; BeatAPI uses `glm-5.3-free`.
+Cases are split by original manifest index: even BeatAPI, odd NVIDIA,60distinct cases total.
+Both use original messages/schema, prompt-only formatting,16384output/default reasoning and
+720-second deadline. Serving identity remains separate perprovider. Reports preserve source
+paths/provider partitions; pooling candidate task scores does not admit both physical routes.
+`capacity.py` reports observed throughput, errors and latency under singleflight65s pacing;
+it does not establish either provider's hardmaximum. Disjoint halves differ in input lengths.
+The first BeatAPI request returned524 after125seconds and remains an immutable availability
+failure eligible for authorized retry. NVIDIA and BeatAPI controllers have separate locks.
+
+
+The maintainer approved32,768-token fullGLM profile after a16,384-token NVIDIA response
+ended with finish_reason:length and no final answer. Keep720-second deadline/defaultreasoning/
+no temperature override. Controllers switch only between requests. Previously valid16,384-cap
+answers remain unchanged; empty truncated answers may receive a distinct larger-cap attempt.
+The scorer records each selected answer's actual output cap, provider, intent hash and source.
+This is mixed-profile evidence, not a silent rewrite of the original16,384-token experiment.
+
+
+Full GLM cohort measurement completed October 24, 2026: all 60 cases have terminal outcomes,
+58 valid answers and two completed NVIDIA contract failures; 51/58 valid answers were correct.
+On the identical 58-case intersection, full GLM + DeepSeek had 50 correct agreements, four
+shared wrong agreements and four disagreements, versus Flash's 50/1/7. Full GLM + Gemini had
+51/5/2 versus Flash's 52/3/3. Full GLM increases accepted shared errors; do not promote it over
+Flash. Changed role/cascade proposals still require fresh disagreement evaluation and approval.
+BeatAPI completed 30 valid cases in 47 attempts; NVIDIA completed 28 valid plus two contract
+failures in 40 attempts. Observed throughput was about 4.92 valid cases/hour for each under
+single-flight controls; disjoint inputs and profile/transport changes prevent a hard capacity
+ranking. Preserve mixed-profile provenance (11 selected 16k answers, 47 selected 32k answers),
+720-second deadline and all immutable failures. Both controllers finished with no unresolved
+intents. Restore only owned investigation pauses. Production remains shadow/empty admissions;
+trusted evaluation loading, JEV evidence alternatives and serving identity gates remain open.
+Final evidence and recommendations: `evals/remedy/results/glm-full-2026-10-24/final-report.md`.
+
+
+October 24 offline all-pair comparison now records all ten original-prompt pairings across Sol,
+GLM Flash, DeepSeek, Gemini 3.8 Flash and current full GLM. Each pair reports all 60 outcomes,
+including two full-GLM contract holds, plus a shared 58-case comparison for fair ranking.
+Among available pairs Flash + DeepSeek has the fewest shared wrong agreements: two on all 60,
+one on the common 58. Historical Sol + Flash remains zero, but Sol is unavailable. Full GLM
+adds no lower-error pairing. JEV choice judgments cannot supply independent 60-case answers;
+the older seven-model audit remains separate on its 40-case common intersection/profile.
+Case-level provenance and reproducible scorer:
+the retained compact `accepted-pairs-2026-10-24/evidence.json`; regenerate the tables with
+`python evals/remedy/accepted_pairs.py score`.
+No provider calls, admission changes or production changes were made for this comparison.
+
+
+### Maintainer accepts two initial pairings — October 24, 2026
+
+After reviewing the seven shared-error cases, the maintainer explicitly accepted Flash +
+DeepSeek and Flash + full GLM as acceptable pairings and requested progression. Record:
+`evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json`. This supersedes the
+prior task-quality rejection of Flash/full GLM and Gemini/Flash initial-pair preference.
+Original raw answers, gold and scores remain unchanged. Accepted shared-error case sets are
+pair-specific: Addison Citizen Advisory and June 13 Dallas for Flash/DeepSeek; the three Dallas
+subcommittee cases for Flash/full GLM. This does not waive ownership/identity/admission gates or
+full GLM's two contract failures, and does not approve the other four available pairings.
+
+Next-step preparation freezes seven actual Flash/DeepSeek disagreements and five Flash/full-GLM
+disagreements, with blinded proposals and exact source hashes. New judge mapping needs approval:
+proposed JEV + Gemini for Flash/DeepSeek avoids self-adjudication; DeepSeek + JEV remains suitable
+for Flash/full GLM. A bounded 24-judgment plan and subsequent admission-integration file/test scope
+are concrete in `evals/remedy/results/accepted-pairs-2026-10-24/next-step.md`. No initial answers
+are rerun; no production admission, deployment or merge follows from this acceptance.
+
+
+October 24: maintainer explicitly approved both accepted-pair adjudication runs: JEV + Gemini
+for seven Flash/DeepSeek disagreements and DeepSeek + JEV for five Flash/full-GLM disagreements,
+24 judgments total. Approval and packet hashes are in
+`evals/remedy/results/accepted-pairs-2026-10-24/adjudication-approval.json`. Local primary-only
+controller uses the approved BeatAPI provider pause, exact DO reservations for registered
+DeepSeek/JEV, and provider-pause coordination for unregistered Gemini. Original 60-case answers
+are never rerun. Preflight validated 24 unique independent jobs and schema/case/model bindings;
+whole Ruff/format passed. Five-minute progress monitoring continues as requested. New wrong
+adjudications remain separately scored; acceptance of initial shared errors does not waive them.
+Production stays shadow/empty admissions; no role activation, deploy or merge.
+
+
+Accepted-pair disagreement measurement completed October24,2026: all24 new judgments returned
+HTTP200 with exact requested model IDs and valid schemas; no transport retries were needed.
+Flash/DeepSeek with Gemini+JEV resolved four of seven disagreements correctly, leaving three
+manual and no new wrong accepted resolutions. Complete60-case model-gate accounting:55 original-
+gold correct, two maintainer-accepted initial exceptions, three manual. Flash/fullGLM with
+DeepSeek+JEV resolved all five disagreements correctly:55 original-gold correct, three accepted
+initial exceptions and two initial contract holds. No new wrong accepted resolution occurred.
+These reused-cohort results keep original truth and scoped acceptance separate. Flash/fullGLM
+shares an initial model family; fullGLM provider/profile provenance remains explicit. Remaining
+adoption gate is the narrow reviewed role/admission/evidence/DO-coordination integration design;
+no production route is activated. Raw requests, results, hashes and final report are in
+`evals/remedy/results/accepted-pairs-2026-10-24/`. Controller finished, owned pause released and
+monitor deleted after finalization. Whole Ruff/format and diff checks passed.
+
+
+### Selected-cascade admission integration design — October24,2026
+
+Maintainer requested proceeding with the Flash/DeepSeek initial pair and Gemini/JEV adjudication
+integration. The code audit and concrete file/function/test contract are in
+`evals/remedy/results/accepted-pairs-2026-10-24/adoption/integration-design.md`; reproducible
+read-only readiness facts are in that directory's `readiness.json`. The runtime ledger, report
+and consensus contracts hard-code old roles beyond the two initially named modules, and runtime
+BodyDecision/P3ChatResponse differs from evaluated BodySelectionAnswer. Preserve those distinct
+hashes rather than declaring evaluation transfer automatically. An AGENTS-required scope
+extension request is pending for those additional contracts and the daily caller.
+
+The first proposed monitored cycle is explicitly isolated/report-only with WorkerDO inference
+coordination and local immutable run receipts; it writes neither the production observation
+ledger nor P2 events. It does not drop R2/CAS guards from ordinary daily mode or treat provider
+pauses as ledger mutexes. PersistentDO ledger append/fencing remains a separate scoped contract.
+Current config is verified shadow/report_only/empty admissions. Gemini's exact candidate route
+is absent from the local registry; GLM alias identity and JEV's narrow evidence alternative stay
+explicit admission gates. No production code/config/deploy/credentials/state changed during this
+design audit. Source implementation follows approval of the expanded scope and reviewed contract.
+
+
+### Admission integration foundation implemented locally — October24,2026
+
+The maintainer explicitly approved extending scope to observation/consensus/report contracts
+and the daily caller. `adoption/scope-approval.json` records that decision. The implementation
+adds one immutable `flash-deepseek-v2` role plan, version2 observation plan binding with unchanged
+legacy version1 payloads/IDs, plan-aware A/B consensus and generic chat adjudication, a bounded
+reviewed project-evidence loader and a narrow manual/report-only JEV evidence alternative.
+The validator now receives trusted runtime-bound evaluation evidence; no qualified dictionary is
+fabricated from accepted cohort results. Prompt/schema/catalog/profile/identity mismatches fail
+closed. Legacy exports and replay remain available; current production config is unchanged.
+
+The explicit daily `--report-only-plan`/`--plan-sha256` path takes a frozen local manual plan,
+requires exact admissions before backend/state initialization, then uses local immutable
+observations and intent/receipt files with queue-only Worker inference. It neither creates R2 nor
+removes the ordinary daily caller's CAS guard. A plan-hash artifact directory supports later
+reconciliation; unknown intents do not resubmit. The checked preflight receipt is `policy_hold`
+before any provider or production-storage call. Exact Gemini route registration, GLM serving
+alias disposition and reviewed evaluated-to-runtime schema/prompt transfer still block a real
+monitored Worker cycle. No production admission, deploy, state write or merge occurred. This is
+implemented-but-unmerged foundation work, not Shipped or runtime adoption. See the adoption
+readiness/implementation artifacts for current validation and remaining gates.
+
+
+Admission-integration verification completed:6743 full offline tests passed,17 deselected;
+143 targeted P3/evidence/observation/report/action tests passed. Whole Ruff and format checks
+passed (600 Python files); diff checks clean. Frozen adjudication evidence hashes all unchanged.
+The explicit report-only preflight produced a policy_hold before backend/storage initialization;
+no monitored live inference cycle was submitted, and production remains shadow/empty admissions.
+
+
+October25,2026: maintainer authorized local steps1and2. Added exact primary BeatAPI free Gemini
+route and regenerated both catalogs; all51 pre-existing routes/provider controls remain unchanged.
+Uses evaluated16k output/prompt-only profile, backup/JEV priority,1RPM/singleflight and no invented
+rpd. Context remains an explicitly unmeasured conservative placeholder. Provider-specific format
+verification stays external to avoid compiler propagation into other Gemini routes. No deployment.
+Saved public model-catalogue metadata and official provider naming evidence for GLM's requested
+z-ai/glm-5.3-flash-free versus returned zai-org/glm-5.3-flash; naming alignment is supported but
+serving-identity acceptance remains held. No alias whitelist or model-identity gate was relaxed.
+Offline replay projected322 saved outputs:195 bounded per-recording candidates requiring source
+policy validation and127 manual semantic holds. Original truth/scores/UIDs and task exceptions
+unchanged; two invalid fullGLM outputs remain contract holds. This is an adapter/schema replay,
+not qualification of the different runtime prompt. Results, source hashes and reproduction script:
+`evals/remedy/results/accepted-pairs-2026-10-24/adoption/route-replay-2026-10-25/REPORT.md`.
+No new LLM requests, credential reads, production admissions or Worker deployment occurred.
+
+
+October25 route/replay verification:6747 offline tests passed,17 deselected;131 targeted
+catalog/discovery/runtime-policy/adapter tests passed. Whole Ruff/format (601files) and diff checks
+passed. The free logical key is `gemini/gemini-3.8-flash-free`, isolated from the shared Gemini and
+discovery pools; all existing51 route rows, provider controls and model-route pools are unchanged.
+All322 replayed outputs validate as P3ChatResponse wrappers;195 are bounded candidates requiring
+source policy checks and127 are semantic holds, not revised accuracy counts. Replay and catalog
+compilation are deterministic. No deployment, new LLM calls or production admission occurred.
+
+### October 25 pre-run PR preparation
+
+The four-role candidate admission bundle is prepared at
+`evals/remedy/results/accepted-pairs-2026-10-24/adoption/admission-review-bundle.json`.
+Its exact current runtime bindings and supporting evidence hashes are reviewable; all candidates
+remain unqualified. The identity disposition retains the GLM alias hold, and the contract review
+accepts representation replay only, without claiming runtime-prompt qualification. See
+`adoption/pre-run-review.md` for the remaining gates. The Worker deploy workflow automatically runs
+on a merge to main that changes the route catalog. Successful deployment must be verified before
+an authorized monitored run. Production remains shadow/report_only with empty admissions.
+
+October26 PR validation after integrating main9fc43b03:6,902 Python tests passed
+(17 deselected),572 Worker tests passed; whole Ruff/format and diff checks passed. All51
+existing main route rows and52 frozen final-evidence hashes are preserved. Each candidate
+admission remains held with explicit rejection reasons; production is shadow/empty admissions.
+Rerun instructions and retention validation are in `evals/remedy/EXPERIMENTS.md`.
+
+### Experiment retention correction (October 26)
+
+The PR now retains reusable scripts, frozen cohort/judge inputs, pair-specific maintainer
+acceptance, final conclusions and a compact normalized model-output record. Generated requests,
+score/replay snapshots, retrieved pages, SSE frames, pause/poll receipts and controller state
+are untracked and ignored; all original local files remain. The maintained rerun and additional-
+model instructions are `evals/remedy/EXPERIMENTS.md`; `evals/remedy/accepted_pairs.py` scores
+without the raw archive and reconstructs disposable historical scorer inputs on demand.
+Historical raw receipt hashes identify local originals; normalized evidence is not byte-identical
+transport attestation. Identity/runtime admission holds and production shadow status are unchanged.

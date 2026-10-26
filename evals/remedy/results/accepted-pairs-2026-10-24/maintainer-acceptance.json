@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "decision_date": "2026-10-24",
+  "authority": "Maintainer message in this chat",
+  "instruction": "Based on this, I accept flash + Deepseek, and flash + Full GLM are both acceptable pairings. Record this information in evals/ and move to the next step.",
+  "accepted_pairs": [
+    {
+      "models": [
+        "glm_flash",
+        "deepseek"
+      ],
+      "status": "maintainer_accepted_pairing",
+      "original_scored_outcomes": {
+        "correct_agreement": 51,
+        "wrong_agreement": 2,
+        "disagreement": 7
+      },
+      "contract_holds": 0,
+      "accepted_scored_wrong_case_ids": [
+        "recording-4cbdc0f5678a5408279ffae1",
+        "recording-5dddfe1f523eeff020ce4343"
+      ],
+      "disagreement_case_ids": [
+        "recording-0312d144c749c190446edfe0",
+        "recording-0850ab9885c4b28efea3adfe",
+        "recording-431b21d07dbce916fbd90dbd",
+        "recording-64905d6e32cae3a0ec5a7070",
+        "recording-76b77357565cdc16153f2a97",
+        "recording-c128ed27ed345a9fbfb3b3dd",
+        "recording-eef10050e298d3758921b67a"
+      ]
+    },
+    {
+      "models": [
+        "glm_flash",
+        "glm_full"
+      ],
+      "status": "maintainer_accepted_pairing",
+      "original_scored_outcomes": {
+        "correct_agreement": 50,
+        "wrong_agreement": 3,
+        "disagreement": 5
+      },
+      "contract_holds": 2,
+      "accepted_scored_wrong_case_ids": [
+        "recording-0312d144c749c190446edfe0",
+        "recording-0850ab9885c4b28efea3adfe",
+        "recording-5dddfe1f523eeff020ce4343"
+      ],
+      "disagreement_case_ids": [
+        "recording-0f3acb8e63bc7affb3b03495",
+        "recording-431b21d07dbce916fbd90dbd",
+        "recording-64905d6e32cae3a0ec5a7070",
+        "recording-76b77357565cdc16153f2a97",
+        "recording-c128ed27ed345a9fbfb3b3dd"
+      ]
+    }
+  ],
+  "source_comparison": "evals/remedy/results/glm-full-2026-10-24/all-pairs-final.json",
+  "source_comparison_sha256": "1f678a4c7a5ebd1cca74488ce23ffab619107d7aca48a3290ce2f1549e33a17d",
+  "scope": "Task-level acceptance of these pairings after reviewing the seven shared-error cases.",
+  "rationale": "Accepted shared errors for these pairs concern dedicated versus wider feed distribution and Addison Citizen Advisory mapping, rather than unrelated-body publication.",
+  "preserved_gates": [
+    "Original gold and raw scores unchanged",
+    "Pair-specific acceptance is not a global policy/gold relabel",
+    "Full GLM two invalid outputs remain contract holds",
+    "Disagreements require newly bound proposals",
+    "No serving-identity waiver, production admission, deployment or merge"
+  ],
+  "next_phase": "Freeze actual accepted-pair disagreements; approve independent adjudicator mapping before live calls; prepare admission integration design."
+}

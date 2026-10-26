@@ -14,6 +14,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal
 
+from citypods.audit_remedy import P3_ROLE_PLANS
 from citypods.remedy_ledger import REMEDY_LEASE_KEY, _source_segment
 from citypods.remedy_policy import canonical_hash
 
@@ -44,7 +45,7 @@ class P3Observation:
     finding_id: str
     source_key: str
     stage: Literal["initial", "adjudication"]
-    role: Literal["sol", "glm_flash", "deepseek", "jev"]
+    role: Literal["sol", "glm_flash", "deepseek", "gemini", "jev"]
     recipe_hash: str
     request_hash: str
     evidence_hash: str
@@ -57,11 +58,17 @@ class P3Observation:
     response_hash: str
     response: dict[str, Any]
     observed_at: str
+    role_plan: str | None = None
+    role_plan_hash: str | None = None
 
     def payload(self) -> dict[str, Any]:
         from dataclasses import asdict
 
-        return asdict(self)
+        payload = asdict(self)
+        if self.schema_version == 1:
+            payload.pop("role_plan")
+            payload.pop("role_plan_hash")
+        return payload
 
 
 def _observation_content(payload: dict[str, Any]) -> dict[str, Any]:
@@ -75,9 +82,11 @@ def observation_id(payload: dict[str, Any]) -> str:
 def parse_observation(payload: Any) -> P3Observation:
     """Validate a stored observation and all of its content-derived identities."""
     fields = set(P3Observation.__dataclass_fields__)
+    if isinstance(payload, dict) and payload.get("schema_version") == 1:
+        fields -= {"role_plan", "role_plan_hash"}
     if not isinstance(payload, dict) or set(payload) != fields:
         raise ValueError("P3 observation: missing or unknown fields")
-    if type(payload["schema_version"]) is not int or payload["schema_version"] != 1:
+    if type(payload["schema_version"]) is not int or payload["schema_version"] not in {1, 2}:
         raise ValueError("P3 observation: unsupported schema version")
     for name in (
         "finding_id",
@@ -97,14 +106,28 @@ def parse_observation(payload: Any) -> P3Observation:
     ):
         if not isinstance(payload[name], str) or not payload[name].strip():
             raise ValueError(f"P3 observation: {name} must be nonempty text")
-    if payload["stage"] not in P3_STAGES or payload["role"] not in P3_ROLES:
+    if payload["stage"] not in P3_STAGES:
         raise ValueError("P3 observation: invalid stage or role")
-    expected_roles = {"sol", "glm_flash"} if payload["stage"] == "initial" else {"deepseek", "jev"}
-    if payload["role"] not in expected_roles:
-        raise ValueError("P3 observation: role is not valid for the stage")
-    if (payload["route_id"], payload["logical_model"]) != _ROLE_BINDINGS[
-        (payload["stage"], payload["role"])
-    ]:
+    if payload["schema_version"] == 1:
+        expected_roles = (
+            {"sol", "glm_flash"} if payload["stage"] == "initial" else {"deepseek", "jev"}
+        )
+        if payload["role"] not in expected_roles:
+            raise ValueError("P3 observation: role is not valid for the stage")
+        expected = _ROLE_BINDINGS[(payload["stage"], payload["role"])]
+    else:
+        plan = P3_ROLE_PLANS.get(payload["role_plan"])
+        if (
+            plan is None
+            or plan.name == "legacy-sol-v1"
+            or plan.fingerprint != payload["role_plan_hash"]
+        ):
+            raise ValueError("P3 observation: invalid role plan binding")
+        roles = plan.initial if payload["stage"] == "initial" else (plan.chat, "jev")
+        if payload["role"] not in roles:
+            raise ValueError("P3 observation: role is not valid for the stage")
+        expected = (plan.routes[payload["role"]], plan.models[payload["role"]])
+    if (payload["route_id"], payload["logical_model"]) != expected:
         raise ValueError("P3 observation: route or logical model does not match its role")
     _source_segment(payload["source_key"])
     for name in (
@@ -145,7 +168,7 @@ def make_observation(
     finding_id: str,
     source_key: str,
     stage: Literal["initial", "adjudication"],
-    role: Literal["sol", "glm_flash", "deepseek", "jev"],
+    role: Literal["sol", "glm_flash", "deepseek", "gemini", "jev"],
     recipe_hash: str,
     request_hash: str,
     evidence_hash: str,
@@ -157,6 +180,7 @@ def make_observation(
     reasoning_level: str | None,
     response: dict[str, Any],
     observed_at: datetime | None = None,
+    role_plan: str | None = None,
 ) -> P3Observation:
     """Build a validated immutable observation when a completed Worker result is collected."""
     timestamp = observed_at or datetime.now(UTC)
@@ -182,6 +206,12 @@ def make_observation(
         "response": response,
         "observed_at": timestamp.isoformat().replace("+00:00", "Z"),
     }
+    if role_plan is not None:
+        payload.update(
+            schema_version=2,
+            role_plan=role_plan,
+            role_plan_hash=P3_ROLE_PLANS[role_plan].fingerprint,
+        )
     payload["observation_id"] = observation_id(payload)
     return parse_observation(payload)
 

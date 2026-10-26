@@ -1349,3 +1349,106 @@ def test_evaluation_timeout_bounds(dataset, timeout, deadline):
             request_timeout=timeout,
             case_deadline=deadline,
         )
+
+
+def test_project_evidence_loader_binds_trust_anchor_runtime_and_raw_sources(tmp_path):
+    import hashlib
+    from types import SimpleNamespace
+
+    from citypods.remedy_evaluation import TrustedProjectEvidence, load_project_evaluation
+
+    directory = tmp_path / "evals/remedy"
+    directory.mkdir(parents=True)
+    result = directory / "answer.json"
+    result.write_text('{"original_wrong":true}')
+    source = {
+        "path": "evals/remedy/answer.json",
+        "sha256": hashlib.sha256(result.read_bytes()).hexdigest(),
+    }
+    envelope = {
+        "version": 1,
+        "kind": "remedy-p3-evaluation",
+        "bindings": {"schema": "actual"},
+        "source_artifacts": [source],
+        "evaluation": {"qualified": True},
+    }
+    artifact = directory / "reviewed.json"
+    artifact.write_text(json.dumps(envelope))
+    entry = SimpleNamespace(
+        project_evidence=TrustedProjectEvidence(
+            path="evals/remedy/reviewed.json",
+            sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
+        ),
+        reviewed_admission_ref="maintainer-review",
+        reviewed_result_paths=[source["path"]],
+    )
+    assert load_project_evaluation(entry, tmp_path, expected={"schema": "actual"})["qualified"]
+    with pytest.raises(ValueError, match="runtime binding"):
+        load_project_evaluation(entry, tmp_path, expected={"schema": "different"})
+    result.write_text('{"original_wrong":false}')
+    with pytest.raises(ValueError, match="hash mismatch"):
+        load_project_evaluation(entry, tmp_path, expected={"schema": "actual"})
+
+
+def test_project_evidence_rejects_symlink_and_parent_escape(tmp_path):
+    import hashlib
+
+    from citypods.remedy_evaluation import TrustedProjectEvidence, _read_trusted_artifact
+
+    directory = tmp_path / "evals/remedy"
+    directory.mkdir(parents=True)
+    secret = tmp_path / "private.json"
+    secret.write_bytes(b"{}")
+    (directory / "linked.json").symlink_to(secret)
+    digest = hashlib.sha256(b"{}").hexdigest()
+    for path in ["../private.json", "evals/remedy/linked.json"]:
+        with pytest.raises(ValueError):
+            _read_trusted_artifact(tmp_path, TrustedProjectEvidence(path=path, sha256=digest))
+
+
+def test_jev_alternative_is_only_bounded_manual_report_evidence():
+    from citypods.compute.llm_policy import ROUTE_REGISTRY, route_request_params
+    from citypods.remedy_evaluation import AdmissionEntry, canonical_hash, validate_admission
+
+    route = ROUTE_REGISTRY["beatapi_jev_1_13_free"]
+    hashes = {
+        name: "a" * 64
+        for name in (
+            "manifest_hash",
+            "gold_hash",
+            "prompt_hash",
+            "schema_hash",
+            "catalog_hash",
+        )
+    }
+    entry = AdmissionEntry.model_validate(
+        {
+            "status": "admitted",
+            "role": "adjudicator",
+            "physical_route_ids": [route.route_id],
+            "upstream_model": route.upstream_model,
+            "model_family": "jev",
+            "reasoning_level": "provider-default",
+            "request_params_hash": canonical_hash(route_request_params(route)),
+            "aa": None,
+            "project_evidence": {"path": "evals/remedy/reviewed.json", "sha256": "b" * 64},
+            "reviewed_result_paths": ["evals/remedy/result.json"],
+            "reviewed_admission_ref": "explicit manual choice review",
+            **hashes,
+        }
+    )
+    evidence = {
+        **hashes,
+        "qualified": True,
+        "admission_eligible_cases": 1,
+        "counts": {"critical_errors": 0},
+        "task_scope": "remedy-p3-choice-v1",
+    }
+    assert validate_admission(entry, ROUTE_REGISTRY, evidence, for_report_only=True).usable
+    assert not validate_admission(entry, ROUTE_REGISTRY, evidence).usable
+    assert not validate_admission(
+        entry,
+        ROUTE_REGISTRY,
+        evidence | {"task_scope": "other"},
+        for_report_only=True,
+    ).usable

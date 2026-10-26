@@ -1,0 +1,1963 @@
+{
+  "cases": [
+    {
+      "case": {
+        "body_label": "City Page Update City Page Update",
+        "case_id": "recording-0f3acb8e63bc7affb3b03495",
+        "city": "fort-worth-tx",
+        "completeness": {
+          "status": "recording-specific"
+        },
+        "evidence_refs": [
+          {
+            "agenda_id": null,
+            "content_hash": "9df266fafc1589fc575c126afe5b54ff8eaf17fa761b5964f43a03ee6be4aa4d",
+            "id": "provider-player",
+            "recording_id": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585",
+            "retrieved_at": "2026-10-11",
+            "source_span": "City Page Update Video Player and Subtitles City Page Update Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585"
+          },
+          {
+            "agenda_id": null,
+            "content_hash": "da36b9d8b931dcc6c474d4726a8a42dd36488c7cead116b1cf07295f731f1db4",
+            "id": "expanded-provider-player-0",
+            "recording_id": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585",
+            "retrieved_at": "2026-10-24T14:41:55.496049+00:00",
+            "source_span": "City Page Update Video Player and Subtitles Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585"
+          }
+        ],
+        "existing_feeds": [
+          {
+            "description": "Tx Ad Hoc Council Committee on Emergency Medical Response recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response",
+            "title": "Fort Worth: Tx Ad Hoc Council Committee on Emergency Medical Response"
+          },
+          {
+            "description": "Tx Ad Hoc Municipal Court Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee",
+            "title": "Fort Worth: Tx Ad Hoc Municipal Court Advisory Committee"
+          },
+          {
+            "description": "Alliance Airport Authority recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-alliance-airport-authority",
+            "title": "Fort Worth: Alliance Airport Authority"
+          },
+          {
+            "description": "Tx Animal Shelter Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-animal-shelter-advisory-committee",
+            "title": "Fort Worth: Tx Animal Shelter Advisory Committee"
+          },
+          {
+            "description": "Tx Arts Funding Task Force recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-arts-funding-task-force",
+            "title": "Fort Worth: Tx Arts Funding Task Force"
+          },
+          {
+            "description": "Audit Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-audit-committee",
+            "title": "Fort Worth: Audit Committee"
+          },
+          {
+            "description": "Tx Aviation Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-aviation-advisory-board",
+            "title": "Fort Worth: Tx Aviation Advisory Board"
+          },
+          {
+            "description": "Bid Opening meetings for Fort Worth.",
+            "slug": "fort-worth-tx-bid-opening",
+            "title": "Fort Worth: Bid Opening"
+          },
+          {
+            "description": "Board of Adjustment meetings for Fort Worth.",
+            "slug": "fort-worth-tx-board-of-adjustment",
+            "title": "Fort Worth: Board of Adjustment"
+          },
+          {
+            "description": "Building Standards Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-building-standards-commission",
+            "title": "Fort Worth: Building Standards Commission"
+          },
+          {
+            "description": "Capital Improvements Advisory Committee for Transportation Impact Fees recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-capital-improvements-advisory-committee",
+            "title": "Fort Worth: Capital Improvements Advisory Committee for Transportation Impact Fees"
+          },
+          {
+            "description": "Recordings of the Central City Local Government Corporation meetings.",
+            "slug": "fort-worth-tx-central-city-local-government-corporation",
+            "title": "Fort Worth: Central City Local Government Corporation"
+          },
+          {
+            "description": "Fort Worth Charter Review Task Force meetings.",
+            "slug": "fort-worth-tx-charter-review-task-force",
+            "title": "Fort Worth: Charter Review Task Force"
+          },
+          {
+            "description": "City Council Worksession meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-council-worksession",
+            "title": "Fort Worth: City Council Worksession"
+          },
+          {
+            "description": "City Council meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-council",
+            "title": "Fort Worth: City Council"
+          },
+          {
+            "description": "City Plan Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-plan-commission",
+            "title": "Fort Worth: City Plan Commission"
+          },
+          {
+            "description": "Community Development Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-community-development-committee",
+            "title": "Fort Worth: Community Development Committee"
+          },
+          {
+            "description": "Crime Control and Prevention District meetings for Fort Worth.",
+            "slug": "fort-worth-tx-crime-control-and-prevention-district",
+            "title": "Fort Worth: Crime Control and Prevention District"
+          },
+          {
+            "description": "Downtown Design and Review Board meetings for Fort Worth.",
+            "slug": "fort-worth-tx-downtown-design-and-review-board",
+            "title": "Fort Worth: Downtown Design and Review Board"
+          },
+          {
+            "description": "Source-scoped joint proceedings of the EMSISD Board and Fort Worth Council; original whole recordings retained.",
+            "slug": "fort-worth-tx-emsisd-board-joint-meetings",
+            "title": "Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council"
+          },
+          {
+            "description": "Entrepreneurship and Innovation Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-entrepreneurship-and-innovation-committee",
+            "title": "Fort Worth: Entrepreneurship and Innovation Committee"
+          },
+          {
+            "description": "Fort Worth Housing Finance Corporation meetings for Fort Worth.",
+            "slug": "fort-worth-tx-fort-worth-housing-finance-corporation",
+            "title": "Fort Worth: Fort Worth Housing Finance Corporation"
+          },
+          {
+            "description": "Recordings of the Fort Worth Local Development Corporation meetings.",
+            "slug": "fort-worth-tx-fort-worth-local-development-corporation",
+            "title": "Fort Worth: Fort Worth Local Development Corporation"
+          },
+          {
+            "description": "Fort Worth Sports Authority, Inc. Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-fort-worth-sports-authority",
+            "title": "Fort Worth: Fort Worth Sports Authority, Inc. Board"
+          },
+          {
+            "description": "Gas Drilling Task Force proceedings, including proven joint workshops with Fort Worth Council; original whole recordings retained.",
+            "slug": "fort-worth-tx-gas-drilling-task-force",
+            "title": "Fort Worth: Gas Drilling Task Force"
+          },
+          {
+            "description": "Historic and Cultural Landmark Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-historic-and-cultural-landmark-commission",
+            "title": "Fort Worth: Historic and Cultural Landmark Commission"
+          },
+          {
+            "description": "Housing and Economic Development Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-housing-and-economic-development-committee",
+            "title": "Fort Worth: Housing and Economic Development Committee"
+          },
+          {
+            "description": "Tx Human Relations Commission recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-human-relations-commission",
+            "title": "Fort Worth: Tx Human Relations Commission"
+          },
+          {
+            "description": "Infrastructure and Growth Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-infrastructure-and-growth-committee",
+            "title": "Fort Worth: Infrastructure and Growth Committee"
+          },
+          {
+            "description": "Legislative and Intergovernmental Affairs Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-legislative-and-intergovernmental-affairs-committee",
+            "title": "Fort Worth: Legislative and Intergovernmental Affairs Committee"
+          },
+          {
+            "description": "Tx Library Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-library-advisory-board",
+            "title": "Fort Worth: Tx Library Advisory Board"
+          },
+          {
+            "description": "Tx Mayor S Committee on Persons With Disabilities recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-mayor-s-committee-on-persons-with-disabilities",
+            "title": "Fort Worth: Tx Mayor S Committee on Persons With Disabilities"
+          },
+          {
+            "description": "Tx Minority and Women Business Enterprise Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-minority-and-women-business-enterprise-advisory-committee",
+            "title": "Fort Worth: Tx Minority and Women Business Enterprise Advisory Committee"
+          },
+          {
+            "description": "Neighborhood Quality and Revitalization Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-neighborhood-quality-and-revitalization-committee",
+            "title": "Fort Worth: Neighborhood Quality and Revitalization Committee"
+          },
+          {
+            "description": "Tx Park and Recreation Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-park-and-recreation-advisory-board",
+            "title": "Fort Worth: Tx Park and Recreation Advisory Board"
+          },
+          {
+            "description": "Tx Pedestrian and Bicycle Advisory Commission recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-pedestrian-and-bicycle-advisory-commission",
+            "title": "Fort Worth: Tx Pedestrian and Bicycle Advisory Commission"
+          },
+          {
+            "description": "Property Management and Environmental Services Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-property-management-and-environmental-services-committee",
+            "title": "Fort Worth: Property Management and Environmental Services Committee"
+          },
+          {
+            "description": "Public Art Commission meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-public-art-commission",
+            "title": "Fort Worth: Public Art Commission"
+          },
+          {
+            "description": "Public Info Meetings recordings. Historical names are kept; recurring title patterns match future entries.",
+            "slug": "fort-worth-tx-public-info-meetings",
+            "title": "Fort Worth: Public Info Meetings"
+          },
+          {
+            "description": "Public Safety Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-public-safety-committee",
+            "title": "Fort Worth: Public Safety Committee"
+          },
+          {
+            "description": "Tx Race and Culture Task Force recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-race-and-culture-task-force",
+            "title": "Fort Worth: Tx Race and Culture Task Force"
+          },
+          {
+            "description": "Fort Worth Redistricting Task Force meetings.",
+            "slug": "fort-worth-tx-redistricting-task-force",
+            "title": "Fort Worth: Redistricting Task Force"
+          },
+          {
+            "description": "Recordings of the Research and Innovation Local Government Corporation meetings.",
+            "slug": "fort-worth-tx-research-and-innovation-local-government-corporation",
+            "title": "Fort Worth: Research and Innovation Local Government Corporation"
+          },
+          {
+            "description": "Speaker's Podium recordings. Historical names are kept; recurring title patterns match future entries.",
+            "slug": "fort-worth-tx-speakers-podium",
+            "title": "Fort Worth: Speaker's Podium"
+          },
+          {
+            "description": "State of the City addresses and speeches by municipal leadership.",
+            "slug": "fort-worth-tx-state-of-city",
+            "title": "Fort Worth: State of the City"
+          },
+          {
+            "description": "Public recordings of tax increment financing (TIF) district boards, joint TIF meetings, and TIF oversight bodies. District names remain in official episode titles.",
+            "slug": "fort-worth-tx-tif",
+            "title": "Fort Worth: TIF Meetings"
+          },
+          {
+            "description": "Trinity Metro Board recordings hosted in Fort Worth\u2019s Granicus archive.",
+            "slug": "fort-worth-tx-trinity-metro-board",
+            "title": "Fort Worth: Trinity Metro Board"
+          },
+          {
+            "description": "Urban Design Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-urban-design-commission",
+            "title": "Fort Worth: Urban Design Commission"
+          },
+          {
+            "description": "Water and Wastewater Capital Improvements Plan Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-water-and-wastewater-capital-improvements-plans-citizen-advisory-committee",
+            "title": "Fort Worth: Water and Wastewater Capital Improvements Plan Advisory Committee"
+          },
+          {
+            "description": "Recordings from the Fort Worth Water Utility Task Force.",
+            "slug": "fort-worth-tx-water-utility-task-force",
+            "title": "Fort Worth: Water Utility Task Force"
+          },
+          {
+            "description": "Zoning Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-zoning-commission",
+            "title": "Fort Worth: Zoning Commission"
+          },
+          {
+            "description": "Video recordings of Fort Worth City Council meetings, produced by FWTV.",
+            "slug": "fort-worth-tx",
+            "title": "Fort Worth \u2014 All Meetings"
+          }
+        ],
+        "policy": {
+          "archive": "Promotional/orientation films and economic-development luncheons are archive-only.",
+          "events": "Ceremonies, dedications and their site-tour segments are excluded from body feeds.",
+          "families": "Use configured bond/TIF/public-information family feeds for their proven bodies.",
+          "identity": "Use the convened body, not venue, topic or common members; numbered boards differ.",
+          "joints": "Every proven participant can share the same recording in its configured feed.",
+          "proof": "Missing ownership proof requires unresolved; it does not prove exclusion.",
+          "public_comment": "Routine public comment does not add Public Info feed membership.",
+          "series": "Candidate forums remain archival series, not Council proceedings.",
+          "sparse": "A real body without an existing feed is unconfigured, not automatically non-city."
+        },
+        "recordings": [
+          {
+            "body": "City Page Update City Page Update",
+            "canonical_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585",
+            "date": "2009-08-23T00:00:00+00:00",
+            "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585",
+            "title": "City Page Update City Page Update",
+            "uid": "018c23a1b2493ae3"
+          }
+        ],
+        "source_key": "6540eef2dc2e"
+      },
+      "feed_history": [
+        {
+          "distinct_patterns": 173,
+          "examples": [
+            {
+              "guid": "946666b88a8f1b46",
+              "title": "CITY COUNCIL WORKSESSION - Jun 23, 2026"
+            },
+            {
+              "guid": "8ce8a2575070bb27",
+              "title": "CITY COUNCIL WORKSESSION CITY COUNCIL WORKSESSION"
+            },
+            {
+              "guid": "d9c52a416173dba0",
+              "title": "CITY COUNCIL WORKSESSION on 2020-03-03 3:00 PM CITY COUNCIL WORKSESSION on 2020-03-03 3:00 PM"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-city-council-worksession",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-city-council-worksession/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 415,
+          "examples": [
+            {
+              "guid": "1a956018718a717f",
+              "title": "CITY COUNCIL RETREAT CITY COUNCIL RETREAT"
+            },
+            {
+              "guid": "946666b88a8f1b46",
+              "title": "CITY COUNCIL WORKSESSION - Jun 23, 2026"
+            },
+            {
+              "guid": "8ce8a2575070bb27",
+              "title": "CITY COUNCIL WORKSESSION CITY COUNCIL WORKSESSION"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-city-council",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-city-council/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 15,
+          "examples": [
+            {
+              "guid": "c9d4fb6704142f63",
+              "title": "CITY PLAN COMMISSION CITY PLAN COMMISSION"
+            },
+            {
+              "guid": "297e4a6071f975bc",
+              "title": "City Plan Commission - Jul 09, 2026"
+            },
+            {
+              "guid": "16de1fa91e839682",
+              "title": "City Plan Commission City Plan Commission"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-city-plan-commission",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-city-plan-commission/audio_feed.xml"
+        }
+      ],
+      "proposals": {
+        "A": {
+          "bodies": [],
+          "case_id": "recording-0f3acb8e63bc7affb3b03495",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "No agenda, minutes, or meeting metadata identifying a convening body (agenda_id is null; only a 'Default Document' is listed).",
+            "No provider committee or body designation distinct from the recording title; classification rests on the title 'City Page Update' and the player-page structure alone."
+          ],
+          "publication_action": "archive_only",
+          "rationale": "The only supplied evidence (provider-player) is the Granicus player page for clip_id=585, titled 'City Page Update', dated 2009-08-23, with a null agenda_id and only a 'Default Document.' The title names a produced informational update segment associated with the City's City Page (newsletter/informational content), not a proceeding of any council, board, or commission: the source's body designation merely repeats the recording title, no agenda or meeting metadata is present, and the Sunday date is consistent with a produced media upload rather than a scheduled public meeting. No existing feed matches this title: 'Public Info Meetings', 'Speaker's Podium', and 'State of the City' are distinct named series, and the city-wide feed covers City Council meetings only. 'City Page Update' is a video segment title, not a real municipal body, so unconfigured_body does not apply and no feed slug may be invented. Under the approved archive rule, promotional/orientation films are archive-only: this city-produced informational update is retained in the archive without body-feed assignment. No municipal body is proven, so bodies is empty; the recording is not declared non-government."
+        },
+        "B": {
+          "bodies": [],
+          "case_id": "recording-0f3acb8e63bc7affb3b03495",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "No agenda, minutes, or event metadata supplied for clip_id=585 that names a convened body.",
+            "The only evidence (provider-player) contains Granicus player-interface boilerplate ('City Page Update Video Player and Subtitles... Navigation Index Documents Share Download Embed...') with no body name, participants, or event description.",
+            "No evidence confirms 'City Page Update' is a promotional/orientation film (which would trigger archive_only) or any other classifiable event type.",
+            "No evidence links this recording to any existing Fort Worth feed or to any real municipal body, configured or unconfigured."
+          ],
+          "publication_action": "unresolved",
+          "rationale": "The recording titled 'City Page Update' (2009-08-23, clip_id=585) cannot be attributed to any municipal body from the supplied evidence. The sole evidence ref (provider-player) shows only Granicus video-player UI text and contains no body name, agenda, participants, or event description; 'City Page Update' is a scraped label, not a proven convened body, and matches no existing feed slug. Because ownership cannot be established, the required action is unresolved per the proof rule (missing ownership proof requires unresolved; it does not prove exclusion, and empty feeds alone do not indicate a non-meeting). It is not declared non-government, and archive_only is not applied because no supplied evidence establishes it as a promotional/orientation film. If 'City Page Update' corresponds to a real body or program, no existing feed matches it and the body remains unnamed absent further evidence; no feed slug was invented."
+        }
+      },
+      "retrieval_status": [
+        {
+          "error": null,
+          "sent_characters": 619,
+          "sha256": "a6b934d981ceb0d55f5e6867ff3f2494832b40d9ce9718e02eff306514cee005",
+          "text_characters": 619,
+          "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=585"
+        }
+      ]
+    },
+    {
+      "case": {
+        "body_label": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+        "case_id": "recording-431b21d07dbce916fbd90dbd",
+        "city": "fort-worth-tx",
+        "completeness": {
+          "status": "recording-specific"
+        },
+        "evidence_refs": [
+          {
+            "agenda_id": null,
+            "content_hash": "b6a855bdbaeaa3359e65d9ee7295c879642e9322fcd7f5333866a5e462e5a913",
+            "id": "provider-player",
+            "recording_id": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469",
+            "retrieved_at": "2026-10-11",
+            "source_span": "Minority Leaders and Citizen's Council Video Player and Subtitles Minority Leaders and Citizen's Council Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469"
+          },
+          {
+            "agenda_id": null,
+            "content_hash": "6e972c0d2728161897edfdc781af49a61fe5d730192bcb959f01edad10b53794",
+            "id": "expanded-provider-player-0",
+            "recording_id": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469",
+            "retrieved_at": "2026-10-24T02:28:50.917911+00:00",
+            "source_span": "Minority Leaders and Citizen's Council Video Player and Subtitles Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469"
+          }
+        ],
+        "existing_feeds": [
+          {
+            "description": "Tx Ad Hoc Council Committee on Emergency Medical Response recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response",
+            "title": "Fort Worth: Tx Ad Hoc Council Committee on Emergency Medical Response"
+          },
+          {
+            "description": "Tx Ad Hoc Municipal Court Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee",
+            "title": "Fort Worth: Tx Ad Hoc Municipal Court Advisory Committee"
+          },
+          {
+            "description": "Alliance Airport Authority recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-alliance-airport-authority",
+            "title": "Fort Worth: Alliance Airport Authority"
+          },
+          {
+            "description": "Tx Animal Shelter Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-animal-shelter-advisory-committee",
+            "title": "Fort Worth: Tx Animal Shelter Advisory Committee"
+          },
+          {
+            "description": "Tx Arts Funding Task Force recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-arts-funding-task-force",
+            "title": "Fort Worth: Tx Arts Funding Task Force"
+          },
+          {
+            "description": "Audit Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-audit-committee",
+            "title": "Fort Worth: Audit Committee"
+          },
+          {
+            "description": "Tx Aviation Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-aviation-advisory-board",
+            "title": "Fort Worth: Tx Aviation Advisory Board"
+          },
+          {
+            "description": "Bid Opening meetings for Fort Worth.",
+            "slug": "fort-worth-tx-bid-opening",
+            "title": "Fort Worth: Bid Opening"
+          },
+          {
+            "description": "Board of Adjustment meetings for Fort Worth.",
+            "slug": "fort-worth-tx-board-of-adjustment",
+            "title": "Fort Worth: Board of Adjustment"
+          },
+          {
+            "description": "Building Standards Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-building-standards-commission",
+            "title": "Fort Worth: Building Standards Commission"
+          },
+          {
+            "description": "Capital Improvements Advisory Committee for Transportation Impact Fees recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-capital-improvements-advisory-committee",
+            "title": "Fort Worth: Capital Improvements Advisory Committee for Transportation Impact Fees"
+          },
+          {
+            "description": "Recordings of the Central City Local Government Corporation meetings.",
+            "slug": "fort-worth-tx-central-city-local-government-corporation",
+            "title": "Fort Worth: Central City Local Government Corporation"
+          },
+          {
+            "description": "Fort Worth Charter Review Task Force meetings.",
+            "slug": "fort-worth-tx-charter-review-task-force",
+            "title": "Fort Worth: Charter Review Task Force"
+          },
+          {
+            "description": "City Council Worksession meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-council-worksession",
+            "title": "Fort Worth: City Council Worksession"
+          },
+          {
+            "description": "City Council meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-council",
+            "title": "Fort Worth: City Council"
+          },
+          {
+            "description": "City Plan Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-plan-commission",
+            "title": "Fort Worth: City Plan Commission"
+          },
+          {
+            "description": "Community Development Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-community-development-committee",
+            "title": "Fort Worth: Community Development Committee"
+          },
+          {
+            "description": "Crime Control and Prevention District meetings for Fort Worth.",
+            "slug": "fort-worth-tx-crime-control-and-prevention-district",
+            "title": "Fort Worth: Crime Control and Prevention District"
+          },
+          {
+            "description": "Downtown Design and Review Board meetings for Fort Worth.",
+            "slug": "fort-worth-tx-downtown-design-and-review-board",
+            "title": "Fort Worth: Downtown Design and Review Board"
+          },
+          {
+            "description": "Source-scoped joint proceedings of the EMSISD Board and Fort Worth Council; original whole recordings retained.",
+            "slug": "fort-worth-tx-emsisd-board-joint-meetings",
+            "title": "Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council"
+          },
+          {
+            "description": "Entrepreneurship and Innovation Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-entrepreneurship-and-innovation-committee",
+            "title": "Fort Worth: Entrepreneurship and Innovation Committee"
+          },
+          {
+            "description": "Fort Worth Housing Finance Corporation meetings for Fort Worth.",
+            "slug": "fort-worth-tx-fort-worth-housing-finance-corporation",
+            "title": "Fort Worth: Fort Worth Housing Finance Corporation"
+          },
+          {
+            "description": "Recordings of the Fort Worth Local Development Corporation meetings.",
+            "slug": "fort-worth-tx-fort-worth-local-development-corporation",
+            "title": "Fort Worth: Fort Worth Local Development Corporation"
+          },
+          {
+            "description": "Fort Worth Sports Authority, Inc. Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-fort-worth-sports-authority",
+            "title": "Fort Worth: Fort Worth Sports Authority, Inc. Board"
+          },
+          {
+            "description": "Gas Drilling Task Force proceedings, including proven joint workshops with Fort Worth Council; original whole recordings retained.",
+            "slug": "fort-worth-tx-gas-drilling-task-force",
+            "title": "Fort Worth: Gas Drilling Task Force"
+          },
+          {
+            "description": "Historic and Cultural Landmark Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-historic-and-cultural-landmark-commission",
+            "title": "Fort Worth: Historic and Cultural Landmark Commission"
+          },
+          {
+            "description": "Housing and Economic Development Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-housing-and-economic-development-committee",
+            "title": "Fort Worth: Housing and Economic Development Committee"
+          },
+          {
+            "description": "Tx Human Relations Commission recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-human-relations-commission",
+            "title": "Fort Worth: Tx Human Relations Commission"
+          },
+          {
+            "description": "Infrastructure and Growth Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-infrastructure-and-growth-committee",
+            "title": "Fort Worth: Infrastructure and Growth Committee"
+          },
+          {
+            "description": "Legislative and Intergovernmental Affairs Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-legislative-and-intergovernmental-affairs-committee",
+            "title": "Fort Worth: Legislative and Intergovernmental Affairs Committee"
+          },
+          {
+            "description": "Tx Library Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-library-advisory-board",
+            "title": "Fort Worth: Tx Library Advisory Board"
+          },
+          {
+            "description": "Tx Mayor S Committee on Persons With Disabilities recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-mayor-s-committee-on-persons-with-disabilities",
+            "title": "Fort Worth: Tx Mayor S Committee on Persons With Disabilities"
+          },
+          {
+            "description": "Tx Minority and Women Business Enterprise Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-minority-and-women-business-enterprise-advisory-committee",
+            "title": "Fort Worth: Tx Minority and Women Business Enterprise Advisory Committee"
+          },
+          {
+            "description": "Neighborhood Quality and Revitalization Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-neighborhood-quality-and-revitalization-committee",
+            "title": "Fort Worth: Neighborhood Quality and Revitalization Committee"
+          },
+          {
+            "description": "Tx Park and Recreation Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-park-and-recreation-advisory-board",
+            "title": "Fort Worth: Tx Park and Recreation Advisory Board"
+          },
+          {
+            "description": "Tx Pedestrian and Bicycle Advisory Commission recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-pedestrian-and-bicycle-advisory-commission",
+            "title": "Fort Worth: Tx Pedestrian and Bicycle Advisory Commission"
+          },
+          {
+            "description": "Property Management and Environmental Services Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-property-management-and-environmental-services-committee",
+            "title": "Fort Worth: Property Management and Environmental Services Committee"
+          },
+          {
+            "description": "Public Art Commission meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-public-art-commission",
+            "title": "Fort Worth: Public Art Commission"
+          },
+          {
+            "description": "Public Info Meetings recordings. Historical names are kept; recurring title patterns match future entries.",
+            "slug": "fort-worth-tx-public-info-meetings",
+            "title": "Fort Worth: Public Info Meetings"
+          },
+          {
+            "description": "Public Safety Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-public-safety-committee",
+            "title": "Fort Worth: Public Safety Committee"
+          },
+          {
+            "description": "Tx Race and Culture Task Force recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-race-and-culture-task-force",
+            "title": "Fort Worth: Tx Race and Culture Task Force"
+          },
+          {
+            "description": "Fort Worth Redistricting Task Force meetings.",
+            "slug": "fort-worth-tx-redistricting-task-force",
+            "title": "Fort Worth: Redistricting Task Force"
+          },
+          {
+            "description": "Recordings of the Research and Innovation Local Government Corporation meetings.",
+            "slug": "fort-worth-tx-research-and-innovation-local-government-corporation",
+            "title": "Fort Worth: Research and Innovation Local Government Corporation"
+          },
+          {
+            "description": "Speaker's Podium recordings. Historical names are kept; recurring title patterns match future entries.",
+            "slug": "fort-worth-tx-speakers-podium",
+            "title": "Fort Worth: Speaker's Podium"
+          },
+          {
+            "description": "State of the City addresses and speeches by municipal leadership.",
+            "slug": "fort-worth-tx-state-of-city",
+            "title": "Fort Worth: State of the City"
+          },
+          {
+            "description": "Public recordings of tax increment financing (TIF) district boards, joint TIF meetings, and TIF oversight bodies. District names remain in official episode titles.",
+            "slug": "fort-worth-tx-tif",
+            "title": "Fort Worth: TIF Meetings"
+          },
+          {
+            "description": "Trinity Metro Board recordings hosted in Fort Worth\u2019s Granicus archive.",
+            "slug": "fort-worth-tx-trinity-metro-board",
+            "title": "Fort Worth: Trinity Metro Board"
+          },
+          {
+            "description": "Urban Design Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-urban-design-commission",
+            "title": "Fort Worth: Urban Design Commission"
+          },
+          {
+            "description": "Water and Wastewater Capital Improvements Plan Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-water-and-wastewater-capital-improvements-plans-citizen-advisory-committee",
+            "title": "Fort Worth: Water and Wastewater Capital Improvements Plan Advisory Committee"
+          },
+          {
+            "description": "Recordings from the Fort Worth Water Utility Task Force.",
+            "slug": "fort-worth-tx-water-utility-task-force",
+            "title": "Fort Worth: Water Utility Task Force"
+          },
+          {
+            "description": "Zoning Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-zoning-commission",
+            "title": "Fort Worth: Zoning Commission"
+          },
+          {
+            "description": "Video recordings of Fort Worth City Council meetings, produced by FWTV.",
+            "slug": "fort-worth-tx",
+            "title": "Fort Worth \u2014 All Meetings"
+          }
+        ],
+        "policy": {
+          "archive": "Promotional/orientation films and economic-development luncheons are archive-only.",
+          "events": "Ceremonies, dedications and their site-tour segments are excluded from body feeds.",
+          "families": "Use configured bond/TIF/public-information family feeds for their proven bodies.",
+          "identity": "Use the convened body, not venue, topic or common members; numbered boards differ.",
+          "joints": "Every proven participant can share the same recording in its configured feed.",
+          "proof": "Missing ownership proof requires unresolved; it does not prove exclusion.",
+          "public_comment": "Routine public comment does not add Public Info feed membership.",
+          "series": "Candidate forums remain archival series, not Council proceedings.",
+          "sparse": "A real body without an existing feed is unconfigured, not automatically non-city."
+        },
+        "recordings": [
+          {
+            "body": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+            "canonical_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469",
+            "date": "2016-02-13T00:00:00+00:00",
+            "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469",
+            "title": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+            "uid": "00c9f506545d220a"
+          }
+        ],
+        "source_key": "6540eef2dc2e"
+      },
+      "feed_history": [
+        {
+          "distinct_patterns": 173,
+          "examples": [
+            {
+              "guid": "946666b88a8f1b46",
+              "title": "CITY COUNCIL WORKSESSION - Jun 23, 2026"
+            },
+            {
+              "guid": "8ce8a2575070bb27",
+              "title": "CITY COUNCIL WORKSESSION CITY COUNCIL WORKSESSION"
+            },
+            {
+              "guid": "f27a5129e538201d",
+              "title": "Pre-Council Meeting (Continued) Pre-Council Meeting (Continued)"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-city-council-worksession",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-city-council-worksession/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 415,
+          "examples": [
+            {
+              "guid": "4609f0b26eec91db",
+              "title": "Joint City Council and Employees' Retirement Fund Board Joint City Council and Employees' Retirement Fund Board"
+            },
+            {
+              "guid": "8fbf34d82a4595fa",
+              "title": "Joint City Council and Park and Recreation Advisory Board - May 06, 2025"
+            },
+            {
+              "guid": "8fa7e22e59e1077c",
+              "title": "Joint City Council and Park and Recreation Advisory Board Joint City Council and Park and Recreation Advisory Board"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-city-council",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-city-council/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 2,
+          "examples": [
+            {
+              "guid": "3cbadaeb13696901",
+              "title": "Minority And Women Business Enterprise Advisory Committee Minority And Women Business Enterprise Advisory Committee"
+            },
+            {
+              "guid": "622a71e00c6efc81",
+              "title": "Minority and Women Business Enterprise Advisory Committee Minority and Women Business Enterprise Advisory Committee"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-minority-and-women-business-enterprise-advisory-committee",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-minority-and-women-business-enterprise-advisory-committee/audio_feed.xml"
+        }
+      ],
+      "proposals": {
+        "A": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "provider-player"
+              ],
+              "name": "Minority Leaders and Citizen's Council"
+            }
+          ],
+          "case_id": "recording-431b21d07dbce916fbd90dbd",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "No agenda, minutes, participant roster, or city-directory listing is supplied, so whether the Minority Leaders and Citizen's Council is a chartered City of Fort Worth body versus a body whose proceedings the city records cannot be confirmed from the supplied evidence alone; per the sparse policy this gap does not make the recording non-city, and per the proof policy it does not prove exclusion. No second convener is named in any supplied evidence, so no additional joint-meeting participant is proven; the identity policy bars inferring joint convocation from shared members, venue, or topic."
+          ],
+          "publication_action": "unconfigured_body",
+          "rationale": "The sole supplied official evidence (provider-player, clip_id=2469, view_id=11 on fortworthgov.granicus.com) titles the 2016-02-13 clip 'Minority Leaders and Citizen's Council' and shows the same name as the player's archive category. The doubled body label is a source duplication artifact; the official name is 'Minority Leaders and Citizen's Council'. That official title establishes the one proven participant and owner of the recording. Reviewing all 54 existing feeds, none is configured for this body. Topic-similar feeds belong to different convened bodies and are rejected under the identity policy (convened body, not topic words or common members): 'fort-worth-tx-minority-and-women-business-enterprise-advisory-committee' (a distinct advisory committee), 'fort-worth-tx-human-relations-commission', and 'fort-worth-tx-race-and-culture-task-force' are not this body; 'fort-worth-tx-public-info-meetings' is a family feed for proven public-information bodies, which this clip's evidence does not establish; the general 'fort-worth-tx' feed is described as FWTV City Council recordings, and this is not a City Council proceeding. No feed slug is invented. Under the sparse policy, a real body without an existing feed is unconfigured rather than non-city, so the publication action is unconfigured_body, naming the Minority Leaders and Citizen's Council for feed configuration; the recording is not declared non-government, as it is published in the City of Fort Worth's official Granicus archive. archive_only, archive_series, and exclude_event do not apply: the supplied evidence shows a body meeting, not a promotional/orientation film, economic-development luncheon, ceremony, dedication, or candidate forum, so no general exclusion rule is met. Because the official title establishes ownership by the named body, the case is unconfigured_body rather than unresolved."
+        },
+        "B": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "provider-player"
+              ],
+              "name": "Minority Leaders and Citizen's Council"
+            }
+          ],
+          "case_id": "recording-431b21d07dbce916fbd90dbd",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "No agenda, minutes, membership roster, or convening order in the supplied evidence establishing 'Minority Leaders and Citizen's Council' as a municipal body or program convened by the City of Fort Worth.",
+            "No evidence distinguishing this named entity from similarly titled but distinct configured bodies (e.g., fort-worth-tx-minority-and-women-business-enterprise-advisory-committee) or linking it to any existing feed slug.",
+            "No evidence of City of Fort Worth sponsorship or convening versus third-party use of the city's Granicus platform; hosting alone does not establish ownership, as non-city bodies are hosted in this archive (cf. the Trinity Metro Board feed description).",
+            "No content evidence (video index, agenda packet, or episode details) that would support applying the archive_only, archive_series, or exclude_event publication rules."
+          ],
+          "publication_action": "unresolved",
+          "rationale": "The sole supplied evidence (provider-player) is the Fort Worth Granicus MediaPlayer page for clip_id=2469 dated 2016-02-13, whose official metadata names the recording 'Minority Leaders and Citizen's Council' (title/label duplicated in the metadata). This proves only the stated name; it contains no agenda, minutes, membership, or convening documentation establishing it as a municipal body or program of Fort Worth rather than an external organization streamed on the city platform. Hosting in fortworthgov.granicus.com alone does not establish ownership, since non-city bodies are hosted in this archive (e.g., Trinity Metro Board per its feed description). The name matches no existing feed slug, and under the identity rule (convened body, not topic or similarity) it cannot be assigned to the similarly named but distinct Minority and Women Business Enterprise Advisory Committee or any other configured body. No joint participants are evidenced, so none are named. Per the proof policy, missing ownership proof requires unresolved and does not prove exclusion; per the sparse policy, a real body without a feed would be unconfigured, but even that status first requires establishing it as a real municipal body, which this evidence does not do. Empty feeds alone do not make this a non-meeting, and no content evidence supports archive_only, archive_series, or exclude_event. No feed slug is assigned, no institution is invented, and the recording is not declared non-government; if later evidence proves a City body/program, it would be unconfigured_body, and if it proves to be a candidate forum or luncheon, the series/archive rules would apply."
+        }
+      },
+      "retrieval_status": [
+        {
+          "error": null,
+          "sent_characters": 641,
+          "sha256": "3730c49da93785e222db81d9e30993e8bbfd50cfee811e46ba1780d202a3a85b",
+          "text_characters": 641,
+          "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2469"
+        }
+      ]
+    },
+    {
+      "case": {
+        "body_label": "Environmental Task Force Meeting",
+        "case_id": "recording-64905d6e32cae3a0ec5a7070",
+        "city": "arlington-tx",
+        "completeness": {
+          "status": "recording-specific"
+        },
+        "evidence_refs": [
+          {
+            "agenda_id": null,
+            "content_hash": "fb4a034a508f2379e169ff8b9b77a3d5c397f2417f8ecec1de8e4e6b45b03f2d",
+            "id": "retained-agenda",
+            "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+            "retrieved_at": "2026-10-11",
+            "source_span": "\n101 West Abram Street \u2022 Box 90231 \u2022 Arlington, Texas 76004-3231\u2022 (817) 459-6100 \u2022  FAX (817) 459-6116 \n \n \n \n \n \n \n \nOffice of the City Manager \n \n \n \nENVIRONMENTAL TASK FORCE \nCITY OF ARLINGTON \n \nTELEPHONE MEETING \u2013 ACCESSIBLE BY CALLING \u2013 (833) 268-8354;  \nCONFERENCE ID \u2013 898-858-449# \n \nAPRIL 28, 2020 \n 10:30 A.M. \n \n \nI. CALL TO ORDER \n \n \nII. NEW BUSINESS \n \nA. Review of Focus Areas             30 Minutes \n \nB. Tree Ordinance Discussion 30 Minutes \n \nIII. ADJOURN \n \n \n \n \n \n \n \n \n \n \nThis meeting is accessible by calling: (833) 268-8354, CONFERENCE ID \u2013 898-858-449#. \nIn accordance with social distancing guidelines, all members of the Task Force will join by \nphone. \nTree \nPreservation \nand Mitigation\nEnvironmental Task Force\nApril 28, 2020\n\n2\nCity Council work session on February 25, 2020 \ncompared Arlington\u2019s TP&M ordinance to other \ncities.  March 16, 2020 ETF focused on Cross \nTimbers preservation and enforcement measures.\nSummary\nSummary of Comparative Findings\nStandards A: Residential: preserve 35% ci\nInventory: Oaks >3ci + Other >6ci\nP: Oaks 3ci-5ci = x2\nNonresidential: 1:1\nInventory: Building pad >30ci; elsewhere >6ci\nP&R: >3ci + 1.5 for Bonus trees (Oaks) and Significant Stand\nSurvey cities: ratios from 1.0 to 2.0 based on size or specimen\nEnforcement A: Tree Preservation Plan (TPP)\nNon-developmental: No ordinance but fee for tree removal \nSurvey cities:  TPP + Tree Removal Permit (TRP) or blanket TRP\nBest practices: * inventory survey * phantom-lined plans * inspections\nMitigation Fee Lowest of surveyed cities.  $100 vs. Avg of $175.\n3\nHow to \u201cincentivize\u201d Cross Timbers oaks of \nArlington for both inventory and preservation.Standards\nArlington\n\u2022 35% ci preservation appears appropriate\n\u2022 Inventory:\n\u2022 By size \u2013 over/under 18ci, 24ci, 30ci\n\u2022 By specimen \u2013 Oaks count as x1.5, x1.75, x2.0, etc.\n\u2022 Preservation:\n\u2022 By size \u2013 (same as above)\n\u2022 By specimen \u2013 More credit for Oaks \u22656ci ?\nResidential\n\u2022 Modify the 1:1 ratio rule (by any of the following)\n\u2022 Inventory:\n\u2022 By size \u2013 over/under 18ci, 24ci, 30ci\n\u2022 By specimen \u2013 Oaks count as x1.5, x1.75, x2.0, etc.\n\u2022 Preservation:\n\u2022 By size \u2013 (same as above)\n\u2022 By specimen \u2013 Bonus trees credited at greater than 1.5?\nNon-\nResidential\n4\nProtect against non-developmental clear \ncutting.\nProvide tools to review impact on trees during \napplication review.\nEnforcement\nArlington\n\u2022 Update fee to $_____________ to reflect survey citiesReplacement \nFee\n\u2022 A non-developmental permit; not connected to site plans\n\u2022 Currently no express ordinance \u2013 affects enforceability\n\u2022 Mitigation still requiredTree Removal \nPermit\n\u2022 To be submitted with Development Plan or Site Plan\n\u2022 Allows Council, P&Z and staff to quickly see impact of \ndevelopment on tree stands\nPhantom \u2013\nLined Plans\n\u2022 Establish circumstances for use of inventory survey\n\u2022 Acceptable professional reportsInventory \nSurveys",
+            "url": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b"
+          },
+          {
+            "agenda_id": null,
+            "content_hash": "95141bc7c9f4e2f43f276f7ce9bb7309af78a2ab5461528f25cf312ce867b1a2",
+            "id": "provider-player",
+            "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+            "retrieved_at": "2026-10-11",
+            "source_span": "Environmental Task Force Meeting Video Player and Subtitles Environmental Task Force Meeting Navigation Index Agenda Documents Share Download Embed Streaming Video Support Video Indices Video Download Audio Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Agenda Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454"
+          },
+          {
+            "agenda_id": null,
+            "content_hash": "61070e4aeb6471198ddc05a163134ad861705af57bb1402dd4f30da964634aa0",
+            "id": "expanded-retained-agenda-0",
+            "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+            "retrieved_at": "2026-10-14T23:30:37.913946+00:00",
+            "source_span": "101 West Abram Street \u2022 Box 90231 \u2022 Arlington, Texas 76004-3231\u2022 (817) 459-6100 \u2022  FAX (817) 459-6116 \n \n \n \n \n \n \n \nOffice of the City Manager \n \n \n \nENVIRONMENTAL TASK FORCE \nCITY OF ARLINGTON \n \nTELEPHONE MEETING \u2013 ACCESSIBLE BY CALLING \u2013 (833) 268-8354;  \nCONFERENCE ID \u2013 898-858-449# \n \nAPRIL 28, 2020 \n 10:30 A.M. \n \n \nI. CALL TO ORDER \n \n \nII. NEW BUSINESS \n \nA. Review of Focus Areas             30 Minutes \n \nB. Tree Ordinance Discussion 30 Minutes \n \nIII. ADJOURN \n \n \n \n \n \n \n \n \n \n \nThis meeting is accessible by calling: (833) 268-8354, CONFERENCE ID \u2013 898-858-449#. \nIn accordance with social distancing guidelines, all members of the Task Force will join by \nphone. \nTree \nPreservation \nand Mitigation\nEnvironmental Task Force\nApril 28, 2020\n\n2\nCity Council work session on February 25, 2020 \ncompared Arlington\u2019s TP&M ordinance to other \ncities.  March 16, 2020 ETF focused on Cross \nTimbers preservation and enforcement measures.\nSummary\nSummary of Comparative Findings\nStandards A: Residential: preserve 35% ci\nInventory: Oaks >3ci + Other >6ci\nP: Oaks 3ci-5ci = x2\nNonresidential: 1:1\nInventory: Building pad >30ci; elsewhere >6ci\nP&R: >3ci + 1.5 for Bonus trees (Oaks) and Significant Stand\nSurvey cities: ratios from 1.0 to 2.0 based on size or specimen\nEnforcement A: Tree Preservation Plan (TPP)\nNon-developmental: No ordinance but fee for tree removal \nSurvey cities:  TPP + Tree Removal Permit (TRP) or blanket TRP\nBest practices: * inventory survey * phantom-lined plans * inspections\nMitigation Fee Lowest of surveyed cities.  $100 vs. Avg of $175.\n3\nHow to \u201cincentivize\u201d Cross Timbers oaks of \nArlington for both inventory and preservation.Standards\nArlington\n\u2022 35% ci preservation appears appropriate\n\u2022 Inventory:\n\u2022 By size \u2013 over/under 18ci, 24ci, 30ci\n\u2022 By specimen \u2013 Oaks count as x1.5, x1.75, x2.0, etc.\n\u2022 Preservation:\n\u2022 By size \u2013 (same as above)\n\u2022 By specimen \u2013 More credit for Oaks \u22656ci ?\nResidential\n\u2022 Modify the 1:1 ratio rule (by any of the following)\n\u2022 Inventory:\n\u2022 By size \u2013 over/under 18ci, 24ci, 30ci\n\u2022 By specimen \u2013 Oaks count as x1.5, x1.75, x2.0, etc.\n\u2022 Preservation:\n\u2022 By size \u2013 (same as above)\n\u2022 By specimen \u2013 Bonus trees credited at greater than 1.5?\nNon-\nResidential\n4\nProtect against non-developmental clear \ncutting.\nProvide tools to review impact on trees during \napplication review.\nEnforcement\nArlington\n\u2022 Update fee to $_____________ to reflect survey citiesReplacement \nFee\n\u2022 A non-developmental permit; not connected to site plans\n\u2022 Currently no express ordinance \u2013 affects enforceability\n\u2022 Mitigation still requiredTree Removal \nPermit\n\u2022 To be submitted with Development Plan or Site Plan\n\u2022 Allows Council, P&Z and staff to quickly see impact of \ndevelopment on tree stands\nPhantom \u2013\nLined Plans\n\u2022 Establish circumstances for use of inventory survey\n\u2022 Acceptable professional reportsInventory \nSurveys",
+            "url": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b"
+          },
+          {
+            "agenda_id": null,
+            "content_hash": "e2798baf36d2753605858d5a4274e9fc1484f2329e32694cd0fac18ef7bc54df",
+            "id": "expanded-provider-player-0",
+            "recording_id": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+            "retrieved_at": "2026-10-14T23:30:37.458451+00:00",
+            "source_span": "Environmental Task Force Meeting Video Player and Subtitles Navigation Index Agenda Documents Share Download Embed Streaming Video Support Video Indices Video Download Audio Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Agenda Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454"
+          }
+        ],
+        "existing_feeds": [
+          {
+            "description": "Meetings of the Arlington Tomorrow Foundation Board of Directors.",
+            "slug": "arlington-tx-arlington-tomorrow-foundation",
+            "title": "Arlington: Arlington Tomorrow Foundation - Board of Directors"
+          },
+          {
+            "description": "Meetings of Arlington's Community and Neighborhood Development Committee.",
+            "slug": "arlington-tx-community-and-neighborhood-development-committee",
+            "title": "Arlington: Community and Neighborhood Development Committee"
+          },
+          {
+            "description": "Council meetings for Arlington.",
+            "slug": "arlington-tx-council",
+            "title": "Arlington: Council"
+          },
+          {
+            "description": "Economic Development Committee meetings for Arlington, Texas.",
+            "slug": "arlington-tx-economic-development-committee",
+            "title": "Arlington: Economic Development Committee"
+          },
+          {
+            "description": "Verified 2020 Arlington Environmental Task Force proceedings.",
+            "slug": "arlington-tx-environmental-task-force",
+            "title": "Arlington: Environmental Task Force"
+          },
+          {
+            "description": "Public meeting recordings of the Arlington Housing Finance Corporation in Arlington.",
+            "slug": "arlington-tx-housing-finance-corporation",
+            "title": "Arlington: Housing Finance Corporation"
+          },
+          {
+            "description": "Planning and Zoning Commission meetings for Arlington.",
+            "slug": "arlington-tx-planning-and-zoning-commission",
+            "title": "Arlington: Planning and Zoning Commission"
+          },
+          {
+            "description": "Meetings of the Term Limits Advisory Committee in Arlington, TX.",
+            "slug": "arlington-tx-term-limits-advisory-committee",
+            "title": "Arlington: Term Limits Advisory Committee"
+          },
+          {
+            "description": "Public meeting recordings of the Zoning Board of Adjustment in Arlington.",
+            "slug": "arlington-tx-zoning-board-of-adjustment",
+            "title": "Arlington: Zoning Board of Adjustment"
+          },
+          {
+            "description": "Video recordings of Arlington City Council and Planning & Zoning meetings.",
+            "slug": "arlington-tx",
+            "title": "Arlington \u2014 All Meetings"
+          }
+        ],
+        "policy": {
+          "archive": "Promotional/orientation films and economic-development luncheons are archive-only.",
+          "events": "Ceremonies, dedications and their site-tour segments are excluded from body feeds.",
+          "families": "Use configured bond/TIF/public-information family feeds for their proven bodies.",
+          "identity": "Use the convened body, not venue, topic or common members; numbered boards differ.",
+          "joints": "Every proven participant can share the same recording in its configured feed.",
+          "proof": "Missing ownership proof requires unresolved; it does not prove exclusion.",
+          "public_comment": "Routine public comment does not add Public Info feed membership.",
+          "series": "Candidate forums remain archival series, not Council proceedings.",
+          "sparse": "A real body without an existing feed is unconfigured, not automatically non-city."
+        },
+        "recordings": [
+          {
+            "body": "Environmental Task Force Meeting",
+            "canonical_url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+            "date": "2020-04-28T00:00:00+00:00",
+            "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+            "title": "Environmental Task Force Meeting",
+            "uid": "2d5dc451df2da130"
+          }
+        ],
+        "source_key": "ecc3710ac47f"
+      },
+      "feed_history": [
+        {
+          "distinct_patterns": 1,
+          "examples": [
+            {
+              "guid": "ccee5be42508e88d",
+              "title": "Arlington Tomorrow Foundation - Board of Directors"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "arlington-tx-arlington-tomorrow-foundation",
+          "url": "https://www.citymeetings.fyi/arlington-tx-arlington-tomorrow-foundation/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 25,
+          "examples": [
+            {
+              "guid": "22ba4fe5ddca276d",
+              "title": "City Council Meeting Agenda"
+            },
+            {
+              "guid": "ca30d49e964016ce",
+              "title": "Special Meeting - City Council Priority Setting Session"
+            },
+            {
+              "guid": "bb2e841b50ff97b9",
+              "title": "Afternoon Meeting"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "arlington-tx-council",
+          "url": "https://www.citymeetings.fyi/arlington-tx-council/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 0,
+          "examples": [],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "arlington-tx-environmental-task-force",
+          "url": "https://www.citymeetings.fyi/arlington-tx-environmental-task-force/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 1,
+          "examples": [
+            {
+              "guid": "97655ff1190b7f0e",
+              "title": "ZBA Regular Session"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "arlington-tx-zoning-board-of-adjustment",
+          "url": "https://www.citymeetings.fyi/arlington-tx-zoning-board-of-adjustment/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 16,
+          "examples": [
+            {
+              "guid": "ca30d49e964016ce",
+              "title": "Special Meeting - City Council Priority Setting Session"
+            },
+            {
+              "guid": "853cef143613a7bc",
+              "title": "Regular Council Meeting"
+            },
+            {
+              "guid": "ef5e8c91cf16ba5f",
+              "title": "Special Joint Meeting"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "arlington-tx",
+          "url": "https://www.citymeetings.fyi/arlington-tx/audio_feed.xml"
+        }
+      ],
+      "proposals": {
+        "A": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "retained-agenda",
+                "provider-player"
+              ],
+              "name": "Environmental Task Force, City of Arlington"
+            }
+          ],
+          "case_id": "recording-64905d6e32cae3a0ec5a7070",
+          "evidence_ref_ids": [
+            "retained-agenda",
+            "provider-player"
+          ],
+          "feed_slugs": [
+            "arlington-tx-environmental-task-force",
+            "arlington-tx"
+          ],
+          "missing_evidence": [],
+          "publication_action": "assign_existing",
+          "rationale": "The retained agenda (retained-agenda) is on City of Arlington letterhead from the Office of the City Manager and convenes the 'ENVIRONMENTAL TASK FORCE / CITY OF ARLINGTON' for a telephone meeting on April 28, 2020 at 10:30 A.M., matching the recording date of 2020-04-28. The provider player page (provider-player) titles the Granicus clip 'Environmental Task Force Meeting' with the matching recording ID. The convened body is therefore the City of Arlington Environmental Task Force; the Granicus portal, letterhead address, and topic words (tree ordinance references to Council and P&Z) are venue/context only and do not make Council or P&Z convening participants, so no joint-body assignments are proven. The existing feed 'arlington-tx-environmental-task-force' (Verified 2020 Arlington Environmental Task Force proceedings) exactly matches this body and year, so publication_action is assign_existing; the city-wide 'arlington-tx' (Arlington \u2014 All Meetings) feed is included as the subscription grouping for the same recording. No gaps in ownership evidence; archive/exclude rules do not apply to this regular business meeting."
+        },
+        "B": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "retained-agenda",
+                "provider-player"
+              ],
+              "name": "Environmental Task Force, City of Arlington"
+            }
+          ],
+          "case_id": "recording-64905d6e32cae3a0ec5a7070",
+          "evidence_ref_ids": [
+            "retained-agenda",
+            "provider-player"
+          ],
+          "feed_slugs": [
+            "arlington-tx-environmental-task-force"
+          ],
+          "missing_evidence": [],
+          "publication_action": "assign_existing",
+          "rationale": "Ownership is established from the official agenda (retained-agenda), which is issued from the City Manager's office and headed 'ENVIRONMENTAL TASK FORCE \u2014 CITY OF ARLINGTON', convening a telephone meeting on April 28, 2020 at 10:30 a.m. with Task Force business items (Review of Focus Areas; Tree Ordinance Discussion) and slide materials labeled 'Tree Preservation and Mitigation \u2014 Environmental Task Force April 28, 2020'; the agenda date matches the recording's immutable date 2020-04-28, and the provider player (provider-player) titles the recording 'Environmental Task Force Meeting'. The convened body is the Environmental Task Force itself, not a venue or topic; the recording label 'Environmental Task Force Meeting' is the event title, not a separate institution. The existing feed arlington-tx-environmental-task-force ('Verified 2020 Arlington Environmental Task Force proceedings') exactly covers this 2020 proceeding and is selected. No joint meeting participants are proven: references to a February 25, 2020 City Council work session and a March 16, 2020 ETF session are historical context within the Task Force's own materials, and the mention of 'Council, P&Z and staff' describes a proposed phantom-lined-plan review tool, not attendance at this meeting; no evidence places another body in this recording. The 'arlington-tx' subscription grouping is not selected because its stated scope is City Council and Planning & Zoning recordings, which does not cover the Environmental Task Force, and that body has its own configured feed. No exclusion, archive-only, or series rules apply: this is a substantive working meeting (tree ordinance discussion), not a ceremony, promotional film, or candidate forum. The feed's prior emptiness is irrelevant under the supplied rules."
+        }
+      },
+      "retrieval_status": [
+        {
+          "error": null,
+          "sent_characters": 2860,
+          "sha256": "80a80d4d00e0aa2efc8875c7e36d41f7609bdef89135ba12cf06ae050faa5955",
+          "text_characters": 2860,
+          "url": "https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b"
+        },
+        {
+          "error": null,
+          "sent_characters": 664,
+          "sha256": "4f9c9a8fa0123b70cffd71c1c0cc380256b6164d8a16b9676eeb8d7ab88edeed",
+          "text_characters": 664,
+          "url": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454"
+        }
+      ]
+    },
+    {
+      "case": {
+        "body_label": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+        "case_id": "recording-76b77357565cdc16153f2a97",
+        "city": "fort-worth-tx",
+        "completeness": {
+          "status": "recording-specific"
+        },
+        "evidence_refs": [
+          {
+            "agenda_id": null,
+            "content_hash": "b6a855bdbaeaa3359e65d9ee7295c879642e9322fcd7f5333866a5e462e5a913",
+            "id": "provider-player",
+            "recording_id": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848",
+            "retrieved_at": "2026-10-11",
+            "source_span": "Minority Leaders and Citizen's Council Video Player and Subtitles Minority Leaders and Citizen's Council Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848"
+          },
+          {
+            "agenda_id": null,
+            "content_hash": "6e972c0d2728161897edfdc781af49a61fe5d730192bcb959f01edad10b53794",
+            "id": "expanded-provider-player-0",
+            "recording_id": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848",
+            "retrieved_at": "2026-10-14T23:30:39.175972+00:00",
+            "source_span": "Minority Leaders and Citizen's Council Video Player and Subtitles Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848"
+          }
+        ],
+        "existing_feeds": [
+          {
+            "description": "Tx Ad Hoc Council Committee on Emergency Medical Response recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response",
+            "title": "Fort Worth: Tx Ad Hoc Council Committee on Emergency Medical Response"
+          },
+          {
+            "description": "Tx Ad Hoc Municipal Court Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee",
+            "title": "Fort Worth: Tx Ad Hoc Municipal Court Advisory Committee"
+          },
+          {
+            "description": "Alliance Airport Authority recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-alliance-airport-authority",
+            "title": "Fort Worth: Alliance Airport Authority"
+          },
+          {
+            "description": "Tx Animal Shelter Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-animal-shelter-advisory-committee",
+            "title": "Fort Worth: Tx Animal Shelter Advisory Committee"
+          },
+          {
+            "description": "Tx Arts Funding Task Force recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-arts-funding-task-force",
+            "title": "Fort Worth: Tx Arts Funding Task Force"
+          },
+          {
+            "description": "Audit Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-audit-committee",
+            "title": "Fort Worth: Audit Committee"
+          },
+          {
+            "description": "Tx Aviation Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-aviation-advisory-board",
+            "title": "Fort Worth: Tx Aviation Advisory Board"
+          },
+          {
+            "description": "Bid Opening meetings for Fort Worth.",
+            "slug": "fort-worth-tx-bid-opening",
+            "title": "Fort Worth: Bid Opening"
+          },
+          {
+            "description": "Board of Adjustment meetings for Fort Worth.",
+            "slug": "fort-worth-tx-board-of-adjustment",
+            "title": "Fort Worth: Board of Adjustment"
+          },
+          {
+            "description": "Building Standards Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-building-standards-commission",
+            "title": "Fort Worth: Building Standards Commission"
+          },
+          {
+            "description": "Capital Improvements Advisory Committee for Transportation Impact Fees recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-capital-improvements-advisory-committee",
+            "title": "Fort Worth: Capital Improvements Advisory Committee for Transportation Impact Fees"
+          },
+          {
+            "description": "Recordings of the Central City Local Government Corporation meetings.",
+            "slug": "fort-worth-tx-central-city-local-government-corporation",
+            "title": "Fort Worth: Central City Local Government Corporation"
+          },
+          {
+            "description": "Fort Worth Charter Review Task Force meetings.",
+            "slug": "fort-worth-tx-charter-review-task-force",
+            "title": "Fort Worth: Charter Review Task Force"
+          },
+          {
+            "description": "City Council Worksession meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-council-worksession",
+            "title": "Fort Worth: City Council Worksession"
+          },
+          {
+            "description": "City Council meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-council",
+            "title": "Fort Worth: City Council"
+          },
+          {
+            "description": "City Plan Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-plan-commission",
+            "title": "Fort Worth: City Plan Commission"
+          },
+          {
+            "description": "Community Development Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-community-development-committee",
+            "title": "Fort Worth: Community Development Committee"
+          },
+          {
+            "description": "Crime Control and Prevention District meetings for Fort Worth.",
+            "slug": "fort-worth-tx-crime-control-and-prevention-district",
+            "title": "Fort Worth: Crime Control and Prevention District"
+          },
+          {
+            "description": "Downtown Design and Review Board meetings for Fort Worth.",
+            "slug": "fort-worth-tx-downtown-design-and-review-board",
+            "title": "Fort Worth: Downtown Design and Review Board"
+          },
+          {
+            "description": "Source-scoped joint proceedings of the EMSISD Board and Fort Worth Council; original whole recordings retained.",
+            "slug": "fort-worth-tx-emsisd-board-joint-meetings",
+            "title": "Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council"
+          },
+          {
+            "description": "Entrepreneurship and Innovation Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-entrepreneurship-and-innovation-committee",
+            "title": "Fort Worth: Entrepreneurship and Innovation Committee"
+          },
+          {
+            "description": "Fort Worth Housing Finance Corporation meetings for Fort Worth.",
+            "slug": "fort-worth-tx-fort-worth-housing-finance-corporation",
+            "title": "Fort Worth: Fort Worth Housing Finance Corporation"
+          },
+          {
+            "description": "Recordings of the Fort Worth Local Development Corporation meetings.",
+            "slug": "fort-worth-tx-fort-worth-local-development-corporation",
+            "title": "Fort Worth: Fort Worth Local Development Corporation"
+          },
+          {
+            "description": "Fort Worth Sports Authority, Inc. Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-fort-worth-sports-authority",
+            "title": "Fort Worth: Fort Worth Sports Authority, Inc. Board"
+          },
+          {
+            "description": "Gas Drilling Task Force proceedings, including proven joint workshops with Fort Worth Council; original whole recordings retained.",
+            "slug": "fort-worth-tx-gas-drilling-task-force",
+            "title": "Fort Worth: Gas Drilling Task Force"
+          },
+          {
+            "description": "Historic and Cultural Landmark Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-historic-and-cultural-landmark-commission",
+            "title": "Fort Worth: Historic and Cultural Landmark Commission"
+          },
+          {
+            "description": "Housing and Economic Development Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-housing-and-economic-development-committee",
+            "title": "Fort Worth: Housing and Economic Development Committee"
+          },
+          {
+            "description": "Tx Human Relations Commission recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-human-relations-commission",
+            "title": "Fort Worth: Tx Human Relations Commission"
+          },
+          {
+            "description": "Infrastructure and Growth Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-infrastructure-and-growth-committee",
+            "title": "Fort Worth: Infrastructure and Growth Committee"
+          },
+          {
+            "description": "Legislative and Intergovernmental Affairs Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-legislative-and-intergovernmental-affairs-committee",
+            "title": "Fort Worth: Legislative and Intergovernmental Affairs Committee"
+          },
+          {
+            "description": "Tx Library Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-library-advisory-board",
+            "title": "Fort Worth: Tx Library Advisory Board"
+          },
+          {
+            "description": "Tx Mayor S Committee on Persons With Disabilities recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-mayor-s-committee-on-persons-with-disabilities",
+            "title": "Fort Worth: Tx Mayor S Committee on Persons With Disabilities"
+          },
+          {
+            "description": "Tx Minority and Women Business Enterprise Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-minority-and-women-business-enterprise-advisory-committee",
+            "title": "Fort Worth: Tx Minority and Women Business Enterprise Advisory Committee"
+          },
+          {
+            "description": "Neighborhood Quality and Revitalization Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-neighborhood-quality-and-revitalization-committee",
+            "title": "Fort Worth: Neighborhood Quality and Revitalization Committee"
+          },
+          {
+            "description": "Tx Park and Recreation Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-park-and-recreation-advisory-board",
+            "title": "Fort Worth: Tx Park and Recreation Advisory Board"
+          },
+          {
+            "description": "Tx Pedestrian and Bicycle Advisory Commission recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-pedestrian-and-bicycle-advisory-commission",
+            "title": "Fort Worth: Tx Pedestrian and Bicycle Advisory Commission"
+          },
+          {
+            "description": "Property Management and Environmental Services Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-property-management-and-environmental-services-committee",
+            "title": "Fort Worth: Property Management and Environmental Services Committee"
+          },
+          {
+            "description": "Public Art Commission meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-public-art-commission",
+            "title": "Fort Worth: Public Art Commission"
+          },
+          {
+            "description": "Public Info Meetings recordings. Historical names are kept; recurring title patterns match future entries.",
+            "slug": "fort-worth-tx-public-info-meetings",
+            "title": "Fort Worth: Public Info Meetings"
+          },
+          {
+            "description": "Public Safety Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-public-safety-committee",
+            "title": "Fort Worth: Public Safety Committee"
+          },
+          {
+            "description": "Tx Race and Culture Task Force recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-race-and-culture-task-force",
+            "title": "Fort Worth: Tx Race and Culture Task Force"
+          },
+          {
+            "description": "Fort Worth Redistricting Task Force meetings.",
+            "slug": "fort-worth-tx-redistricting-task-force",
+            "title": "Fort Worth: Redistricting Task Force"
+          },
+          {
+            "description": "Recordings of the Research and Innovation Local Government Corporation meetings.",
+            "slug": "fort-worth-tx-research-and-innovation-local-government-corporation",
+            "title": "Fort Worth: Research and Innovation Local Government Corporation"
+          },
+          {
+            "description": "Speaker's Podium recordings. Historical names are kept; recurring title patterns match future entries.",
+            "slug": "fort-worth-tx-speakers-podium",
+            "title": "Fort Worth: Speaker's Podium"
+          },
+          {
+            "description": "State of the City addresses and speeches by municipal leadership.",
+            "slug": "fort-worth-tx-state-of-city",
+            "title": "Fort Worth: State of the City"
+          },
+          {
+            "description": "Public recordings of tax increment financing (TIF) district boards, joint TIF meetings, and TIF oversight bodies. District names remain in official episode titles.",
+            "slug": "fort-worth-tx-tif",
+            "title": "Fort Worth: TIF Meetings"
+          },
+          {
+            "description": "Trinity Metro Board recordings hosted in Fort Worth\u2019s Granicus archive.",
+            "slug": "fort-worth-tx-trinity-metro-board",
+            "title": "Fort Worth: Trinity Metro Board"
+          },
+          {
+            "description": "Urban Design Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-urban-design-commission",
+            "title": "Fort Worth: Urban Design Commission"
+          },
+          {
+            "description": "Water and Wastewater Capital Improvements Plan Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-water-and-wastewater-capital-improvements-plans-citizen-advisory-committee",
+            "title": "Fort Worth: Water and Wastewater Capital Improvements Plan Advisory Committee"
+          },
+          {
+            "description": "Recordings from the Fort Worth Water Utility Task Force.",
+            "slug": "fort-worth-tx-water-utility-task-force",
+            "title": "Fort Worth: Water Utility Task Force"
+          },
+          {
+            "description": "Zoning Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-zoning-commission",
+            "title": "Fort Worth: Zoning Commission"
+          },
+          {
+            "description": "Video recordings of Fort Worth City Council meetings, produced by FWTV.",
+            "slug": "fort-worth-tx",
+            "title": "Fort Worth \u2014 All Meetings"
+          }
+        ],
+        "policy": {
+          "archive": "Promotional/orientation films and economic-development luncheons are archive-only.",
+          "events": "Ceremonies, dedications and their site-tour segments are excluded from body feeds.",
+          "families": "Use configured bond/TIF/public-information family feeds for their proven bodies.",
+          "identity": "Use the convened body, not venue, topic or common members; numbered boards differ.",
+          "joints": "Every proven participant can share the same recording in its configured feed.",
+          "proof": "Missing ownership proof requires unresolved; it does not prove exclusion.",
+          "public_comment": "Routine public comment does not add Public Info feed membership.",
+          "series": "Candidate forums remain archival series, not Council proceedings.",
+          "sparse": "A real body without an existing feed is unconfigured, not automatically non-city."
+        },
+        "recordings": [
+          {
+            "body": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+            "canonical_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848",
+            "date": "2010-04-14T00:00:00+00:00",
+            "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848",
+            "title": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+            "uid": "01127a49d16869ef"
+          }
+        ],
+        "source_key": "6540eef2dc2e"
+      },
+      "feed_history": [
+        {
+          "distinct_patterns": 173,
+          "examples": [
+            {
+              "guid": "946666b88a8f1b46",
+              "title": "CITY COUNCIL WORKSESSION - Jun 23, 2026"
+            },
+            {
+              "guid": "8ce8a2575070bb27",
+              "title": "CITY COUNCIL WORKSESSION CITY COUNCIL WORKSESSION"
+            },
+            {
+              "guid": "f27a5129e538201d",
+              "title": "Pre-Council Meeting (Continued) Pre-Council Meeting (Continued)"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-city-council-worksession",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-city-council-worksession/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 415,
+          "examples": [
+            {
+              "guid": "4609f0b26eec91db",
+              "title": "Joint City Council and Employees' Retirement Fund Board Joint City Council and Employees' Retirement Fund Board"
+            },
+            {
+              "guid": "8fbf34d82a4595fa",
+              "title": "Joint City Council and Park and Recreation Advisory Board - May 06, 2025"
+            },
+            {
+              "guid": "8fa7e22e59e1077c",
+              "title": "Joint City Council and Park and Recreation Advisory Board Joint City Council and Park and Recreation Advisory Board"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-city-council",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-city-council/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 2,
+          "examples": [
+            {
+              "guid": "3cbadaeb13696901",
+              "title": "Minority And Women Business Enterprise Advisory Committee Minority And Women Business Enterprise Advisory Committee"
+            },
+            {
+              "guid": "622a71e00c6efc81",
+              "title": "Minority and Women Business Enterprise Advisory Committee Minority and Women Business Enterprise Advisory Committee"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-minority-and-women-business-enterprise-advisory-committee",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-minority-and-women-business-enterprise-advisory-committee/audio_feed.xml"
+        }
+      ],
+      "proposals": {
+        "A": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "provider-player"
+              ],
+              "name": "Minority Leaders and Citizen's Council"
+            }
+          ],
+          "case_id": "recording-76b77357565cdc16153f2a97",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [],
+          "publication_action": "unconfigured_body",
+          "rationale": "The title evidence shows the body is named 'Minority Leaders and Citizen's Council', distinct from the Minority and Women Business Enterprise Advisory Committee whose similar topic wording does not establish identity. No existing feed matches this exact body, and it appears to be an actual convened council rather than a ceremony or promotional event."
+        },
+        "B": {
+          "bodies": [
+            {
+              "evidence_ref_ids": [
+                "provider-player"
+              ],
+              "name": "Minority Leaders and Citizen's Council"
+            }
+          ],
+          "case_id": "recording-76b77357565cdc16153f2a97",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "No agenda, minutes, or official posting in the supplied evidence identifies the convening institution of the Minority Leaders and Citizen's Council.",
+            "No membership roster, enabling ordinance, resolution, or City directory entry ties this body to Fort Worth municipal government.",
+            "No catalog metadata beyond the player-page title exists for clip_id=848 (no sponsoring department, series, or document list naming a parent body)."
+          ],
+          "publication_action": "unresolved",
+          "rationale": "The only supplied evidence (provider-player) is the Granicus player page for clip_id=848 (2010-04-14). It proves the event's own label, 'Minority Leaders and Citizen's Council', and that the recording is hosted on the Fort Worth archive platform, but its content is navigation/player chrome with no agenda, minutes, roster, or convening statement. Under the supplied identity and proof rules, the hosting platform, city name, and topic words cannot establish which institution convened this body, so municipal ownership cannot be proven; per policy, missing ownership proof requires unresolved and does not prove exclusion or a non-government recording. No existing feed matches: fort-worth-tx-minority-and-women-business-enterprise-advisory-committee is a distinct body sharing only the word 'minority', and the general fort-worth-tx feed is limited to proven Council meetings, which this is not shown to be. Therefore no feed slug is assigned, no institution is invented, and the body is recorded solely as named in the recording metadata."
+        }
+      },
+      "retrieval_status": [
+        {
+          "error": null,
+          "sent_characters": 641,
+          "sha256": "1bee1f13fe0d4f6c05b02e0d1934df8f63b4d08b331c16df440586c6782587e5",
+          "text_characters": 641,
+          "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=848"
+        }
+      ]
+    },
+    {
+      "case": {
+        "body_label": "Fort Worth Forward - Episode 15 Fort Worth Forward - Episode 15",
+        "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+        "city": "fort-worth-tx",
+        "completeness": {
+          "status": "recording-specific"
+        },
+        "evidence_refs": [
+          {
+            "agenda_id": null,
+            "content_hash": "13dfa5b012bd47bf19889f5d17dae19d9cbcf1b2fa05a9890dbb07c5ef19ab97",
+            "id": "provider-player",
+            "recording_id": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085",
+            "retrieved_at": "2026-10-11",
+            "source_span": "Fort Worth Forward - Episode 15 Video Player and Subtitles Fort Worth Forward - Episode 15 Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085"
+          },
+          {
+            "agenda_id": null,
+            "content_hash": "e21218955099be511abd0eadd7ba3e21ff53ef9dce3bfe6a74233f635399daf5",
+            "id": "expanded-provider-player-0",
+            "recording_id": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085",
+            "retrieved_at": "2026-10-24T14:41:55.495534+00:00",
+            "source_span": "Fort Worth Forward - Episode 15 Video Player and Subtitles Navigation Index Documents Share Download Embed Streaming Video Support Video Indices Video Download Player Width (px): Player Height (px): Start playing automatically when loaded Entry Time: Should be less than Stop Time Stop Time: Should be less than Video Length & greater than Entry Time Copy this html to embed into your page Share the current item or the full video: Start From Current Item Full Video Copy this link to send this event to your friends: Email Facebook LinkedIn Twitter Default Document Streaming Video Support Documents Default Document Default Document",
+            "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085"
+          }
+        ],
+        "existing_feeds": [
+          {
+            "description": "Tx Ad Hoc Council Committee on Emergency Medical Response recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-ad-hoc-council-committee-on-emergency-medical-response",
+            "title": "Fort Worth: Tx Ad Hoc Council Committee on Emergency Medical Response"
+          },
+          {
+            "description": "Tx Ad Hoc Municipal Court Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-ad-hoc-municipal-court-advisory-committee",
+            "title": "Fort Worth: Tx Ad Hoc Municipal Court Advisory Committee"
+          },
+          {
+            "description": "Alliance Airport Authority recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-alliance-airport-authority",
+            "title": "Fort Worth: Alliance Airport Authority"
+          },
+          {
+            "description": "Tx Animal Shelter Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-animal-shelter-advisory-committee",
+            "title": "Fort Worth: Tx Animal Shelter Advisory Committee"
+          },
+          {
+            "description": "Tx Arts Funding Task Force recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-arts-funding-task-force",
+            "title": "Fort Worth: Tx Arts Funding Task Force"
+          },
+          {
+            "description": "Audit Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-audit-committee",
+            "title": "Fort Worth: Audit Committee"
+          },
+          {
+            "description": "Tx Aviation Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-aviation-advisory-board",
+            "title": "Fort Worth: Tx Aviation Advisory Board"
+          },
+          {
+            "description": "Bid Opening meetings for Fort Worth.",
+            "slug": "fort-worth-tx-bid-opening",
+            "title": "Fort Worth: Bid Opening"
+          },
+          {
+            "description": "Board of Adjustment meetings for Fort Worth.",
+            "slug": "fort-worth-tx-board-of-adjustment",
+            "title": "Fort Worth: Board of Adjustment"
+          },
+          {
+            "description": "Building Standards Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-building-standards-commission",
+            "title": "Fort Worth: Building Standards Commission"
+          },
+          {
+            "description": "Capital Improvements Advisory Committee for Transportation Impact Fees recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-capital-improvements-advisory-committee",
+            "title": "Fort Worth: Capital Improvements Advisory Committee for Transportation Impact Fees"
+          },
+          {
+            "description": "Recordings of the Central City Local Government Corporation meetings.",
+            "slug": "fort-worth-tx-central-city-local-government-corporation",
+            "title": "Fort Worth: Central City Local Government Corporation"
+          },
+          {
+            "description": "Fort Worth Charter Review Task Force meetings.",
+            "slug": "fort-worth-tx-charter-review-task-force",
+            "title": "Fort Worth: Charter Review Task Force"
+          },
+          {
+            "description": "City Council Worksession meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-council-worksession",
+            "title": "Fort Worth: City Council Worksession"
+          },
+          {
+            "description": "City Council meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-council",
+            "title": "Fort Worth: City Council"
+          },
+          {
+            "description": "City Plan Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-city-plan-commission",
+            "title": "Fort Worth: City Plan Commission"
+          },
+          {
+            "description": "Community Development Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-community-development-committee",
+            "title": "Fort Worth: Community Development Committee"
+          },
+          {
+            "description": "Crime Control and Prevention District meetings for Fort Worth.",
+            "slug": "fort-worth-tx-crime-control-and-prevention-district",
+            "title": "Fort Worth: Crime Control and Prevention District"
+          },
+          {
+            "description": "Downtown Design and Review Board meetings for Fort Worth.",
+            "slug": "fort-worth-tx-downtown-design-and-review-board",
+            "title": "Fort Worth: Downtown Design and Review Board"
+          },
+          {
+            "description": "Source-scoped joint proceedings of the EMSISD Board and Fort Worth Council; original whole recordings retained.",
+            "slug": "fort-worth-tx-emsisd-board-joint-meetings",
+            "title": "Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council"
+          },
+          {
+            "description": "Entrepreneurship and Innovation Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-entrepreneurship-and-innovation-committee",
+            "title": "Fort Worth: Entrepreneurship and Innovation Committee"
+          },
+          {
+            "description": "Fort Worth Housing Finance Corporation meetings for Fort Worth.",
+            "slug": "fort-worth-tx-fort-worth-housing-finance-corporation",
+            "title": "Fort Worth: Fort Worth Housing Finance Corporation"
+          },
+          {
+            "description": "Recordings of the Fort Worth Local Development Corporation meetings.",
+            "slug": "fort-worth-tx-fort-worth-local-development-corporation",
+            "title": "Fort Worth: Fort Worth Local Development Corporation"
+          },
+          {
+            "description": "Fort Worth Sports Authority, Inc. Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-fort-worth-sports-authority",
+            "title": "Fort Worth: Fort Worth Sports Authority, Inc. Board"
+          },
+          {
+            "description": "Gas Drilling Task Force proceedings, including proven joint workshops with Fort Worth Council; original whole recordings retained.",
+            "slug": "fort-worth-tx-gas-drilling-task-force",
+            "title": "Fort Worth: Gas Drilling Task Force"
+          },
+          {
+            "description": "Historic and Cultural Landmark Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-historic-and-cultural-landmark-commission",
+            "title": "Fort Worth: Historic and Cultural Landmark Commission"
+          },
+          {
+            "description": "Housing and Economic Development Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-housing-and-economic-development-committee",
+            "title": "Fort Worth: Housing and Economic Development Committee"
+          },
+          {
+            "description": "Tx Human Relations Commission recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-human-relations-commission",
+            "title": "Fort Worth: Tx Human Relations Commission"
+          },
+          {
+            "description": "Infrastructure and Growth Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-infrastructure-and-growth-committee",
+            "title": "Fort Worth: Infrastructure and Growth Committee"
+          },
+          {
+            "description": "Legislative and Intergovernmental Affairs Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-legislative-and-intergovernmental-affairs-committee",
+            "title": "Fort Worth: Legislative and Intergovernmental Affairs Committee"
+          },
+          {
+            "description": "Tx Library Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-library-advisory-board",
+            "title": "Fort Worth: Tx Library Advisory Board"
+          },
+          {
+            "description": "Tx Mayor S Committee on Persons With Disabilities recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-mayor-s-committee-on-persons-with-disabilities",
+            "title": "Fort Worth: Tx Mayor S Committee on Persons With Disabilities"
+          },
+          {
+            "description": "Tx Minority and Women Business Enterprise Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-minority-and-women-business-enterprise-advisory-committee",
+            "title": "Fort Worth: Tx Minority and Women Business Enterprise Advisory Committee"
+          },
+          {
+            "description": "Neighborhood Quality and Revitalization Committee meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-neighborhood-quality-and-revitalization-committee",
+            "title": "Fort Worth: Neighborhood Quality and Revitalization Committee"
+          },
+          {
+            "description": "Tx Park and Recreation Advisory Board recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-park-and-recreation-advisory-board",
+            "title": "Fort Worth: Tx Park and Recreation Advisory Board"
+          },
+          {
+            "description": "Tx Pedestrian and Bicycle Advisory Commission recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-pedestrian-and-bicycle-advisory-commission",
+            "title": "Fort Worth: Tx Pedestrian and Bicycle Advisory Commission"
+          },
+          {
+            "description": "Property Management and Environmental Services Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-property-management-and-environmental-services-committee",
+            "title": "Fort Worth: Property Management and Environmental Services Committee"
+          },
+          {
+            "description": "Public Art Commission meetings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-public-art-commission",
+            "title": "Fort Worth: Public Art Commission"
+          },
+          {
+            "description": "Public Info Meetings recordings. Historical names are kept; recurring title patterns match future entries.",
+            "slug": "fort-worth-tx-public-info-meetings",
+            "title": "Fort Worth: Public Info Meetings"
+          },
+          {
+            "description": "Public Safety Committee meetings for Fort Worth.",
+            "slug": "fort-worth-tx-public-safety-committee",
+            "title": "Fort Worth: Public Safety Committee"
+          },
+          {
+            "description": "Tx Race and Culture Task Force recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-race-and-culture-task-force",
+            "title": "Fort Worth: Tx Race and Culture Task Force"
+          },
+          {
+            "description": "Fort Worth Redistricting Task Force meetings.",
+            "slug": "fort-worth-tx-redistricting-task-force",
+            "title": "Fort Worth: Redistricting Task Force"
+          },
+          {
+            "description": "Recordings of the Research and Innovation Local Government Corporation meetings.",
+            "slug": "fort-worth-tx-research-and-innovation-local-government-corporation",
+            "title": "Fort Worth: Research and Innovation Local Government Corporation"
+          },
+          {
+            "description": "Speaker's Podium recordings. Historical names are kept; recurring title patterns match future entries.",
+            "slug": "fort-worth-tx-speakers-podium",
+            "title": "Fort Worth: Speaker's Podium"
+          },
+          {
+            "description": "State of the City addresses and speeches by municipal leadership.",
+            "slug": "fort-worth-tx-state-of-city",
+            "title": "Fort Worth: State of the City"
+          },
+          {
+            "description": "Public recordings of tax increment financing (TIF) district boards, joint TIF meetings, and TIF oversight bodies. District names remain in official episode titles.",
+            "slug": "fort-worth-tx-tif",
+            "title": "Fort Worth: TIF Meetings"
+          },
+          {
+            "description": "Trinity Metro Board recordings hosted in Fort Worth\u2019s Granicus archive.",
+            "slug": "fort-worth-tx-trinity-metro-board",
+            "title": "Fort Worth: Trinity Metro Board"
+          },
+          {
+            "description": "Urban Design Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-urban-design-commission",
+            "title": "Fort Worth: Urban Design Commission"
+          },
+          {
+            "description": "Water and Wastewater Capital Improvements Plan Advisory Committee recordings for Fort Worth, TX.",
+            "slug": "fort-worth-tx-water-and-wastewater-capital-improvements-plans-citizen-advisory-committee",
+            "title": "Fort Worth: Water and Wastewater Capital Improvements Plan Advisory Committee"
+          },
+          {
+            "description": "Recordings from the Fort Worth Water Utility Task Force.",
+            "slug": "fort-worth-tx-water-utility-task-force",
+            "title": "Fort Worth: Water Utility Task Force"
+          },
+          {
+            "description": "Zoning Commission meetings for Fort Worth.",
+            "slug": "fort-worth-tx-zoning-commission",
+            "title": "Fort Worth: Zoning Commission"
+          },
+          {
+            "description": "Video recordings of Fort Worth City Council meetings, produced by FWTV.",
+            "slug": "fort-worth-tx",
+            "title": "Fort Worth \u2014 All Meetings"
+          }
+        ],
+        "policy": {
+          "archive": "Promotional/orientation films and economic-development luncheons are archive-only.",
+          "events": "Ceremonies, dedications and their site-tour segments are excluded from body feeds.",
+          "families": "Use configured bond/TIF/public-information family feeds for their proven bodies.",
+          "identity": "Use the convened body, not venue, topic or common members; numbered boards differ.",
+          "joints": "Every proven participant can share the same recording in its configured feed.",
+          "proof": "Missing ownership proof requires unresolved; it does not prove exclusion.",
+          "public_comment": "Routine public comment does not add Public Info feed membership.",
+          "series": "Candidate forums remain archival series, not Council proceedings.",
+          "sparse": "A real body without an existing feed is unconfigured, not automatically non-city."
+        },
+        "recordings": [
+          {
+            "body": "Fort Worth Forward - Episode 15 Fort Worth Forward - Episode 15",
+            "canonical_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085",
+            "date": "2023-02-28T00:00:00+00:00",
+            "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085",
+            "title": "Fort Worth Forward - Episode 15 Fort Worth Forward - Episode 15",
+            "uid": "00e5a51984f89df0"
+          }
+        ],
+        "source_key": "6540eef2dc2e"
+      },
+      "feed_history": [
+        {
+          "distinct_patterns": 18,
+          "examples": [
+            {
+              "guid": "06846e382cd7208c",
+              "title": "AUDIT AND FINANCE ADVISORY COMMITTEE AUDIT AND FINANCE ADVISORY COMMITTEE"
+            },
+            {
+              "guid": "bc09461becfe2e9d",
+              "title": "AUDIT COMMITTEE AUDIT COMMITTEE"
+            },
+            {
+              "guid": "33234729e56c69c5",
+              "title": "Audit & Finance Advisory Committee Audit & Finance Advisory Committee"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-audit-committee",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-audit-committee/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 3,
+          "examples": [
+            {
+              "guid": "9ab64fc37bcdfe93",
+              "title": "Bid Opening Bid Opening"
+            },
+            {
+              "guid": "ba2609abfacb5069",
+              "title": "Bid Opening of July 9, 2020 Bid Opening of July 9, 2020"
+            },
+            {
+              "guid": "1f055d4056c338a8",
+              "title": "Bid Opening, May 6, 2021 Bid Opening, May 6, 2021"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx-bid-opening",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx-bid-opening/audio_feed.xml"
+        },
+        {
+          "distinct_patterns": 99,
+          "examples": [
+            {
+              "guid": "0b33f793c2e6de4e",
+              "title": "Inside Fort Worth Inside Fort Worth"
+            },
+            {
+              "guid": "4ad680d6dc701dd4",
+              "title": "USS Fort Worth Commissioning USS Fort Worth Commissioning"
+            },
+            {
+              "guid": "04a053c79de298b5",
+              "title": "2021 Fort Worth Neighborhood Awards 2021 Fort Worth Neighborhood Awards"
+            }
+          ],
+          "interpretation": "Existing memberships may be mistaken; not official ownership proof.",
+          "retrieval_error": null,
+          "slug": "fort-worth-tx",
+          "url": "https://www.citymeetings.fyi/fort-worth-tx/audio_feed.xml"
+        }
+      ],
+      "proposals": {
+        "A": {
+          "bodies": [],
+          "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "The only supplied evidence (provider-player) is a Granicus player page whose text contains just the episode title 'Fort Worth Forward - Episode 15' and generic player controls; no agenda, description, credits, or body metadata identifies the municipal body that convenes, hosts, or produces this program.",
+            "No official evidence links this episode to any body with an existing feed (e.g., State of the City, Public Info Meetings, City Council), so no feed assignment can be proven."
+          ],
+          "publication_action": "unresolved",
+          "rationale": "The supplied evidence shows only the title 'Fort Worth Forward - Episode 15' on a Fort Worth Granicus player page. That title names a program/series, not a convened municipal body, and the identity rule forbids inferring the body from topic words or the city name. Nothing in the evidence establishes ownership by any specific body, so per the proof policy the correct action is 'unresolved': I do not invent an institution, do not assign an existing feed slug, and do not declare the recording non-government. I also cannot apply archive_only, because the promotional/orientation classification itself is unproven \u2014 the episode could equally be a council-produced informational program or a State of the City-style address, but no supplied evidence distinguishes these. If evidence such as an agenda, program description, or producing-department metadata is later supplied identifying the actual body or program, that body can be named and mapped to its configured feed (or unconfigured_body if none exists)."
+        },
+        "B": {
+          "bodies": [],
+          "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+          "evidence_ref_ids": [
+            "provider-player"
+          ],
+          "feed_slugs": [],
+          "missing_evidence": [
+            "No agenda, minutes, or content description; evidence provider-player supplies only the Granicus player page and the series title 'Fort Worth Forward - Episode 15' (Documents list contains only a 'Default Document')",
+            "No evidence identifies a convening municipal body, producing department, or series credits that could confirm or contradict the promotional-series classification"
+          ],
+          "publication_action": "archive_only",
+          "rationale": "The only supplied evidence (provider-player) is the City's Granicus player page for a recording titled 'Fort Worth Forward - Episode 15' (2023-02-28), with no agenda, minutes, or attached documents. The numbered-episode title format identifies a recurring produced media series rather than a proceeding of any municipal body: no council, board, commission, committee, or other convener is named, and the evidence shows no meeting or participants. Under the approved publication rules, promotional/orientation films are archive-only; a city-branded episodic program such as 'Fort Worth Forward' falls under that rule. No existing feed corresponds to this series and none may be invented, and the citywide 'fort-worth-tx' feed is limited to City Council meeting videos, so no feed slug applies. The recording is retained in the official city archive \u2014 it is not excluded and not declared non-government \u2014 but is published to no body feed. No municipal body is proven, so 'bodies' is empty; 'Fort Worth Forward' is treated as a promotional series title, not a real body, so unconfigured_body does not apply."
+        }
+      },
+      "retrieval_status": [
+        {
+          "error": null,
+          "sent_characters": 634,
+          "sha256": "eed7ef64929d060afbd891317e10211d109521e02b40d90e558f5ba0e4076736",
+          "text_characters": 634,
+          "url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5085"
+        }
+      ]
+    }
+  ],
+  "qualified": false,
+  "source_manifest_hash": "6cdcb447eafa02d3fedbe6e018b6f5293d921f52156e1d45ba36f26d55a3c9a1",
+  "version": 1
+}

@@ -6,16 +6,20 @@ It never calls a provider directly. Model output is persisted separately from hu
 
 from __future__ import annotations
 
+import fcntl
+import inspect
 import json
 import math
+import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 from citypods.audit_remedy import (
+    P3_ROLE_PLANS,
     BodyDecision,
     BodyDecisions,
     P3Adjudication,
@@ -34,12 +38,18 @@ from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTE_REGISTRY, LLMReq
 from citypods.compute.structured import register_response_model
 from citypods.judging.backends import Evidence, Item, JevBackend, Packet
 from citypods.judging.tasks import QuestionSpec, Subject
-from citypods.remedy_evaluation import RemedyConfig, config_fingerprint, validate_admission
+from citypods.remedy_evaluation import (
+    RemedyConfig,
+    config_fingerprint,
+    load_project_evaluation,
+    validate_admission,
+)
 from citypods.remedy_p3_observations import (
     P3Observation,
     append_observation,
     load_observations,
     make_observation,
+    parse_observation,
 )
 from citypods.remedy_policy import canonical_hash
 
@@ -82,41 +92,143 @@ class P3RunCounts:
 
 
 def admitted_p3_routes(config: RemedyConfig) -> frozenset[str]:
-    """Return only exact physical routes from explicitly admitted remedy entries."""
-    routes = {
+    plan = P3_ROLE_PLANS[config.p3_role_plan]
+    return frozenset(
         route
         for entry in config.admissions
         if entry.status == "admitted"
         for route in entry.physical_route_ids
+        if route in plan.routes.values()
+    )
+
+
+def p3_runtime_bindings(config: RemedyConfig, entry) -> dict[str, Any]:
+    """Expected runtime contract computed from code, never from its evaluation report."""
+    plan = P3_ROLE_PLANS[config.p3_role_plan]
+    route_id = entry.physical_route_ids[0]
+    role = next(r for r, rid in plan.routes.items() if rid == route_id)
+    function = _jev_job if role == "jev" else _chat_job
+    schema = {"protocol": "systemone-choice", "criteria": ["A", "B", "C", "D"]}
+    if role != "jev":
+        schema = P3ChatResponse.model_json_schema()
+    return {
+        "role_plan_hash": plan.fingerprint,
+        "role": role,
+        "route_id": route_id,
+        "logical_model": plan.models[role],
+        "upstream_model": entry.upstream_model,
+        "prompt_hash": canonical_hash(inspect.getsource(function)),
+        "schema_hash": canonical_hash(schema),
+        "policy_hash": canonical_hash(
+            {
+                "templates": [p.model_dump(mode="json") for p in config.policy_templates],
+                "limits": config.limits.model_dump(mode="json"),
+                "qualified_alias_types": config.qualified_alias_types,
+                "onboarding_exceptions": config.onboarding_exceptions,
+            }
+        ),
+        "catalog_hash": canonical_hash(asdict(ROUTE_REGISTRY[route_id])),
+        "output_tokens": None if role == "jev" else P3_CHAT_MAX_OUTPUT_TOKENS,
+        "response_timeout_seconds": 720,
+        "request_params_hash": entry.request_params_hash,
     }
-    return frozenset(routes & set(P3_ROUTES.values()))
 
 
-def p3_enabled(config: RemedyConfig) -> bool:
-    """Require current, route-specific admissions before any provider request is submitted."""
-    if config.mode != "manual":
+def p3_enabled(config: RemedyConfig, *, repo_root=None, for_report_only=False) -> bool:
+    """All exact route admissions need reviewed runtime-bound project evidence."""
+    if config.mode != "manual" or repo_root is None:
         return False
-    expected_roles = {
-        P3_ROUTES["sol"]: "proposer",
-        P3_ROUTES["glm_flash"]: "proposer",
-        P3_ROUTES["deepseek"]: "adjudicator",
-        P3_ROUTES["jev"]: "adjudicator",
-    }
+    if for_report_only and config.publication_mode != "report_only":
+        return False
+    plan = P3_ROLE_PLANS[config.p3_role_plan]
     admissions = {
-        route_id: entry
+        rid: entry
         for entry in config.admissions
         if entry.status == "admitted"
-        for route_id in entry.physical_route_ids
+        for rid in entry.physical_route_ids
     }
-    if set(expected_roles) - set(admissions):
+    if not set(plan.routes.values()) <= set(admissions):
         return False
-    for route_id, role in expected_roles.items():
-        entry = admissions[route_id]
-        if entry.physical_route_ids != [route_id] or entry.role != role:
+    for role, rid in plan.routes.items():
+        entry = admissions[rid]
+        if rid not in ROUTE_REGISTRY or ROUTE_REGISTRY[rid].model != plan.models[role]:
             return False
-        if not validate_admission(entry, ROUTE_REGISTRY).usable:
+        expected_role = "proposer" if role in plan.initial else "adjudicator"
+        if entry.physical_route_ids != [rid] or entry.role != expected_role:
+            return False
+        try:
+            bindings = p3_runtime_bindings(config, entry)
+            if (
+                entry.prompt_hash != bindings["prompt_hash"]
+                or entry.schema_hash != bindings["schema_hash"]
+                or entry.catalog_hash != bindings["catalog_hash"]
+            ):
+                return False
+            evaluation = load_project_evaluation(entry, repo_root, expected=bindings)
+            if config.p3_role_plan != "legacy-sol-v1" and (
+                evaluation.get("runtime_contract_reviewed") is not True
+                or evaluation.get("serving_identity_reviewed") is not True
+            ):
+                return False
+            if not validate_admission(
+                entry, ROUTE_REGISTRY, evaluation=evaluation, for_report_only=for_report_only
+            ).usable:
+                return False
+        except (ValueError, OSError, KeyError, TypeError):
             return False
     return True
+
+
+def adapt_evaluated_body_selection(
+    answer: Mapping[str, Any], case: Mapping[str, Any], *, finding_id: str = "f0"
+) -> BodyDecision:
+    """Project a validated frozen answer into a bounded report proposal, never admission.
+
+    This does not prove a recording is a one-off or qualify the different runtime prompt.
+    The ordinary source-level deterministic validator must still approve any proposed action.
+    Unsupported publication semantics remain manual; archive-only never becomes deletion.
+    """
+    if answer.get("case_id") != case.get("case_id") or not case.get("case_id"):
+        raise ValueError("adapter case ID mismatch")
+    feeds = answer.get("feed_slugs")
+    refs = answer.get("evidence_ref_ids")
+    if not isinstance(feeds, list) or any(not isinstance(f, str) for f in feeds):
+        raise ValueError("adapter feeds must be a list of exact slugs")
+    if len(feeds) != len(set(feeds)) or not set(feeds) <= {
+        f["slug"] for f in case["existing_feeds"]
+    }:
+        raise ValueError("adapter unknown or duplicate feed")
+    if not isinstance(refs, list) or any(not isinstance(r, str) for r in refs):
+        raise ValueError("adapter evidence references must be a list")
+    if not set(refs) <= {r["id"] for r in case["evidence_refs"]}:
+        raise ValueError("adapter unknown evidence reference")
+    action = answer.get("publication_action")
+    recordings = case.get("recordings", [])
+    if (
+        action != "assign_existing"
+        or not feeds
+        or not refs
+        or not answer.get("bodies")
+        or answer.get("missing_evidence")
+        or len(recordings) != 1
+        or not recordings[0].get("uid")
+        or not recordings[0].get("provider_guid")
+    ):
+        return BodyDecision(
+            finding_id=finding_id,
+            action="manual_review",
+            rationale=f"Evaluated action {action!r} needs manual/source-policy review; "
+            "no archive deletion, new feed or source-wide union is inferred.",
+        )
+    return BodyDecision(
+        finding_id=finding_id,
+        action="single_uid_inclusion",
+        target_feeds=list(feeds),
+        episode_ids=["e0"],
+        all_observed_episodes=False,
+        rationale="Bounded projection of the validated evaluated feed set for this one recording. "
+        "Source taxonomy, recurring-body and one-off policy validation still required.",
+    )
 
 
 def stable_finding_id(source_key: str, label: str) -> str:
@@ -138,12 +250,14 @@ def _request_hash(messages: list[dict[str, str]], contract: str, schema_hash: st
 def _chat_job(
     *,
     role: str,
+    role_plan: str = "legacy-sol-v1",
     finding_id: str,
     evidence_hash: str,
     policy_hash: str,
     evidence: dict[str, Any],
     extra_context: dict[str, Any] | None = None,
 ) -> InferenceJob:
+    plan = P3_ROLE_PLANS[role_plan]
     _register_contract()
     compact = _compact_evidence(evidence)
     prompt = (
@@ -164,15 +278,15 @@ def _chat_job(
             + json.dumps(extra_context, sort_keys=True)
         )
     messages = [{"role": "user", "content": prompt}]
-    model = P3_MODELS[role]
-    route = P3_ROUTES[role]
+    model = plan.models[role]
+    route = plan.routes[role]
     schema_hash = canonical_hash(P3ChatResponse.model_json_schema())
     request_hash = _request_hash(messages, P3_CHAT_CONTRACT, schema_hash)
     # The output cap is part of the job's identity: a handle or observation made under another cap
     # must not satisfy a request made under this one.
     recipe_hash = canonical_hash(
         [
-            P3_PROMPT_VERSION,
+            P3_PROMPT_VERSION if role_plan == "legacy-sol-v1" else plan.fingerprint,
             role,
             model,
             route,
@@ -207,16 +321,23 @@ def _chat_job(
 def _jev_job(
     *,
     finding_id: str,
+    role_plan: str = "legacy-sol-v1",
     initial_votes: tuple[P3Vote, P3Vote],
     evidence: dict[str, Any],
     evidence_hash: str,
     policy_hash: str,
     extra_context: dict[str, Any],
 ) -> tuple[InferenceJob, Packet, Item]:
+    plan = P3_ROLE_PLANS[role_plan]
     label = evidence["unexpected_findings"][0]["unexpected_body"]
     text = (
         "Choose which complete proposed assignment is better supported by all evidence. A is "
-        "Sol; B is GLM Flash. Choose C if neither complete proposal is supported, or D if the "
+        + (
+            "Sol; B is GLM Flash. "
+            if role_plan == "legacy-sol-v1"
+            else "initial proposal A; B is initial proposal B. "
+        )
+        + "Choose C if neither complete proposal is supported, or D if the "
         "evidence is insufficient. Do not invent a third assignment. Give independent support "
         "probabilities for A and B in [0,1].\n\n"
         + json.dumps(
@@ -261,7 +382,7 @@ def _jev_job(
     packet = Packet(
         purpose=P3_PURPOSE,
         role="adjudicator",
-        judge_model=P3_MODELS["jev"],
+        judge_model=plan.models["jev"],
         items=(item,),
     )
     job = JevBackend().build(packet)
@@ -270,22 +391,23 @@ def _jev_job(
 
     policy = replace(
         old_policy,
-        allowed_route_ids=(P3_ROUTES["jev"],),
-        allowed_models=(P3_MODELS["jev"],),
+        allowed_route_ids=(plan.routes["jev"],),
+        allowed_models=(plan.models["jev"],),
         purpose=P3_PURPOSE,
     )
     job = replace(
         job,
         recipe_hash=canonical_hash(
-            [packet.recipe_hash, evidence_hash, policy_hash, P3_ROUTES["jev"]]
+            [packet.recipe_hash, evidence_hash, policy_hash, plan.routes["jev"]]
         ),
         inputs={**job.inputs, "llm_policy": policy, "num_retries": 0},
     )
     return job, packet, item
 
 
-def _upstream_for(role: str) -> str:
-    route_id = P3_ROUTES[role]
+def _upstream_for(role: str, role_plan: str = "legacy-sol-v1") -> str:
+    plan = P3_ROLE_PLANS[role_plan]
+    route_id = plan.routes[role]
     for candidates in ROUTE_CANDIDATES.values():
         for route in candidates:
             if route.route_id == route_id:
@@ -293,10 +415,15 @@ def _upstream_for(role: str) -> str:
     raise ValueError(f"P3 physical route is missing from the compiled catalog: {route_id}")
 
 
-def _response_from_result(result: JobResult, *, role: str, finding_id: str) -> dict[str, Any]:
-    expected_model = P3_MODELS[role]
-    if result.model != expected_model or result.route_id != P3_ROUTES[role]:
+def _response_from_result(
+    result: JobResult, *, role: str, finding_id: str, role_plan: str = "legacy-sol-v1"
+) -> dict[str, Any]:
+    plan = P3_ROLE_PLANS[role_plan]
+    expected_model = plan.models[role]
+    if result.model != expected_model or result.route_id != plan.routes[role]:
         raise ValueError("completed Worker result does not match the pinned P3 route/model")
+    if role_plan != "legacy-sol-v1" and result.upstream_model != _upstream_for(role, role_plan):
+        raise ValueError("Worker upstream identity mismatch")
     if role == "jev":
         response = result.output
         if not isinstance(response, dict) or not isinstance(response.get("answers"), dict):
@@ -318,10 +445,12 @@ def _validator_outcomes(
     observations: Mapping[str, P3Observation],
     evidence: dict[str, Any],
     repo_root: str,
+    role_plan: str = "legacy-sol-v1",
 ) -> tuple[list[P3Vote], dict[str, bool]]:
+    plan = P3_ROLE_PLANS[role_plan]
     votes = []
     validators = {}
-    for role in ("sol", "glm_flash"):
+    for role in plan.initial:
         record = observations[role]
         decision = _decision_from_chat(record.response, finding_id)
         votes.append(
@@ -339,14 +468,17 @@ def _validator_outcomes(
     return votes, validators
 
 
-def _adjudication_context(votes: list[P3Vote], evidence: dict[str, Any]) -> dict[str, Any]:
+def _adjudication_context(
+    votes: list[P3Vote], evidence: dict[str, Any], role_plan: str = "legacy-sol-v1"
+) -> dict[str, Any]:
     """Bounded deterministic escalation context; no gold, URLs, or hidden truth is loaded."""
+    plan = P3_ROLE_PLANS[role_plan]
     compact = _compact_evidence(evidence)
     finding = compact["unexpected_findings"][0]
     return {
         "initial_proposals": [
             {
-                "letter": "A" if vote.route_id == P3_ROUTES["sol"] else "B",
+                "letter": "A" if vote.route_id == plan.routes[plan.initial[0]] else "B",
                 "route_id": vote.route_id,
                 "assignment": vote.decision.model_dump(mode="json"),
             }
@@ -382,17 +514,28 @@ class P3DailyRunner:
         self.backend = backend
         self.lease_factory = lease_factory
         self.config = config
+        self.plan = P3_ROLE_PLANS[config.p3_role_plan]
+        self.report_only = False
         self.repo_root = str(repo_root)
         self.config_hash = config_fingerprint(config)
 
     def _load(self, source_key: str, finding_id: str) -> tuple[P3Observation, ...]:
         lease = self.lease_factory()
         try:
-            return load_observations(
+            records = load_observations(
                 self.storage,
                 source_key=source_key,
                 finding_id=finding_id,
                 lease=lease,
+            )
+            return tuple(
+                r
+                for r in records
+                if (
+                    (r.schema_version == 1 and self.plan.name == "legacy-sol-v1")
+                    or r.role_plan == self.plan.name
+                )
+                and r.config_hash == self.config_hash
             )
         finally:
             lease.release()
@@ -403,6 +546,9 @@ class P3DailyRunner:
             append_observation(self.storage, observation, lease=lease)
         finally:
             lease.release()
+
+    def _run_job(self, job):
+        return self.backend.run_inference(job)
 
     def _submit(
         self,
@@ -419,9 +565,13 @@ class P3DailyRunner:
         if role == "jev":
             # JEV's request is compiled by the existing review/49 adapter below, with an exact
             # physical route constraint added to its queue-only policy.
-            initial_records = self._load(source_key, finding_id)
+            initial_records = tuple(
+                r
+                for r in self._load(source_key, finding_id)
+                if r.evidence_hash == evidence_hash and r.policy_hash == policy_hash
+            )
             by_role = {record.role: record for record in initial_records}
-            if not {"sol", "glm_flash"} <= set(by_role):
+            if not set(self.plan.initial) <= set(by_role):
                 return False, True
             initial_votes, _validators = _validator_outcomes(
                 finding_id,
@@ -431,8 +581,10 @@ class P3DailyRunner:
                 by_role,
                 evidence,
                 self.repo_root,
+                role_plan=self.plan.name,
             )
             job, packet, item = _jev_job(
+                role_plan=self.plan.name,
                 finding_id=finding_id,
                 initial_votes=(initial_votes[0], initial_votes[1]),
                 evidence=evidence,
@@ -443,6 +595,7 @@ class P3DailyRunner:
             request_hash = canonical_hash(job.inputs["systemone"])
         else:
             job = _chat_job(
+                role_plan=self.plan.name,
                 role=role,
                 finding_id=finding_id,
                 evidence_hash=evidence_hash,
@@ -455,14 +608,16 @@ class P3DailyRunner:
                 P3_CHAT_CONTRACT,
                 canonical_hash(P3ChatResponse.model_json_schema()),
             )
-        result = self.backend.run_inference(job)
+        result = self._run_job(job)
         if isinstance(result, JobHandle):
             result = self.backend.reconcile(result)
             if result is None:
                 return False, True
         if not isinstance(result, JobResult):
             raise TypeError("P3 Worker backend returned neither a result nor a deferred handle")
-        response = _response_from_result(result, role=role, finding_id=finding_id)
+        response = _response_from_result(
+            result, role=role, finding_id=finding_id, role_plan=self.plan.name
+        )
         record = make_observation(
             finding_id=finding_id,
             source_key=source_key,
@@ -473,17 +628,18 @@ class P3DailyRunner:
             evidence_hash=evidence_hash,
             config_hash=self.config_hash,
             policy_hash=policy_hash,
-            route_id=P3_ROUTES[role],
-            logical_model=P3_MODELS[role],
-            upstream_model=result.upstream_model or _upstream_for(role),
+            route_id=self.plan.routes[role],
+            logical_model=self.plan.models[role],
+            upstream_model=result.upstream_model or _upstream_for(role, self.plan.name),
             reasoning_level=result.reasoning_level,
             response=response,
+            role_plan=None if self.plan.name == "legacy-sol-v1" else self.plan.name,
         )
         self._append(record)
         return True, False
 
     def run_finding(self, source: dict[str, Any], finding: dict[str, Any]) -> dict[str, Any]:
-        if not p3_enabled(self.config):
+        if not p3_enabled(self.config, repo_root=self.repo_root, for_report_only=self.report_only):
             return {
                 "finding_id": stable_finding_id(source["source_key"], finding["unexpected_body"]),
                 "status": "policy_hold",
@@ -502,9 +658,17 @@ class P3DailyRunner:
                 ],
             }
         )
+
+        def current_observations():
+            return tuple(
+                r
+                for r in self._load(source_key, finding_id)
+                if r.evidence_hash == evidence_hash and r.policy_hash == policy_hash
+            )
+
         counts = {"submitted_or_completed": 0, "pending": 0}
-        for role in ("sol", "glm_flash"):
-            observations = self._load(source_key, finding_id)
+        for role in self.plan.initial:
+            observations = current_observations()
             if role in {record.role for record in observations}:
                 continue
             completed, pending = self._submit(
@@ -518,9 +682,9 @@ class P3DailyRunner:
             )
             counts["submitted_or_completed"] += int(completed)
             counts["pending"] += int(pending)
-        observations = self._load(source_key, finding_id)
+        observations = current_observations()
         by_role = {record.role: record for record in observations}
-        if not {"sol", "glm_flash"} <= set(by_role):
+        if not set(self.plan.initial) <= set(by_role):
             return {"finding_id": finding_id, "status": "initial_pending", **counts}
         votes, validators = _validator_outcomes(
             finding_id,
@@ -530,6 +694,7 @@ class P3DailyRunner:
             by_role,
             evidence,
             self.repo_root,
+            role_plan=self.plan.name,
         )
         initial_match = _p3_assignment_key(votes[0].decision) == _p3_assignment_key(
             votes[1].decision
@@ -543,12 +708,13 @@ class P3DailyRunner:
                 observations=observations,
                 admitted_routes=admitted_p3_routes(self.config),
                 repo_root=self.repo_root,
+                role_plan=self.plan.name,
             )
             return {"finding_id": finding_id, "status": "report_ready", "report": report, **counts}
 
-        extra = _adjudication_context(votes, evidence)
-        for role in ("deepseek", "jev"):
-            observations = self._load(source_key, finding_id)
+        extra = _adjudication_context(votes, evidence, self.plan.name)
+        for role in (self.plan.chat, "jev"):
+            observations = current_observations()
             if role in {record.role for record in observations}:
                 continue
             completed, pending = self._submit(
@@ -563,9 +729,9 @@ class P3DailyRunner:
             )
             counts["submitted_or_completed"] += int(completed)
             counts["pending"] += int(pending)
-        observations = self._load(source_key, finding_id)
+        observations = current_observations()
         by_role = {record.role: record for record in observations}
-        if not {"deepseek", "jev"} <= set(by_role):
+        if not {self.plan.chat, "jev"} <= set(by_role):
             return {"finding_id": finding_id, "status": "adjudication_pending", **counts}
         report = build_runtime_report(
             finding_id=finding_id,
@@ -575,8 +741,85 @@ class P3DailyRunner:
             observations=observations,
             admitted_routes=admitted_p3_routes(self.config),
             repo_root=self.repo_root,
+            role_plan=self.plan.name,
         )
         return {"finding_id": finding_id, "status": "report_ready", "report": report, **counts}
+
+
+class P3LocalReportRunner(P3DailyRunner):
+    """Explicit isolated run artifacts; never a replacement for production CAS storage."""
+
+    def __init__(self, *, artifact_root: Path, **kwargs):
+        super().__init__(lease_factory=None, **kwargs)
+        if self.config.publication_mode != "report_only" or self.plan.name != "flash-deepseek-v2":
+            raise ValueError("isolated P3 runner requires report_only")
+        self.report_only = True
+        self.artifact_root = artifact_root
+        artifact_root.mkdir(parents=True, exist_ok=True)
+
+    def _load(self, source_key: str, finding_id: str) -> tuple[P3Observation, ...]:
+        rows = [
+            parse_observation(json.loads(p.read_text())) for p in self.artifact_root.glob("*.json")
+        ]
+        return tuple(
+            r
+            for r in rows
+            if r.source_key == source_key
+            and r.finding_id == finding_id
+            and r.config_hash == self.config_hash
+            and r.role_plan == self.plan.name
+        )
+
+    def _append(self, observation: P3Observation) -> None:
+        payload = observation.payload()
+        parse_observation(payload)
+        path = self.artifact_root / (observation.observation_id + ".json")
+        if path.exists():
+            if json.loads(path.read_text()) != payload:
+                raise ValueError("immutable report observation conflict")
+            return
+        with path.open("x") as stream:
+            json.dump(payload, stream, sort_keys=True)
+
+    def _run_job(self, job):
+        if not re.fullmatch(r"[0-9a-f]{64}", job.recipe_hash):
+            raise ValueError("report-only job requires a content-addressed recipe")
+        calls = self.artifact_root / "calls"
+        calls.mkdir(exist_ok=True)
+        intent = calls / (job.recipe_hash + "-intent.json")
+        receipt = calls / (job.recipe_hash + "-receipt.json")
+        if receipt.exists():
+            saved = json.loads(receipt.read_text())
+            if saved.get("kind") not in {"handle", "result"}:
+                raise ValueError("invalid report-only receipt kind")
+            cls = JobHandle if saved["kind"] == "handle" else JobResult
+            result = cls(**saved["value"])
+            if result.recipe_hash != job.recipe_hash or result.task != job.task:
+                raise ValueError("report-only receipt request binding mismatch")
+            return result
+        if intent.exists():
+            raise RuntimeError("unresolved report-only intent; never resubmit unknown call")
+        inputs = dict(job.inputs)
+        inputs["llm_policy"] = asdict(inputs["llm_policy"])
+        with intent.open("x") as stream:
+            json.dump({"task": job.task, "recipe_hash": job.recipe_hash, "inputs": inputs}, stream)
+        result = self.backend.run_inference(job)
+        if not isinstance(result, (JobHandle, JobResult)):
+            raise TypeError("report-only backend returned an invalid receipt")
+        with receipt.open("x") as stream:
+            json.dump(
+                {
+                    "kind": "handle" if isinstance(result, JobHandle) else "result",
+                    "value": asdict(result),
+                },
+                stream,
+            )
+        return result
+
+    def run_finding(self, source, finding):
+        with (self.artifact_root / "controller.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return super().run_finding(source, finding)
 
 
 def make_default_backend(storage) -> LiteLLMBackend:
@@ -611,13 +854,17 @@ def build_runtime_report(
     observations: tuple[P3Observation, ...],
     admitted_routes: frozenset[str],
     repo_root: str,
+    role_plan: str = "legacy-sol-v1",
 ) -> dict[str, Any] | None:
+    if any(r.evidence_hash != evidence_hash or r.policy_hash != policy_hash for r in observations):
+        raise ValueError("report observations do not match current evidence/policy")
+    plan = P3_ROLE_PLANS[role_plan]
     by_role = {item.role: item for item in observations}
-    if not {"sol", "glm_flash"} <= set(by_role):
+    if not set(plan.initial) <= set(by_role):
         return None
     initial = []
     validators = {}
-    for role in ("sol", "glm_flash"):
+    for role in plan.initial:
         record = by_role[role]
         decision = _decision_from_chat(record.response, finding_id)
         initial.append(
@@ -634,8 +881,8 @@ def build_runtime_report(
         validators[record.route_id] = _validator_passed(decision, evidence, repo_root)
     adjudication = None
     adjudication_valid = False
-    if "deepseek" in by_role and "jev" in by_role:
-        deepseek_record, jev_record = by_role["deepseek"], by_role["jev"]
+    if plan.chat in by_role and "jev" in by_role:
+        deepseek_record, jev_record = by_role[plan.chat], by_role["jev"]
         deepseek_decision = _decision_from_chat(deepseek_record.response, finding_id)
         deepseek_vote = P3Vote(
             route_id=deepseek_record.route_id,
@@ -649,7 +896,11 @@ def build_runtime_report(
         answer = _jev_answer_for_finding(jev_record.response, finding_id)
         choice, supported_a, supported_b = _jev_decision_values(answer)
         adjudication = P3Adjudication(
-            deepseek=deepseek_vote,
+            **(
+                {"deepseek": deepseek_vote}
+                if role_plan == "legacy-sol-v1"
+                else {"chat": deepseek_vote}
+            ),
             jev_route_id=jev_record.route_id,
             jev_upstream_model=jev_record.upstream_model,
             evidence_hash=evidence_hash,
@@ -671,6 +922,7 @@ def build_runtime_report(
     # model-supplied slugs.
     report_input = P3ReportInput(
         schema_version=1,
+        role_plan=role_plan,
         finding_id=finding_id,
         evidence_hash=evidence_hash,
         policy_hash=policy_hash,

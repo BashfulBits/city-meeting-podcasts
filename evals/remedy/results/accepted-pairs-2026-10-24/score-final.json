@@ -1,0 +1,203 @@
+{
+  "planned_judgments": 24,
+  "completed_responses": 24,
+  "returned_attempts": 24,
+  "pairs": [
+    {
+      "pair": "glm_flash-deepseek",
+      "initial_original_counts": {
+        "correct_agreement": 51,
+        "wrong_agreement": 2,
+        "disagreement": 7
+      },
+      "initial_pair_specific_accepted_exceptions": [
+        "recording-4cbdc0f5678a5408279ffae1",
+        "recording-5dddfe1f523eeff020ce4343"
+      ],
+      "initial_contract_holds": 0,
+      "judges": [
+        "gemini",
+        "jev"
+      ],
+      "adjudication": [
+        {
+          "case_id": "recording-0312d144c749c190446edfe0",
+          "status": "manual_disagreement_or_abstention",
+          "jev_choice": "A",
+          "original_verdict": {
+            "category": "existing_body_assignment",
+            "correct": false
+          },
+          "exact_match": false
+        },
+        {
+          "case_id": "recording-0850ab9885c4b28efea3adfe",
+          "status": "manual_disagreement_or_abstention",
+          "jev_choice": "A",
+          "original_verdict": {
+            "category": "existing_body_assignment",
+            "correct": true
+          },
+          "exact_match": false
+        },
+        {
+          "case_id": "recording-431b21d07dbce916fbd90dbd",
+          "status": "correct_resolution",
+          "jev_choice": "B",
+          "original_verdict": {
+            "category": "insufficient_owner_proof",
+            "body_assignment_correct": null,
+            "guardrail_pass": true
+          },
+          "exact_match": true
+        },
+        {
+          "case_id": "recording-64905d6e32cae3a0ec5a7070",
+          "status": "correct_resolution",
+          "jev_choice": "B",
+          "original_verdict": {
+            "category": "existing_body_assignment",
+            "correct": true
+          },
+          "exact_match": true
+        },
+        {
+          "case_id": "recording-76b77357565cdc16153f2a97",
+          "status": "correct_resolution",
+          "jev_choice": "A",
+          "original_verdict": {
+            "category": "insufficient_owner_proof",
+            "body_assignment_correct": null,
+            "guardrail_pass": true
+          },
+          "exact_match": true
+        },
+        {
+          "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+          "status": "correct_resolution",
+          "jev_choice": "A",
+          "original_verdict": {
+            "category": "insufficient_owner_proof",
+            "body_assignment_correct": null,
+            "guardrail_pass": true
+          },
+          "exact_match": true
+        },
+        {
+          "case_id": "recording-eef10050e298d3758921b67a",
+          "status": "manual_disagreement_or_abstention",
+          "jev_choice": "A",
+          "original_verdict": {
+            "category": "existing_body_assignment",
+            "correct": false
+          },
+          "exact_match": false
+        }
+      ],
+      "counts": {
+        "manual_disagreement_or_abstention": 3,
+        "correct_resolution": 4
+      },
+      "note": "New wrong resolutions are not covered by acceptance of initial agreements.",
+      "cascade_60_case_summary": {
+        "original_gold_correct": 55,
+        "maintainer_accepted_initial_exceptions": 2,
+        "new_wrong_adjudicated_resolutions": 0,
+        "manual_adjudication_holds": 3,
+        "initial_contract_holds": 0,
+        "pending": 0
+      }
+    },
+    {
+      "pair": "glm_flash-glm_full",
+      "initial_original_counts": {
+        "correct_agreement": 50,
+        "wrong_agreement": 3,
+        "disagreement": 5
+      },
+      "initial_pair_specific_accepted_exceptions": [
+        "recording-0312d144c749c190446edfe0",
+        "recording-0850ab9885c4b28efea3adfe",
+        "recording-5dddfe1f523eeff020ce4343"
+      ],
+      "initial_contract_holds": 2,
+      "judges": [
+        "deepseek",
+        "jev"
+      ],
+      "adjudication": [
+        {
+          "case_id": "recording-0f3acb8e63bc7affb3b03495",
+          "status": "correct_resolution",
+          "jev_choice": "B",
+          "original_verdict": {
+            "category": "insufficient_owner_proof",
+            "body_assignment_correct": null,
+            "guardrail_pass": true
+          },
+          "exact_match": true
+        },
+        {
+          "case_id": "recording-431b21d07dbce916fbd90dbd",
+          "status": "correct_resolution",
+          "jev_choice": "B",
+          "original_verdict": {
+            "category": "insufficient_owner_proof",
+            "body_assignment_correct": null,
+            "guardrail_pass": true
+          },
+          "exact_match": true
+        },
+        {
+          "case_id": "recording-64905d6e32cae3a0ec5a7070",
+          "status": "correct_resolution",
+          "jev_choice": "B",
+          "original_verdict": {
+            "category": "existing_body_assignment",
+            "correct": true
+          },
+          "exact_match": true
+        },
+        {
+          "case_id": "recording-76b77357565cdc16153f2a97",
+          "status": "correct_resolution",
+          "jev_choice": "B",
+          "original_verdict": {
+            "category": "insufficient_owner_proof",
+            "body_assignment_correct": null,
+            "guardrail_pass": true
+          },
+          "exact_match": true
+        },
+        {
+          "case_id": "recording-c128ed27ed345a9fbfb3b3dd",
+          "status": "correct_resolution",
+          "jev_choice": "A",
+          "original_verdict": {
+            "category": "insufficient_owner_proof",
+            "body_assignment_correct": null,
+            "guardrail_pass": true
+          },
+          "exact_match": true
+        }
+      ],
+      "counts": {
+        "correct_resolution": 5
+      },
+      "note": "New wrong resolutions are not covered by acceptance of initial agreements.",
+      "cascade_60_case_summary": {
+        "original_gold_correct": 55,
+        "maintainer_accepted_initial_exceptions": 3,
+        "new_wrong_adjudicated_resolutions": 0,
+        "manual_adjudication_holds": 0,
+        "initial_contract_holds": 2,
+        "pending": 0
+      }
+    }
+  ],
+  "production_admitted": false,
+  "identity_matches": 24,
+  "schema_errors": 0,
+  "raw_response_note": "All24 completed on their first adjudication attempt; no HTTP/transport failures.",
+  "runtime_admission": "Not activated; task acceptance, original gold, identity and admission gates remain distinct."
+}
