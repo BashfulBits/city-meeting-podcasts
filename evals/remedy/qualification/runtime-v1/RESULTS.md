@@ -66,3 +66,15 @@ Review RQ04–RQ06 first, then exact-consensus behavior on RQ02/RQ07 and the RQ0
 Validation of the bounded executor: 6,917 offline tests passed, 17 deselected. Whole-repository
 Ruff and format checks passed after adding the read-only scorer. No deployment, merge or
 production admission occurred.
+
+## Subsequent maintainer acceptance — observed RQ06
+
+The maintainer accepted the actual RQ06 union into both Denton feeds after reviewing the scope
+mismatch. `rq06-observed-acceptance.json` records this case-specific exception separately; the
+original expectations, outputs and raw scores above remain unchanged. RQ04/RQ05 remain errors.
+With RQ06 accepted, four of six automatic candidates are acceptable and two are wrong.
+Gemini has three wrong decisions among six completed judgments (50%): RQ04/RQ09/RQ10.
+JEV selected a wrong proposal once among four completed judgments (25%): RQ04. Its RQ09 local
+input hold and RQ10 HTTP400 are coverage failures, excluded from semantic error denominators.
+Originally scored errors were Gemini4/6 and JEV2/4; acceptance is not a gold rewrite. The subsets
+are small and differ, so these rates do not establish that one adjudicator is more accurate.

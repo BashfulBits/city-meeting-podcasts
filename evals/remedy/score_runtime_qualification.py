@@ -39,6 +39,15 @@ def summarize(directory, plan_path, authority_path):
             verdict = semantic(decision, expected[cid], cases[cid]["evidence"])
             verdicts[(cid, row["role"])] = verdict
             completed[(cid, row["role"])] = decision
+    jev_quality = Counter()
+    for row in rows:
+        if row["role"] != "jev" or row["status"] != "completed":
+            continue
+        answers = row["normalized"]["answers"]
+        answer = next(iter(answers.values()))
+        selected_role = {"A": "glm_flash", "B": "deepseek"}.get(answer.get("choice"))
+        key = (row["case_id"], selected_role)
+        jev_quality[verdicts[key] if key in verdicts else "no_supported_proposal"] += 1
     role_quality = {
         role: dict(Counter(v for (_, r), v in verdicts.items() if r == role))
         for role in roles
@@ -85,6 +94,7 @@ def summarize(directory, plan_path, authority_path):
         http_responses=sum(r.get("http_status") is not None for r in rows),
         role_statuses={k: dict(v) for k, v in roles.items()},
         chat_semantic_quality=role_quality,
+        jev_selected_proposal_semantic_quality=dict(jev_quality),
         identical_initial_case_intersection=intersection,
         correct_semantics_but_exact_initial_disagreement=extra_escalations,
         terminal_cases=len(summaries),
@@ -97,10 +107,80 @@ def summarize(directory, plan_path, authority_path):
     )
 
 
+def freeze_additional(directory, plan_path, authority_path, baseline_path, output_path):
+    """Keep only irreproducible new observations beyond an immutable compact baseline."""
+    import fcntl
+
+    with (directory / "controller.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        for intent in directory.glob("*-intent.json"):
+            result = intent.with_name(intent.name.replace("-intent.json", "-result.json"))
+            if not result.exists() or read(result).get("provider_outcome") == "unknown":
+                raise ValueError("cannot freeze unresolved provider requests")
+        baseline = read(baseline_path)
+        known = {(r["case_id"], r["role"]) for r in baseline["observed_results"]}
+        results = []
+        for path in sorted(directory.glob("*-result.json")):
+            row = read(path)
+            if (row["case_id"], row["role"]) in known:
+                old = next(
+                    r
+                    for r in baseline["observed_results"]
+                    if (r["case_id"], r["role"]) == (row["case_id"], row["role"])
+                )
+                if old["original_result_sha256"] != digest(path):
+                    raise ValueError("baseline result changed")
+                continue
+            keep = {
+                k: v
+                for k, v in row.items()
+                if k not in {"raw_response", "partial_response", "started_at", "finished_at"}
+            }
+            keep["original_result_sha256"] = digest(path)
+            results.append(keep)
+        known_cases = {c["case_id"] for c in baseline["case_outcomes"]}
+        outcomes = []
+        for path in sorted(directory.glob("RQ*-summary.json")):
+            row = read(path)
+            if row["case_id"] in known_cases:
+                continue
+            consensus = row.get("consensus_simulation", {})
+            outcomes.append(
+                dict(
+                    case_id=row["case_id"],
+                    semantic_verdicts=row.get("semantic_verdicts", {}),
+                    disposition=consensus.get("disposition", row["status"]),
+                    reason=consensus.get("reason"),
+                    automatic_candidate_semantic_verdict=row.get(
+                        "automatic_candidate_semantic_verdict"
+                    ),
+                    original_summary_sha256=digest(path),
+                )
+            )
+        artifact = dict(
+            schema_version=1,
+            baseline_sha256=digest(baseline_path),
+            observed_results=results,
+            case_outcomes=outcomes,
+            cumulative_summary=summarize(directory, plan_path, authority_path),
+            note="Additional normalized observations; raw receipts remain local. Original scores.",
+        )
+        with output_path.open("x") as stream:
+            stream.write(json.dumps(artifact, indent=2) + "\n")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--authority", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--freeze-additional", type=Path)
     args = parser.parse_args()
+    if args.freeze_additional:
+        if not args.baseline:
+            parser.error("--freeze-additional requires --baseline")
+        freeze_additional(
+            args.directory, args.plan, args.authority, args.baseline, args.freeze_additional
+        )
     print(json.dumps(summarize(args.directory, args.plan, args.authority), indent=2))

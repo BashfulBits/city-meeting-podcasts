@@ -144,3 +144,12 @@ on a non-retryable JEV input-length HTTP400. Contract transfer remains unqualifi
 sandbox automatic candidates violated the approved joint ownership or recording scope. Both owned
 provider pauses were restored; no retry or activation occurred. Review the failed baseline before
 authorizing any revised contract or further requests.
+
+## Explicit continuation of untouched cases
+
+`continuation-approval.json` records the subsequent request to complete RQ11/RQ12 only. The
+reusable `continue_runtime_qualification.py` acknowledges the two exact terminal input-length
+receipts without retrying either request; all source/profile checks, the cumulative48-attempt
+ledger and shared controller lock remain enforced. Any different access/profile/identity hold
+or unknown outcome blocks continuation. This approval does not authorize another experiment,
+modified prompts or production behavior. No routing policy has been chosen by this continuation.

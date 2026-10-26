@@ -393,3 +393,14 @@ Record the pre-merge runtime challenge:31 attempts,30 completed judgments and a 
 JEV input-length HTTP400; owned pauses restored and no unknown requests. Three of six sandbox
 automatic candidates violate approved joint ownership/scope. Contract transfer remains unqualified;
 retain compact observations and reusable scoring, with bulk artifacts local/ignored. No activation.
+
+Observed RQ06 was subsequently accepted by the maintainer as a case-specific union exception;
+original scores remain unchanged. Runtime challenge optional adjudicator errors after this
+acceptance: Gemini3/6, JEV1/4 completed judgments, on differing conditional subsets. RQ04/RQ05
+remain wrong automatic outcomes; JEV input holds and incomplete coverage remain unresolved.
+See `evals/remedy/qualification/runtime-v1/rq06-observed-acceptance.json`. No activation or calls.
+
+Record the explicit untouched-case continuation authority for RQ11/RQ12 within the original
+48-attempt ledger. Preserve the exact terminal input-length failures and all prior outputs;
+use the shared controller/lock and source/profile checks. No remedy output policy is activated.
+Continuation safety checks passed; full offline suite:6,920 passed,17 deselected.

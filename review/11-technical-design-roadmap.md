@@ -2783,3 +2783,20 @@ remain local/ignored. Do not qualify contract transfer or activate production. R
 fresh reviewed packet/authority are needed before changing payloads or resuming through the input
 hold. No repeat calls, production admissions, merge or deployment.6,917 offline tests passed
 (17 deselected); whole Ruff/format passed.
+
+Observed RQ06 was subsequently accepted by the maintainer as a case-specific union exception;
+original scores remain unchanged. Runtime challenge optional adjudicator errors after this
+acceptance: Gemini3/6, JEV1/4 completed judgments, on differing conditional subsets. RQ04/RQ05
+remain wrong automatic outcomes; JEV input holds and incomplete coverage remain unresolved.
+See `evals/remedy/qualification/runtime-v1/rq06-observed-acceptance.json`. No activation or calls.
+
+### Untouched runtime cases authorized for completion (October 26)
+
+The maintainer requested completing the remaining evaluation to decide whether reviewed remedy
+PRs are acceptable or every result should become a GitHub issue. This does not choose or activate
+an output policy. `continuation-approval.json` authorizes only untouched RQ11/RQ12, preserving the
+original48-attempt cumulative ledger, frozen payloads and one attempt per case/role. The exact
+RQ09/RQ10 terminal input-length holds remain pinned and are not retried or shortened. The bounded
+`evals/remedy/continue_runtime_qualification.py` uses the original controller, lock, source hashes,
+pauses, reservations, transport and scoring; new unknown/auth/profile holds stop continuation.
+No production merge, deployment, role admission or remedy PR/issue creation is authorized here.
