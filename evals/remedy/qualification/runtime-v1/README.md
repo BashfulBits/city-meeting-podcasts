@@ -1,10 +1,11 @@
-# Runtime-contract challenge — outcomes approved; inference budget pending
+# Runtime-contract challenge — outcomes and 48-attempt budget approved
 
 This packet tests the actual P3 prompt/schema/role plan on twelve real historical source findings.
 It is a bounded challenge, with source-family overlap and some reused recordings, not an
 independent production-admission holdout. The maintainer approved all RQ01–RQ12 expectations
 on October26; `outcome-acceptance.json` records the exact instruction and reviewed hashes.
-The separate inference budget is not approved.
+The separate maximum 48-attempt budget is approved in `budget-approval.json`.
+The earlier outcome-only approval remains an immutable historical record.
 
 Retain `cases-draft.json` (curated selections and draft expectations) and the reusable builder:
 
@@ -54,7 +55,7 @@ Four decisions need particular attention:
 
 Other useful controls include RQ08 (four mirrored rows are only two native clips), RQ09 (Citizen's
 Council is not automatically the municipal council or Minority/Women committee), and RQ11 (an
-unnamed joint board is not enough to invent ownership). All draft expectations remain unapproved.
+unnamed joint board is not enough to invent ownership). All twelve expectations are now approved; see the authority record below.
 
 ## Proposed measurement budget and scope
 
@@ -135,3 +136,11 @@ Consensus results are explicitly an eligibility-assuming sandbox simulation; the
 routes admitted in production. Per-role semantic correctness, accepted manual fallbacks, contract
 holds, transport holds and exact-consensus outcomes remain separate. All raw run files remain
 local/ignored; a small observed-output summary can be retained after measurement and review.
+
+## Observed measurement — stopped
+
+See [RESULTS.md](RESULTS.md) and `observed-results.json`. The run stopped after31 attempts
+on a non-retryable JEV input-length HTTP400. Contract transfer remains unqualified: three of six
+sandbox automatic candidates violated the approved joint ownership or recording scope. Both owned
+provider pauses were restored; no retry or activation occurred. Review the failed baseline before
+authorizing any revised contract or further requests.

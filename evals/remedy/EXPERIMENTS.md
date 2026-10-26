@@ -150,8 +150,13 @@ and reconstruction without relying on ignored local files.
 
 ## Runtime-contract challenge preparation
 
-The next unapproved twelve-case source/finding challenge is described in
+The approved twelve-case source/finding challenge and 48-attempt budget are described in
 [qualification/runtime-v1/README.md](qualification/runtime-v1/README.md). Its curated draft
 expectations and reusable builder are tracked; generated review/input/preflight files stay local.
 This separately tests runtime-generated prompts/schema rather than assuming the earlier answer
 projection transferred accuracy. It is not an independent production holdout or live approval.
+
+The October26 runtime-payload challenge stopped on a JEV input-length hold after31 attempts.
+Review `qualification/runtime-v1/RESULTS.md` and compact `observed-results.json` for the failed
+contract-transfer baseline. Prior pair acceptance does not waive the new wrong automatic outcomes.
+The read-only `score_runtime_qualification.py` recomputes quality from the frozen local ledger.

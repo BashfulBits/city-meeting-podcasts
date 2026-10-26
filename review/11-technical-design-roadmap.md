@@ -2765,3 +2765,21 @@ requests or access/profile/identity holds stop new calls. Exact route reservatio
 provider pauses coordinate direct measurement; an undeployed Gemini candidate uses its provider
 pause without falsely charging another route. Keep raw files ignored/local. Current production
 config, admission eligibility and runtime-transfer decisions remain unchanged by call approval.
+
+### Pre-merge runtime measurement stopped — transfer remains unqualified (October 26)
+
+The approved48-attempt run stopped at31 attempts:30 completed judgments and one JEV HTTP400
+(input too long, non-retryable). Another JEV input was held before sending. No unresolved intents;
+both owned provider pauses restored. RQ11/RQ12 unattempted; RQ10 lacks a final cascade summary.
+On ten identical initial cases Flash/DeepSeek each scored5 correct/5 wrong; conditional Gemini
+scored2/6. Of six sandbox automatic candidates, three were wrong: RQ04/RQ05 omitted joint owners
+and used union; RQ06 retained owners but widened recording-only scope to union. Current validation
+accepted them. Prior pair exceptions/manual fallback approval do not cover these new errors.
+RQ02/RQ07 also expose exact-consensus inefficiency despite correct semantic proposals.
+
+Retained compact observations and review guidance are in
+`evals/remedy/qualification/runtime-v1/{observed-results.json,RESULTS.md}`; raw generated artifacts
+remain local/ignored. Do not qualify contract transfer or activate production. Repair scope and a
+fresh reviewed packet/authority are needed before changing payloads or resuming through the input
+hold. No repeat calls, production admissions, merge or deployment.6,917 offline tests passed
+(17 deselected); whole Ruff/format passed.

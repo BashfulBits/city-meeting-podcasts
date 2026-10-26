@@ -388,3 +388,8 @@ requests or access/profile/identity holds stop new calls. Exact route reservatio
 provider pauses coordinate direct measurement; an undeployed Gemini candidate uses its provider
 pause without falsely charging another route. Keep raw files ignored/local. Current production
 config, admission eligibility and runtime-transfer decisions remain unchanged by call approval.
+
+Record the pre-merge runtime challenge:31 attempts,30 completed judgments and a non-retryable
+JEV input-length HTTP400; owned pauses restored and no unknown requests. Three of six sandbox
+automatic candidates violate approved joint ownership/scope. Contract transfer remains unqualified;
+retain compact observations and reusable scoring, with bulk artifacts local/ignored. No activation.
