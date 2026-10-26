@@ -60,3 +60,8 @@ fabricated. Worker deployment, new provider requests and production activation r
 
 Retention update: generated validation/replay JSON and raw run receipts are local-only.
 See `evals/remedy/EXPERIMENTS.md` for clean-checkout scoring and reconstruction commands.
+
+October26 supersession: the exact GLM alias is accepted by the maintainer for both
+report-only and production P3 identity checks; see ../glm-alias-acceptance.json. Earlier alias
+holds here are historical. Provider contract/weight attestation remains unverified; the
+independent runtime-contract and admission gates remain held.

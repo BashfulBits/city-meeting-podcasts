@@ -37,3 +37,7 @@ review preparation made no provider calls, read no credentials and performed no 
 
 Retention update: generated validation/replay JSON and raw run receipts are local-only.
 See `evals/remedy/EXPERIMENTS.md` for clean-checkout scoring and reconstruction commands.
+
+October26 supersession: the maintainer accepted the exact GLM alias for report-only and
+production identity checks; see glm-alias-acceptance.json. Earlier alias holds in this document
+are historical. Runtime contract qualification and admissions remain held.

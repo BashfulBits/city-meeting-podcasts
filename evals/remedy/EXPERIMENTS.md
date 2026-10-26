@@ -126,7 +126,9 @@ intermediate snapshots; those references describe the original run, not clean-ch
 
 ## Remaining gates
 
-GLM's returned-model alias remains unaccepted. The different runtime prompt/schema still needs
+GLM's exact returned-model alias was accepted by the maintainer on October26 for report-only
+and production P3 identity checks; see `adoption/glm-alias-acceptance.json` under the accepted-pairs
+results. This is not provider/weight attestation or production activation. The runtime contract needs
 qualification or explicit bounded transfer acceptance, followed by ordinary admission eligibility
 checks. The candidate bundle remains held. Merging candidate route registration deploys the
 Worker through the existing workflow; it does not grant admissions or start monitored inference.

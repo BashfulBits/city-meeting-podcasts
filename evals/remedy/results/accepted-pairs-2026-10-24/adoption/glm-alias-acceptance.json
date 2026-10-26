@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "decision_date": "2026-10-26",
+  "authority": "Explicit maintainer instruction in chat",
+  "instruction": "Approve this exact GLM alias mapping for report-only validation. I think we should also allow it for production, since this is more indicative of our naming (Route), and the provider sending it to an endpoint outside their control (ZAI) through some free / allowance contract.",
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "requested_model": "z-ai/glm-5.3-flash-free",
+  "accepted_returned_model": "zai-org/glm-5.3-flash",
+  "report_only_identity_accepted": true,
+  "production_identity_accepted": true,
+  "scope": "Exact requested/returned mapping on this physical route; P3 identity handling in report-only and live modes. No wildcard, case normalization, other route or full-GLM alias.",
+  "maintainer_rationale": "Maintainer considers this provider/route namespace normalization and potentially an upstream free/allowance arrangement.",
+  "rationale_verification": "The endpoint ownership, delegation and allowance-contract explanation is not independently verified. This decision is identity-risk acceptance, not serving-weight or contract attestation.",
+  "production_activation_approved": false,
+  "runtime_contract_transfer_approved": false,
+  "original_identity_receipts_unchanged": true
+}

@@ -2166,3 +2166,8 @@ Using those stored sibling decisions can expose additional disagreements to the 
 adjudication selector after deployment. Stored sibling judgments remain in place. Normal
 collection/replanning of unfinished questions can produce revision-3 packets when legacy
 replies omit required answers. This local change has launched no production adjudication jobs.
+
+P3 accepts one maintainer-approved returned-model alias: requested
+`z-ai/glm-5.3-flash-free` may return `zai-org/glm-5.3-flash` only on
+`orcarouter_zai_glm_5_3_flash_free`. This identity policy applies to report-only/live checks,
+binds into runtime evidence and preserves the actual returned ID; it grants no admission.

@@ -32,9 +32,10 @@
     "receipt_sha256": "e417f18f18be35d0860727dce374a9fdafc23c94fdc22cce53b1d805dea04f37",
     "public_catalogue_receipt": "Local-only orcarouter-models.json; authoritative URL below",
     "interpretation": "Provider catalogue identifies z-ai/glm-5.3-flash and its free ID as GLM5.3Flash; provider documentation cites zai-org/GLM-5.3-Flash vendor weights. Observed namespace difference is consistent with naming normalization, not independent proof of identical serving weights or an explicit API alias contract.",
-    "disposition": "Naming relationship documented; exact returned-ID mismatch and serving-identity acceptance remain explicit review gates. No alias whitelist or validator relaxation added.",
+    "disposition": "Superseded October26: maintainer explicitly accepts this exact requested/returned mapping for report-only and production P3 identity checks. No serving-weight attestation or route activation inferred.",
     "identity_observation": "identity-observation.json",
-    "receipt_storage": "Original run receipts are local-only; extracted observation is tracked."
+    "receipt_storage": "Original run receipts are local-only; extracted observation is tracked.",
+    "acceptance_record": "evals/remedy/results/accepted-pairs-2026-10-24/adoption/glm-alias-acceptance.json"
   },
   "official_sources": [
     {

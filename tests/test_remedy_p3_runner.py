@@ -379,6 +379,100 @@ def test_selected_plan_evidence_hash_uses_runtime_schema_and_nonrecursive_policy
     second = p3_runtime_bindings(config.model_copy(update={"admissions": [entry]}), entry)
     assert first == second  # Trust-anchor SHA must not recursively depend on itself.
     assert first["output_tokens"] == 16384
+    assert first["accepted_returned_model_ids"] == [
+        "z-ai/glm-5.3-flash-free",
+        "zai-org/glm-5.3-flash",
+    ]
+
+
+@pytest.mark.parametrize("returned", ["z-ai/glm-5.3-flash-free", "zai-org/glm-5.3-flash"])
+@pytest.mark.parametrize("publication_mode", ["report_only", "live"])
+def test_approved_glm_alias_preserves_actual_returned_id(returned, publication_mode, monkeypatch):
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    result = JobResult(
+        task="judge",
+        recipe_hash="d" * 64,
+        model=plan.models["glm_flash"],
+        route_id=plan.routes["glm_flash"],
+        upstream_model="z-ai/glm-5.3-flash-free",  # Catalog identity supplied by Worker backend.
+        output={
+            "model": returned,
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "decision": {
+                                    "finding_id": "f0",
+                                    "action": "manual_review",
+                                    "rationale": "Hold",
+                                },
+                            }
+                        )
+                    }
+                }
+            ],
+        },
+    )
+    backend = Mock()
+    backend.run_inference.return_value = result
+    config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
+    config = config.model_copy(
+        update={
+            "p3_role_plan": plan.name,
+            "publication_mode": publication_mode,
+        }
+    )
+    assert not p3_enabled(config, repo_root=Path.cwd())  # Identity approval never grants admission.
+    runner = P3DailyRunner(
+        storage=object(),
+        backend=backend,
+        lease_factory=lambda: None,
+        config=config,
+        repo_root=".",
+    )
+    recorded = []
+    monkeypatch.setattr(runner, "_append", recorded.append)
+    assert runner._submit(
+        role="glm_flash",
+        stage="initial",
+        source_key="test-city",
+        finding_id="finding-1",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        evidence=_evidence(),
+    ) == (True, False)
+    assert recorded[0].upstream_model == returned
+    assert result.upstream_model == "z-ai/glm-5.3-flash-free"
+
+
+@pytest.mark.parametrize("returned", [None, "z-ai/glm-5.3", "ZAI-ORG/GLM-5.3-FLASH", "other"])
+def test_glm_catalog_metadata_does_not_mask_unapproved_returned_model(returned):
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    result = JobResult(
+        task="judge",
+        recipe_hash="d" * 64,
+        model=plan.models["glm_flash"],
+        route_id=plan.routes["glm_flash"],
+        upstream_model="z-ai/glm-5.3-flash-free",
+        output={"model": returned},
+    )
+    with pytest.raises(ValueError, match="returned-model identity mismatch"):
+        _response_from_result(result, role="glm_flash", finding_id="f0", role_plan=plan.name)
+
+
+def test_glm_alias_is_exact_route_and_requested_id_only():
+    from citypods.remedy_p3_runner import _accepted_returned_models
+
+    alias = "zai-org/glm-5.3-flash"
+    assert alias not in _accepted_returned_models("other-route", "z-ai/glm-5.3-flash-free")
+    assert alias not in _accepted_returned_models(
+        "orcarouter_zai_glm_5_3_flash_free", "z-ai/glm-5.3"
+    )
 
 
 def test_selected_consensus_orders_judge_choice_by_plan_not_vote_input_order():

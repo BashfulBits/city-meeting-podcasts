@@ -313,3 +313,23 @@ model instructions are `evals/remedy/EXPERIMENTS.md`; `evals/remedy/accepted_pai
 without the raw archive and reconstructs disposable historical scorer inputs on demand.
 Historical raw receipt hashes identify local originals; normalized evidence is not byte-identical
 transport attestation. Identity/runtime admission holds and production shadow status are unchanged.
+
+### Exact GLM alias accepted (October 26)
+
+The maintainer explicitly approved requested `z-ai/glm-5.3-flash-free` returning
+`zai-org/glm-5.3-flash` on `orcarouter_zai_glm_5_3_flash_free`, for both report-only and
+production P3 identity checks. The exact instruction and scope are preserved in
+`evals/remedy/results/accepted-pairs-2026-10-24/adoption/glm-alias-acceptance.json`. This
+supersedes the earlier alias-disposition hold. The maintainer's endpoint/allowance explanation is
+recorded as rationale, not a verified provider contract or serving-weight attestation.
+
+P3 binds the accepted returned IDs into reviewed runtime evidence, checks the actual provider
+response model (Worker upstream metadata can be catalog-derived), and records the actual returned
+ID in new observations. Unknown/missing returned IDs, other physical routes, other requested IDs
+and full-GLM variants receive no alias exception. Original receipts and raw identity flags remain
+unchanged. Contract-transfer qualification, ordinary admission eligibility and activation remain
+separate gates; config stays shadow/report_only/empty admissions. No live call or deployment.
+
+Alias-policy verification:117 targeted tests and6,911 full offline tests passed
+(17 deselected); whole-repository Ruff/format and diff checks passed. Production remains
+shadow/report_only with no admissions; compact experimental outcomes were not rewritten.

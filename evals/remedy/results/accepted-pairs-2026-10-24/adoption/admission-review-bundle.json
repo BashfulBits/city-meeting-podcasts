@@ -20,7 +20,11 @@
     },
     {
       "path": "evals/remedy/results/accepted-pairs-2026-10-24/adoption/route-replay-2026-10-25/route-identity-review.json",
-      "sha256": "3fbf39012550b7dd916f313a80fd5b400f456dc078fe8ca826a84047d1ff8be4"
+      "sha256": "b095a881024aeb140498e4a1e44d16e0ec8833cb9a497c7c2ce6cbf738bf314d"
+    },
+    {
+      "path": "evals/remedy/results/accepted-pairs-2026-10-24/adoption/glm-alias-acceptance.json",
+      "sha256": "d1df10f15ea15439c84ff21a0ff749bd3d6226ce0c001a4c059213c82c88d639"
     }
   ],
   "candidates": [
@@ -52,6 +56,10 @@
         "route_id": "orcarouter_zai_glm_5_3_flash_free",
         "logical_model": "zai/glm-5.3-flash",
         "upstream_model": "z-ai/glm-5.3-flash-free",
+        "accepted_returned_model_ids": [
+          "z-ai/glm-5.3-flash-free",
+          "zai-org/glm-5.3-flash"
+        ],
         "prompt_hash": "cffa4dfdcebb014ad216ba7eac5ffb3d2f89d1616dd410892268f0b84f299bdd",
         "schema_hash": "e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89",
         "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
@@ -70,7 +78,7 @@
       },
       "qualified": false,
       "runtime_contract_reviewed": false,
-      "serving_identity_reviewed": false,
+      "serving_identity_reviewed": true,
       "project_evidence": null,
       "effective_route_request_params": {},
       "current_admission_check": {
@@ -82,7 +90,8 @@
           "missing reviewed project results/admission reference",
           "missing project evaluation"
         ]
-      }
+      },
+      "identity_acceptance_scope": "Maintainer accepts exact returned namespace; serving weights not independently verified."
     },
     {
       "role": "deepseek",
@@ -112,6 +121,9 @@
         "route_id": "beatapi_deepseek_v4_1_flash_free",
         "logical_model": "deepseek/deepseek-v4.1-flash",
         "upstream_model": "deepseek-v4.1-flash-free",
+        "accepted_returned_model_ids": [
+          "deepseek-v4.1-flash-free"
+        ],
         "prompt_hash": "cffa4dfdcebb014ad216ba7eac5ffb3d2f89d1616dd410892268f0b84f299bdd",
         "schema_hash": "e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89",
         "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
@@ -172,6 +184,9 @@
         "route_id": "beatapi_gemini_3_8_flash_free",
         "logical_model": "gemini/gemini-3.8-flash-free",
         "upstream_model": "gemini-3.8-flash-free",
+        "accepted_returned_model_ids": [
+          "gemini-3.8-flash-free"
+        ],
         "prompt_hash": "cffa4dfdcebb014ad216ba7eac5ffb3d2f89d1616dd410892268f0b84f299bdd",
         "schema_hash": "e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89",
         "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
@@ -232,6 +247,9 @@
         "route_id": "beatapi_jev_1_13_free",
         "logical_model": "typesafe/jev-1.13",
         "upstream_model": "jev-1.13-free",
+        "accepted_returned_model_ids": [
+          "jev-1.13-free"
+        ],
         "prompt_hash": "1ad4691e68d85fee4844e7f61e12a60e4ceca4ae7c16837b62048ed815f62fe2",
         "schema_hash": "5b1fd1aa1a9cc554bcd0645817285b9daf38d4a8e5dad5921053ab6df1a86154",
         "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
@@ -268,12 +286,11 @@
   ],
   "scope": "One isolated report-only source/finding; no publication, production ledger, paid fallback or role activation. This review bundle is not a qualified remedy-p3-evaluation envelope.",
   "identity_disposition": {
-    "glm_flash": "Hold exact returned alias mismatch pending explicit maintainer disposition; public naming evidence is not serving-weight attestation.",
+    "glm_flash": "Exact requested/returned alias accepted by maintainer October26 for report-only and production identity checks; no serving-weight/provider-contract attestation. Activation remains gated.",
     "deepseek_gemini_jev": "Prior exact-ID task receipts retained; different runtime prompt remains unqualified."
   },
   "contract_transfer_disposition": "322 frozen outputs replayed: 195 bounded candidates requiring source-policy checks, 127 manual semantic holds. Representation verified; different runtime prompt remains unqualified. No task accuracy transferred.",
   "remaining_gates": [
-    "Approve exact GLM returned-ID disposition or obtain provider alias contract; no whitelist relaxation in this PR.",
     "Record separately reviewed runtime-profile qualification or explicit bounded transfer acceptance for all four roles; preserve original task scores.",
     "Satisfy unchanged comparable AA and verified-truth eligibility gates for chat roles; only the reviewed bounded JEV choice scope has an AA alternative. Missing evidence is not a fabricated passing score.",
     "Populate and review hash-bound qualified evaluation envelopes, exact admissions and one real frozen source/finding plan; never submit the sentinel preflight.",

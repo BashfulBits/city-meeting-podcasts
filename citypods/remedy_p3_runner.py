@@ -73,6 +73,16 @@ P3_PROMPT_VERSION = "p3-unexpected-body-v1"
 # truncated them. Sol and DeepSeek allow exactly 16,384 on their routes.
 P3_CHAT_MAX_OUTPUT_TOKENS = 16_384
 
+# Maintainer-approved identity equivalence for this exact requested ID and physical route.
+# Applies to report-only and live P3 checks; it does not admit a route or attest its weights.
+P3_RETURNED_MODEL_ALIASES = {
+    ("orcarouter_zai_glm_5_3_flash_free", "z-ai/glm-5.3-flash-free"): ("zai-org/glm-5.3-flash",),
+}
+
+
+def _accepted_returned_models(route_id: str, requested: str) -> tuple[str, ...]:
+    return (requested, *P3_RETURNED_MODEL_ALIASES.get((route_id, requested), ()))
+
 
 class P3ChatResponse(BaseModel):
     """One structured assignment; multiple proposals are impossible in this contract."""
@@ -117,6 +127,9 @@ def p3_runtime_bindings(config: RemedyConfig, entry) -> dict[str, Any]:
         "route_id": route_id,
         "logical_model": plan.models[role],
         "upstream_model": entry.upstream_model,
+        "accepted_returned_model_ids": list(
+            _accepted_returned_models(route_id, entry.upstream_model)
+        ),
         "prompt_hash": canonical_hash(inspect.getsource(function)),
         "schema_hash": canonical_hash(schema),
         "policy_hash": canonical_hash(
@@ -422,8 +435,16 @@ def _response_from_result(
     expected_model = plan.models[role]
     if result.model != expected_model or result.route_id != plan.routes[role]:
         raise ValueError("completed Worker result does not match the pinned P3 route/model")
-    if role_plan != "legacy-sol-v1" and result.upstream_model != _upstream_for(role, role_plan):
-        raise ValueError("Worker upstream identity mismatch")
+    if role_plan != "legacy-sol-v1":
+        requested = _upstream_for(role, role_plan)
+        accepted = _accepted_returned_models(result.route_id, requested)
+        if result.upstream_model not in accepted:
+            raise ValueError("Worker upstream identity mismatch")
+        # JobResult.upstream_model may be catalog metadata, not the provider's returned ID.
+        # Check the actual response too, and retain that ID in the observation below.
+        if (result.route_id, requested) in P3_RETURNED_MODEL_ALIASES:
+            if result.output.get("model") not in accepted:
+                raise ValueError("Worker returned-model identity mismatch")
     if role == "jev":
         response = result.output
         if not isinstance(response, dict) or not isinstance(response.get("answers"), dict):
@@ -630,7 +651,13 @@ class P3DailyRunner:
             policy_hash=policy_hash,
             route_id=self.plan.routes[role],
             logical_model=self.plan.models[role],
-            upstream_model=result.upstream_model or _upstream_for(role, self.plan.name),
+            upstream_model=(
+                result.output["model"]
+                if self.plan.name != "legacy-sol-v1"
+                and (result.route_id, _upstream_for(role, self.plan.name))
+                in P3_RETURNED_MODEL_ALIASES
+                else result.upstream_model or _upstream_for(role, self.plan.name)
+            ),
             reasoning_level=result.reasoning_level,
             response=response,
             role_plan=None if self.plan.name == "legacy-sol-v1" else self.plan.name,

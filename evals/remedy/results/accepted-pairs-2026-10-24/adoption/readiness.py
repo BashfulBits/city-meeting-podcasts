@@ -12,7 +12,12 @@ from citypods.audit_remedy import BodyDecision, P3Adjudication
 from citypods.compute.llm_policy import ROUTE_REGISTRY
 from citypods.remedy_evaluation import AdmissionEntry, RemedyConfig
 from citypods.remedy_p3_observations import P3_ROLES
-from citypods.remedy_p3_runner import P3_MODELS, P3_ROUTES, p3_enabled
+from citypods.remedy_p3_runner import (
+    P3_MODELS,
+    P3_ROUTES,
+    _accepted_returned_models,
+    p3_enabled,
+)
 
 OUT = Path(__file__).resolve().parent
 ROOT = OUT.parents[4]
@@ -31,6 +36,15 @@ def main():
     for name in ("maintainer-acceptance.json", "adjudication-approval.json", "score-final.json"):
         path = RESULTS / name
         hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    approval_path = OUT / "glm-alias-acceptance.json"
+    alias_approval = json.loads(approval_path.read_text())
+    hashes["glm-alias-acceptance.json"] = hashlib.sha256(approval_path.read_bytes()).hexdigest()
+    alias_accepted = (
+        alias_approval.get("report_only_identity_accepted") is True
+        and alias_approval.get("production_identity_accepted") is True
+        and alias_approval["accepted_returned_model"]
+        in _accepted_returned_models(alias_approval["route_id"], alias_approval["requested_model"])
+    )
     desired = {
         "initial": ["glm_flash", "deepseek"],
         "adjudication": ["gemini", "jev"],
@@ -52,6 +66,8 @@ def main():
         "status": "integration_foundation_implemented_runtime_admission_held",
         "evidence_artifact_sha256": hashes,
         "desired_roles": desired,
+        "glm_alias_identity_accepted": alias_accepted,
+        "glm_alias_serving_weights_attested": False,
         "legacy_compatibility_models": P3_MODELS,
         "legacy_compatibility_routes": P3_ROUTES,
         "legacy_observation_roles": sorted(P3_ROLES),
@@ -81,7 +97,7 @@ def main():
             "Exact Gemini route registered locally; Worker deployment remains a later approval.",
             "Bind trusted reviewed evidence plus scoped acceptance without rewriting gold.",
             "JEV manual-only alternative implemented; reviewed runtime artifact still absent.",
-            "Resolve OrcaRouter GLM alias identity separately from quality acceptance.",
+            *([] if alias_accepted else ["Resolve OrcaRouter GLM alias identity."]),
             "Report-only path writes local artifacts; persistent daily ledger requires CAS.",
             "Separate tested implementation from deployment and monitored manual activation.",
         ],
