@@ -5135,3 +5135,17 @@ The offline builder can attach the approval after checking exact reviewed bytes 
 approved expectation metadata. Original draft and gold remain unchanged; no model answer is
 repaired. Expected-outcome approval is separate from execution: the 48-attempt budget remains
 unapproved, no inference ran, and runtime qualification, admissions and activation remain held.
+
+### Runtime measurement budget approved — pre-merge (October 26)
+
+The maintainer approved48 provider attempts. Exact authority and frozen plan/expectation/executor
+hashes are in `evals/remedy/qualification/runtime-v1/budget-approval.json`; the reusable bounded
+executor is `evals/remedy/run_runtime_qualification.py`. Run from this branch before merge so
+results can be reviewed in PR #2541. Deployed Worker integration remains separately gated.
+
+One immutable case/role request, no repeats, retries, redirects, paid fallback or secondary
+account. A single approved output ledger and nonblocking controller lock enforce the cap; unknown
+requests or access/profile/identity holds stop new calls. Exact route reservations and owned
+provider pauses coordinate direct measurement; an undeployed Gemini candidate uses its provider
+pause without falsely charging another route. Keep raw files ignored/local. Current production
+config, admission eligibility and runtime-transfer decisions remain unchanged by call approval.

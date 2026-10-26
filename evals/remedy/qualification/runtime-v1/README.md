@@ -104,3 +104,34 @@ Generated plans record expected_outcomes_approved=true while execution_enabled=f
 call_budget_approved=false. Approving expected outcomes does not qualify the runtime prompt,
 create evidence of model performance, waive ordinary model admission, activate production or
 spend the proposed maximum 48 single-attempt provider requests.
+
+## Measurement budget approved — pre-merge
+
+The maintainer approved the maximum 48 attempts on October26. `budget-approval.json` records
+that authority, the exact frozen plan/approved-expectation hashes, executor hash and single output
+ledger. Run this direct runtime-payload qualification **before** merging; review the results in
+PR #2541 before merge. The deployed Worker integration run remains a separate later step.
+
+The reusable executor is `evals/remedy/run_runtime_qualification.py`. Without `--execute`, it
+validates authority, frozen files, twelve cases and unresolved-request/access holds offline.
+Execution requires the suppressed citypods-env wrapper and approved credential escalation:
+
+```bash
+PYTHONPATH="$PWD" python evals/remedy/run_runtime_qualification.py \
+  --plan evals/remedy/results/runtime-qualification-2026-10-26/outcomes-approved-v2/run-plan-draft.json \
+  --authority evals/remedy/qualification/runtime-v1/budget-approval.json \
+  --output evals/remedy/results/runtime-qualification-2026-10-26/measurement
+```
+
+The generated plan is recreated with the builder and outcome acceptance. Historical budget
+approval is not reusable permission to repeat this experiment in a fresh ledger or checkout.
+The executor refuses changed sources, changed approved expectations, a different output ledger,
+unresolved requests, identity holds and access/profile failures. Each case/role has one immutable
+intent/result, at most 48 provider attempts overall. Foreign pauses are preserved, owned provider
+pauses are renewed/restored, and Gemini uses approved provider coordination if its candidate route
+is not deployed. No reservation is charged to another route. No SDK/Gateway retries or redirects.
+
+Consensus results are explicitly an eligibility-assuming sandbox simulation; they do not make
+routes admitted in production. Per-role semantic correctness, accepted manual fallbacks, contract
+holds, transport holds and exact-consensus outcomes remain separate. All raw run files remain
+local/ignored; a small observed-output summary can be retained after measurement and review.
