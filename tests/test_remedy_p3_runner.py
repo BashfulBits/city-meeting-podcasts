@@ -71,10 +71,13 @@ def _vote(role: str):
     )
 
 
-def test_live_p3_stays_closed_in_current_shadow_config():
+def test_current_production_requires_reviewed_manual_authorization():
     config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
-    assert config.mode == "shadow"
-    assert not p3_enabled(config)
+    assert config.mode == "manual"
+    assert config.publication_mode == "live"
+    assert not config.qualified_alias_types
+    assert not p3_enabled(config)  # No trust root means no activation.
+    assert p3_enabled(config, repo_root=Path.cwd())
 
 
 def test_daily_policy_hold_writes_report_without_storage_or_worker_access(monkeypatch, tmp_path):
@@ -369,7 +372,7 @@ def test_isolated_plan_is_held_before_any_backend_or_production_storage(monkeypa
     directory = root / "evals/remedy"
     directory.mkdir(parents=True)
     config = yaml.safe_load(Path("config/remedy.yml").read_text())
-    config.update(mode="manual", p3_role_plan="flash-deepseek-v2")
+    config.update(mode="manual", publication_mode="report_only", p3_role_plan="flash-deepseek-v2")
     raw = json.dumps({"version": 1, "config": config, "evidence": {}}).encode()
     plan = directory / "run.json"
     plan.write_bytes(raw)
@@ -395,7 +398,9 @@ def test_selected_plan_evidence_hash_uses_runtime_schema_and_nonrecursive_policy
     from citypods.remedy_p3_runner import p3_runtime_bindings
 
     config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
-    config = config.model_copy(update={"p3_role_plan": "flash-deepseek-v2"})
+    config = config.model_copy(
+        update={"p3_role_plan": "flash-deepseek-v2", "publication_mode": "report_only"}
+    )
     entry = SimpleNamespace(
         physical_route_ids=[P3_ROUTES["glm_flash"]],
         upstream_model="z-ai/glm-5.3-flash-free",
@@ -556,7 +561,9 @@ def test_report_only_intent_precedes_submit_and_saved_handle_resumes_without_res
     from citypods.remedy_p3_runner import P3LocalReportRunner
 
     config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
-    config = config.model_copy(update={"p3_role_plan": "flash-deepseek-v2"})
+    config = config.model_copy(
+        update={"p3_role_plan": "flash-deepseek-v2", "publication_mode": "report_only"}
+    )
     backend = Mock()
     runner = P3LocalReportRunner(
         artifact_root=tmp_path,

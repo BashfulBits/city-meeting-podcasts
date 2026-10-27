@@ -454,3 +454,14 @@ Final human-review validation:6,933 full offline tests passed (17 deselected);57
 checks passed, including unknown finding IDs, mismatched request recipes and actual returned-model
 mismatches becoming human issues. Ten human-flow/failure scenarios cover no judge calls, no
 resubmission and explicit request references. Whole Ruff/format/diff checks passed.
+
+Enable maintainer-authorized bounded manual PR/issue publication for Flash + DeepSeek. Record a
+hash-bound authorization separately from general model qualification; preserve all limits and
+R2 CAS. Exact validated agreements may propose PRs, with disagreements/failures sent to human
+issues. All remedy merges require human review; automatic alias types remain disabled. No new
+model calls, direct feed changes or media pipeline version changes accompany this configuration.
+Deployment and production-cycle verification remain pending until the implementation is merged.
+
+Production-authorization verification:6,947 full offline tests passed (17 deselected), plus28
+focused publication/authorization checks including the publisher's repository trust-root wiring.
+Whole-repository Ruff, formatting and diff checks passed. No live model or publication calls ran.

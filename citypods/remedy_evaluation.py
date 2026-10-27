@@ -296,15 +296,50 @@ class RemedyConfig(StrictModel):
     p3_role_plan: Literal["legacy-sol-v1", "flash-deepseek-v2", "flash-deepseek-human-v3"] = (
         "legacy-sol-v1"
     )
+    manual_review_authorization: TrustedProjectEvidence | None = None
     admissions: list[AdmissionEntry]
     qualified_alias_types: list[dict[str, Any]]
     limits: Limits
     onboarding_exceptions: list[dict[str, Any]]
 
 
+def load_manual_review_authorization(config, repo_root, *, expected):
+    """Accept explicit human-reviewed publication authority, never model qualification."""
+    if (
+        config.p3_role_plan != "flash-deepseek-human-v3"
+        or config.mode != "manual"
+        or config.qualified_alias_types
+        or config.manual_review_authorization is None
+    ):
+        raise ValueError("manual publication authorization is scoped to the two-model human flow")
+    raw = _read_trusted_artifact(Path(repo_root).resolve(), config.manual_review_authorization)
+    envelope = json.loads(raw)
+    if (
+        type(envelope.get("version")) is not int
+        or envelope.get("version") != 1
+        or envelope.get("kind") != "maintainer-approved-manual-remedy-publication"
+        or envelope.get("bindings") != expected
+        or envelope.get("human_approval_required") is not True
+        or envelope.get("automatic_merge_allowed") is not False
+        or envelope.get("automatic_feed_publication_allowed") is not False
+        or envelope.get("model_qualification_claimed") is not False
+        or not isinstance(envelope.get("maintainer_instruction"), str)
+        or not envelope["maintainer_instruction"].strip()
+    ):
+        raise ValueError("manual publication scope or runtime bindings changed")
+    refs = [TrustedProjectEvidence.model_validate(r) for r in envelope.get("source_artifacts", [])]
+    if not refs or len({r.path for r in refs}) != len(refs):
+        raise ValueError("missing or duplicate reviewed manual-publication evidence")
+    for ref in refs:
+        _read_trusted_artifact(Path(repo_root).resolve(), ref)
+    return envelope
+
+
 def config_fingerprint(config: RemedyConfig) -> str:
     """The hash decisions and observations bind to: the policy-bearing config, not the switches."""
     payload = config.model_dump(mode="json", exclude={"publication_mode"})
+    if config.manual_review_authorization is None:
+        payload.pop("manual_review_authorization", None)
     if config.p3_role_plan == "legacy-sol-v1":
         payload.pop("p3_role_plan")
     for admission in payload["admissions"]:

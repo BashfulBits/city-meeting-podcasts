@@ -2188,3 +2188,11 @@ request-bound observations with explicitly unverified serving identity, never fa
 unchanged failed calls are not repeated. No Gemini/JEV admission or inference is required for this
 plan. The earlier four-role plans remain replayable. The selected config stays shadow/report_only
 with empty admissions; live publication and qualified-alias automatic merging remain gated.
+
+The maintainer subsequently authorized bounded production PR/issue creation for the two-model
+human-review plan. Pending PR #2541 selects `manual` / `live` with exactly Flash and DeepSeek.
+A hash-bound manual-review authorization permits these proposers without claiming general AA or
+holdout qualification. Runtime/policy/evidence changes fail closed; ordinary qualification remains
+unchanged. Existing budgets, freshness checks and R2 CAS remain. Qualified alias types stay empty;
+remedy PRs require human merge. This supersedes the preceding shadow-only adoption status, but
+does not establish deployment or a completed production cycle.

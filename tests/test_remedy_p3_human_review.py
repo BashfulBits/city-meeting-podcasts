@@ -33,8 +33,17 @@ def test_two_model_flow_preserves_results_and_never_calls_judges(tmp_path, monke
     plan = P3_ROLE_PLANS["flash-deepseek-human-v3"]
     config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
     assert config.p3_role_plan == plan.name
-    assert config.mode == "shadow" and config.publication_mode == "report_only"
-    assert not config.admissions and not p3_enabled(config, repo_root=Path.cwd())
+    assert config.mode == "manual" and config.publication_mode == "live"
+    assert not config.qualified_alias_types and p3_enabled(config, repo_root=Path.cwd())
+    config = config.model_copy(
+        update={
+            "mode": "shadow",
+            "publication_mode": "report_only",
+            "admissions": [],
+            "manual_review_authorization": None,
+        }
+    )
+    assert not p3_enabled(config, repo_root=Path.cwd())
     assert set(plan.routes) == {"glm_flash", "deepseek"} and plan.chat is None
     monkeypatch.setattr(runtime, "p3_enabled", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(runtime, "admitted_p3_routes", lambda _: frozenset(plan.routes.values()))

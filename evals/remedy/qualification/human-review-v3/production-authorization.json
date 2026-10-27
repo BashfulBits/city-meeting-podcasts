@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "kind": "maintainer-approved-manual-remedy-publication",
+  "authority": "Explicit human maintainer approval in chat",
+  "maintainer_instruction": "I agree to enable this in production. It only enables creating PRs, it doesn't merge them automatically so it is permissible. Please make that change so we can close out review/51.",
+  "scope": "Production bounded PR/issue creation by the two-model human-review plan only; no automatic remedy merge or feed mutation",
+  "human_approval_required": true,
+  "automatic_merge_allowed": false,
+  "automatic_feed_publication_allowed": false,
+  "model_qualification_claimed": false,
+  "acknowledged_limitations": [
+    "No comparable AA score asserted for these routes.",
+    "Historical challenge is not independent verified-holdout qualification.",
+    "Shared wrong agreements remain possible; RQ05 was wrong in the policy replay.",
+    "PR creation is authorized; each proposed feed change still requires human review and merge."
+  ],
+  "bindings": {
+    "glm_flash": {
+      "role_plan_hash": "b72bb32d2152176f77bacdfb7bd7682e0ad0169d0f436b8b639b567cc83f4328",
+      "role": "glm_flash",
+      "route_id": "orcarouter_zai_glm_5_3_flash_free",
+      "logical_model": "zai/glm-5.3-flash",
+      "upstream_model": "z-ai/glm-5.3-flash-free",
+      "accepted_returned_model_ids": [
+        "z-ai/glm-5.3-flash-free",
+        "zai-org/glm-5.3-flash"
+      ],
+      "prompt_hash": "d3db73e4d2542cc20ab83f832c149893eceaa0adbf7e7ea6fc3505d38cd074f1",
+      "schema_hash": "e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89",
+      "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
+      "catalog_hash": "4769d0c2eb53f77387bd572e030b01338426c2d762405efa2f003d2f152d229a",
+      "output_tokens": 16384,
+      "response_timeout_seconds": 720,
+      "request_params_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "deepseek": {
+      "role_plan_hash": "b72bb32d2152176f77bacdfb7bd7682e0ad0169d0f436b8b639b567cc83f4328",
+      "role": "deepseek",
+      "route_id": "beatapi_deepseek_v4_1_flash_free",
+      "logical_model": "deepseek/deepseek-v4.1-flash",
+      "upstream_model": "deepseek-v4.1-flash-free",
+      "accepted_returned_model_ids": [
+        "deepseek-v4.1-flash-free"
+      ],
+      "prompt_hash": "d3db73e4d2542cc20ab83f832c149893eceaa0adbf7e7ea6fc3505d38cd074f1",
+      "schema_hash": "e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89",
+      "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
+      "catalog_hash": "8d8c68178512ca3b37829c27725e8ca8092bd73b6200d28366bc98e6c1b6a565",
+      "output_tokens": 16384,
+      "response_timeout_seconds": 720,
+      "request_params_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    }
+  },
+  "source_artifacts": [
+    {
+      "path": "evals/remedy/qualification/human-review-v3/decision.json",
+      "sha256": "0874bdbf07358937838860249a8d80a32561b5dc19062147628ca37ac3058d58"
+    },
+    {
+      "path": "evals/remedy/qualification/runtime-v2/observed-results.json",
+      "sha256": "379e33b80bb600b596a452ba6d2fd11e6b4d7d6490173a9cdf285790b0030175"
+    },
+    {
+      "path": "evals/remedy/qualification/runtime-v2/completion-summary.json",
+      "sha256": "cd50d270f65eb4e550d23c6ee63d5da9108df9e3a4da019737742b5ae5b82aa9"
+    },
+    {
+      "path": "evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json",
+      "sha256": "d5b5415987fbe037c710b339e2f79b73de9a87c92899c6bb18dc55938f1e0bc4"
+    }
+  ]
+}

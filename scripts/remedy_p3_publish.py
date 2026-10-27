@@ -863,7 +863,7 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
     config = RemedyConfig.model_validate(
         yaml.safe_load((repo_root / "config/remedy.yml").read_text(encoding="utf-8"))
     )
-    if not p3_enabled(config):
+    if not p3_enabled(config, repo_root=repo_root):
         return {"status": "policy_hold", "published": []}
     collected_at = evidence_payload.get("collected_at")
     if not isinstance(collected_at, str):

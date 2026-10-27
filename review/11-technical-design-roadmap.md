@@ -2925,3 +2925,23 @@ resubmission and explicit request references. Whole Ruff/format/diff checks pass
 Maintainer-directed judge recovery (October 26, 2026 Central): calendar finalization defers
 only the affected source after exhausted transient remote reads, preserving the remote catalog
 and continuing other sources. No judge policy, quota, or artifact version changes.
+
+### Maintainer-authorized manual production publication (October 26 Central)
+
+The maintainer explicitly approved enabling production because generated remedy PRs require human
+review and are not automatically merged. This supersedes the earlier shadow/report-only activation
+gates for `flash-deepseek-human-v3` only. PR #2541 now configures `manual` / `live` and exactly two
+human-reviewed proposers, Flash and DeepSeek. Validated exact agreement may create a bounded PR;
+disagreement, invalid output and terminal failures become human-review issue candidates.
+
+`evals/remedy/qualification/human-review-v3/production-authorization.json` records the instruction,
+reviewed evidence hashes and exact runtime bindings. The narrow manual permission asserts neither
+AA scores nor independent holdout qualification; the ordinary qualification path is unchanged.
+Changed policy, prompt, schema, catalog, profile or evidence hashes fail closed. Shared wrong
+agreements remain possible (RQ05 in the reused challenge) and require human PR review.
+
+No Gemini/JEV calls, automatic remedy merges or direct feed changes are enabled. Qualified alias
+types remain empty. Existing limits remain 5 decisions/PR, 8 PRs/rolling week, 8 open PRs,
+12 active directional issues and 24-hour evidence freshness; the existing R2 CAS guard remains.
+The implementation is pending in PR #2541, not Shipped: merge, deployment verification and an
+observed production cycle remain operational closeout steps. This change itself ran no model calls.

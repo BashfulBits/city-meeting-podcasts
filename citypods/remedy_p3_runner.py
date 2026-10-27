@@ -34,13 +34,19 @@ from citypods.audit_remedy import (
 from citypods.audit_remedy_report import P3ReportInput, build_p3_report
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
-from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTE_REGISTRY, LLMRequestPolicy
+from citypods.compute.llm_policy import (
+    ROUTE_CANDIDATES,
+    ROUTE_REGISTRY,
+    LLMRequestPolicy,
+    route_request_params,
+)
 from citypods.compute.structured import register_response_model
 from citypods.judging.backends import Evidence, Item, JevBackend, Packet
 from citypods.judging.tasks import QuestionSpec, Subject
 from citypods.remedy_evaluation import (
     RemedyConfig,
     config_fingerprint,
+    load_manual_review_authorization,
     load_project_evaluation,
     validate_admission,
 )
@@ -171,6 +177,43 @@ def p3_enabled(config: RemedyConfig, *, repo_root=None, for_report_only=False) -
     }
     if not set(plan.routes.values()) <= set(admissions):
         return False
+    if config.manual_review_authorization is not None:
+        try:
+            if plan.name != "flash-deepseek-human-v3" or len(config.admissions) != 2:
+                return False
+            bindings = {}
+            families = {row[0]: row[3] for row in plan.bindings}
+            for role, rid in plan.routes.items():
+                entry = admissions[rid]
+                route = ROUTE_REGISTRY[rid]
+                expected_params = canonical_hash(route_request_params(route))
+                if (
+                    entry.role != "proposer"
+                    or entry.aa is not None
+                    or entry.project_evidence is not None
+                    or entry.reviewed_admission_ref != config.manual_review_authorization.path
+                    or entry.physical_route_ids != [rid]
+                    or route.model != plan.models[role]
+                    or not route.free
+                    or route.experimental
+                    or "direct" not in route.transports
+                    or route.account_id != "primary"
+                    or entry.upstream_model != route.upstream_model
+                    or entry.model_family != families[role]
+                    or entry.reasoning_level != "provider-default"
+                    or entry.request_params_hash != expected_params
+                ):
+                    return False
+                bindings[role] = p3_runtime_bindings(config, entry)
+                if any(
+                    getattr(entry, key) != bindings[role][key]
+                    for key in ("prompt_hash", "schema_hash", "catalog_hash")
+                ):
+                    return False
+            load_manual_review_authorization(config, repo_root, expected=bindings)
+            return True
+        except (ValueError, OSError, KeyError, TypeError):
+            return False
     for role, rid in plan.routes.items():
         entry = admissions[rid]
         if rid not in ROUTE_REGISTRY or ROUTE_REGISTRY[rid].model != plan.models[role]:
