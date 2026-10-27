@@ -41,10 +41,10 @@ jobs:
           apiToken: smoke-test-no-cloudflare-access
           accountId: "00000000000000000000000000000000"
           workingDirectory: workers/${{ matrix.worker }}
-          wranglerVersion: "4.151.2"
+          wranglerVersion: "4.153.0"
           command: deploy --dry-run --outdir /tmp/worker-package
       - name: Verify bundle exists and exact Wrangler was installed
         working-directory: workers/${{ matrix.worker }}
         run: |
           test -s /tmp/worker-package/index.js
-          test "$(node -p 'require("wrangler/package.json").version')" = "4.151.2"
+          test "$(node -p 'require("wrangler/package.json").version')" = "4.153.0"
