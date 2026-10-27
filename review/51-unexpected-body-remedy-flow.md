@@ -4850,7 +4850,7 @@ provider pause ownership, single-flight, 65-second spacing, controller lock and 
 Existing results remain immutable; the secondary key does not repeat primary results.
 
 
-October 23, 2026 Central (02:28 UTC October 24): the replacement Gemini route completed all
+October 23, 2026 Central (02: 28 UTC October 24): the replacement Gemini route completed all
 60 frozen original-prompt cases with schema-valid answers. Final initial-role score is 36/40
 assignment cases, 15/15 policy controls and 3/5 unknown-owner guardrails. Against the existing
 GLM original-prompt answers, action/feed scoring gives 53 correct agreements, four shared wrong
@@ -4884,22 +4884,22 @@ a different initial pair reduces these errors without discarding earlier raw evi
 
 Maintainer explicitly approved both NVIDIA and BeatAPI provider pauses and distributed full
 GLM measurement. NVIDIA catalogue verifies full `z-ai/glm-5.3`; BeatAPI uses `glm-5.3-free`.
-Cases are split by original manifest index: even BeatAPI, odd NVIDIA,60distinct cases total.
-Both use original messages/schema, prompt-only formatting,16384output/default reasoning and
-720-second deadline. Serving identity remains separate perprovider. Reports preserve source
+Cases are split by original manifest index: even BeatAPI, odd NVIDIA, 60 distinct cases total.
+Both use original messages/schema, prompt-only formatting, 16384 output/default reasoning and
+720-second deadline. Serving identity remains separate per provider. Reports preserve source
 paths/provider partitions; pooling candidate task scores does not admit both physical routes.
-`capacity.py` reports observed throughput, errors and latency under singleflight65s pacing;
-it does not establish either provider's hardmaximum. Disjoint halves differ in input lengths.
-The first BeatAPI request returned524 after125seconds and remains an immutable availability
+`capacity.py` reports observed throughput, errors and latency under single-flight 65s pacing;
+it does not establish either provider's hard maximum. Disjoint halves differ in input lengths.
+The first BeatAPI request returned 524 after 125 seconds and remains an immutable availability
 failure eligible for authorized retry. NVIDIA and BeatAPI controllers have separate locks.
 
 
-The maintainer approved32,768-token fullGLM profile after a16,384-token NVIDIA response
-ended with finish_reason:length and no final answer. Keep720-second deadline/defaultreasoning/
-no temperature override. Controllers switch only between requests. Previously valid16,384-cap
+The maintainer approved 32,768-token full GLM profile after a 16,384-token NVIDIA response
+ended with finish_reason:length and no final answer. Keep 720-second deadline/default reasoning/
+no temperature override. Controllers switch only between requests. Previously valid 16,384-cap
 answers remain unchanged; empty truncated answers may receive a distinct larger-cap attempt.
 The scorer records each selected answer's actual output cap, provider, intent hash and source.
-This is mixed-profile evidence, not a silent rewrite of the original16,384-token experiment.
+This is mixed-profile evidence, not a silent rewrite of the original 16,384-token experiment.
 
 
 Full GLM cohort measurement completed October 24, 2026: all 60 cases have terminal outcomes,
@@ -4962,22 +4962,22 @@ adjudications remain separately scored; acceptance of initial shared errors does
 Production stays shadow/empty admissions; no role activation, deploy or merge.
 
 
-Accepted-pair disagreement measurement completed October24,2026: all24 new judgments returned
-HTTP200 with exact requested model IDs and valid schemas; no transport retries were needed.
+Accepted-pair disagreement measurement completed October 24, 2026: all 24 new judgments returned
+HTTP 200 with exact requested model IDs and valid schemas; no transport retries were needed.
 Flash/DeepSeek with Gemini+JEV resolved four of seven disagreements correctly, leaving three
-manual and no new wrong accepted resolutions. Complete60-case model-gate accounting:55 original-
-gold correct, two maintainer-accepted initial exceptions, three manual. Flash/fullGLM with
-DeepSeek+JEV resolved all five disagreements correctly:55 original-gold correct, three accepted
+manual and no new wrong accepted resolutions. Complete 60-case model-gate accounting: 55 original-
+gold correct, two maintainer-accepted initial exceptions, three manual. Flash/full GLM with
+DeepSeek+JEV resolved all five disagreements correctly: 55 original-gold correct, three accepted
 initial exceptions and two initial contract holds. No new wrong accepted resolution occurred.
-These reused-cohort results keep original truth and scoped acceptance separate. Flash/fullGLM
-shares an initial model family; fullGLM provider/profile provenance remains explicit. Remaining
+These reused-cohort results keep original truth and scoped acceptance separate. Flash/full GLM
+shares an initial model family; full GLM provider/profile provenance remains explicit. Remaining
 adoption gate is the narrow reviewed role/admission/evidence/DO-coordination integration design;
 no production route is activated. Raw requests, results, hashes and final report are in
 `evals/remedy/results/accepted-pairs-2026-10-24/`. Controller finished, owned pause released and
 monitor deleted after finalization. Whole Ruff/format and diff checks passed.
 
 
-### Selected-cascade admission integration design — October24,2026
+### Selected-cascade admission integration design — October 24, 2026
 
 Maintainer requested proceeding with the Flash/DeepSeek initial pair and Gemini/JEV adjudication
 integration. The code audit and concrete file/function/test contract are in
@@ -4998,12 +4998,12 @@ explicit admission gates. No production code/config/deploy/credentials/state cha
 design audit. Source implementation follows approval of the expanded scope and reviewed contract.
 
 
-### Admission integration foundation implemented locally — October24,2026
+### Admission integration foundation implemented locally — October 24, 2026
 
 The maintainer explicitly approved extending scope to observation/consensus/report contracts
 and the daily caller. `adoption/scope-approval.json` records that decision. The implementation
-adds one immutable `flash-deepseek-v2` role plan, version2 observation plan binding with unchanged
-legacy version1 payloads/IDs, plan-aware A/B consensus and generic chat adjudication, a bounded
+adds one immutable `flash-deepseek-v2` role plan, version 2 observation plan binding with unchanged
+legacy version 1 payloads/IDs, plan-aware A/B consensus and generic chat adjudication, a bounded
 reviewed project-evidence loader and a narrow manual/report-only JEV evidence alternative.
 The validator now receives trusted runtime-bound evaluation evidence; no qualified dictionary is
 fabricated from accepted cohort results. Prompt/schema/catalog/profile/identity mismatches fail
@@ -5021,35 +5021,35 @@ implemented-but-unmerged foundation work, not Shipped or runtime adoption. See t
 readiness/implementation artifacts for current validation and remaining gates.
 
 
-Admission-integration verification completed:6743 full offline tests passed,17 deselected;
+Admission-integration verification completed: 6743 full offline tests passed, 17 deselected;
 143 targeted P3/evidence/observation/report/action tests passed. Whole Ruff and format checks
 passed (600 Python files); diff checks clean. Frozen adjudication evidence hashes all unchanged.
 The explicit report-only preflight produced a policy_hold before backend/storage initialization;
 no monitored live inference cycle was submitted, and production remains shadow/empty admissions.
 
 
-October25,2026: maintainer authorized local steps1and2. Added exact primary BeatAPI free Gemini
-route and regenerated both catalogs; all51 pre-existing routes/provider controls remain unchanged.
-Uses evaluated16k output/prompt-only profile, backup/JEV priority,1RPM/singleflight and no invented
+October 25, 2026: maintainer authorized local steps 1and2. Added exact primary BeatAPI free Gemini
+route and regenerated both catalogs; all 51 pre-existing routes/provider controls remain unchanged.
+Uses evaluated 16k output/prompt-only profile, backup/JEV priority, 1RPM/single-flight and no invented
 rpd. Context remains an explicitly unmeasured conservative placeholder. Provider-specific format
 verification stays external to avoid compiler propagation into other Gemini routes. No deployment.
 Saved public model-catalogue metadata and official provider naming evidence for GLM's requested
 z-ai/glm-5.3-flash-free versus returned zai-org/glm-5.3-flash; naming alignment is supported but
 serving-identity acceptance remains held. No alias whitelist or model-identity gate was relaxed.
-Offline replay projected322 saved outputs:195 bounded per-recording candidates requiring source
-policy validation and127 manual semantic holds. Original truth/scores/UIDs and task exceptions
-unchanged; two invalid fullGLM outputs remain contract holds. This is an adapter/schema replay,
+Offline replay projected 322 saved outputs: 195 bounded per-recording candidates requiring source
+policy validation and 127 manual semantic holds. Original truth/scores/UIDs and task exceptions
+unchanged; two invalid full GLM outputs remain contract holds. This is an adapter/schema replay,
 not qualification of the different runtime prompt. Results, source hashes and reproduction script:
 `evals/remedy/results/accepted-pairs-2026-10-24/adoption/route-replay-2026-10-25/REPORT.md`.
 No new LLM requests, credential reads, production admissions or Worker deployment occurred.
 
 
-October25 route/replay verification:6747 offline tests passed,17 deselected;131 targeted
-catalog/discovery/runtime-policy/adapter tests passed. Whole Ruff/format (601files) and diff checks
+October 25 route/replay verification: 6747 offline tests passed, 17 deselected;131 targeted
+catalog/discovery/runtime-policy/adapter tests passed. Whole Ruff/format (601 files) and diff checks
 passed. The free logical key is `gemini/gemini-3.8-flash-free`, isolated from the shared Gemini and
-discovery pools; all existing51 route rows, provider controls and model-route pools are unchanged.
-All322 replayed outputs validate as P3ChatResponse wrappers;195 are bounded candidates requiring
-source policy checks and127 are semantic holds, not revised accuracy counts. Replay and catalog
+discovery pools; all existing 51 route rows, provider controls and model-route pools are unchanged.
+All 322 replayed outputs validate as P3ChatResponse wrappers;195 are bounded candidates requiring
+source policy checks and 127 are semantic holds, not revised accuracy counts. Replay and catalog
 compilation are deterministic. No deployment, new LLM calls or production admission occurred.
 
 ### October 25 pre-run PR preparation
@@ -5063,9 +5063,9 @@ accepts representation replay only, without claiming runtime-prompt qualificatio
 on a merge to main that changes the route catalog. Successful deployment must be verified before
 an authorized monitored run. Production remains shadow/report_only with empty admissions.
 
-October26 PR validation after integrating main9fc43b03:6,902 Python tests passed
-(17 deselected),572 Worker tests passed; whole Ruff/format and diff checks passed. All51
-existing main route rows and52 frozen final-evidence hashes are preserved. Each candidate
+October 26 PR validation after integrating main 9fc43b03: 6,902 Python tests passed
+(17 deselected), 572 Worker tests passed; whole Ruff/format and diff checks passed. All 51
+existing main route rows and 52 frozen final-evidence hashes are preserved. Each candidate
 admission remains held with explicit rejection reasons; production is shadow/empty admissions.
 Rerun instructions and retention validation are in `evals/remedy/EXPERIMENTS.md`.
 
@@ -5096,7 +5096,7 @@ and full-GLM variants receive no alias exception. Original receipts and raw iden
 unchanged. Contract-transfer qualification, ordinary admission eligibility and activation remain
 separate gates; config stays shadow/report_only/empty admissions. No live call or deployment.
 
-Alias-policy verification:117 targeted tests and6,911 full offline tests passed
+Alias-policy verification: 117 targeted tests and 6,911 full offline tests passed
 (17 deselected); whole-repository Ruff/format and diff checks passed. Production remains
 shadow/report_only with no admissions; compact experimental outcomes were not rewritten.
 
@@ -5116,7 +5116,7 @@ Mirrored native clips are counted once for evidence frequency, with all original
 retained; no stored recording is deleted or rewritten. Source overlap/reused observations are
 explicit: this is a bounded challenge, not an independent admission holdout.
 
-Proposed budget is24 initial plus at most24 conditional judge requests,48 provider attempts
+Proposed budget is 24 initial plus at most 24 conditional judge requests, 48 provider attempts
 maximum with no retries. Direct single-attempt measurement of runtime-generated payloads keeps
 that cap enforceable; ordinary Worker queue retries are not silently included. Worker end-to-end
 validation remains separate. Adjudicators receive actual proposals only and may have no coverage
@@ -5124,7 +5124,7 @@ if there are no disagreements. No live calls, credentials, deployment or activat
 
 Offline preflight corrected stale Sol/GLM captions in the selected runtime JEV A/B options to
 neutral initial-proposal captions; the legacy plan remains byte-compatible. Runtime evidence
-bindings were refreshed; this does not qualify any role.29 focused tests and6,913 full offline
+bindings were refreshed; this does not qualify any role.29 focused tests and 6,913 full offline
 tests passed (17 deselected); whole Ruff/format passed. Contract qualification and admissions
 remain held pending reviewed expectations, authorized measurement and assessed results.
 
@@ -5143,7 +5143,7 @@ unapproved, no inference ran, and runtime qualification, admissions and activati
 
 ### Runtime measurement budget approved — pre-merge (October 26)
 
-The maintainer approved48 provider attempts. Exact authority and frozen plan/expectation/executor
+The maintainer approved 48 provider attempts. Exact authority and frozen plan/expectation/executor
 hashes are in `evals/remedy/qualification/runtime-v1/budget-approval.json`; the reusable bounded
 executor is `evals/remedy/run_runtime_qualification.py`. Run from this branch before merge so
 results can be reviewed in PR #2541. Deployed Worker integration remains separately gated.
@@ -5157,11 +5157,11 @@ config, admission eligibility and runtime-transfer decisions remain unchanged by
 
 ### Pre-merge runtime measurement stopped — transfer remains unqualified (October 26)
 
-The approved48-attempt run stopped at31 attempts:30 completed judgments and one JEV HTTP400
+The approved 48-attempt run stopped at 31 attempts: 30 completed judgments and one JEV HTTP 400
 (input too long, non-retryable). Another JEV input was held before sending. No unresolved intents;
 both owned provider pauses restored. RQ11/RQ12 unattempted; RQ10 lacks a final cascade summary.
-On ten identical initial cases Flash/DeepSeek each scored5 correct/5 wrong; conditional Gemini
-scored2/6. Of six sandbox automatic candidates, three were wrong: RQ04/RQ05 omitted joint owners
+On ten identical initial cases Flash/DeepSeek each scored 5 correct/5 wrong; conditional Gemini
+scored 2/6. Of six sandbox automatic candidates, three were wrong: RQ04/RQ05 omitted joint owners
 and used union; RQ06 retained owners but widened recording-only scope to union. Current validation
 accepted them. Prior pair exceptions/manual fallback approval do not cover these new errors.
 RQ02/RQ07 also expose exact-consensus inefficiency despite correct semantic proposals.
@@ -5175,7 +5175,7 @@ hold. No repeat calls, production admissions, merge or deployment.6,917 offline 
 
 Observed RQ06 was subsequently accepted by the maintainer as a case-specific union exception;
 original scores remain unchanged. Runtime challenge optional adjudicator errors after this
-acceptance: Gemini3/6, JEV1/4 completed judgments, on differing conditional subsets. RQ04/RQ05
+acceptance: Gemini 3/6, JEV 1/4 completed judgments, on differing conditional subsets. RQ04/RQ05
 remain wrong automatic outcomes; JEV input holds and incomplete coverage remain unresolved.
 See `evals/remedy/qualification/runtime-v1/rq06-observed-acceptance.json`. No activation or calls.
 
@@ -5184,7 +5184,7 @@ See `evals/remedy/qualification/runtime-v1/rq06-observed-acceptance.json`. No ac
 The maintainer requested completing the remaining evaluation to decide whether reviewed remedy
 PRs are acceptable or every result should become a GitHub issue. This does not choose or activate
 an output policy. `continuation-approval.json` authorizes only untouched RQ11/RQ12, preserving the
-original48-attempt cumulative ledger, frozen payloads and one attempt per case/role. The exact
+original 48-attempt cumulative ledger, frozen payloads and one attempt per case/role. The exact
 RQ09/RQ10 terminal input-length holds remain pinned and are not retried or shortened. The bounded
 `evals/remedy/continue_runtime_qualification.py` uses the original controller, lock, source hashes,
 pauses, reservations, transport and scoring; new unknown/auth/profile holds stop continuation.
@@ -5192,13 +5192,13 @@ No production merge, deployment, role admission or remedy PR/issue creation is a
 
 ### Runtime challenge completed to terminal coverage (October 26)
 
-The authorized untouched-case continuation completed RQ11/RQ12. All12 initial cases answered;
-37/48 attempts total,36 completed judgments, one terminal JEV input-length HTTP400 and one
+The authorized untouched-case continuation completed RQ11/RQ12. All 12 initial cases answered;
+37/48 attempts total, 36 completed judgments, one terminal JEV input-length HTTP 400 and one
 additional pre-send input hold. Owned pauses restored; no unknown requests. RQ11 correctly chose
 manual review. RQ12 wrongly proposed a new feed against the approved manual/archive control,
 but exact-consensus checks left an issue candidate. RQ06's observed union is separately accepted.
-Acceptance-aware Gemini error4/7 and JEV selected-proposal error2/5; on the same five answered
-cases both are wrong2/5. Candidate output is6 PRs (4 acceptable/2 wrong),4 issues and2 input holds.
+Acceptance-aware Gemini error 4/7 and JEV selected-proposal error 2/5; on the same five answered
+cases both are wrong 2/5. Candidate output is 6 PRs (4 acceptable/2 wrong), 4 issues and 2 input holds.
 These describe a reused historical challenge, not production accuracy or human review efficacy.
 See `evals/remedy/qualification/runtime-v1/{RESULTS.md,completion-summary.json}` and compact
 `observed-continuation.json`. Original scores unchanged. Output-policy selection remains with
@@ -5208,7 +5208,7 @@ the maintainer; no admission, production routing, merge, deployment or remedy cr
 ### Concise, nonduplicated prompt reevaluation authorized (October 26)
 
 The maintainer requested another evaluation with nonduplicated, clear/concise prompts and Python
-packet generation. `evals/remedy/prepare_runtime_reevaluation.py` rebuilds the same12 cases from
+packet generation. `evals/remedy/prepare_runtime_reevaluation.py` rebuilds the same 12 cases from
 retained sources, proves unchanged expectations/validator checks, pins sources and execution
 paths, and audits every prospective judge packet for duplicate taxonomy/instructions. Two eight-
 file builds were byte-identical. Audit-only prior proposals never become new inference results.
@@ -5219,18 +5219,18 @@ judge, no repeated taxonomy/history/context or doubled JEV instruction/evidence 
 taxonomy is preserved. Initial chat instructions are shorter; existing target slugs and proposed
 new-feed metadata are distinguished without adding case-specific truth. Legacy prompts remain
 unchanged; JEV recipe identity binds new instruction/data and runtime bindings cover context code.
-The prior oversized audit bundles now estimate11,328/11,145 tokens versus roughly44–45k.
+The prior oversized audit bundles now estimate 11,328/11,145 tokens versus roughly 44–45k.
 
-Fresh48-attempt cap, no repeats/retries, same models/schema/validator/comparator/profiles and
+Fresh 48-attempt cap, no repeats/retries, same models/schema/validator/comparator/profiles and
 primary free routes. The original executor controls a separate ledger; actual judge packets
 come only from fresh initial answers. Prior scores and RQ06 acceptance remain separate. Production
 stays shadow/report_only with empty admissions; no routing decision, merge or activation.
 
 ### Concise run availability hold and one delayed retry approved (October 26)
 
-The first RQ01 Flash attempt returned OrcaRouter429 `free_rate_limited`; no model judgment.
-Provider retry-after13,556 seconds gives a not-before time2026-10-27T00:00:00.503737Z (7pm Central
-October26). Owned provider pauses restored with0errors; no unknown intent or active controller.
+The first RQ01 Flash attempt returned OrcaRouter 429 `free_rate_limited`; no model judgment.
+Provider retry-after 13,556 seconds gives a not-before time 2026-10-27T00: 00: 00.503737Z (7pm Central
+October 26). Owned provider pauses restored with 0errors; no unknown intent or active controller.
 `qualification/runtime-v2/observed-hold.json` preserves the failure; no quality claim follows it.
 The maintainer explicitly approved one delayed retry and scheduled continuation within the same
 48-attempt cap, stopping on another rate limit. `retry-approval.json` pins exact evidence/authority
@@ -5240,23 +5240,23 @@ complete-concise-remedy-evaluation is quiet before cooldown and deletes itself o
 cancellation or a new hold. No paid fallback, secondary account, prompt/profile change, production
 activation or automatic output-policy choice.40 focused safety/prompt tests passed.
 
-Final concise-prompt/retry validation:6,924 full offline tests passed (17 deselected),40 focused
+Final concise-prompt/retry validation: 6,924 full offline tests passed (17 deselected), 40 focused
 prompt/safety checks passed, and whole-repository Ruff/format/diff checks passed. Two independently
-generated eight-file packets were byte-identical. No inference beyond the single held429 attempt.
+generated eight-file packets were byte-identical. No inference beyond the single held 429 attempt.
 
 ### Concise-prompt reevaluation complete (October 27 UTC / October 26 Central)
 
-All12 cases completed under39/48 attempts:38 valid judgments and the original429; the one approved
+All 12 cases completed under 39/48 attempts: 38 valid judgments and the original 429; the one approved
 retry succeeded. No new transport/contract/identity or input-length failures. Both owned pauses
 restored, no unknown requests, controller inactive; completion automation deleted. JEV now answered
-RQ09/RQ10 using12,024/11,858 provider input tokens. Size correction worked; semantic quality did not
-improve on matched cases. Each initial model remains6 raw correct/6 wrong; RQ06's existing exception
-is separate. Gemini and JEV each have4/7 reviewed errors in the concise run, on identical seven-case
-coverage. Baseline/concise matched-role errors are unchanged: Gemini4/6, JEV2/4.
+RQ09/RQ10 using 12,024/11,858 provider input tokens. Size correction worked; semantic quality did not
+improve on matched cases. Each initial model remains 6 raw correct/6 wrong; RQ06's existing exception
+is separate. Gemini and JEV each have 4/7 reviewed errors in the concise run, on identical seven-case
+coverage. Baseline/concise matched-role errors are unchanged: Gemini 4/6, JEV 2/4.
 
-The sandbox would produce5 PR candidates (3 correct,2 wrong RQ04/RQ05),7 issue candidates,0holds.
-The wrong-PR fraction is2/5 (40%);2/12 of all cases, unchanged wrong IDs. Baseline had6 PR candidates
-(4 acceptable including RQ06,2 wrong),4 issues,2holds. RQ06 moved to an issue due exact-scope-flag
+The sandbox would produce 5 PR candidates (3 correct, 2 wrong RQ04/RQ05), 7 issue candidates, 0 holds.
+The wrong-PR fraction is 2/5 (40%);2/12 of all cases, unchanged wrong IDs. Baseline had 6 PR candidates
+(4 acceptable including RQ06, 2 wrong), 4 issues, 2 holds. RQ06 moved to an issue due exact-scope-flag
 convergence, not another semantic error. This is a repeated historical challenge; human PR-review
 success and production error rates were not measured. Output-policy choice remains the maintainer's.
 No merge, deploy, production admission/routing switch or actual remedy PR/issue creation occurred.
@@ -5265,7 +5265,7 @@ Retained evidence and conclusions: `evals/remedy/qualification/runtime-v2/{obser
 completion-summary.json,RESULTS.md}`. Python scoring now freezes whole runs and recomputes matched
 comparisons with scoped acceptance while preserving raw scores. Bulk files remain local/ignored.
 
-Completion validation:6,925 full offline tests passed (17 deselected); whole-repository
+Completion validation: 6,925 full offline tests passed (17 deselected); whole-repository
 Ruff/format/diff checks passed. The comparison test preserves original wrong scores, accepts only
 matching reviewed RQ06 assignments, and rejects transferring that exception to another case.
 
@@ -5286,8 +5286,8 @@ use unverified identity, no fabricated vote, no exception message/secrets, and p
 unchanged failed requests. A peer handle may remain pending; no duplicate inference is submitted.
 Legacy observations/wire plans remain available, and old empty-failure report hashes are preserved.
 
-Offline replay with the real validator on the retained12-case answers gives4 PR candidates
-(3 correct,1 wrong RQ05) and8 issues, with no provider calls. Shared wrong agreements still need
+Offline replay with the real validator on the retained 12-case answers gives 4 PR candidates
+(3 correct, 1 wrong RQ05) and 8 issues, with no provider calls. Shared wrong agreements still need
 human PR review. `evals/remedy/qualification/human-review-v3/{decision.json,README.md}` records
 scope/reproduction/remaining steps; `replay_human_review.py` is the repeatable offline control-flow
 check. This is implemented in the unmerged PR #2541, not production activation or new model evidence.
@@ -5297,7 +5297,7 @@ finding's report-only plan; then perform the separately approved end-to-end oper
 inspect publication plans/feedback/recovery before enabling bounded manual publication. P5
 qualified-alias auto-merge stays separately gated/disabled. P1 does not require another bakeoff.
 
-Human-review flow verification:6,932 offline tests passed (17 deselected), including7 focused
+Human-review flow verification: 6,932 offline tests passed (17 deselected), including 7 focused
 flow/failure scenarios; whole Ruff/format/diff passed. Offline replay validates original route,
 requested/returned identity and f0 contract before reusing an answer; it fabricates no model vote.
 
@@ -5306,7 +5306,7 @@ into consensus/selected-vote revalidation. New-plan PR candidates can reach the 
 without being mistaken for Sol/Flash; mismatched plans fail closed. The end-to-end publication
 unit test revalidates a real two-model agreement and rejects it under the wrong plan.
 
-Final human-review validation:6,933 full offline tests passed (17 deselected);57 latest focused
+Final human-review validation: 6,933 full offline tests passed (17 deselected);57 latest focused
 checks passed, including unknown finding IDs, mismatched request recipes and actual returned-model
 mismatches becoming human issues. Ten human-flow/failure scenarios cover no judge calls, no
 resubmission and explicit request references. Whole Ruff/format/diff checks passed.
@@ -5331,6 +5331,20 @@ types remain empty. Existing limits remain 5 decisions/PR, 8 PRs/rolling week, 8
 The implementation is pending in PR #2541, not Shipped: merge, deployment verification and an
 observed production cycle remain operational closeout steps. This change itself ran no model calls.
 
-Production-authorization verification:6,947 full offline tests passed (17 deselected), plus28
+Production-authorization verification: 6,947 full offline tests passed (17 deselected), plus 28
 focused publication/authorization checks including the publisher's repository trust-root wiring.
 Whole-repository Ruff, formatting and diff checks passed. No live model or publication calls ran.
+
+CLI CodeRabbit follow-up (October 27 Central): reviewed the committed PR diff and addressed all
+13 findings. Preserve legacy input hashes, require an isolated-plan SHA256, correct the admission
+hold fixture and artifact-path assertion, and publish local JSON atomically without overwriting
+receipts. Propagate capacity/transport/unknown-intent errors instead of creating permanent model
+failures; only completed contract failures and explicit structural refusals produce safe terminal
+observations. Preserve the frozen historical Gemini prompt with a prompt-only shaping guard.
+Readiness now reports actual authorized config; as-built status and historical prose are reconciled.
+The changelog is condensed into titled entries; historical decisions remain in this review record.
+No provider calls or deployment were needed for these corrections.
+
+Final post-review verification: 6,957 offline tests passed (17 deselected), including 83 focused
+remedy checks. Whole-repository Ruff/format, changelog compiler and diff checks passed. Offline
+readiness reports exactly two authorized proposers; the historical 24-job preflight remains valid.

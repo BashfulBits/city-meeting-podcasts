@@ -153,7 +153,10 @@ def build_p3_report(
             _canonical_json(
                 record.model_dump(
                     mode="json",
-                    exclude={"initial_failures"} if not record.initial_failures else set(),
+                    exclude=(
+                        ({"initial_failures"} if not record.initial_failures else set())
+                        | ({"role_plan"} if record.role_plan == "legacy-sol-v1" else set())
+                    ),
                 )
             )
         ).hexdigest(),

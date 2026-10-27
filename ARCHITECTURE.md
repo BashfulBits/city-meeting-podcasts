@@ -1179,8 +1179,8 @@ before provider calls.
 
 `scripts/eval_remedy.py` freezes schema-v2 evidence and produces immutable route-comparison and
 rescoring artifacts; independently maintained gold never enters model messages. Production remedy
-routing is unchanged. `config/remedy.yml` starts in shadow mode with empty admissions and alias
-qualifications. Named high/max effort remains unavailable unless verified in the route catalog; an
+evaluation does not itself authorize publication. The selected production configuration uses
+`manual` / `live` with two explicitly authorized human-reviewed proposers and no alias qualifications. Named high/max effort remains unavailable unless verified in the route catalog; an
 explicit provider-default admission records an omitted override without claiming a named effort or
 silently accepting a fallback.
 
@@ -1190,7 +1190,7 @@ GitHub, feed-write or admission-override path; it supplies an empty trusted-admi
 therefore fails closed. A future trusted dispatch integration must supply validated runtime
 admissions and remains separate from this report-only replay tool.
 
-The unmerged admission-integration follow-up also provides an explicit `flash-deepseek-v2`
+The admission integration also provides an explicit `flash-deepseek-v2`
 role plan (Flash/DeepSeek initial, Gemini/JEV adjudication) alongside strict legacy replay.
 Requests, observations, A/B ordering and reports share that immutable plan. Version2 observations
 bind its hash; version1 observations retain their original payload/ID and stage/route contracts.
@@ -1204,7 +1204,7 @@ storage initialization when admissions are absent. An admitted one-finding run w
 local observations, intent/receipt files and Worker handles; inference stays queue-only through
 the shared Worker DO. Unknown intents cannot be resubmitted. This path neither writes the
 production ledger nor pretends a provider pause supplies CAS. Ordinary daily ledger writes keep
-their existing CAS guard. Current production remains shadowed with empty admissions: the local exact
+their existing CAS guard. The historical four-role plan has no production authorization. The local
 Gemini free route is registered in its own `gemini/gemini-3.8-flash-free` pool, preserving
 discovery and the shared Gemini pool. Its Worker deployment, serving-identity review and
 runtime-contract transfer evidence are still gates. The offline adapter replay creates bounded
@@ -1216,11 +1216,10 @@ use the shared remedy maintenance lease and verify the object after writing. Rep
 the same recipe/role is idempotent; a conflicting result is rejected. Pending Worker handles stay
 in the existing deferred-request registry. P3 votes remain separate from
 `citypods.remedy_ledger`'s human dispositions. The daily Worker caller and scheduled workflow
-shipped in PR #2447: it submits or reconciles stable recipe hashes, pins all four physical
-routes, validates completed route identity, and emits report artifacts without activating the
-current shadow/empty-admission configuration. The caller uses the shared review/49 JEV adapter.
-Deployment remains fail-closed until exact routes have valid runtime admissions and evaluated
-request parameters; the P1 evidence decision allowed implementation, not activation. The approved
+shipped in PR #2447. The selected role plan determines the exact physical routes; stable recipes
+are submitted or reconciled and completed route identity is checked. Historical four-role plans
+use the shared review/49 JEV adapter. The current two-proposer plan uses explicit hash-bound
+manual-publication authorization; historical P1 calibration evidence alone grants no activation. The approved
 three-route prompt comparison recorded provider-default reasoning, 900-second request timeouts,
 950-second case deadlines, and 16,384-token output caps, with no temperature override. JEV's eight
 completed local-pilot observations do not record equivalent effective parameter provenance. The
@@ -1228,8 +1227,8 @@ admission schema now represents provider-default settings and hashes compiled ro
 the P3 chat caller requests the evaluated 16,384 output tokens under the Worker's configured
 720-second response ceiling (the 900-second evaluation timeout cannot be matched; the slowest scored
 call took 162 seconds). Exact serving identity and JEV's effective Worker parameters still need
-qualification before P3 production activation. A separate,
-write-scoped daily publisher job creates human-review proposal
+qualification for their historical four-role plan; JEV is not used by the current human-review
+plan. A separate, write-scoped daily publisher job creates human-review proposal
 PRs from the revalidated mutation plan or
 reconciles keyed manual disposition issues. It preserves maintainer notes and carries checked
 choices forward only when the evidence binding is unchanged. Manual choices include every feed
@@ -1239,7 +1238,8 @@ existing current-writer permission check and P2 ledger append path; per-feed inc
 are stored as an additive typed event field under the remedy lease. Old events omit that field and
 retain their existing canonical IDs. A terminal disposition closes its issue; a future-evidence
 hold stays open. The publisher does not merge PRs or write feed configuration on main. No P3 calls
-or publication are enabled by the repository's current shadow configuration.
+or publication follow merely from these historical evaluation records; current two-route manual
+authorization is recorded separately below.
 Four maintainer-approved JEV Worker observations on 2026-10-19 returned the pinned route and
 upstream identity, each in one attempt. This evaluation lane uses the Worker's DO queue, local handles/receipts
 and B2 payloads. An initial attempt to use the Python client's optional R2 registry failed after
@@ -1269,7 +1269,7 @@ it is no longer running. Resuming the already-approved GLM Flash observation was
 enqueue with `ingress_write_budget_reserved`; no provider call was made. DeepSeek remains
 unsubmitted at the shared admission gate. Keep the exact pins/settings and resume after Worker
 ingress capacity is available, without bypassing its budget or creating another Sol retry.
-The four JEV observations remain complete; admissions and shadow/report-only settings are
+Historically, the four JEV observations alone left admissions and shadow/report-only settings
 unchanged. Latest receipts and status are retained in the results directory's `chat-summary.json`.
 
 A separately authorized one-shot diagnostic uses exact-route Worker pauses at October 23
@@ -2178,21 +2178,21 @@ one evidence object. Legacy prompts remain readable/unchanged. JEV recipes inclu
 instruction/data identity, and runtime qualification binds the context builder and revision.
 The same shared factories generate evaluation and runtime payloads; the Python reevaluation
 builder records frozen inputs/hashes and audits duplication offline. This does not admit any
-role or change production shadow/report-only routing. See review/51 and
+role or authorize publication; current manual authority is separate. See review/51 and
 `evals/remedy/qualification/runtime-v2/README.md`.
 
-The current unmerged remedy adoption plan is `flash-deepseek-human-v3`: Flash and DeepSeek only.
-Validated complete agreement can propose a human-reviewed PR; disagreement, validator rejection
-or a request/response failure becomes a human issue candidate. Terminal failures are immutable,
-request-bound observations with explicitly unverified serving identity, never fabricated votes;
-unchanged failed calls are not repeated. No Gemini/JEV admission or inference is required for this
-plan. The earlier four-role plans remain replayable. The selected config stays shadow/report_only
-with empty admissions; live publication and qualified-alias automatic merging remain gated.
+The selected remedy plan is `flash-deepseek-human-v3`: Flash and DeepSeek only. Validated complete
+agreement can propose a human-reviewed PR; disagreement or a completed contract failure becomes
+a human issue candidate. Request-bound terminal observations use explicitly unverified identity
+and never fabricate votes. Capacity, transport and unknown-intent errors propagate without a
+permanent failure observation; deferred handles remain pending and cannot be resubmitted blindly.
+Local intent, receipt and observation JSON is published atomically with exclusive creation.
+No Gemini/JEV inference is required. Earlier four-role plans and their legacy input hashes remain
+replayable.
 
-The maintainer subsequently authorized bounded production PR/issue creation for the two-model
-human-review plan. Pending PR #2541 selects `manual` / `live` with exactly Flash and DeepSeek.
-A hash-bound manual-review authorization permits these proposers without claiming general AA or
-holdout qualification. Runtime/policy/evidence changes fail closed; ordinary qualification remains
-unchanged. Existing budgets, freshness checks and R2 CAS remain. Qualified alias types stay empty;
-remedy PRs require human merge. This supersedes the preceding shadow-only adoption status, but
-does not establish deployment or a completed production cycle.
+The maintainer authorized bounded production PR/issue creation. Config selects `manual` / `live`
+with exactly Flash and DeepSeek. A hash-bound manual-review authorization permits these proposers
+without claiming general AA or holdout qualification. Runtime/policy/evidence changes fail closed;
+ordinary qualification remains unchanged. Existing budgets, freshness checks and R2 CAS remain.
+Qualified alias types stay empty and remedy PRs require human merge. Authorization does not itself
+establish a successful deployment or completed production cycle; review/51 owns operational status.

@@ -45,10 +45,7 @@ def main():
         and alias_approval["accepted_returned_model"]
         in _accepted_returned_models(alias_approval["route_id"], alias_approval["requested_model"])
     )
-    desired = {
-        "initial": ["glm_flash", "deepseek"],
-        "adjudication": ["gemini", "jev"],
-    }
+    desired = {"initial": ["glm_flash", "deepseek"], "adjudication": []}
     route = "beatapi_gemini_3_8_flash_free"
     module = ast.parse((ROOT / "citypods/remedy_p3_runner.py").read_text())
     enabled_source = next(
@@ -63,7 +60,7 @@ def main():
     ]
     report = {
         "schema_version": 1,
-        "status": "integration_foundation_implemented_runtime_admission_held",
+        "status": "manual_publication_authorized_operational_verification_pending",
         "evidence_artifact_sha256": hashes,
         "desired_roles": desired,
         "glm_alias_identity_accepted": alias_accepted,
@@ -72,7 +69,7 @@ def main():
         "legacy_compatibility_routes": P3_ROUTES,
         "legacy_observation_roles": sorted(P3_ROLES),
         "selected_role_plan": __import__("citypods.audit_remedy", fromlist=["P3_ROLE_PLANS"])
-        .P3_ROLE_PLANS["flash-deepseek-v2"]
+        .P3_ROLE_PLANS[config.p3_role_plan]
         .__dict__,
         "runtime_adjudication_fields": sorted(P3Adjudication.model_fields),
         "evaluated_answer_fields": sorted(contract.BodySelectionAnswer.model_fields),
@@ -87,26 +84,19 @@ def main():
             "mode": config.mode,
             "publication_mode": config.publication_mode,
             "admission_count": len(config.admissions),
-            "enabled": p3_enabled(config),
+            "enabled": p3_enabled(config, repo_root=ROOT),
         },
         "daily_caller_requires_cas": "cas_capable"
         in (ROOT / "scripts/remedy_p3_daily.py").read_text(),
         "unresolved_design_gates": [
-            "Expanded scope approved; implementation is unmerged and production shadowed.",
-            "Bounded adapter replay complete; different runtime prompt remains unqualified.",
-            "Exact Gemini route registered locally; Worker deployment remains a later approval.",
-            "Bind trusted reviewed evidence plus scoped acceptance without rewriting gold.",
-            "JEV manual-only alternative implemented; reviewed runtime artifact still absent.",
-            *([] if alias_accepted else ["Resolve OrcaRouter GLM alias identity."]),
-            "Report-only path writes local artifacts; persistent daily ledger requires CAS.",
-            "Separate tested implementation from deployment and monitored manual activation.",
+            "Verify deployment and a bounded production PR/issue cycle after merge.",
+            "General AA/holdout qualification is not asserted by manual publication authority.",
+            "Qualified-alias automation remains disabled and separately gated.",
         ],
         "provider_calls": 0,
         "remote_storage_writes": 0,
         "production_mutations": 0,
     }
-    assert config.mode == "shadow" and config.publication_mode == "report_only"
-    assert not config.admissions and not report["production_config"]["enabled"]
     (OUT / "readiness.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

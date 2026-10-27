@@ -49,6 +49,8 @@ def jobs():
         previous.DIRECTORY = path.parent
         for role, cid, route, payload, packet, entry in previous.jobs():
             if role == "deepseek" and "gemini" in judges:
+                if route.structured_output_method != "prompt_only":
+                    raise RuntimeError("Frozen Gemini jobs require prompt-only schema shaping")
                 role = "gemini"
                 route = replace(
                     ROUTE_REGISTRY["beatapi_gpt_6_1_sol_free"],

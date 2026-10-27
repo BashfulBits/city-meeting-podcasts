@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -134,6 +135,8 @@ def run_report_only_plan(
     *, repo_root: Path, output: Path, plan_path: Path, plan_sha256: str | None
 ):
     """One explicit frozen source, local receipts and Worker inference; no production ledger."""
+    if not plan_sha256 or not re.fullmatch(r"[0-9a-f]{64}", plan_sha256):
+        raise ValueError("report-only plan requires an exact lowercase --plan-sha256")
     if output.exists():
         raise FileExistsError(output)
     try:

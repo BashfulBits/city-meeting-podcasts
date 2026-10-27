@@ -9,6 +9,7 @@ import yaml
 
 from citypods.audit_remedy import P3_ROLE_PLANS
 from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm import LLMBackendError, LLMStructuredOutputError
 from citypods.remedy_evaluation import RemedyConfig
 from citypods.remedy_p3_runner import P3LocalReportRunner, p3_enabled
 
@@ -25,6 +26,9 @@ from citypods.remedy_p3_runner import P3LocalReportRunner, p3_enabled
         "unknown_finding",
         "wrong_recipe",
         "wrong_returned_model",
+        "transport_error",
+        "capacity_error",
+        "unknown_request",
     ],
 )
 def test_two_model_flow_preserves_results_and_never_calls_judges(tmp_path, monkeypatch, outcome):
@@ -60,7 +64,17 @@ def test_two_model_flow_preserves_results_and_never_calls_judges(tmp_path, monke
                 task=job.task, recipe_hash=job.recipe_hash, backend="llm-dispatch-v2", ref="pending"
             )
         if role == "deepseek" and outcome in {"failure", "pending_peer_failure"}:
-            raise RuntimeError("Do not copy secret-bearing exception messages to reports")
+            raise LLMStructuredOutputError(
+                "Do not copy secret-bearing exception messages to reports"
+            )
+        if role == "deepseek" and outcome in {
+            "transport_error",
+            "capacity_error",
+            "unknown_request",
+        }:
+            if outcome == "unknown_request":
+                raise RuntimeError(outcome)
+            raise LLMBackendError(outcome)
         content = {
             "decision": {
                 "finding_id": "f0",
@@ -110,6 +124,15 @@ def test_two_model_flow_preserves_results_and_never_calls_judges(tmp_path, monke
         "existing_feeds": [{"slug": "test-city-council", "podcast_title": "Council"}],
         "unexpected_findings": [finding],
     }
+    if outcome in {"transport_error", "capacity_error", "unknown_request"}:
+        with pytest.raises(RuntimeError, match=outcome):
+            runner.run_finding(source, finding)
+        records = [json.loads(p.read_text()) for p in tmp_path.glob("*.json")]
+        assert not any("failure" in row.get("response", {}) for row in records)
+        with pytest.raises(RuntimeError, match="unresolved report-only intent"):
+            runner.run_finding(source, finding)
+        assert backend.run_inference.call_count == 2
+        return
     result = runner.run_finding(source, finding)
     assert result["status"] == "report_ready"
     report = result["report"]

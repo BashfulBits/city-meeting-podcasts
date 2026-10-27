@@ -1,7 +1,7 @@
 # Concise-prompt runtime reevaluation
 
 The maintainer requested another evaluation with clear, nonduplicated prompts and repeatable
-Python packet generation. `run-approval.json` records the fresh twelve-case run, capped at48
+Python packet generation. `run-approval.json` records the fresh twelve-case run, capped at 48
 single-attempt requests with no retries. Earlier results and their gold remain unchanged.
 
 ## Generate the packet offline
@@ -47,8 +47,8 @@ No new case-specific owner/archive policy or expected answer is inserted.
 - Changed JEV instruction/data changes its recipe hash. Reviewed runtime bindings also cover the
   context builder and prompt revision, preventing reuse of prior prompt qualifications.
 
-The audit reduced the two previously oversized JEV bundles from roughly44–45k estimated tokens
-to11,328 (RQ09) and11,145 (RQ10). The largest across all twelve audited bundles is11,328.
+The audit reduced the two previously oversized JEV bundles from roughly 44–45k estimated tokens
+to 11,328 (RQ09) and 11,145 (RQ10). The largest across all twelve audited bundles is 11,328.
 This is an estimate using prior proposals, not an actual provider token count for the new run.
 
 Models/routes, schema, deterministic validator, exact consensus comparator, source evidence and
@@ -58,8 +58,8 @@ case-specific view. This reused challenge is not an independent production holdo
 ## Execute or score
 
 The existing bounded `run_runtime_qualification.py` executor checks the newly generated authority,
-source hashes and frozen payloads. It retains the fresh ledger's48-attempt cap, one attempt per
-case/role,65-second provider spacing,720-second deadline,16,384 chat output cap, default reasoning,
+source hashes and frozen payloads. It retains the fresh ledger's 48-attempt cap, one attempt per
+case/role, 65-second provider spacing, 720-second deadline, 16,384 chat output cap, default reasoning,
 no temperature override, primary accounts only, exact identity validation, owned provider pauses,
 drain/reservations and owned-only restoration. JEV retains its native systemone wire.
 
@@ -82,14 +82,14 @@ No production routing, remedy PR/issue creation, merge, deployment or activation
 
 ## First attempt held; one scheduled retry explicitly approved
 
-The first RQ01 Flash request returned HTTP429 `free_rate_limited`, with provider retry-after
+The first RQ01 Flash request returned HTTP 429 `free_rate_limited`, with provider retry-after
 13,556 seconds. No judgment was returned. `observed-hold.json` preserves this availability
 failure separately from quality. Both owned provider pauses were restored; no unknown request
 or active controller remains. There is no concise-prompt quality result yet.
 
 The maintainer then approved **one retry and scheduled continuation**. `retry-approval.json`
 pins that exact failure, the frozen original execution authority and the retry wrapper's source
-hash. Do not execute before2026-10-27T00:00:00.503737Z (October26,7pm America/Chicago). The heartbeat
+hash. Do not execute before 2026-10-27T00: 00: 00.503737Z (October 26, 7pm America/Chicago). The heartbeat
 `complete-concise-remedy-evaluation` will check the cooldown and controller state, then use:
 
 ```bash
@@ -98,23 +98,23 @@ PYTHONPATH="$PWD" python evals/remedy/retry_runtime_qualification.py   --approva
 
 Without `--execute`, this is offline preflight and returns the not-before time. Execution uses
 the approved suppressed credential wrapper. The retry is stored under measurement/approved-retry/
-and never replaces the first failure. Both count toward the same48-attempt cumulative cap;
+and never replaces the first failure. Both count toward the same 48-attempt cumulative cap;
 every other case/role keeps its one-attempt limit. A second rate limit or new access/profile/
 identity hold stops continuation. No paid fallback or secondary account is allowed.
 
-The wrapper shares the original lock, source/profile checks, transport, global65-second provider
+The wrapper shares the original lock, source/profile checks, transport, global 65-second provider
 spacing and owned-pause restoration. Scoring reads recursive attempt files, counts the original
 failure, and evaluates only completed judgments. If the budget is exhausted, report incomplete
 coverage rather than spending an extra attempt. The follow-up stays quiet before the cooldown
 and while unchanged, and is removed on completion, cancellation or a new blocking hold.
 
 Forty focused tests passed, including preservation of the original failure, no repeat of the
-approved retry, and cumulative budget accounting across the nested retry directory. The full suite including the retry wrapper passed6,924 offline tests (17 deselected). Legacy chat/JEV representative payloads and recipes were also
+approved retry, and cumulative budget accounting across the nested retry directory. The full suite including the retry wrapper passed 6,924 offline tests (17 deselected). Legacy chat/JEV representative payloads and recipes were also
 compared against the pre-change source and matched exactly.
 
 ## Completed outcome
 
-The run completed:39/48 attempts,38 judgments, all12 case summaries, no input holds. The approved
+The run completed: 39/48 attempts, 38 judgments, all 12 case summaries, no input holds. The approved
 retry succeeded; both pauses were restored and the heartbeat was deleted. See `RESULTS.md`,
 `observed-results.json` and `completion-summary.json`. Matched semantic error counts did not improve.
 Production remains unchanged; no output-routing policy was selected.

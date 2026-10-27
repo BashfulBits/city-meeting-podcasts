@@ -250,3 +250,12 @@ def test_cli_is_local_report_only_and_creates_a_held_report(tmp_path: Path):
     assert json.loads(output.read_text(encoding="utf-8"))["decision"]["disposition"] == (
         "policy_hold"
     )
+
+
+def test_legacy_input_hash_matches_pre_role_plan_contract():
+    import hashlib
+
+    saved = record()
+    old_payload = saved.model_dump(mode="json", exclude={"role_plan", "initial_failures"})
+    encoded = json.dumps(old_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    assert build_p3_report(saved)["input_hash"] == hashlib.sha256(encoded.encode()).hexdigest()

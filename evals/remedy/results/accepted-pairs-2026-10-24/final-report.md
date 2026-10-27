@@ -1,28 +1,28 @@
 # Accepted-pair adjudications complete — October 24, 2026
 
-All24 approved judgments returned HTTP200, exact requested model identity and schema-valid
+All 24 approved judgments returned HTTP 200, exact requested model identity and schema-valid
 responses on their first attempts. Both actual proposal sets were frozen before calls. No initial
 answers were rerun, no gold was sent to judges and no prior judgments were reused for new A/B
 proposals. Original gold and scores remain unchanged. User acceptance is recorded separately.
 
-| Complete60-case cascade | Original-gold correct | Accepted initial exceptions | New wrong resolutions | Manual disagreements | Initial contract holds |
+| Complete 60-case cascade | Original-gold correct | Accepted initial exceptions | New wrong resolutions | Manual disagreements | Initial contract holds |
 |---|---:|---:|---:|---:|---:|
 | Flash + DeepSeek, then Gemini + JEV |55|2|0|3|0|
 | Flash + fullGLM, then DeepSeek + JEV |55|3|0|0|2|
 
-Flash/DeepSeek:51 original-gold correct initial agreements and two maintainer-accepted initial
+Flash/DeepSeek: 51 original-gold correct initial agreements and two maintainer-accepted initial
 exceptions, plus four correct new resolutions and three manual disagreements. JEV and Gemini
-failed to agree on the exact action/feed set for Dallas Streets August22, Dallas Streets May25
-and Dallas Community Bond Task Force August15
+failed to agree on the exact action/feed set for Dallas Streets August 22, Dallas Streets May 25
+and Dallas Community Bond Task Force August 15
 (recording-eef10050e298d3758921b67a). A correct chat answer alone
 or a plausible alternative does not override a nonmatching judge pair. These three stay manual.
 
-Flash/fullGLM:50 original-gold correct initial agreements and three maintainer-accepted Dallas
+Flash/fullGLM: 50 original-gold correct initial agreements and three maintainer-accepted Dallas
 initial exceptions, plus five correct new resolutions. The Addison Citizen Advisory invented
 feed slug and the candidate-forum changed-case-ID fullGLM outputs remain two contract holds.
 The new adjudication never repairs or retries those initial invalid outputs.
 
-Thus measured accepted automatic outcomes are57/60 and58/60 respectively, counting the explicit
+Thus measured accepted automatic outcomes are 57/60 and 58/60 respectively, counting the explicit
 maintainer exceptions separately. The latter gains one automatic outcome on this reused cohort;
 it does not establish production precision, independent serving weights or generally independent
 Flash/fullGLM errors. They share the GLM family. Physical fullGLM provider partitions and mixed
@@ -34,8 +34,8 @@ and deterministic evidence gates are not silently waived. Judge roles were expli
 
 Raw responses, exact request intents and packet hashes are retained in adjudication/ and
 final-evidence-sha256.json. The primary-only run used the approved BeatAPI provider pause,
-65-second singleflight spacing,720-second deadline,default reasoning,no temperature override,
-16,384 chat output cap and existing JEV protocol. Registered routes reserved exactDO quota;
+65-second singleflight spacing, 720-second deadline, default reasoning, no temperature override,
+16,384 chat output cap and existing JEV protocol. Registered routes reserved exact DO quota;
 unregistered Gemini was coordinated by provider pause. Secondary account was never used.
 The controller exited and its owned provider pause was released; foreign pauses were preserved.
 The five-minute monitor is deleted after finalization.
@@ -46,7 +46,7 @@ Both pairings are task-accepted and their actual disagreement cascades are now m
 remaining work is the reviewed narrow admission/coordination integration design described in
 next-step.md: replace the unavailable Sol role map, bind trusted route/prompt/policy/schema/
 parameter-specific evaluation artifacts into validate_admission, define JEV's bounded evidence
-alternative, resolve physical serving identities and reconcile storage/CAS withDO coordination.
+alternative, resolve physical serving identities and reconcile storage/CAS with DO coordination.
 Do not turn mixed-profile pooled fullGLM evidence into an unreviewed single-route admission.
 
 Recommendation: retain both accepted options. Flash/DeepSeek preserves model-family diversity;

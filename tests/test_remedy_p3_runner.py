@@ -389,7 +389,7 @@ def test_isolated_plan_is_held_before_any_backend_or_production_storage(monkeypa
         plan_sha256=hashlib.sha256(raw).hexdigest(),
     )
     assert result["status"] == "policy_hold"
-    assert not (root / "report.artifacts").exists()
+    assert not list(root.glob("p3-run-*"))
 
 
 def test_selected_plan_evidence_hash_uses_runtime_schema_and_nonrecursive_policy():
@@ -709,3 +709,32 @@ def test_concise_jev_recipe_changes_when_actual_proposal_changes():
         update={"decision": votes[0].decision.model_copy(update={"rationale": "Changed candidate"})}
     )
     assert build([changed, votes[1]]).recipe_hash != original.recipe_hash
+
+
+@pytest.mark.parametrize("digest", [None, "", "bad", "A" * 64])
+def test_report_only_plan_requires_reviewed_digest_before_reading_files(tmp_path, digest):
+    from scripts.remedy_p3_daily import run_report_only_plan
+
+    with pytest.raises(ValueError, match="requires an exact lowercase --plan-sha256"):
+        run_report_only_plan(
+            repo_root=tmp_path,
+            output=tmp_path / "output.json",
+            plan_path=tmp_path / "absent.json",
+            plan_sha256=digest,
+        )
+    assert not list(tmp_path.iterdir())
+
+
+def test_atomic_local_receipts_preserve_existing_bytes_and_leave_no_partial_json(tmp_path):
+    from citypods.remedy_p3_runner import _write_local_json_exclusive
+
+    target = tmp_path / "receipt.json"
+    with pytest.raises(TypeError):
+        _write_local_json_exclusive(target, {"invalid": object()})
+    assert not list(tmp_path.iterdir())
+    _write_local_json_exclusive(target, {"complete": True})
+    before = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        _write_local_json_exclusive(target, {"replace": True})
+    assert target.read_bytes() == before
+    assert list(tmp_path.iterdir()) == [target]

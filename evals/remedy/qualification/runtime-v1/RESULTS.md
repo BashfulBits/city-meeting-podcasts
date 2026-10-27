@@ -75,15 +75,15 @@ original expectations, outputs and raw scores above remain unchanged. RQ04/RQ05 
 With RQ06 accepted, four of six automatic candidates are acceptable and two are wrong.
 Gemini has three wrong decisions among six completed judgments (50%): RQ04/RQ09/RQ10.
 JEV selected a wrong proposal once among four completed judgments (25%): RQ04. Its RQ09 local
-input hold and RQ10 HTTP400 are coverage failures, excluded from semantic error denominators.
-Originally scored errors were Gemini4/6 and JEV2/4; acceptance is not a gold rewrite. The subsets
+input hold and RQ10 HTTP 400 are coverage failures, excluded from semantic error denominators.
+Originally scored errors were Gemini 4/6 and JEV 2/4; acceptance is not a gold rewrite. The subsets
 are small and differ, so these rates do not establish that one adjudicator is more accurate.
 
 ## Untouched cases completed — final review snapshot
 
 The explicitly authorized continuation measured RQ11/RQ12 without repeating prior answers or
 input failures. All twelve cases now have both initial model answers. Cumulative usage is
-37/48 provider attempts:36 completed judgments and one JEV HTTP400. An additional JEV request
+37/48 provider attempts: 36 completed judgments and one JEV HTTP 400. An additional JEV request
 was held locally before sending. Both owned pauses were restored; there are no unknown requests.
 The two JEV input failures remain terminal, not successes or pending automatic retries.
 
@@ -104,21 +104,21 @@ kept RQ12 as an issue candidate. This wrong semantic proposal did not create a w
 | RQ07 | Correct new-feed semantics; exact wording did not converge | Issue candidate |
 | RQ08 | Correct manual fallback | Issue candidate |
 | RQ09 | Wrong new-feed proposals; JEV not sent due input profile | Held |
-| RQ10 | Wrong new-feed/union proposals; JEV input-length HTTP400 | Held |
+| RQ10 | Wrong new-feed/union proposals; JEV input-length HTTP 400 | Held |
 | RQ11 | Correct manual fallback | Issue candidate |
 | RQ12 | Wrong new-feed proposal against approved manual control | Issue candidate |
 
-With RQ06 accepted, Gemini made4 wrong decisions in7 completed judgments (57.1%); JEV selected
-a wrong proposal2 times in5 completed judgments (40%). On their identical answered-case
-intersection RQ02/RQ04/RQ06/RQ07/RQ12, each was wrong2/5 (40%): RQ04 and RQ12. The overall rate
+With RQ06 accepted, Gemini made 4 wrong decisions in 7 completed judgments (57.1%); JEV selected
+a wrong proposal 2 times in 5 completed judgments (40%). On their identical answered-case
+intersection RQ02/RQ04/RQ06/RQ07/RQ12, each was wrong 2/5 (40%): RQ04 and RQ12. The overall rate
 difference reflects coverage, not evidence that JEV outperformed Gemini. JEV's missing RQ09/RQ10
-judgments are excluded from semantic error rates. Original raw rates remain Gemini5/7 and JEV3/5.
-Each initial model has6 original-score correct/6 wrong; accepting RQ06 yields7 acceptable/5 wrong.
+judgments are excluded from semantic error rates. Original raw rates remain Gemini 5/7 and JEV 3/5.
+Each initial model has 6 original-score correct/6 wrong; accepting RQ06 yields 7 acceptable/5 wrong.
 
-For the maintainer's routing decision, the tested sandbox would offer6 PR candidates:4 acceptable
-and2 wrong (33.3% of proposed PRs;16.7% of all12 cases). The other6 cases consist of4 issue
-candidates and2 input holds requiring visible manual/issue handling. An all-issues policy would
-instead require human triage of all12 cases before any remedy PR; this experiment did not test
+For the maintainer's routing decision, the tested sandbox would offer 6 PR candidates: 4 acceptable
+and 2 wrong (33.3% of proposed PRs;16.7% of all 12 cases). The other 6 cases consist of 4 issue
+candidates and 2 input holds requiring visible manual/issue handling. An all-issues policy would
+instead require human triage of all 12 cases before any remedy PR; this experiment did not test
 whether human reviewers actually catch the wrong proposals. Neither output policy was activated.
 These small challenge-set rates are descriptive, not a production error-rate estimate.
 
@@ -128,7 +128,7 @@ two new case summaries, linked to the original compact baseline by hash. Raw gen
 remain local. Use the scorer's `--baseline` / `--freeze-additional` options to freeze new immutable
 observations after the controller exits; it rejects unresolved requests and changed baseline rows.
 
-All6,920 offline tests passed (17 deselected), including continuation guards for new auth holds,
+All 6,920 offline tests passed (17 deselected), including continuation guards for new auth holds,
 unknown intents and repeated cases. Whole-repository lint/format passed. Production remains
 shadow/report_only with empty admissions. No merge, deployment, routing change or remedy PR/issue
 creation occurred. The maintainer can now review the complete measured initial-case coverage

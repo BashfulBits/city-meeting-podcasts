@@ -10,7 +10,9 @@ import fcntl
 import inspect
 import json
 import math
+import os
 import re
+import tempfile
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -33,7 +35,12 @@ from citypods.audit_remedy import (
 )
 from citypods.audit_remedy_report import P3ReportInput, build_p3_report
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
-from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+from citypods.compute.llm import (
+    LiteLLMBackend,
+    LLMBackendConfig,
+    LLMDispatchRejectedError,
+    LLMStructuredOutputError,
+)
 from citypods.compute.llm_policy import (
     ROUTE_CANDIDATES,
     ROUTE_REGISTRY,
@@ -745,27 +752,34 @@ class P3DailyRunner:
                 result = self.backend.reconcile(result)
                 if result is None:
                     return False, True
-            if not isinstance(result, JobResult):
-                raise TypeError("P3 Worker backend returned neither a result nor a deferred handle")
-            if self.plan.chat is None:
-                if result.task != job.task or result.recipe_hash != job.recipe_hash:
-                    raise ValueError("completed result does not bind this request")
-                requested = _upstream_for(role, self.plan.name)
-                if result.output.get("model") not in _accepted_returned_models(
-                    result.route_id, requested
-                ):
-                    raise ValueError("actual returned model does not match this request")
-            response = _response_from_result(
-                result, role=role, finding_id=finding_id, role_plan=self.plan.name
-            )
-            if self.plan.chat is None:
-                _decision_from_chat(response, finding_id)
-        except Exception as exc:
+        except (LLMDispatchRejectedError, LLMStructuredOutputError) as exc:
             if self.plan.chat is not None:
                 raise
-            # No exception text or unverified returned identity is asserted as model evidence.
-            # The Worker/local call receipt retains the raw failure, bound by the recipe.
             failure_kind = type(exc).__name__
+        else:
+            try:
+                if not isinstance(result, JobResult):
+                    raise TypeError("P3 Worker returned neither a result nor a deferred handle")
+                if self.plan.chat is None:
+                    if result.task != job.task or result.recipe_hash != job.recipe_hash:
+                        raise ValueError("completed result does not bind this request")
+                    requested = _upstream_for(role, self.plan.name)
+                    if result.output.get("model") not in _accepted_returned_models(
+                        result.route_id, requested
+                    ):
+                        raise ValueError("actual returned model does not match this request")
+                response = _response_from_result(
+                    result, role=role, finding_id=finding_id, role_plan=self.plan.name
+                )
+                if self.plan.chat is None:
+                    _decision_from_chat(response, finding_id)
+            except (ValueError, TypeError, KeyError) as exc:
+                if self.plan.chat is not None:
+                    raise
+                failure_kind = type(exc).__name__
+        if failure_kind:
+            # Only completed contract failures or explicit structural refusals are terminal.
+            # Capacity, transport, bookkeeping and unknown-request errors propagate unchanged.
             response = {"failure": {"kind": failure_kind}}
         upstream = "unverified"
         if not failure_kind:
@@ -954,8 +968,7 @@ class P3LocalReportRunner(P3DailyRunner):
             if json.loads(path.read_text()) != payload:
                 raise ValueError("immutable report observation conflict")
             return
-        with path.open("x") as stream:
-            json.dump(payload, stream, sort_keys=True)
+        _write_local_json_exclusive(path, payload)
 
     def _run_job(self, job):
         if not re.fullmatch(r"[0-9a-f]{64}", job.recipe_hash):
@@ -977,25 +990,39 @@ class P3LocalReportRunner(P3DailyRunner):
             raise RuntimeError("unresolved report-only intent; never resubmit unknown call")
         inputs = dict(job.inputs)
         inputs["llm_policy"] = asdict(inputs["llm_policy"])
-        with intent.open("x") as stream:
-            json.dump({"task": job.task, "recipe_hash": job.recipe_hash, "inputs": inputs}, stream)
+        _write_local_json_exclusive(
+            intent, {"task": job.task, "recipe_hash": job.recipe_hash, "inputs": inputs}
+        )
         result = self.backend.run_inference(job)
         if not isinstance(result, (JobHandle, JobResult)):
             raise TypeError("report-only backend returned an invalid receipt")
-        with receipt.open("x") as stream:
-            json.dump(
-                {
-                    "kind": "handle" if isinstance(result, JobHandle) else "result",
-                    "value": asdict(result),
-                },
-                stream,
-            )
+        _write_local_json_exclusive(
+            receipt,
+            {
+                "kind": "handle" if isinstance(result, JobHandle) else "result",
+                "value": asdict(result),
+            },
+        )
         return result
 
     def run_finding(self, source, finding):
         with (self.artifact_root / "controller.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return super().run_finding(source, finding)
+
+
+def _write_local_json_exclusive(path: Path, payload: Any) -> None:
+    """Publish complete local JSON atomically without replacing an existing receipt."""
+    encoded = json.dumps(payload, sort_keys=True)
+    fd, temporary = tempfile.mkstemp(prefix=".p3-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def make_default_backend(storage) -> LiteLLMBackend:

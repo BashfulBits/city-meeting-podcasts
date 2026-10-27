@@ -3,7 +3,7 @@
 This packet tests the actual P3 prompt/schema/role plan on twelve real historical source findings.
 It is a bounded challenge, with source-family overlap and some reused recordings, not an
 independent production-admission holdout. The maintainer approved all RQ01–RQ12 expectations
-on October26; `outcome-acceptance.json` records the exact instruction and reviewed hashes.
+on October 26; `outcome-acceptance.json` records the exact instruction and reviewed hashes.
 The separate maximum 48-attempt budget is approved in `budget-approval.json`.
 The earlier outcome-only approval remains an immutable historical record.
 
@@ -108,7 +108,7 @@ spend the proposed maximum 48 single-attempt provider requests.
 
 ## Measurement budget approved — pre-merge
 
-The maintainer approved the maximum 48 attempts on October26. `budget-approval.json` records
+The maintainer approved the maximum 48 attempts on October 26. `budget-approval.json` records
 that authority, the exact frozen plan/approved-expectation hashes, executor hash and single output
 ledger. Run this direct runtime-payload qualification **before** merging; review the results in
 PR #2541 before merge. The deployed Worker integration run remains a separate later step.
@@ -139,8 +139,8 @@ local/ignored; a small observed-output summary can be retained after measurement
 
 ## Observed measurement — stopped
 
-See [RESULTS.md](RESULTS.md) and `observed-results.json`. The run stopped after31 attempts
-on a non-retryable JEV input-length HTTP400. Contract transfer remains unqualified: three of six
+See [RESULTS.md](RESULTS.md) and `observed-results.json`. The run stopped after 31 attempts
+on a non-retryable JEV input-length HTTP 400. Contract transfer remains unqualified: three of six
 sandbox automatic candidates violated the approved joint ownership or recording scope. Both owned
 provider pauses were restored; no retry or activation occurred. Review the failed baseline before
 authorizing any revised contract or further requests.
@@ -149,11 +149,11 @@ authorizing any revised contract or further requests.
 
 `continuation-approval.json` records the subsequent request to complete RQ11/RQ12 only. The
 reusable `continue_runtime_qualification.py` acknowledges the two exact terminal input-length
-receipts without retrying either request; all source/profile checks, the cumulative48-attempt
+receipts without retrying either request; all source/profile checks, the cumulative 48-attempt
 ledger and shared controller lock remain enforced. Any different access/profile/identity hold
 or unknown outcome blocks continuation. This approval does not authorize another experiment,
 modified prompts or production behavior. No routing policy has been chosen by this continuation.
 
-RQ11/RQ12 are now measured; all12 initial cases have answers. See the final section of
+RQ11/RQ12 are now measured; all 12 initial cases have answers. See the final section of
 `RESULTS.md` and `completion-summary.json` for acceptance-aware rates and PR-versus-issue counts.
 The terminal JEV limits remain documented. No further requests or routing changes are enabled.
