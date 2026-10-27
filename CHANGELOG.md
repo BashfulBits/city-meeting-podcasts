@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Defer a source calendar upload after exhausted transient storage reads instead of aborting
+  judge finalization. Preserve both local and remote calendars and continue other sources;
+  permission and programming errors still propagate. No artifact invalidation or backfill.
+
 - LLM dispatch: `MAX_BUNDLE_JOBS` 5 -> 6 (and `MAX_JOBS_PER_MODEL_CLAIM` 5 -> 6, which must not
   trail it) to use all six outbound connections a Worker invocation allows;
   `MAX_JOBS_PER_ROUTE_PER_BUNDLE` 3 -> 1. The per-route cap already counts each `route_id`

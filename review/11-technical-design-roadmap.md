@@ -2921,3 +2921,7 @@ Final human-review validation:6,933 full offline tests passed (17 deselected);57
 checks passed, including unknown finding IDs, mismatched request recipes and actual returned-model
 mismatches becoming human issues. Ten human-flow/failure scenarios cover no judge calls, no
 resubmission and explicit request references. Whole Ruff/format/diff checks passed.
+
+Maintainer-directed judge recovery (October 26, 2026 Central): calendar finalization defers
+only the affected source after exhausted transient remote reads, preserving the remote catalog
+and continuing other sources. No judge policy, quota, or artifact version changes.
