@@ -2354,3 +2354,7 @@ on main; the remaining host consumers and the source-build job now pin `ubuntu-2
 the existing vendored FFmpeg bundle and audio-runner container's noble codec/TLS ABI.
 Workflow contract tests guard the build/consumer alignment. The FFmpeg URL/checksum, container
 digest and pipeline versions stay unchanged; stored artifacts are retained without backfill.
+
+Maintainer-directed judge recovery (October 26, 2026 Central): calendar finalization defers
+only the affected source after exhausted transient remote reads, preserving the remote catalog
+and continuing other sources. No judge policy, quota, or artifact version changes.
