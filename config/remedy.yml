@@ -1,5 +1,6 @@
 version: 1
 mode: shadow
+p3_role_plan: flash-deepseek-human-v3
 # report_only: record the publication plan only; live: execute it (set after inspecting plans)
 publication_mode: report_only
 admissions: []

@@ -908,6 +908,7 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                     evidence,
                     repo_root=repo_root,
                     admitted_routes=admitted_p3_routes(config),
+                    role_plan=config.p3_role_plan,
                 )
             except ValueError as exc:
                 deferred.append({"finding_id": decision["finding_id"], "reason": str(exc)})

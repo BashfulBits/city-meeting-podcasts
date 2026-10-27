@@ -162,11 +162,17 @@ class P3RolePlan:
 
     name: str
     initial: tuple[str, str]
-    chat: str
+    chat: str | None
     bindings: tuple[tuple[str, str, str, str], ...]
 
     def __post_init__(self):
         roles = [row[0] for row in self.bindings]
+        if self.chat is None:
+            if len(set(self.initial)) != 2 or len(roles) != 2 or set(roles) != set(self.initial):
+                raise ValueError("human-review plan requires two distinct initial roles")
+            if len({r[1] for r in self.bindings}) != 2:
+                raise ValueError("P3 role plan cannot reuse physical routes")
+            return
         if (
             len(roles) != 4
             or len(set(roles)) != 4
@@ -226,6 +232,18 @@ P3_ROLE_PLANS = {
         ),
     ),
 }
+
+
+P3_ROLE_PLANS["flash-deepseek-human-v3"] = P3RolePlan(
+    "flash-deepseek-human-v3",
+    ("glm_flash", "deepseek"),
+    None,
+    tuple(
+        row
+        for row in P3_ROLE_PLANS["flash-deepseek-v2"].bindings
+        if row[0] in {"glm_flash", "deepseek"}
+    ),
+)
 
 
 class P3Vote(BaseModel):
@@ -323,7 +341,7 @@ def build_p3_review_decision(
     """
     plan = P3_ROLE_PLANS[role_plan]
     initial_routes = frozenset(plan.routes[r] for r in plan.initial)
-    chat_route = plan.routes[plan.chat]
+    chat_route = plan.routes[plan.chat] if plan.chat else None
     if not re.fullmatch(r"[0-9a-f]{64}", evidence_hash) or not re.fullmatch(
         r"[0-9a-f]{64}", policy_hash
     ):
@@ -367,6 +385,18 @@ def build_p3_review_decision(
             validator_passed=initial_valid,
             disposition="pr_candidate" if initial_valid else "issue_candidate",
             reason="initial routes agree" if initial_valid else "deterministic validation failed",
+        )
+    if plan.chat is None:
+        if adjudication is not None:
+            raise ValueError("human-review plan does not accept automated adjudication")
+        return P3ReviewDecision(
+            finding_id=finding_id,
+            evidence_hash=evidence_hash,
+            policy_hash=policy_hash,
+            initial_votes=initial_votes,
+            validator_passed=False,
+            disposition="issue_candidate",
+            reason="initial routes disagree; human review required",
         )
     if adjudication is None:
         return P3ReviewDecision(

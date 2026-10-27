@@ -41,3 +41,8 @@ See `evals/remedy/EXPERIMENTS.md` for clean-checkout scoring and reconstruction 
 October26 supersession: the maintainer accepted the exact GLM alias for report-only and
 production identity checks; see glm-alias-acceptance.json. Earlier alias holds in this document
 are historical. Runtime contract qualification and admissions remain held.
+
+October26 human-review supersession:the current plan is flash-deepseek-human-v3. Only Flash and
+DeepSeek require refreshed admissions and the monitored operational pilot; Gemini/JEV are retired
+from this adoption flow. The prior four-role bundle remains historical and cannot admit the new
+plan. See evals/remedy/qualification/human-review-v3/README.md for current steps and limitations.

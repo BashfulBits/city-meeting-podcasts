@@ -30,6 +30,7 @@ def validated_p3_plan(
     *,
     repo_root: str | Path,
     admitted_routes: set[str] | frozenset[str],
+    role_plan: str = "legacy-sol-v1",
 ) -> tuple[RemedyPlan, dict[str, Path]]:
     """Revalidate one report-ready consensus against the current local feed catalog.
 
@@ -47,6 +48,8 @@ def validated_p3_plan(
         raise ValueError("P3 report has no complete selected assignment")
     if canonical_hash(evidence) != decision.get("evidence_hash"):
         raise ValueError("P3 report does not bind the publication evidence")
+    if report.get("role_plan", "legacy-sol-v1") != role_plan:
+        raise ValueError("P3 report role plan does not match the trusted publication config")
     parsed_decision = P3ReviewDecision.model_validate(decision)
     recomputed = build_p3_review_decision(
         finding_id=parsed_decision.finding_id,
@@ -57,10 +60,11 @@ def validated_p3_plan(
         adjudication=parsed_decision.adjudication,
         adjudication_validator_passed=True,
         admitted_routes=admitted_routes,
+        role_plan=role_plan,
     )
     if recomputed != parsed_decision:
         raise ValueError("P3 decision does not recompute from its route-bound votes")
-    if candidate != _selected_proposal(parsed_decision):
+    if candidate != _selected_proposal(parsed_decision, role_plan):
         raise ValueError("P3 proposal candidate differs from the agreed route-bound assignment")
 
     assignment = BodyDecision.model_validate(candidate["assignment"])

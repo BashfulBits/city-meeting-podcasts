@@ -433,3 +433,24 @@ Restore owned pauses and remove the completed automation. No production admissio
 Completion validation:6,925 full offline tests passed (17 deselected); whole-repository
 Ruff/format/diff checks passed. The comparison test preserves original wrong scores, accepts only
 matching reviewed RQ06 assignments, and rejects transferring that exception to another case.
+
+Implement the approved two-model human-review plan:validated Flash/DeepSeek agreements propose
+reviewed PRs; disagreements, invalid responses, validator holds and failed calls become issues.
+Remove automated adjudication/admission requirements from this plan, preserve historical plans,
+and persist terminal failure evidence without fabricated identity/votes or repeated requests.
+Select the plan behind unchanged shadow/report-only/empty-admission gates. Offline policy replay
+gives4 PR candidates (3 correct,1 wrong shared agreement) and8 issues; no new provider calls.
+
+Human-review flow verification:6,932 offline tests passed (17 deselected), including7 focused
+flow/failure scenarios; whole Ruff/format/diff passed. Offline replay validates original route,
+requested/returned identity and f0 contract before reusing an answer; it fabricates no model vote.
+
+The publication boundary now carries the explicit role plan from the report and trusted config
+into consensus/selected-vote revalidation. New-plan PR candidates can reach the existing validator
+without being mistaken for Sol/Flash; mismatched plans fail closed. The end-to-end publication
+unit test revalidates a real two-model agreement and rejects it under the wrong plan.
+
+Final human-review validation:6,933 full offline tests passed (17 deselected);57 latest focused
+checks passed, including unknown finding IDs, mismatched request recipes and actual returned-model
+mismatches becoming human issues. Ten human-flow/failure scenarios cover no judge calls, no
+resubmission and explicit request references. Whole Ruff/format/diff checks passed.

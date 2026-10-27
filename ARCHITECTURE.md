@@ -2180,3 +2180,11 @@ The same shared factories generate evaluation and runtime payloads; the Python r
 builder records frozen inputs/hashes and audits duplication offline. This does not admit any
 role or change production shadow/report-only routing. See review/51 and
 `evals/remedy/qualification/runtime-v2/README.md`.
+
+The current unmerged remedy adoption plan is `flash-deepseek-human-v3`: Flash and DeepSeek only.
+Validated complete agreement can propose a human-reviewed PR; disagreement, validator rejection
+or a request/response failure becomes a human issue candidate. Terminal failures are immutable,
+request-bound observations with explicitly unverified serving identity, never fabricated votes;
+unchanged failed calls are not repeated. No Gemini/JEV admission or inference is required for this
+plan. The earlier four-role plans remain replayable. The selected config stays shadow/report_only
+with empty admissions; live publication and qualified-alias automatic merging remain gated.

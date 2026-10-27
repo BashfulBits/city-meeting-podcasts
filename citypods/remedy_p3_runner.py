@@ -695,16 +695,44 @@ class P3DailyRunner:
                 P3_CHAT_CONTRACT,
                 canonical_hash(P3ChatResponse.model_json_schema()),
             )
-        result = self._run_job(job)
-        if isinstance(result, JobHandle):
-            result = self.backend.reconcile(result)
-            if result is None:
-                return False, True
-        if not isinstance(result, JobResult):
-            raise TypeError("P3 Worker backend returned neither a result nor a deferred handle")
-        response = _response_from_result(
-            result, role=role, finding_id=finding_id, role_plan=self.plan.name
-        )
+        failure_kind = None
+        try:
+            result = self._run_job(job)
+            if isinstance(result, JobHandle):
+                result = self.backend.reconcile(result)
+                if result is None:
+                    return False, True
+            if not isinstance(result, JobResult):
+                raise TypeError("P3 Worker backend returned neither a result nor a deferred handle")
+            if self.plan.chat is None:
+                if result.task != job.task or result.recipe_hash != job.recipe_hash:
+                    raise ValueError("completed result does not bind this request")
+                requested = _upstream_for(role, self.plan.name)
+                if result.output.get("model") not in _accepted_returned_models(
+                    result.route_id, requested
+                ):
+                    raise ValueError("actual returned model does not match this request")
+            response = _response_from_result(
+                result, role=role, finding_id=finding_id, role_plan=self.plan.name
+            )
+            if self.plan.chat is None:
+                _decision_from_chat(response, finding_id)
+        except Exception as exc:
+            if self.plan.chat is not None:
+                raise
+            # No exception text or unverified returned identity is asserted as model evidence.
+            # The Worker/local call receipt retains the raw failure, bound by the recipe.
+            failure_kind = type(exc).__name__
+            response = {"failure": {"kind": failure_kind}}
+        upstream = "unverified"
+        if not failure_kind:
+            upstream = (
+                result.output["model"]
+                if self.plan.name != "legacy-sol-v1"
+                and (result.route_id, _upstream_for(role, self.plan.name))
+                in P3_RETURNED_MODEL_ALIASES
+                else result.upstream_model or _upstream_for(role, self.plan.name)
+            )
         record = make_observation(
             finding_id=finding_id,
             source_key=source_key,
@@ -717,14 +745,8 @@ class P3DailyRunner:
             policy_hash=policy_hash,
             route_id=self.plan.routes[role],
             logical_model=self.plan.models[role],
-            upstream_model=(
-                result.output["model"]
-                if self.plan.name != "legacy-sol-v1"
-                and (result.route_id, _upstream_for(role, self.plan.name))
-                in P3_RETURNED_MODEL_ALIASES
-                else result.upstream_model or _upstream_for(role, self.plan.name)
-            ),
-            reasoning_level=result.reasoning_level,
+            upstream_model=upstream,
+            reasoning_level=None if failure_kind else result.reasoning_level,
             response=response,
             role_plan=None if self.plan.name == "legacy-sol-v1" else self.plan.name,
         )
@@ -777,6 +799,21 @@ class P3DailyRunner:
             counts["pending"] += int(pending)
         observations = current_observations()
         by_role = {record.role: record for record in observations}
+        terminal_failure = self.plan.chat is None and any(
+            "failure" in record.response for record in observations
+        )
+        if self.plan.chat is None and (set(self.plan.initial) <= set(by_role) or terminal_failure):
+            report = build_runtime_report(
+                finding_id=finding_id,
+                evidence_hash=evidence_hash,
+                policy_hash=policy_hash,
+                evidence=evidence,
+                observations=observations,
+                admitted_routes=admitted_p3_routes(self.config),
+                repo_root=self.repo_root,
+                role_plan=self.plan.name,
+            )
+            return {"finding_id": finding_id, "status": "report_ready", "report": report, **counts}
         if not set(self.plan.initial) <= set(by_role):
             return {"finding_id": finding_id, "status": "initial_pending", **counts}
         votes, validators = _validator_outcomes(
@@ -844,7 +881,10 @@ class P3LocalReportRunner(P3DailyRunner):
 
     def __init__(self, *, artifact_root: Path, **kwargs):
         super().__init__(lease_factory=None, **kwargs)
-        if self.config.publication_mode != "report_only" or self.plan.name != "flash-deepseek-v2":
+        if self.config.publication_mode != "report_only" or self.plan.name not in {
+            "flash-deepseek-v2",
+            "flash-deepseek-human-v3",
+        }:
             raise ValueError("isolated P3 runner requires report_only")
         self.report_only = True
         self.artifact_root = artifact_root
@@ -953,11 +993,18 @@ def build_runtime_report(
         raise ValueError("report observations do not match current evidence/policy")
     plan = P3_ROLE_PLANS[role_plan]
     by_role = {item.role: item for item in observations}
-    if not set(plan.initial) <= set(by_role):
+    failures = {
+        record.route_id: record.response["failure"]["kind"]
+        for record in observations
+        if plan.chat is None and "failure" in record.response
+    }
+    if not set(plan.initial) <= set(by_role) and not failures:
         return None
     initial = []
     validators = {}
     for role in plan.initial:
+        if role not in by_role or by_role[role].route_id in failures:
+            continue
         record = by_role[role]
         decision = _decision_from_chat(record.response, finding_id)
         initial.append(
@@ -1013,19 +1060,32 @@ def build_runtime_report(
     # Manual disposition must let a maintainer choose any feed on this source, including a
     # reasonable target omitted by every model. These options come from local evidence, never
     # model-supplied slugs.
+    summary = {}
+    if failures:
+        summary["call_failure_refs"] = [
+            {
+                "route_id": r.route_id,
+                "kind": failures[r.route_id],
+                "recipe_hash": r.recipe_hash,
+                "request_hash": r.request_hash,
+                "observation_id": r.observation_id,
+                "upstream_model": "unverified",
+            }
+            for r in observations
+            if r.route_id in failures
+        ]
+    summary.update(source=source, body=body, finding=evidence["unexpected_findings"][0])
     report_input = P3ReportInput(
         schema_version=1,
         role_plan=role_plan,
         finding_id=finding_id,
         evidence_hash=evidence_hash,
         policy_hash=policy_hash,
-        evidence_summary=json.dumps(
-            {"source": source, "body": body, "finding": evidence["unexpected_findings"][0]},
-            sort_keys=True,
-        )[:20_000],
+        evidence_summary=json.dumps(summary, sort_keys=True)[:20_000],
         feeds=feeds,
         initial_votes=initial,
         initial_validators=validators,
+        initial_failures=failures,
         adjudication=adjudication,
         adjudication_validator_passed=adjudication_valid,
     )

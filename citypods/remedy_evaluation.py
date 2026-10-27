@@ -293,7 +293,9 @@ class RemedyConfig(StrictModel):
     # `live` after inspecting the plans. An operational switch, not policy: it is excluded from
     # the config fingerprint so changing it never invalidates a recorded decision or observation.
     publication_mode: Literal["report_only", "live"] = "report_only"
-    p3_role_plan: Literal["legacy-sol-v1", "flash-deepseek-v2"] = "legacy-sol-v1"
+    p3_role_plan: Literal["legacy-sol-v1", "flash-deepseek-v2", "flash-deepseek-human-v3"] = (
+        "legacy-sol-v1"
+    )
     admissions: list[AdmissionEntry]
     qualified_alias_types: list[dict[str, Any]]
     limits: Limits

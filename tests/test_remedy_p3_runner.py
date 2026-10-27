@@ -284,7 +284,9 @@ def test_daily_runner_reconciles_deferred_worker_handle_before_recording(monkeyp
         storage=object(),
         backend=backend,
         lease_factory=lambda: None,
-        config=RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text())),
+        config=RemedyConfig.model_validate(
+            yaml.safe_load(Path("config/remedy.yml").read_text())
+        ).model_copy(update={"p3_role_plan": "legacy-sol-v1"}),
         repo_root=".",
     )
     recorded = []

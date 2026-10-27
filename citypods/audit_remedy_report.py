@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, Literal
@@ -35,7 +36,9 @@ class P3ReportInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     schema_version: StrictInt
-    role_plan: Literal["legacy-sol-v1", "flash-deepseek-v2"] = "legacy-sol-v1"
+    role_plan: Literal["legacy-sol-v1", "flash-deepseek-v2", "flash-deepseek-human-v3"] = (
+        "legacy-sol-v1"
+    )
     finding_id: StrictStr = Field(min_length=1)
     evidence_hash: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
     policy_hash: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
@@ -43,6 +46,7 @@ class P3ReportInput(BaseModel):
     feeds: list[FeedLabel]
     initial_votes: list[P3Vote]
     initial_validators: dict[StrictStr, StrictBool]
+    initial_failures: dict[StrictStr, StrictStr] = Field(default_factory=dict)
     adjudication: P3Adjudication | None = None
     adjudication_validator_passed: StrictBool = False
 
@@ -55,12 +59,30 @@ class P3ReportInput(BaseModel):
             raise ValueError("feed slugs must be unique")
         if any(not SLUG_RE.fullmatch(feed.slug) or not feed.title.strip() for feed in self.feeds):
             raise ValueError("feed labels require valid slugs and nonblank titles")
-        if (
+        if plan.chat is None and self.adjudication is not None:
+            raise ValueError("human-review plan cannot carry automated adjudication")
+        if len({vote.route_id for vote in self.initial_votes}) != len(self.initial_votes):
+            raise ValueError(
+                "input must contain exactly the configured initial votes; duplicate vote"
+            )
+        failed = set(self.initial_failures)
+        votes = {vote.route_id for vote in self.initial_votes}
+        if failed and (
+            plan.chat is not None
+            or not (failed | votes) <= initial_routes
+            or failed & votes
+            or any(
+                not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", k)
+                for k in self.initial_failures.values()
+            )
+        ):
+            raise ValueError("invalid initial failure evidence")
+        if not failed and (
             len(self.initial_votes) != 2
             or {vote.route_id for vote in self.initial_votes} != initial_routes
         ):
             raise ValueError("input must contain exactly the configured Sol and GLM Flash votes")
-        if set(self.initial_validators) != initial_routes:
+        if set(self.initial_validators) != (votes if failed else initial_routes):
             raise ValueError("validator results must bind exactly the two initial routes")
         if any(vote.decision.finding_id != self.finding_id for vote in self.initial_votes):
             raise ValueError("initial vote finding IDs must match the report input")
@@ -94,24 +116,55 @@ def build_p3_report(
 ) -> dict[str, Any]:
     """Return one replay report; route admission is trusted caller context, never file input."""
     record.validate_contract()
-    decision = build_p3_review_decision(
-        finding_id=record.finding_id,
-        evidence_hash=record.evidence_hash,
-        policy_hash=record.policy_hash,
-        initial_votes=record.initial_votes,
-        initial_validators=record.initial_validators,
-        adjudication=record.adjudication,
-        adjudication_validator_passed=record.adjudication_validator_passed,
-        admitted_routes=admitted_routes,
-        role_plan=record.role_plan,
-    )
+    if record.initial_failures:
+        plan = P3_ROLE_PLANS[record.role_plan]
+        admitted = set(plan.routes.values()) <= set(admitted_routes)
+        decision = P3ReviewDecision(
+            finding_id=record.finding_id,
+            evidence_hash=record.evidence_hash,
+            policy_hash=record.policy_hash,
+            initial_votes=record.initial_votes,
+            validator_passed=False,
+            disposition="issue_candidate" if admitted else "policy_hold",
+            reason=(
+                "initial route failed; human review required: "
+                + ", ".join(
+                    f"{route} ({kind})" for route, kind in sorted(record.initial_failures.items())
+                )
+            )
+            if admitted
+            else "initial routes are not admitted for this run",
+        )
+    else:
+        decision = build_p3_review_decision(
+            finding_id=record.finding_id,
+            evidence_hash=record.evidence_hash,
+            policy_hash=record.policy_hash,
+            initial_votes=record.initial_votes,
+            initial_validators=record.initial_validators,
+            adjudication=record.adjudication,
+            adjudication_validator_passed=record.adjudication_validator_passed,
+            admitted_routes=admitted_routes,
+            role_plan=record.role_plan,
+        )
     report: dict[str, Any] = {
         "schema_version": 1,
-        "input_hash": hashlib.sha256(_canonical_json(record.model_dump(mode="json"))).hexdigest(),
+        "input_hash": hashlib.sha256(
+            _canonical_json(
+                record.model_dump(
+                    mode="json",
+                    exclude={"initial_failures"} if not record.initial_failures else set(),
+                )
+            )
+        ).hexdigest(),
         "decision": decision.model_dump(mode="json"),
         "evidence_summary": record.evidence_summary,
         "feeds": [feed.model_dump(mode="json") for feed in record.feeds],
     }
+    if record.role_plan != "legacy-sol-v1":
+        report["role_plan"] = record.role_plan
+    if record.initial_failures:
+        report["initial_failures"] = dict(record.initial_failures)
     if decision.disposition == "pr_candidate":
         report["proposal_candidate"] = _selected_proposal(decision, record.role_plan)
     elif decision.disposition == "issue_candidate":

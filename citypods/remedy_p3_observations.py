@@ -1,4 +1,4 @@
-"""Append-only storage for completed P3 model observations.
+"""Append-only storage for completed P3 model observations and terminal human-review failures.
 
 P3 model output is intermediate evidence, not a maintainer disposition. Keep these objects apart
 from ``remedy_ledger`` events while sharing its source-scoped storage and maintenance lease.
@@ -38,7 +38,7 @@ _HASH = re.compile(r"^[0-9a-f]{64}$")
 
 @dataclass(frozen=True)
 class P3Observation:
-    """One completed route response, bound to its input and Worker recipe."""
+    """One completed response or explicit terminal failure, bound to its Worker request."""
 
     schema_version: int
     observation_id: str
@@ -123,7 +123,13 @@ def parse_observation(payload: Any) -> P3Observation:
             or plan.fingerprint != payload["role_plan_hash"]
         ):
             raise ValueError("P3 observation: invalid role plan binding")
-        roles = plan.initial if payload["stage"] == "initial" else (plan.chat, "jev")
+        roles = (
+            plan.initial
+            if payload["stage"] == "initial"
+            else (plan.chat, "jev")
+            if plan.chat is not None
+            else ()
+        )
         if payload["role"] not in roles:
             raise ValueError("P3 observation: role is not valid for the stage")
         expected = (plan.routes[payload["role"]], plan.models[payload["role"]])
@@ -145,6 +151,17 @@ def parse_observation(payload: Any) -> P3Observation:
         raise ValueError("P3 observation: reasoning_level must be text or null")
     if not isinstance(payload["response"], dict):
         raise ValueError("P3 observation: response must be a JSON object")
+    if payload.get("role_plan") == "flash-deepseek-human-v3" and "failure" in payload["response"]:
+        failure = payload["response"]["failure"]
+        if (
+            payload["upstream_model"] != "unverified"
+            or set(payload["response"]) != {"failure"}
+            or not isinstance(failure, dict)
+            or set(failure) != {"kind"}
+            or not isinstance(failure["kind"], str)
+            or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", failure["kind"])
+        ):
+            raise ValueError("P3 observation: invalid terminal failure")
     try:
         json.dumps(payload["response"], allow_nan=False)
         response_digest = canonical_hash(payload["response"])
@@ -182,7 +199,7 @@ def make_observation(
     observed_at: datetime | None = None,
     role_plan: str | None = None,
 ) -> P3Observation:
-    """Build a validated immutable observation when a completed Worker result is collected."""
+    """Build an immutable response/failure observation; never claim an unverified identity."""
     timestamp = observed_at or datetime.now(UTC)
     if timestamp.utcoffset() is None or timestamp.utcoffset().total_seconds() != 0:
         raise ValueError("observed_at must be UTC")

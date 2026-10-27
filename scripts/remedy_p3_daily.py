@@ -151,7 +151,7 @@ def run_report_only_plan(
     config = RemedyConfig.model_validate(plan["config"])
     if config.mode != "manual" or config.publication_mode != "report_only":
         raise ValueError("isolated run must be manual/report_only")
-    if config.p3_role_plan != "flash-deepseek-v2":
+    if config.p3_role_plan not in {"flash-deepseek-v2", "flash-deepseek-human-v3"}:
         raise ValueError("isolated plan must select the reviewed Flash/DeepSeek flow")
     if not p3_enabled(config, repo_root=repo_root, for_report_only=True):
         result = {

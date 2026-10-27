@@ -173,3 +173,29 @@ https://developers.cloudflare.com/durable-objects/best-practices/access-durable-
 Do not modify current config/remedy.yml mode/admissions/publication_mode, production provider
 limits/catalog, Worker deployment, paid policies, official metadata, gold or original raw results.
 A passing offline test is not a production-admission decision. Keep P4/P5 and merge gates intact.
+
+## Superseding adoption policy — October26 Central
+
+The maintainer approved `flash-deepseek-human-v3`: two initial roles only, no automated judge
+round. The implementation delta touches the already approved consensus/report, runner/observation,
+config and daily-caller modules. `P3RolePlan.chat=None` identifies the two-role contract; strict
+config/report literals include the new immutable plan. Older role maps remain replayable.
+`P3ReportInput.initial_failures` is optional and allowed only for the human-review plan; empty
+values are excluded from legacy report hashes. Failed request observations use explicit failure
+kind and unverified returned identity instead of fabricating a vote. Reports include request/recipe
+references and produce issues even while a peer's existing handle is pending. Worker/local raw
+receipts remain separate. Bookkeeping failures propagate; unchanged terminal failures are not reasked.
+
+The config selects the plan behind shadow/report_only/empty admissions. Two proposers alone need
+fresh admission evidence; the older four-role review bundle cannot grant it. No new benchmark
+score, route qualification, live run, deployment or publication authority is manufactured here.
+Current tests cover agreement, disagreement, validator holds, invalid/failed responses, pending-peer
+failure, repeated runs without resubmission, rejection of judge observations, and legacy replay.
+See `evals/remedy/qualification/human-review-v3/README.md` for the exact next operational gates.
+
+The user-approved agreement-to-PR behavior also requires the existing publication boundary:
+citypods/remedy_p3_publication.py and scripts/remedy_p3_publish.py now receive the explicit
+configured role plan; audit_remedy_report emits it for nonlegacy reports. The boundary rejects
+a mismatched plan and recomputes the actual initial pair. Legacy reports retain their default.
+This narrow plumbing correction is covered by tests/test_remedy_p3_publication.py and does not
+enable live publication or alter validators/budgets.

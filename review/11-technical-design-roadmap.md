@@ -2879,3 +2879,45 @@ comparisons with scoped acceptance while preserving raw scores. Bulk files remai
 Completion validation:6,925 full offline tests passed (17 deselected); whole-repository
 Ruff/format/diff checks passed. The comparison test preserves original wrong scores, accepts only
 matching reviewed RQ06 assignments, and rejects transferring that exception to another case.
+
+### Current adoption decision — Flash/DeepSeek filter, human review (October 26 Central)
+
+The maintainer explicitly approved replacing automated disagreement adjudication with human
+review. This supersedes the earlier once-per-disagreement escalation requirement for the current
+adoption plan; the original four-role designs and results remain historical/replayable. Rationale:
+matched semantic quality did not improve enough to justify extra inference/complexity, and a
+human will review proposed patches. This is a chosen workflow trade-off, not a claim that judges
+have proven random accuracy or that shared model errors disappear.
+
+`flash-deepseek-human-v3` binds only the two initial models/routes. Config selects it while remaining
+shadow/report_only/admissions[]. Validated exact agreement yields a PR candidate requiring human
+approval; disagreement, validator holds, invalid outputs and terminal failures yield human issue
+candidates. No Gemini/JEV calls or admissions are required. Request-bound failure observations
+use unverified identity, no fabricated vote, no exception message/secrets, and prevent re-asking
+unchanged failed requests. A peer handle may remain pending; no duplicate inference is submitted.
+Legacy observations/wire plans remain available, and old empty-failure report hashes are preserved.
+
+Offline replay with the real validator on the retained12-case answers gives4 PR candidates
+(3 correct,1 wrong RQ05) and8 issues, with no provider calls. Shared wrong agreements still need
+human PR review. `evals/remedy/qualification/human-review-v3/{decision.json,README.md}` records
+scope/reproduction/remaining steps; `replay_human_review.py` is the repeatable offline control-flow
+check. This is implemented in the unmerged PR #2541, not production activation or new model evidence.
+
+Next: clean CI/review and merge the foundation PR; refresh exact two-route admissions and one real
+finding's report-only plan; then perform the separately approved end-to-end operational pilot and
+inspect publication plans/feedback/recovery before enabling bounded manual publication. P5
+qualified-alias auto-merge stays separately gated/disabled. P1 does not require another bakeoff.
+
+Human-review flow verification:6,932 offline tests passed (17 deselected), including7 focused
+flow/failure scenarios; whole Ruff/format/diff passed. Offline replay validates original route,
+requested/returned identity and f0 contract before reusing an answer; it fabricates no model vote.
+
+The publication boundary now carries the explicit role plan from the report and trusted config
+into consensus/selected-vote revalidation. New-plan PR candidates can reach the existing validator
+without being mistaken for Sol/Flash; mismatched plans fail closed. The end-to-end publication
+unit test revalidates a real two-model agreement and rejects it under the wrong plan.
+
+Final human-review validation:6,933 full offline tests passed (17 deselected);57 latest focused
+checks passed, including unknown finding IDs, mismatched request recipes and actual returned-model
+mismatches becoming human issues. Ten human-flow/failure scenarios cover no judge calls, no
+resubmission and explicit request references. Whole Ruff/format/diff checks passed.
