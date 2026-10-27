@@ -458,6 +458,59 @@ def test_push_calendar_records_merged_skips_remote_listing_failure(tmp_path):
     assert load_calendar_records(state_dir, "src1") == {record.uid: record}
 
 
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_calendar_transient_read_defers_source_without_overwrite(tmp_path, wrapped):
+    from citypods.storage.base import StorageReadUnavailable
+
+    error = AttributeError("'StreamingChecksumBody' object has no attribute 'strip'")
+
+    class FailingReadStorage(LocalStorage):
+        def get_file(self, key, local_path):
+            if "/src1/" in key:
+                raise StorageReadUnavailable(key, error) if wrapped else error
+            return super().get_file(key, local_path)
+
+    bucket = FailingReadStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    record = AgendaRecord(
+        body="Council", title="Meeting", published=datetime(2020, 5, 1, tzinfo=UTC), uid="new"
+    )
+    for sk in ["src1", "src2"]:
+        save_calendar_records(state_dir, sk, {record.uid: record})
+    key = f"{STATE_PREFIX}/sources/src1/calendar.json"
+    original = b'{"records": {"remote-only": {}}}'
+    bucket._path(key).parent.mkdir(parents=True, exist_ok=True)
+    bucket._path(key).write_bytes(original)
+    local_before = calendar_records_path(state_dir, "src1").read_bytes()
+    messages = []
+
+    assert (
+        push_calendar_records_merged(bucket, state_dir, ["src1", "src2"], log=messages.append) == 1
+    )
+    assert bucket._path(key).read_bytes() == original
+    assert calendar_records_path(state_dir, "src1").read_bytes() == local_before
+    assert bucket.exists(f"{STATE_PREFIX}/sources/src2/calendar.json")
+    assert "skipping push" in messages[0]
+
+
+@pytest.mark.parametrize("error", [AttributeError("unrelated bug"), PermissionError("denied")])
+def test_calendar_nontransient_read_failure_propagates(tmp_path, error):
+    class FailingReadStorage(LocalStorage):
+        def get_file(self, key, local_path):
+            raise error
+
+    bucket = FailingReadStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    record = AgendaRecord(
+        body="Council", title="Meeting", published=datetime(2020, 5, 1, tzinfo=UTC), uid="u1"
+    )
+    save_calendar_records(state_dir, "src1", {record.uid: record})
+    key = f"{STATE_PREFIX}/sources/src1/calendar.json"
+    bucket.put_file(key, calendar_records_path(state_dir, "src1"), "application/json")
+    with pytest.raises(type(error)):
+        push_calendar_records_merged(bucket, state_dir, ["src1"])
+
+
 def test_push_calendar_records_merged_skips_malformed_remote_calendar(tmp_path):
     bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
     state_dir = tmp_path / "state"

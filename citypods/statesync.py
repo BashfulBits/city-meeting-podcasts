@@ -983,7 +983,8 @@ def push_calendar_records_merged(storage, state_dir: Path, source_keys, *, log=N
     scoped run still refreshes its primary source and may discover additional
     companion rows. Re-read the remote catalog and union official links before
     upload so one lane cannot erase another lane's concurrently discovered
-    history. Sources with no local calendar file are skipped.
+    history. Sources with no local calendar file are skipped. Exhausted transient remote
+    reads defer only that source without uploading an unmerged local copy.
     """
     from citypods.records import (
         calendar_records_path,
@@ -991,6 +992,7 @@ def push_calendar_records_merged(storage, state_dir: Path, source_keys, *, log=N
         merge_calendar_records,
         save_calendar_records,
     )
+    from citypods.storage.s3 import is_transient_storage_error
 
     if not _supported(storage) or not hasattr(storage, "put_file"):
         return 0
@@ -1014,7 +1016,17 @@ def push_calendar_records_merged(storage, state_dir: Path, source_keys, *, log=N
         if present:
             with tempfile.TemporaryDirectory() as td:
                 dest = Path(td) / "calendar.json"
-                if not storage.get_file(key, dest):
+                try:
+                    downloaded = storage.get_file(key, dest)
+                except Exception as exc:
+                    if not is_transient_storage_error(exc):
+                        raise
+                    emit(
+                        f"state: WARNING transient calendar read failed for source {sk}: "
+                        f"{exc}; skipping push"
+                    )
+                    continue
+                if not downloaded:
                     emit(
                         f"state: WARNING remote calendar for source {sk} unreadable; skipping push"
                     )
