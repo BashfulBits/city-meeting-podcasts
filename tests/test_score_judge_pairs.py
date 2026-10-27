@@ -32,7 +32,8 @@ def test_unknown_labels_excluded_and_same_model_not_paired():
     assert scorer.interval(0, 35)[1] == pytest.approx(0.09890099)
 
 
-def test_replay_calls_actual_inspection_boundary(tmp_path, monkeypatch):
+@pytest.mark.parametrize("contract_pass", [False, True])
+def test_replay_calls_actual_inspection_boundary(tmp_path, monkeypatch, contract_pass):
     manifest = json.loads((scorer.ROOT / "evals/judge/manifest.json").read_text())
     item = scorer.evaluator.frozen_units(manifest)[0][0]
     folder = tmp_path / "route"
@@ -55,12 +56,26 @@ def test_replay_calls_actual_inspection_boundary(tmp_path, monkeypatch):
 
     def inspect(backend, packet, raw):
         calls.append((packet, raw))
-        return {"contract_pass": False, "parsed_rows": []}
+        return {
+            "contract_pass": contract_pass,
+            "parsed_rows": [
+                {
+                    "kind": "validate",
+                    "question_id": "supported",
+                    "subject_id": item.subjects[0].subject_id,
+                    "value": True,
+                    "reason": "No usable quote",
+                }
+            ],
+        }
 
     monkeypatch.setattr(scorer.evaluator, "inspect_reply", inspect)
+    monkeypatch.setattr(scorer, "quote_valid", lambda reason, evidence: False)
     result = scorer.replay(tmp_path, manifest)
     assert calls[0][1] == {"raw": True}
-    assert result[0]["decisions"] == {item.subjects[0].subject_id: None}
+    subject_id = item.subjects[0].subject_id
+    assert result[0]["decisions"] == {subject_id: True if contract_pass else None}
+    assert result[0]["evidence_valid"] == ({subject_id: False} if contract_pass else {})
 
 
 def test_archive_replays_first_response_without_extracting_paths(tmp_path, monkeypatch):
