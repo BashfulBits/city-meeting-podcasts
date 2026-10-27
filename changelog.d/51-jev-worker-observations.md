@@ -423,3 +423,13 @@ judgment or production activation is claimed from the blocked attempt.
 Final concise-prompt/retry validation:6,924 full offline tests passed (17 deselected),40 focused
 prompt/safety checks passed, and whole-repository Ruff/format/diff checks passed. Two independently
 generated eight-file packets were byte-identical. No inference beyond the single held429 attempt.
+
+Complete concise-prompt reevaluation:all12 cases,39 attempts including the approved429 retry,
+38 judgments and no input holds. JEV size failures resolved; matched semantic quality unchanged.
+Sandbox output remains wrong on RQ04/RQ05:2/5 proposed PRs, plus7 issue candidates. Preserve
+original scores, scoped RQ06 acceptance and compact observations; output policy stays unselected.
+Restore owned pauses and remove the completed automation. No production admission or activation.
+
+Completion validation:6,925 full offline tests passed (17 deselected); whole-repository
+Ruff/format/diff checks passed. The comparison test preserves original wrong scores, accepts only
+matching reviewed RQ06 assignments, and rejects transferring that exception to another case.

@@ -111,3 +111,10 @@ and while unchanged, and is removed on completion, cancellation or a new blockin
 Forty focused tests passed, including preservation of the original failure, no repeat of the
 approved retry, and cumulative budget accounting across the nested retry directory. The full suite including the retry wrapper passed6,924 offline tests (17 deselected). Legacy chat/JEV representative payloads and recipes were also
 compared against the pre-change source and matched exactly.
+
+## Completed outcome
+
+The run completed:39/48 attempts,38 judgments, all12 case summaries, no input holds. The approved
+retry succeeded; both pauses were restored and the heartbeat was deleted. See `RESULTS.md`,
+`observed-results.json` and `completion-summary.json`. Matched semantic error counts did not improve.
+Production remains unchanged; no output-routing policy was selected.

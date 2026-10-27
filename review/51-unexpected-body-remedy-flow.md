@@ -5238,3 +5238,28 @@ activation or automatic output-policy choice.40 focused safety/prompt tests pass
 Final concise-prompt/retry validation:6,924 full offline tests passed (17 deselected),40 focused
 prompt/safety checks passed, and whole-repository Ruff/format/diff checks passed. Two independently
 generated eight-file packets were byte-identical. No inference beyond the single held429 attempt.
+
+### Concise-prompt reevaluation complete (October 27 UTC / October 26 Central)
+
+All12 cases completed under39/48 attempts:38 valid judgments and the original429; the one approved
+retry succeeded. No new transport/contract/identity or input-length failures. Both owned pauses
+restored, no unknown requests, controller inactive; completion automation deleted. JEV now answered
+RQ09/RQ10 using12,024/11,858 provider input tokens. Size correction worked; semantic quality did not
+improve on matched cases. Each initial model remains6 raw correct/6 wrong; RQ06's existing exception
+is separate. Gemini and JEV each have4/7 reviewed errors in the concise run, on identical seven-case
+coverage. Baseline/concise matched-role errors are unchanged: Gemini4/6, JEV2/4.
+
+The sandbox would produce5 PR candidates (3 correct,2 wrong RQ04/RQ05),7 issue candidates,0holds.
+The wrong-PR fraction is2/5 (40%);2/12 of all cases, unchanged wrong IDs. Baseline had6 PR candidates
+(4 acceptable including RQ06,2 wrong),4 issues,2holds. RQ06 moved to an issue due exact-scope-flag
+convergence, not another semantic error. This is a repeated historical challenge; human PR-review
+success and production error rates were not measured. Output-policy choice remains the maintainer's.
+No merge, deploy, production admission/routing switch or actual remedy PR/issue creation occurred.
+
+Retained evidence and conclusions: `evals/remedy/qualification/runtime-v2/{observed-results.json,
+completion-summary.json,RESULTS.md}`. Python scoring now freezes whole runs and recomputes matched
+comparisons with scoped acceptance while preserving raw scores. Bulk files remain local/ignored.
+
+Completion validation:6,925 full offline tests passed (17 deselected); whole-repository
+Ruff/format/diff checks passed. The comparison test preserves original wrong scores, accepts only
+matching reviewed RQ06 assignments, and rejects transferring that exception to another case.

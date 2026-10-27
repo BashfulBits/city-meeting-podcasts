@@ -17,6 +17,10 @@ def summarize(directory, plan_path, authority_path):
         raise ValueError("measurement plan changed")
     if authority["executor_sha256"] != digest(ROOT / "evals/remedy/run_runtime_qualification.py"):
         raise ValueError("the pre-registered semantic scorer changed")
+    if authority["approved_expectations_sha256"] != digest(
+        plan_path.parent / "expected-decisions-approved.json"
+    ) or read(plan_path)["model_inputs_sha256"] != digest(plan_path.parent / "model-inputs.json"):
+        raise ValueError("frozen expectations or model inputs changed")
     cases = {c["case_id"]: c for c in read(plan_path.parent / "model-inputs.json")["cases"]}
     expected = {
         c["case_id"]: c
@@ -108,7 +112,7 @@ def summarize(directory, plan_path, authority_path):
 
 
 def freeze_additional(directory, plan_path, authority_path, baseline_path, output_path):
-    """Keep only irreproducible new observations beyond an immutable compact baseline."""
+    """Freeze normalized observations; optionally exclude an immutable compact baseline."""
     import fcntl
 
     with (directory / "controller.lock").open("a") as lock:
@@ -117,7 +121,9 @@ def freeze_additional(directory, plan_path, authority_path, baseline_path, outpu
             result = intent.with_name(intent.name.replace("-intent.json", "-result.json"))
             if not result.exists() or read(result).get("provider_outcome") == "unknown":
                 raise ValueError("cannot freeze unresolved provider requests")
-        baseline = read(baseline_path)
+        baseline = (
+            read(baseline_path) if baseline_path else {"observed_results": [], "case_outcomes": []}
+        )
         known = {(r["case_id"], r["role"]) for r in baseline["observed_results"]}
         results = []
         for path in sorted(directory.rglob("*-result.json")):
@@ -136,6 +142,16 @@ def freeze_additional(directory, plan_path, authority_path, baseline_path, outpu
                 for k, v in row.items()
                 if k not in {"raw_response", "partial_response", "started_at", "finished_at"}
             }
+            if isinstance(row.get("raw_response"), dict) and "error" in row["raw_response"]:
+                keep["provider_error"] = row["raw_response"]["error"]
+            if isinstance(row.get("raw_response"), dict) and "usage" in row["raw_response"]:
+                keep["usage"] = row["raw_response"]["usage"]
+            intent = path.with_name(path.name.replace("-result.json", "-intent.json"))
+            if intent.exists():
+                previous = read(intent)
+                keep["original_intent_sha256"] = digest(intent)
+                for key in ("payload_sha256", "recipe_hash", "ordinal", "timeout_seconds"):
+                    keep[key] = previous.get(key)
             keep["original_result_sha256"] = digest(path)
             results.append(keep)
         known_cases = {c["case_id"] for c in baseline["case_outcomes"]}
@@ -159,14 +175,86 @@ def freeze_additional(directory, plan_path, authority_path, baseline_path, outpu
             )
         artifact = dict(
             schema_version=1,
-            baseline_sha256=digest(baseline_path),
+            baseline_sha256=digest(baseline_path) if baseline_path else None,
+            run_plan_sha256=digest(plan_path),
+            authority_sha256=digest(authority_path),
             observed_results=results,
             case_outcomes=outcomes,
             cumulative_summary=summarize(directory, plan_path, authority_path),
-            note="Additional normalized observations; raw receipts remain local. Original scores.",
+            note="Normalized observations; raw receipts local. Original scores, not acceptance.",
         )
         with output_path.open("x") as stream:
             stream.write(json.dumps(artifact, indent=2) + "\n")
+
+
+def compare_runs(baseline_paths, candidate_path, plan_path, acceptance_path):
+    """Compare completed judgments on identical cases; keep original and accepted views apart."""
+    baseline = [r for path in baseline_paths for r in read(path)["observed_results"]]
+    candidate = read(candidate_path)["observed_results"]
+    acceptance = read(acceptance_path)
+    cid_accepted = acceptance["case_id"]
+
+    def signature(decision):
+        return {k: v for k, v in decision.items() if k not in {"rationale", "finding_id"}}
+
+    accepted_signatures = [
+        signature(r["normalized"]["decision"])
+        for r in baseline
+        if r["case_id"] == cid_accepted and r["role"] != "jev" and r["status"] == "completed"
+    ]
+    if acceptance.get("maintainer_disposition") != "accepted_exception":
+        raise ValueError("missing separate observed-case acceptance")
+    cases = {c["case_id"]: c for c in read(plan_path.parent / "model-inputs.json")["cases"]}
+    wanted = {
+        c["case_id"]: c
+        for c in read(plan_path.parent / "expected-decisions-approved.json")["cases"]
+    }
+
+    def judgments(rows):
+        decisions = {
+            (r["case_id"], r["role"]): r["normalized"]["decision"]
+            for r in rows
+            if r["status"] == "completed" and r["role"] != "jev"
+        }
+        for r in rows:
+            if r["status"] == "completed" and r["role"] == "jev":
+                answer = next(iter(r["normalized"]["answers"].values()))
+                role = {"A": "glm_flash", "B": "deepseek"}.get(answer.get("choice"))
+                if (r["case_id"], role) in decisions:
+                    decisions[(r["case_id"], "jev")] = decisions[(r["case_id"], role)]
+        result = {}
+        for (cid, role), decision in decisions.items():
+            raw = semantic(
+                BodyDecision.model_validate(decision), wanted[cid], cases[cid]["evidence"]
+            )
+            accepted = (
+                raw == "wrong"
+                and cid == cid_accepted
+                and signature(decision) in accepted_signatures
+            )
+            result[(cid, role)] = dict(raw=raw, reviewed="accepted_exception" if accepted else raw)
+        return result
+
+    first, second = judgments(baseline), judgments(candidate)
+    report = {}
+    for role in ("glm_flash", "deepseek", "gemini", "jev"):
+        common = sorted(cid for cid, r in first if r == role and (cid, role) in second)
+        roles = {}
+        for label, scores in (("baseline", first), ("concise", second)):
+            selected = {cid: v for (cid, r), v in scores.items() if r == role}
+            roles[label] = dict(
+                completed=len(selected),
+                raw=dict(Counter(v["raw"] for v in selected.values())),
+                reviewed=dict(Counter(v["reviewed"] for v in selected.values())),
+                wrong_case_ids=[cid for cid, v in selected.items() if v["reviewed"] == "wrong"],
+                matched_reviewed=dict(Counter(scores[(cid, role)]["reviewed"] for cid in common)),
+            )
+        report[role] = dict(identical_case_intersection=common, **roles)
+    return dict(
+        roles=report,
+        acceptance_sha256=digest(acceptance_path),
+        note="Completed judgments only; matched-case comparison, not independent causal proof.",
+    )
 
 
 if __name__ == "__main__":
@@ -176,11 +264,30 @@ if __name__ == "__main__":
     parser.add_argument("--authority", type=Path, required=True)
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--freeze-additional", type=Path)
+    parser.add_argument("--freeze", type=Path, help="freeze a complete independent run")
+    parser.add_argument("--compare-baseline", type=Path, action="append")
+    parser.add_argument("--candidate", type=Path)
+    parser.add_argument("--acceptance", type=Path)
     args = parser.parse_args()
+    if args.freeze and args.freeze_additional:
+        parser.error("choose either --freeze or --freeze-additional")
+    if args.freeze:
+        freeze_additional(args.directory, args.plan, args.authority, None, args.freeze)
     if args.freeze_additional:
         if not args.baseline:
             parser.error("--freeze-additional requires --baseline")
         freeze_additional(
             args.directory, args.plan, args.authority, args.baseline, args.freeze_additional
         )
-    print(json.dumps(summarize(args.directory, args.plan, args.authority), indent=2))
+    summary = summarize(args.directory, args.plan, args.authority)
+    if args.compare_baseline:
+        if not args.candidate or not args.acceptance:
+            parser.error("comparison requires --candidate and --acceptance")
+        print(
+            json.dumps(
+                compare_runs(args.compare_baseline, args.candidate, args.plan, args.acceptance),
+                indent=2,
+            )
+        )
+    else:
+        print(json.dumps(summary, indent=2))
