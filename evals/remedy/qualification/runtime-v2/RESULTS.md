@@ -57,7 +57,7 @@ These are sandbox candidates assuming route eligibility, not actual GitHub objec
 | RQ01 | Correct existing-feed union | PR candidate |
 | RQ02 | Correct existing-feed union; initial proposals now agree exactly | PR candidate |
 | RQ03 | Correct existing-feed union | PR candidate |
-| RQ04 | Wrong: City Council union omits P&Z | PR candidate |
+| RQ04 | Wrong: recording inclusion targets Council only, omitting P&Z | PR candidate |
 | RQ05 | Wrong: City Council union omits P&Z and CPAC | PR candidate |
 | RQ06 | Both owning feeds; union matches accepted case exception | Issue candidate |
 | RQ07 | Correct new-feed semantics, exact metadata does not converge | Issue candidate |
@@ -122,3 +122,19 @@ execution state is not required to retain the observed judgments or decision rec
 
 Final verification:6,925 full offline tests passed (17 deselected), including scoped-acceptance
 comparison checks. Whole-repository Ruff/format and diff checks passed.
+
+## Counterfactual: require JEV/Gemini agreement for every PR
+
+On the existing observations, exact complete-proposal agreement exists only on RQ04 and RQ08.
+RQ04 would produce one incorrect PR: include the recording only in Addison Council, omitting
+P&Z. Its concise-run action is single_uid_inclusion, not the baseline run's union. RQ08 correctly
+agrees on manual_review and produces no PR. Thus this strict observed-data filter produces0
+correct PRs,1 wrong PR and1 correct manual result. Five other judged cases fail exact agreement.
+RQ01/RQ02/RQ03/RQ05/RQ11 were never judged; their JEV/Gemini outcomes cannot be inferred.
+
+At the coarser action-and-feed-identity level, the judges match on all seven answered cases.
+Ignoring metadata and recording-scope differences would yield6 proposed changes: RQ06 (accepted)
+and RQ07 (correct), versus wrong RQ04/RQ09/RQ10/RQ12. RQ08 remains correct manual review. This is
+not the current complete-assignment agreement rule: RQ09 has a real recording-scope difference,
+and other cases differ in flags/descriptions. Do not silently discard those fields or activate
+this looser policy from this comparison. No new judgments or routing changes were made.
