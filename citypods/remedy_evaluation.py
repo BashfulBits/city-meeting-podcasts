@@ -187,6 +187,71 @@ class AA(StrictModel):
     date: str
 
 
+class TrustedProjectEvidence(StrictModel):
+    path: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+def _read_trusted_artifact(root: Path, ref: TrustedProjectEvidence) -> bytes:
+    """Bounded repository-local evidence; the reviewed config supplies the trust anchor."""
+    relative = Path(ref.path)
+    allowed = (root / "evals/remedy").resolve()
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("project evidence must be repository-relative")
+    path = root / relative
+    try:
+        path.resolve(strict=True).relative_to(allowed)
+    except (ValueError, OSError) as exc:
+        raise ValueError("project evidence escapes evals/remedy") from exc
+    if any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise ValueError("project evidence cannot use symlinks")
+    with path.open("rb") as stream:
+        raw = stream.read(4 * 1024 * 1024 + 1)
+    if len(raw) > 4 * 1024 * 1024 or hashlib.sha256(raw).hexdigest() != ref.sha256:
+        raise ValueError("project evidence size or hash mismatch")
+    return raw
+
+
+def load_project_evaluation(entry, repo_root, *, expected: dict[str, Any]) -> dict[str, Any]:
+    """Load exact reviewed evidence without inventing qualification or rewriting hashes."""
+    if entry.project_evidence is None or not entry.reviewed_admission_ref:
+        raise ValueError("missing reviewed evidence trust anchor")
+
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate project evidence key")
+            result[key] = value
+        return result
+
+    root = Path(repo_root).resolve()
+    envelope = json.loads(
+        _read_trusted_artifact(root, entry.project_evidence), object_pairs_hook=unique
+    )
+    if (
+        type(envelope.get("version")) is not int
+        or envelope.get("version") != 1
+        or (envelope.get("kind") != "remedy-p3-evaluation")
+    ):
+        raise ValueError("unsupported project evidence envelope")
+    if not expected or envelope.get("bindings") != expected:
+        raise ValueError("project evidence runtime binding mismatch")
+    refs = [TrustedProjectEvidence.model_validate(r) for r in envelope.get("source_artifacts", [])]
+    if not refs or {r.path for r in refs} != set(entry.reviewed_result_paths):
+        raise ValueError("project evidence source allowlist mismatch")
+    if len(refs) != len({r.path for r in refs}):
+        raise ValueError("duplicate project evidence source")
+    for ref in refs:
+        _read_trusted_artifact(root, ref)
+    evaluation = envelope.get("evaluation")
+    if not isinstance(evaluation, dict):
+        raise ValueError("missing project evaluation")
+    if evaluation.get("qualified") is not True:
+        raise ValueError("reviewed project evaluation is not qualified")
+    return evaluation
+
+
 class AdmissionEntry(StrictModel):
     status: Literal["candidate", "admitted"]
     role: Literal["proposer", "reviewer", "adjudicator"]
@@ -195,7 +260,8 @@ class AdmissionEntry(StrictModel):
     model_family: str
     reasoning_level: Literal["provider-default", "minimal", "low", "medium", "high", "max"]
     request_params_hash: str
-    aa: AA
+    aa: AA | None
+    project_evidence: TrustedProjectEvidence | None = None
     manifest_hash: str | None = None
     gold_hash: str | None = None
     prompt_hash: str | None = None
@@ -227,15 +293,59 @@ class RemedyConfig(StrictModel):
     # `live` after inspecting the plans. An operational switch, not policy: it is excluded from
     # the config fingerprint so changing it never invalidates a recorded decision or observation.
     publication_mode: Literal["report_only", "live"] = "report_only"
+    p3_role_plan: Literal["legacy-sol-v1", "flash-deepseek-v2", "flash-deepseek-human-v3"] = (
+        "legacy-sol-v1"
+    )
+    manual_review_authorization: TrustedProjectEvidence | None = None
     admissions: list[AdmissionEntry]
     qualified_alias_types: list[dict[str, Any]]
     limits: Limits
     onboarding_exceptions: list[dict[str, Any]]
 
 
+def load_manual_review_authorization(config, repo_root, *, expected):
+    """Accept explicit human-reviewed publication authority, never model qualification."""
+    if (
+        config.p3_role_plan != "flash-deepseek-human-v3"
+        or config.mode != "manual"
+        or config.qualified_alias_types
+        or config.manual_review_authorization is None
+    ):
+        raise ValueError("manual publication authorization is scoped to the two-model human flow")
+    raw = _read_trusted_artifact(Path(repo_root).resolve(), config.manual_review_authorization)
+    envelope = json.loads(raw)
+    if (
+        type(envelope.get("version")) is not int
+        or envelope.get("version") != 1
+        or envelope.get("kind") != "maintainer-approved-manual-remedy-publication"
+        or envelope.get("bindings") != expected
+        or envelope.get("human_approval_required") is not True
+        or envelope.get("automatic_merge_allowed") is not False
+        or envelope.get("automatic_feed_publication_allowed") is not False
+        or envelope.get("model_qualification_claimed") is not False
+        or not isinstance(envelope.get("maintainer_instruction"), str)
+        or not envelope["maintainer_instruction"].strip()
+    ):
+        raise ValueError("manual publication scope or runtime bindings changed")
+    refs = [TrustedProjectEvidence.model_validate(r) for r in envelope.get("source_artifacts", [])]
+    if not refs or len({r.path for r in refs}) != len(refs):
+        raise ValueError("missing or duplicate reviewed manual-publication evidence")
+    for ref in refs:
+        _read_trusted_artifact(Path(repo_root).resolve(), ref)
+    return envelope
+
+
 def config_fingerprint(config: RemedyConfig) -> str:
     """The hash decisions and observations bind to: the policy-bearing config, not the switches."""
-    return canonical_hash(config.model_dump(mode="json", exclude={"publication_mode"}))
+    payload = config.model_dump(mode="json", exclude={"publication_mode"})
+    if config.manual_review_authorization is None:
+        payload.pop("manual_review_authorization", None)
+    if config.p3_role_plan == "legacy-sol-v1":
+        payload.pop("p3_role_plan")
+    for admission in payload["admissions"]:
+        if admission.get("project_evidence") is None:
+            admission.pop("project_evidence", None)
+    return canonical_hash(payload)
 
 
 def load_cases(manifest_path, gold_path) -> EvaluationSet:
@@ -504,34 +614,61 @@ def compare_results(results, gold, *, manifest, mode="claim_support") -> Evaluat
     )
 
 
-def validate_admission(entry, catalog, evaluation=None, *, for_evaluation=False) -> AdmissionCheck:
+def validate_admission(
+    entry, catalog, evaluation=None, *, for_evaluation=False, for_report_only=False
+) -> AdmissionCheck:
     entry = AdmissionEntry.model_validate(entry) if isinstance(entry, dict) else entry
     reasons = []
     if not entry.physical_route_ids:
         reasons.append("empty physical route allowlist")
-    if entry.aa.version != "4.3.2" or entry.aa.score < 39:
-        reasons.append("AA evidence does not meet comparable Gemini 3.7 High baseline")
-    variant_tokens = set(re.findall(r"[a-z0-9]+", entry.aa.variant.lower()))
-    non_reasoning = bool(re.search(r"\bnon[ -]?reasoning\b", entry.aa.variant.lower()))
-    # A provider default is an explicit request configuration: omit reasoning overrides. It has
-    # no honest named-level equivalent to compare with the benchmark variant string.
-    named_variant_mismatch = (
-        entry.reasoning_level != "provider-default" and entry.reasoning_level not in variant_tokens
-    )
-    if named_variant_mismatch or non_reasoning:
-        reasons.append("AA reasoning variant mismatch")
-    try:
-        observed = datetime.fromisoformat(entry.aa.date.replace("Z", "+00:00"))
-        if observed.date() > datetime.now(UTC).date() or not entry.aa.source.startswith("https://"):
-            reasons.append("invalid dated AA source")
-    except ValueError:
-        reasons.append("invalid AA evidence date")
+    choice_evidence = False
+    if entry.aa is None:
+        # Only a reviewed manual report-only JEV choice evaluation may replace comparable AA.
+        choice_evidence = (
+            for_report_only
+            and not for_evaluation
+            and entry.role == "adjudicator"
+            and entry.physical_route_ids == ["beatapi_jev_1_13_free"]
+            and entry.upstream_model == "jev-1.13-free"
+            and entry.project_evidence is not None
+            and evaluation is not None
+            and evaluation.get("task_scope") == "remedy-p3-choice-v1"
+        )
+        if not choice_evidence:
+            reasons.append("missing comparable AA or reviewed bounded JEV evidence")
+    else:
+        if entry.aa.version != "4.3.2" or entry.aa.score < 39:
+            reasons.append("AA evidence does not meet comparable Gemini 3.7 High baseline")
+        variant_tokens = set(re.findall(r"[a-z0-9]+", entry.aa.variant.lower()))
+        non_reasoning = bool(re.search(r"\bnon[ -]?reasoning\b", entry.aa.variant.lower()))
+        # A provider default is an explicit request configuration: omit reasoning overrides. It has
+        # no honest named-level equivalent to compare with the benchmark variant string.
+        named_variant_mismatch = (
+            entry.reasoning_level != "provider-default"
+            and entry.reasoning_level not in variant_tokens
+        )
+        if named_variant_mismatch or non_reasoning:
+            reasons.append("AA reasoning variant mismatch")
+        try:
+            observed = datetime.fromisoformat(entry.aa.date.replace("Z", "+00:00"))
+            if observed.date() > datetime.now(UTC).date() or not entry.aa.source.startswith(
+                "https://"
+            ):
+                reasons.append("invalid dated AA source")
+        except ValueError:
+            reasons.append("invalid AA evidence date")
     for route_id in entry.physical_route_ids:
         route = catalog.get(route_id)
         if route is None:
             reasons.append(f"unknown physical route: {route_id}")
             continue
-        if not route.free or "direct" not in route.transports or route.experimental:
+        # JEV's native systemone Worker route is deliberately not a direct-chat route.
+        # Only the bounded reviewed report-only choice admission can use that protocol.
+        if (
+            not route.free
+            or ("direct" not in route.transports and not choice_evidence)
+            or route.experimental
+        ):
             reasons.append(f"not an ordinary free direct route: {route_id}")
         if not route.upstream_model or route.upstream_model != entry.upstream_model:
             reasons.append(f"physical upstream mismatch: {route_id}")

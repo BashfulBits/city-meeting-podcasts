@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "status": "provider_rate_limit_hold",
+  "provider_attempts": 1,
+  "completed_judgments": 0,
+  "max_provider_attempts": 48,
+  "provider": "orcarouter",
+  "role": "glm_flash",
+  "case_id": "RQ01",
+  "http_status": 429,
+  "error_code": "free_rate_limited",
+  "provider_reason": "err_free_rate",
+  "retry_after_seconds": 13556,
+  "retry_not_before_utc": "2026-10-27T00:00:00.503737+00:00",
+  "original_result_sha256": "63b8b13e72536b7fcdad1c64632a2e0ab534584469174e77fc7a1131cfbee318",
+  "generator_approval_sha256": "3707e3403576c473b32b06926c7893c8878e9e53819d9c6f282e77e7b4d71fe0",
+  "model_quality_assessed": false,
+  "owned_pauses_restored": true,
+  "unknown_requests": 0,
+  "retry_authorized": false,
+  "production_admitted": false
+}

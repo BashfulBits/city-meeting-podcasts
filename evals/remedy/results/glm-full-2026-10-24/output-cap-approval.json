@@ -1,0 +1,10 @@
+{
+  "authorization": "Maintainer: Approve32,768-token full-GLM profile",
+  "max_tokens": 32768,
+  "timeout_seconds": 720,
+  "reasoning": "provider-default",
+  "temperature_override": null,
+  "preserve_existing_valid_answers": true,
+  "retry_prior_truncated_no_answer": true,
+  "new_profile_provenance_required": true
+}

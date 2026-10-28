@@ -167,3 +167,35 @@ def test_content_addressed_observations_are_never_overwritten():
     with pytest.raises(ValueError):
         append_observation(storage, record, lease=FakeRemedyLease())
     assert storage.objects[key] == b'{"conflicting":"content"}'
+
+
+def test_v2_stage_binding_and_v1_payload_shape_are_distinct():
+    from citypods.audit_remedy import P3_ROLE_PLANS
+    from citypods.remedy_p3_observations import make_observation, parse_observation
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    kwargs = dict(
+        finding_id="finding-1",
+        source_key="test-source",
+        stage="initial",
+        role="deepseek",
+        recipe_hash="a" * 64,
+        request_hash="b" * 64,
+        evidence_hash="c" * 64,
+        config_hash="d" * 64,
+        policy_hash="e" * 64,
+        route_id=plan.routes["deepseek"],
+        logical_model=plan.models["deepseek"],
+        upstream_model="deepseek-v4.1-flash-free",
+        reasoning_level=None,
+        response={"ok": True},
+    )
+    record = make_observation(**kwargs, role_plan=plan.name)
+    assert record.schema_version == 2
+    assert parse_observation(record.payload()) == record
+    assert record.role_plan_hash == plan.fingerprint
+    with pytest.raises(ValueError, match="role is not valid"):
+        make_observation(**kwargs)  # DeepSeek was not an initial v1 role.
+    damaged = record.payload() | {"role_plan_hash": "f" * 64}
+    with pytest.raises(ValueError, match="role plan binding"):
+        parse_observation(damaged)

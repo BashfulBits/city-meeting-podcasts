@@ -5,14 +5,15 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
 
 from citypods.audit_remedy import (
-    P3_INITIAL_ROUTES,
+    P3_ROLE_PLANS,
     SLUG_RE,
     P3Adjudication,
     P3ReviewDecision,
@@ -35,6 +36,9 @@ class P3ReportInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     schema_version: StrictInt
+    role_plan: Literal["legacy-sol-v1", "flash-deepseek-v2", "flash-deepseek-human-v3"] = (
+        "legacy-sol-v1"
+    )
     finding_id: StrictStr = Field(min_length=1)
     evidence_hash: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
     policy_hash: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
@@ -42,22 +46,43 @@ class P3ReportInput(BaseModel):
     feeds: list[FeedLabel]
     initial_votes: list[P3Vote]
     initial_validators: dict[StrictStr, StrictBool]
+    initial_failures: dict[StrictStr, StrictStr] = Field(default_factory=dict)
     adjudication: P3Adjudication | None = None
     adjudication_validator_passed: StrictBool = False
 
     def validate_contract(self) -> P3ReportInput:
+        plan = P3_ROLE_PLANS[self.role_plan]
+        initial_routes = frozenset(plan.routes[r] for r in plan.initial)
         if self.schema_version != 1 or isinstance(self.schema_version, bool):
             raise ValueError("schema_version must be integer 1")
         if len({feed.slug for feed in self.feeds}) != len(self.feeds):
             raise ValueError("feed slugs must be unique")
         if any(not SLUG_RE.fullmatch(feed.slug) or not feed.title.strip() for feed in self.feeds):
             raise ValueError("feed labels require valid slugs and nonblank titles")
-        if (
+        if plan.chat is None and self.adjudication is not None:
+            raise ValueError("human-review plan cannot carry automated adjudication")
+        if len({vote.route_id for vote in self.initial_votes}) != len(self.initial_votes):
+            raise ValueError(
+                "input must contain exactly the configured initial votes; duplicate vote"
+            )
+        failed = set(self.initial_failures)
+        votes = {vote.route_id for vote in self.initial_votes}
+        if failed and (
+            plan.chat is not None
+            or not (failed | votes) <= initial_routes
+            or failed & votes
+            or any(
+                not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", k)
+                for k in self.initial_failures.values()
+            )
+        ):
+            raise ValueError("invalid initial failure evidence")
+        if not failed and (
             len(self.initial_votes) != 2
-            or {vote.route_id for vote in self.initial_votes} != P3_INITIAL_ROUTES
+            or {vote.route_id for vote in self.initial_votes} != initial_routes
         ):
             raise ValueError("input must contain exactly the configured Sol and GLM Flash votes")
-        if set(self.initial_validators) != P3_INITIAL_ROUTES:
+        if set(self.initial_validators) != (votes if failed else initial_routes):
             raise ValueError("validator results must bind exactly the two initial routes")
         if any(vote.decision.finding_id != self.finding_id for vote in self.initial_votes):
             raise ValueError("initial vote finding IDs must match the report input")
@@ -71,13 +96,11 @@ class P3ReportInput(BaseModel):
             or self.adjudication.policy_hash != self.policy_hash
         ):
             raise ValueError("adjudication evidence or policy binding mismatch")
-        if self.adjudication and self.adjudication.deepseek:
-            if self.adjudication.deepseek.decision.finding_id != self.finding_id:
+        chat = (self.adjudication.chat or self.adjudication.deepseek) if self.adjudication else None
+        if chat:
+            if chat.decision.finding_id != self.finding_id:
                 raise ValueError("DeepSeek finding ID must match the report input")
-            if (
-                self.adjudication.deepseek.evidence_hash != self.evidence_hash
-                or self.adjudication.deepseek.policy_hash != self.policy_hash
-            ):
+            if chat.evidence_hash != self.evidence_hash or chat.policy_hash != self.policy_hash:
                 raise ValueError("DeepSeek vote evidence or policy binding mismatch")
         return self
 
@@ -93,25 +116,60 @@ def build_p3_report(
 ) -> dict[str, Any]:
     """Return one replay report; route admission is trusted caller context, never file input."""
     record.validate_contract()
-    decision = build_p3_review_decision(
-        finding_id=record.finding_id,
-        evidence_hash=record.evidence_hash,
-        policy_hash=record.policy_hash,
-        initial_votes=record.initial_votes,
-        initial_validators=record.initial_validators,
-        adjudication=record.adjudication,
-        adjudication_validator_passed=record.adjudication_validator_passed,
-        admitted_routes=admitted_routes,
-    )
+    if record.initial_failures:
+        plan = P3_ROLE_PLANS[record.role_plan]
+        admitted = set(plan.routes.values()) <= set(admitted_routes)
+        decision = P3ReviewDecision(
+            finding_id=record.finding_id,
+            evidence_hash=record.evidence_hash,
+            policy_hash=record.policy_hash,
+            initial_votes=record.initial_votes,
+            validator_passed=False,
+            disposition="issue_candidate" if admitted else "policy_hold",
+            reason=(
+                "initial route failed; human review required: "
+                + ", ".join(
+                    f"{route} ({kind})" for route, kind in sorted(record.initial_failures.items())
+                )
+            )
+            if admitted
+            else "initial routes are not admitted for this run",
+        )
+    else:
+        decision = build_p3_review_decision(
+            finding_id=record.finding_id,
+            evidence_hash=record.evidence_hash,
+            policy_hash=record.policy_hash,
+            initial_votes=record.initial_votes,
+            initial_validators=record.initial_validators,
+            adjudication=record.adjudication,
+            adjudication_validator_passed=record.adjudication_validator_passed,
+            admitted_routes=admitted_routes,
+            role_plan=record.role_plan,
+        )
     report: dict[str, Any] = {
         "schema_version": 1,
-        "input_hash": hashlib.sha256(_canonical_json(record.model_dump(mode="json"))).hexdigest(),
+        "input_hash": hashlib.sha256(
+            _canonical_json(
+                record.model_dump(
+                    mode="json",
+                    exclude=(
+                        ({"initial_failures"} if not record.initial_failures else set())
+                        | ({"role_plan"} if record.role_plan == "legacy-sol-v1" else set())
+                    ),
+                )
+            )
+        ).hexdigest(),
         "decision": decision.model_dump(mode="json"),
         "evidence_summary": record.evidence_summary,
         "feeds": [feed.model_dump(mode="json") for feed in record.feeds],
     }
+    if record.role_plan != "legacy-sol-v1":
+        report["role_plan"] = record.role_plan
+    if record.initial_failures:
+        report["initial_failures"] = dict(record.initial_failures)
     if decision.disposition == "pr_candidate":
-        report["proposal_candidate"] = _selected_proposal(decision)
+        report["proposal_candidate"] = _selected_proposal(decision, record.role_plan)
     elif decision.disposition == "issue_candidate":
         report["manual_issue_candidate"] = format_p3_manual_issue(
             decision,
@@ -121,19 +179,22 @@ def build_p3_report(
     return report
 
 
-def _selected_proposal(decision: P3ReviewDecision) -> dict[str, Any]:
+def _selected_proposal(
+    decision: P3ReviewDecision, role_plan: str = "legacy-sol-v1"
+) -> dict[str, Any]:
+    plan = P3_ROLE_PLANS[role_plan]
     if decision.reason == "initial routes agree":
         vote = next(
-            vote for vote in decision.initial_votes if vote.route_id == "beatapi_gpt_6_1_sol_free"
+            vote for vote in decision.initial_votes if vote.route_id == plan.routes[plan.initial[0]]
         )
     else:
         adjudication = decision.adjudication
-        if adjudication is None or adjudication.deepseek is None:
+        if adjudication is None or (adjudication.deepseek or adjudication.chat) is None:
             raise ValueError("proposal candidate lacks a recorded selected vote")
         selected_route = (
-            "beatapi_gpt_6_1_sol_free"
+            plan.routes[plan.initial[0]]
             if adjudication.choice == "A"
-            else "orcarouter_zai_glm_5_3_flash_free"
+            else plan.routes[plan.initial[1]]
         )
         vote = next(vote for vote in decision.initial_votes if vote.route_id == selected_route)
     return {

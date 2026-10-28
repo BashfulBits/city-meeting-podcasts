@@ -4605,3 +4605,86 @@ Prompt-comparison verification2026-10-14:125 targeted checks and6201 full offlin
 tests passed,16deselected. Whole Ruff/format555 files, fragments and diff checks clean.
 Read-only Worker and shared-quota preflight confirms all three routes available;
 launch uses normal coordination. No provider requests occurred during preflight.
+
+## Current adoption and evidence
+
+The maintainer selected `flash-deepseek-human-v3` and explicitly approved production PR/issue
+creation because remedy PRs require human review and merge. PR #2541 implements that authorization;
+it does not claim the implementation is merged, deployed or operationally verified.
+
+### Selected workflow and authority
+
+- Initial proposals use only GLM Flash and DeepSeek. Validated exact complete-assignment agreement
+  may create a bounded PR; disagreement, invalid output and completed contract failures create
+  human-review issue candidates. Gemini/JEV are not invoked by this plan.
+- Capacity, transport, bookkeeping and unknown-request errors propagate without permanent model
+  failure observations. Existing deferred handles reconcile; unknown calls cannot be resubmitted
+  blindly. Local observations/intents/receipts are written atomically without overwriting evidence.
+- `config/remedy.yml` selects `manual` / `live` and exactly two primary free proposer routes.
+  `evals/remedy/qualification/human-review-v3/production-authorization.json` records the exact
+  maintainer instruction and binds routes, prompt, schema, policy, catalog, profiles and evidence.
+  The narrow manual permission does not fabricate AA scores or independent holdout qualification;
+  the ordinary model-qualification path remains unchanged. Changed bindings fail closed.
+- Requested `z-ai/glm-5.3-flash-free` may return `zai-org/glm-5.3-flash` only on the approved
+  OrcaRouter Flash route. Actual returned IDs remain preserved. The exact identity exception was
+  approved for report-only and production checks; it is not serving-weight attestation.
+- Publisher revalidation uses the trusted role plan and existing feed/source validator. Preserve
+  legacy observation IDs/input hashes, source records, episode UIDs and all media pipeline versions.
+- Existing limits remain 5 decisions/PR, 8 PRs/rolling week, 8 open PRs, 12 active directional issues
+  and 24-hour evidence freshness. Daily coordination retains R2 CAS. Qualified alias types remain
+  empty; no direct feed changes or automatic remedy merges are enabled.
+
+### Measured evidence and accepted limitations
+
+The original 60-case Flash/DeepSeek cohort had 53 agreements: 51 original-gold correct and two
+separately maintainer-accepted exceptions; seven cases disagreed. Original gold was not rewritten.
+Full GLM completed 58 valid answers plus two terminal contract failures across disjoint provider
+halves and mixed 16k/32k profiles. Its pooled quality does not qualify a physical route. Both
+accepted pairs received the explicitly approved independent 24-judgment cascade: Flash/DeepSeek
+resolved four disagreements correctly and retained three manual disagreements; Flash/full GLM
+resolved five correctly and retained its two initial contract holds. See retained evidence and
+[the final pair report](../evals/remedy/results/accepted-pairs-2026-10-24/final-report.md).
+
+The runtime contract differs from that original experiment. The maintainer reviewed RQ01–RQ12,
+accepted RQ06's observed union as a scoped exception, confirmed RQ07's new-feed expectation, and
+accepted RQ12's manual fallback. RQ04/RQ05 remain shared-scope risks, not silently repaired gold.
+The first challenge ended with 36 judgments and two JEV input-size holds. Duplicate judge evidence
+was removed using the shared Python prompt factories. The concise challenge completed 38 judgments
+in 39 attempts, including the original 429 and one explicitly authorized delayed retry, with no
+input holds; matched semantic quality did not improve. On matched answered cases, both optional
+judges were wrong on 4/7 after the scoped RQ06 exception. These reused hard examples are not an
+independent production accuracy estimate.
+
+The selected human-only replay yields 4 PR candidates (3 correct, 1 shared wrong RQ05) and 8 human
+issues; it avoids the wrong RQ04 PR endorsed by the retired judges. The maintainer accepted the
+risk of shared errors because each proposed change is reviewed before merging. Production manual
+authorization supersedes earlier shadow-only gates; it does not declare model qualification.
+
+### Reproduction and retained inputs
+
+[EXPERIMENTS.md](../evals/remedy/EXPERIMENTS.md) is the maintained entry point. Keep the frozen
+cohort/gold, compact actual outputs, unique retrieved evidence, blinded mappings, approvals and
+reusable Python builders/runners/scorers. Expanded packets, duplicate score/comparison snapshots,
+readiness sentinels, dated polling/restart helpers, logs and raw transport files remain local and
+ignored. No local original is deleted. Reconstructed packets must match the original approved byte
+hashes; normalized outputs retain original hashes as provenance, not as raw transport attestation.
+
+The retention cleanup preserves every model answer and reconstructs both approved judging packets
+byte-for-byte. All ten pair tables, both judge cascades, the selected human replay and matched
+runtime comparison remain unchanged. Production permission is re-anchored to the normalized actual
+answers and compact completion facts without changing its scope, runtime binding or accepted risk.
+The earlier CLI CodeRabbit review's 13 findings were addressed before cleanup, including transient
+recovery, legacy hashes, isolated-plan SHA256 validation, atomic receipts and documentation status.
+
+### Operational closeout
+
+Finish CI/review and merge PR #2541, then verify the normal Worker deployment and a bounded
+production cycle's observations, PR/issue creation, feedback and duplicate recovery. Production
+publication is already explicitly authorized; no repeated approval is needed for this bounded
+flow. Mark Shipped only after merge and record actual operational evidence before calling the
+manual workflow complete. P5 qualified-alias automation remains disabled and separately gated.
+
+Cleanup verification: a tracked-file-only Git snapshot passed 6,960 offline tests (17 deselected),
+whole Ruff/format and changelog checks. It regenerated 60 additional-model requests, validated
+all 24 historical jobs, audited all 12 runtime judge payloads and reproduced unchanged quality
+comparisons without local raw files. All 2,477 checked local originals retained identical hashes.

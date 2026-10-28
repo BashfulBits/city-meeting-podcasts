@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "decision_date": "2026-10-26",
+  "authority": "Explicit maintainer instruction in chat",
+  "instruction": "I approve the 48 attempt budget. Should that be run before or after this PR merges?",
+  "approved": true,
+  "timing": "Pre-merge direct measurement; deployed Worker integration remains later and separately gated.",
+  "max_provider_attempts": 48,
+  "max_attempts_per_case_role": 1,
+  "client_retries": 0,
+  "max_initial_requests": 24,
+  "max_conditional_judge_requests": 24,
+  "plan_path": "evals/remedy/results/runtime-qualification-2026-10-26/outcomes-approved-v2/run-plan-draft.json",
+  "run_plan_sha256": "43d095f87d8656603afca1cb443700e09ddd304168d403b3be171730d1062362",
+  "approved_expectations_sha256": "c77cf0490b52b767993902ff1996e9fe91425651f0c059e51d82bde9ff113694",
+  "executor_sha256": "171c584ba0c3d0c52ac856c62a409f12f470be50fa05874d453c8a8e27d94695",
+  "scope": "Approved twelve-case runtime-payload challenge only; primary free routes, no retries, paid fallback, secondary account, merge, production activation or publication.",
+  "output_path": "evals/remedy/results/runtime-qualification-2026-10-26/measurement"
+}

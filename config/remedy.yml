@@ -1,8 +1,51 @@
+# Maintainer-authorized PR/issue proposals only; all remedy merges require human review.
 version: 1
-mode: shadow
-# report_only: record the publication plan only; live: execute it (set after inspecting plans)
-publication_mode: report_only
-admissions: []
+mode: manual
+p3_role_plan: flash-deepseek-human-v3
+publication_mode: live
+admissions:
+- status: admitted
+  role: proposer
+  physical_route_ids:
+  - orcarouter_zai_glm_5_3_flash_free
+  upstream_model: z-ai/glm-5.3-flash-free
+  model_family: glm
+  reasoning_level: provider-default
+  request_params_hash: 44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+  aa: null
+  project_evidence: null
+  manifest_hash: null
+  gold_hash: null
+  prompt_hash: d3db73e4d2542cc20ab83f832c149893eceaa0adbf7e7ea6fc3505d38cd074f1
+  schema_hash: e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89
+  catalog_hash: 4769d0c2eb53f77387bd572e030b01338426c2d762405efa2f003d2f152d229a
+  reviewed_result_paths:
+  - evals/remedy/qualification/human-review-v3/decision.json
+  - evals/remedy/qualification/runtime-v2/answers.json
+  - evals/remedy/qualification/runtime-v2/conclusions.json
+  - evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json
+  reviewed_admission_ref: evals/remedy/qualification/human-review-v3/production-authorization.json
+- status: admitted
+  role: proposer
+  physical_route_ids:
+  - beatapi_deepseek_v4_1_flash_free
+  upstream_model: deepseek-v4.1-flash-free
+  model_family: deepseek
+  reasoning_level: provider-default
+  request_params_hash: 44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+  aa: null
+  project_evidence: null
+  manifest_hash: null
+  gold_hash: null
+  prompt_hash: d3db73e4d2542cc20ab83f832c149893eceaa0adbf7e7ea6fc3505d38cd074f1
+  schema_hash: e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89
+  catalog_hash: 8d8c68178512ca3b37829c27725e8ca8092bd73b6200d28366bc98e6c1b6a565
+  reviewed_result_paths:
+  - evals/remedy/qualification/human-review-v3/decision.json
+  - evals/remedy/qualification/runtime-v2/answers.json
+  - evals/remedy/qualification/runtime-v2/conclusions.json
+  - evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json
+  reviewed_admission_ref: evals/remedy/qualification/human-review-v3/production-authorization.json
 qualified_alias_types: []
 limits:
   decisions_per_pr: 5
@@ -12,3 +55,6 @@ limits:
   evidence_max_age_hours: 24
 onboarding_exceptions: []
 policy_templates: []
+manual_review_authorization:
+  path: evals/remedy/qualification/human-review-v3/production-authorization.json
+  sha256: b06fdafbaf64b22c54f978d0bb532acb561d30e078f0ca6e466ad1bfb079d976

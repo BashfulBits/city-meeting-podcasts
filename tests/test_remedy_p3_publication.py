@@ -53,3 +53,77 @@ def test_p3_publication_binds_report_to_exact_evidence(tmp_path):
             repo_root=tmp_path,
             admitted_routes=set(P3_ROUTES.values()),
         )
+
+
+def test_human_plan_agreement_revalidates_for_publication_and_rejects_wrong_plan(tmp_path):
+    import yaml
+
+    from citypods.audit_remedy import P3_ROLE_PLANS, BodyDecision, P3Vote
+    from citypods.audit_remedy_report import P3ReportInput, build_p3_report
+
+    plan = P3_ROLE_PLANS["flash-deepseek-human-v3"]
+    feed = "test-city-library-board"
+    folder = tmp_path / "config/feeds"
+    folder.mkdir(parents=True)
+    (folder / (feed + ".yml")).write_text(
+        yaml.safe_dump({"slug": feed, "source": {"body": "Library Board"}})
+    )
+    evidence = {
+        "source_key": "test-city",
+        "existing_feeds": [{"slug": feed, "body": "Library Board"}],
+        "unexpected_findings": [
+            {
+                "unexpected_body": "Library Board Meeting",
+                "episodes": [],
+                "count": 3,
+            }
+        ],
+    }
+    eh, ph = canonical_hash(evidence), "b" * 64
+    votes = [
+        P3Vote(
+            route_id=plan.routes[role],
+            upstream_model="observed-model",
+            reasoning_level=None,
+            evidence_hash=eh,
+            policy_hash=ph,
+            response_hash="a" * 64,
+            decision=BodyDecision(
+                finding_id="finding-1",
+                action="union",
+                target_feeds=[feed],
+                all_observed_episodes=True,
+                rationale="Same library board",
+            ),
+        )
+        for role in plan.initial
+    ]
+    record = P3ReportInput(
+        schema_version=1,
+        role_plan=plan.name,
+        finding_id="finding-1",
+        evidence_hash=eh,
+        policy_hash=ph,
+        evidence_summary="Library meetings",
+        feeds=[{"slug": feed, "title": feed}],
+        initial_votes=votes,
+        initial_validators={v.route_id: True for v in votes},
+    )
+    report = build_p3_report(record, admitted_routes=set(plan.routes.values()))
+    assert report["role_plan"] == plan.name
+    result, _ = validated_p3_plan(
+        report,
+        evidence,
+        repo_root=tmp_path,
+        admitted_routes=set(plan.routes.values()),
+        role_plan=plan.name,
+    )
+    assert len(result.accepted) == 1
+    with pytest.raises(ValueError, match="trusted publication config"):
+        validated_p3_plan(
+            report,
+            evidence,
+            repo_root=tmp_path,
+            admitted_routes=set(plan.routes.values()),
+            role_plan="legacy-sol-v1",
+        )

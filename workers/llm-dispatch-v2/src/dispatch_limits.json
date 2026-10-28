@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 51,
+    "routes_count": 52,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -2044,6 +2044,50 @@
       "request_params": null,
       "reasoning_controls": null
     },
+    "beatapi_gemini_3_8_flash_free": {
+      "route_id": "beatapi_gemini_3_8_flash_free",
+      "ai_gateway_max_attempts": null,
+      "model": "gemini/gemini-3.8-flash-free",
+      "provider": "beatapi",
+      "upstream_model": "gemini-3.8-flash-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 16384,
+      "hard_input_ceiling": null,
+      "hard_input_ceiling_tolerance": null,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": null,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "tpm_window_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-10-24",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "tier": "backup",
+      "api_shape": null,
+      "request_path": null,
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
+      "structured_output_method": "prompt_only",
+      "structured_output_response_format": "none",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
+    },
     "beatapi_deepseek_v4_flash_free": {
       "route_id": "beatapi_deepseek_v4_flash_free",
       "ai_gateway_max_attempts": null,
@@ -2610,6 +2654,9 @@
     "mistral/codestral-2508": [
       "mistral_codestral_airforce_primary"
     ],
+    "gemini/gemini-3.8-flash-free": [
+      "beatapi_gemini_3_8_flash_free"
+    ],
     "deepseek/deepseek-v4-pro": [
       "beatapi_deepseek_v4_pro_free",
       "beatapi_secondary_deepseek_v4_pro_free"
@@ -2638,6 +2685,7 @@
     "orcarouter/tencent-hy3": "tencent/hy3",
     "orcarouter/glm-5.3-flash": "zai/glm-5.3-flash",
     "mistral/codestral-latest": "mistral/codestral-2508",
+    "beatapi/gemini-3.8-flash-free": "gemini/gemini-3.8-flash-free",
     "beatapi/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
     "beatapi/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "beatapi/deepseek-v4-pro": "deepseek/deepseek-v4-pro",
@@ -2701,6 +2749,7 @@
     "orcarouter/z-ai/glm-5.3-flash-free": "zai/glm-5.3-flash",
     "codestral-latest": "mistral/codestral-2508",
     "airforce/codestral-latest": "mistral/codestral-2508",
+    "gemini-3.8-flash-free": "gemini/gemini-3.8-flash-free",
     "deepseek-v4-flash-0731-free": "deepseek/deepseek-v4-flash",
     "beatapi/deepseek-v4-flash-0731-free": "deepseek/deepseek-v4-flash",
     "deepseek-v4.1-flash-free": "deepseek/deepseek-v4.1-flash",

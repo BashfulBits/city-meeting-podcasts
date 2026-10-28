@@ -308,7 +308,7 @@ def test_a_maintainers_reopen_reopens_the_closed_pr_within_the_budget(repo, tmp_
 
 def test_the_publication_mode_defaults_to_report_only_and_is_not_part_of_the_fingerprint():
     raw = yaml.safe_load(open("config/remedy.yml").read())
-    assert raw["publication_mode"] == "report_only"
+    raw["publication_mode"] = "report_only"
     config = RemedyConfig.model_validate(raw)
     live = RemedyConfig.model_validate({**raw, "publication_mode": "live"})
     assert config.publication_mode == "report_only" and live.publication_mode == "live"

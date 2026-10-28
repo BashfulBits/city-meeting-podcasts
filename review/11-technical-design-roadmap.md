@@ -2358,3 +2358,18 @@ digest and pipeline versions stay unchanged; stored artifacts are retained witho
 Maintainer-directed judge recovery (October 26, 2026 Central): calendar finalization defers
 only the affected source after exhausted transient remote reads, preserving the remote catalog
 and continuing other sources. No judge policy, quota, or artifact version changes.
+
+### Review/51 manual remedy publication — implementation in PR #2541
+
+The maintainer selected Flash + DeepSeek as the initial filter and explicitly approved bounded
+production PR/issue creation with human merging. Exact validated agreement may propose a PR;
+disagreement or completed contract failures go to human issues. Transport, capacity and unknown
+requests remain recoverable. No automated adjudicators, automatic remedy merges or qualified
+alias actions are enabled. The hash-bound manual permission does not assert AA/holdout qualification.
+
+Implementation, retained evidence, accepted limitations and operational closeout are recorded in
+[review/51](51-unexpected-body-remedy-flow.md#current-adoption-and-evidence).
+[Experiment instructions](../evals/remedy/EXPERIMENTS.md) cover clean-checkout rescoring, deterministic
+packet reconstruction and additional models. Generated packets/reports and run-specific recovery
+helpers remain local/ignored. The implementation is not Shipped until PR #2541 merges; deployment
+and an observed production cycle remain to verify. No new bakeoff or judge-league gate is required.

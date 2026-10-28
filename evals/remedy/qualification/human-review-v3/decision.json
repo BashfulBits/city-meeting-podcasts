@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "authority": "Explicit maintainer instruction in chat",
+  "instruction": "Ok, implement that. What's the next step to complete review/51?",
+  "approved_policy": {
+    "initial_models": [
+      "glm_flash",
+      "deepseek"
+    ],
+    "agreement": "validated exact complete-assignment agreement may propose a human-reviewed PR",
+    "disagreement": "GitHub issue for human review; no automated adjudicators",
+    "invalid_or_failed_response": "GitHub issue with preserved terminal failure/request evidence",
+    "automatic_merge": false,
+    "automatic_feed_publication": false
+  },
+  "role_plan": "flash-deepseek-human-v3",
+  "role_plan_hash": "b72bb32d2152176f77bacdfb7bd7682e0ad0169d0f436b8b639b567cc83f4328",
+  "observed_answers_sha256": "379e33b80bb600b596a452ba6d2fd11e6b4d7d6490173a9cdf285790b0030175",
+  "offline_policy_replay": {
+    "scope": "Offline control-flow replay of previously answered cases; not new model evidence",
+    "role_plan": "flash-deepseek-human-v3",
+    "assumes_route_eligibility": true,
+    "production_admitted": false,
+    "new_provider_calls": 0,
+    "counts": {
+      "pr_candidate": 4,
+      "issue_candidate": 8
+    },
+    "cases": [
+      {
+        "case_id": "RQ01",
+        "disposition": "pr_candidate",
+        "reason": "initial routes agree"
+      },
+      {
+        "case_id": "RQ02",
+        "disposition": "pr_candidate",
+        "reason": "initial routes agree"
+      },
+      {
+        "case_id": "RQ03",
+        "disposition": "pr_candidate",
+        "reason": "initial routes agree"
+      },
+      {
+        "case_id": "RQ04",
+        "disposition": "issue_candidate",
+        "reason": "initial routes disagree; human review required"
+      },
+      {
+        "case_id": "RQ05",
+        "disposition": "pr_candidate",
+        "reason": "initial routes agree"
+      },
+      {
+        "case_id": "RQ06",
+        "disposition": "issue_candidate",
+        "reason": "initial routes disagree; human review required"
+      },
+      {
+        "case_id": "RQ07",
+        "disposition": "issue_candidate",
+        "reason": "initial routes disagree; human review required"
+      },
+      {
+        "case_id": "RQ08",
+        "disposition": "issue_candidate",
+        "reason": "initial routes disagree; human review required"
+      },
+      {
+        "case_id": "RQ09",
+        "disposition": "issue_candidate",
+        "reason": "initial routes disagree; human review required"
+      },
+      {
+        "case_id": "RQ10",
+        "disposition": "issue_candidate",
+        "reason": "initial routes disagree; human review required"
+      },
+      {
+        "case_id": "RQ11",
+        "disposition": "issue_candidate",
+        "reason": "deterministic validation failed"
+      },
+      {
+        "case_id": "RQ12",
+        "disposition": "issue_candidate",
+        "reason": "initial routes disagree; human review required"
+      }
+    ]
+  },
+  "replay_pr_quality": {
+    "correct": 3,
+    "wrong": 1,
+    "wrong_case_ids": [
+      "RQ05"
+    ],
+    "not_new_inference": true
+  },
+  "production": {
+    "mode": "shadow",
+    "publication_mode": "report_only",
+    "admissions": []
+  },
+  "status": "implemented_unmerged_pending_two_route_admission_and_operational_pilot",
+  "replay_script_sha256": "f91cf51b484ed78ff5f9b90f87efa9fb920c3bf6263cf7d4034bb5bb451c82c1",
+  "validation": {
+    "full_offline_tests_passed": 6933,
+    "deselected": 17,
+    "latest_focused_checks_passed": 57,
+    "human_flow_and_failure_cases": 10,
+    "whole_repository_ruff_and_format": true,
+    "publication_boundary_revalidates_selected_pair": true
+  }
+}

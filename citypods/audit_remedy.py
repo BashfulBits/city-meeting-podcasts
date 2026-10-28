@@ -156,6 +156,96 @@ class BodyDecisions(BaseModel):
     proposals: list[BodyDecision]
 
 
+@dataclass(frozen=True)
+class P3RolePlan:
+    """One immutable role map shared by requests, observation parsing and consensus."""
+
+    name: str
+    initial: tuple[str, str]
+    chat: str | None
+    bindings: tuple[tuple[str, str, str, str], ...]
+
+    def __post_init__(self):
+        roles = [row[0] for row in self.bindings]
+        if self.chat is None:
+            if len(set(self.initial)) != 2 or len(roles) != 2 or set(roles) != set(self.initial):
+                raise ValueError("human-review plan requires two distinct initial roles")
+            if len({r[1] for r in self.bindings}) != 2:
+                raise ValueError("P3 role plan cannot reuse physical routes")
+            return
+        if (
+            len(roles) != 4
+            or len(set(roles)) != 4
+            or set(roles) != {*self.initial, self.chat, "jev"}
+        ):
+            raise ValueError("P3 role plan requires four distinct roles")
+        if len({r[1] for r in self.bindings}) != 4:
+            raise ValueError("P3 role plan cannot reuse physical routes")
+        families = {r[0]: r[3] for r in self.bindings}
+        if families[self.chat] in {families[r] for r in self.initial}:
+            raise ValueError("P3 chat adjudicator must be independent of initial families")
+
+    @property
+    def routes(self):
+        return {row[0]: row[1] for row in self.bindings}
+
+    @property
+    def models(self):
+        return {row[0]: row[2] for row in self.bindings}
+
+    @property
+    def fingerprint(self):
+        return sha256(json.dumps(self.__dict__, sort_keys=True).encode()).hexdigest()
+
+
+P3_ROLE_PLANS = {
+    "legacy-sol-v1": P3RolePlan(
+        "legacy-sol-v1",
+        ("sol", "glm_flash"),
+        "deepseek",
+        (
+            ("sol", "beatapi_gpt_6_1_sol_free", "openai/gpt-6.1-sol", "openai"),
+            ("glm_flash", "orcarouter_zai_glm_5_3_flash_free", "zai/glm-5.3-flash", "glm"),
+            (
+                "deepseek",
+                "beatapi_deepseek_v4_1_flash_free",
+                "deepseek/deepseek-v4.1-flash",
+                "deepseek",
+            ),
+            ("jev", "beatapi_jev_1_13_free", "typesafe/jev-1.13", "jev"),
+        ),
+    ),
+    "flash-deepseek-v2": P3RolePlan(
+        "flash-deepseek-v2",
+        ("glm_flash", "deepseek"),
+        "gemini",
+        (
+            ("glm_flash", "orcarouter_zai_glm_5_3_flash_free", "zai/glm-5.3-flash", "glm"),
+            (
+                "deepseek",
+                "beatapi_deepseek_v4_1_flash_free",
+                "deepseek/deepseek-v4.1-flash",
+                "deepseek",
+            ),
+            ("gemini", "beatapi_gemini_3_8_flash_free", "gemini/gemini-3.8-flash-free", "gemini"),
+            ("jev", "beatapi_jev_1_13_free", "typesafe/jev-1.13", "jev"),
+        ),
+    ),
+}
+
+
+P3_ROLE_PLANS["flash-deepseek-human-v3"] = P3RolePlan(
+    "flash-deepseek-human-v3",
+    ("glm_flash", "deepseek"),
+    None,
+    tuple(
+        row
+        for row in P3_ROLE_PLANS["flash-deepseek-v2"].bindings
+        if row[0] in {"glm_flash", "deepseek"}
+    ),
+)
+
+
 class P3Vote(BaseModel):
     """One route-bound vote retained by the P3 decision record."""
 
@@ -174,6 +264,7 @@ class P3Adjudication(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     deepseek: P3Vote | None = None
+    chat: P3Vote | None = None
     jev_route_id: str
     jev_upstream_model: str
     evidence_hash: str
@@ -239,6 +330,7 @@ def build_p3_review_decision(
     adjudication: P3Adjudication | None = None,
     adjudication_validator_passed: bool = False,
     admitted_routes: set[str] | frozenset[str] = frozenset(),
+    role_plan: str = "legacy-sol-v1",
 ) -> P3ReviewDecision:
     """Resolve one bounded consensus cascade from route-bound, already parsed votes.
 
@@ -247,6 +339,9 @@ def build_p3_review_decision(
     run. Missing gates return a policy hold; semantic non-agreement becomes a manual issue
     candidate.
     """
+    plan = P3_ROLE_PLANS[role_plan]
+    initial_routes = frozenset(plan.routes[r] for r in plan.initial)
+    chat_route = plan.routes[plan.chat] if plan.chat else None
     if not re.fullmatch(r"[0-9a-f]{64}", evidence_hash) or not re.fullmatch(
         r"[0-9a-f]{64}", policy_hash
     ):
@@ -254,9 +349,9 @@ def build_p3_review_decision(
     if len(initial_votes) != 2:
         raise ValueError("P3 requires exactly two initial votes")
     routes = {vote.route_id for vote in initial_votes}
-    if routes != P3_INITIAL_ROUTES:
+    if routes != initial_routes:
         raise ValueError("P3 initial votes must use the exact Sol and GLM Flash routes")
-    if not P3_INITIAL_ROUTES <= set(admitted_routes):
+    if not initial_routes <= set(admitted_routes):
         return P3ReviewDecision(
             finding_id=finding_id,
             evidence_hash=evidence_hash,
@@ -274,11 +369,11 @@ def build_p3_review_decision(
     by_route = {vote.route_id: vote for vote in initial_votes}
     # The packet contract labels A=Sol and B=GLM Flash, independent of set order.
     ordered = [
-        by_route["beatapi_gpt_6_1_sol_free"],
-        by_route["orcarouter_zai_glm_5_3_flash_free"],
+        by_route[plan.routes[plan.initial[0]]],
+        by_route[plan.routes[plan.initial[1]]],
     ]
     agreed = _p3_assignment_key(ordered[0].decision) == _p3_assignment_key(ordered[1].decision)
-    initial_valid = all(initial_validators.get(route) is True for route in P3_INITIAL_ROUTES)
+    initial_valid = all(initial_validators.get(route) is True for route in initial_routes)
     if agreed:
         if adjudication is not None:
             raise ValueError("P3 agreement must not trigger adjudication")
@@ -291,6 +386,18 @@ def build_p3_review_decision(
             disposition="pr_candidate" if initial_valid else "issue_candidate",
             reason="initial routes agree" if initial_valid else "deterministic validation failed",
         )
+    if plan.chat is None:
+        if adjudication is not None:
+            raise ValueError("human-review plan does not accept automated adjudication")
+        return P3ReviewDecision(
+            finding_id=finding_id,
+            evidence_hash=evidence_hash,
+            policy_hash=policy_hash,
+            initial_votes=initial_votes,
+            validator_passed=False,
+            disposition="issue_candidate",
+            reason="initial routes disagree; human review required",
+        )
     if adjudication is None:
         return P3ReviewDecision(
             finding_id=finding_id,
@@ -301,7 +408,7 @@ def build_p3_review_decision(
             disposition="policy_hold",
             reason="initial routes disagree; adjudication is required",
         )
-    if P3_DEEPSEEK_ROUTE not in admitted_routes or P3_JEV_ROUTE not in admitted_routes:
+    if chat_route not in admitted_routes or P3_JEV_ROUTE not in admitted_routes:
         return P3ReviewDecision(
             finding_id=finding_id,
             evidence_hash=evidence_hash,
@@ -320,7 +427,15 @@ def build_p3_review_decision(
         raise ValueError("P3 adjudication evidence or policy binding mismatch")
     if not re.fullmatch(r"[0-9a-f]{64}", adjudication.response_hash):
         raise ValueError("P3 JEV response hash must be SHA-256")
-    if adjudication.deepseek is None or adjudication.choice not in {"A", "B", "C", "D"}:
+    if role_plan == "legacy-sol-v1":
+        chat_vote = adjudication.deepseek
+        if adjudication.chat is not None:
+            raise ValueError("legacy adjudication cannot carry a new-plan chat vote")
+    else:
+        chat_vote = adjudication.chat
+        if adjudication.deepseek is not None:
+            raise ValueError("new-plan adjudication cannot use legacy DeepSeek field")
+    if chat_vote is None or adjudication.choice not in {"A", "B", "C", "D"}:
         return P3ReviewDecision(
             finding_id=finding_id,
             evidence_hash=evidence_hash,
@@ -331,12 +446,12 @@ def build_p3_review_decision(
             disposition="issue_candidate",
             reason="adjudication abstained or did not return a complete result",
         )
-    _validate_p3_vote(adjudication.deepseek, evidence_hash=evidence_hash, policy_hash=policy_hash)
-    if adjudication.deepseek.route_id != P3_DEEPSEEK_ROUTE:
+    _validate_p3_vote(chat_vote, evidence_hash=evidence_hash, policy_hash=policy_hash)
+    if chat_vote.route_id != chat_route:
         raise ValueError("P3 adjudication must use the exact DeepSeek route")
-    if not adjudication.deepseek.upstream_model.strip():
+    if not chat_vote.upstream_model.strip():
         raise ValueError("P3 DeepSeek result must record its upstream model")
-    if adjudication.deepseek.decision.finding_id != finding_id:
+    if chat_vote.decision.finding_id != finding_id:
         raise ValueError("P3 adjudication finding ID mismatch")
     selected = (
         ordered[0 if adjudication.choice == "A" else 1]
@@ -345,8 +460,7 @@ def build_p3_review_decision(
     )
     accepted = bool(
         selected
-        and _p3_assignment_key(selected.decision)
-        == _p3_assignment_key(adjudication.deepseek.decision)
+        and _p3_assignment_key(selected.decision) == _p3_assignment_key(chat_vote.decision)
         and initial_valid
         and adjudication_validator_passed
         and adjudication.supported_a is not None

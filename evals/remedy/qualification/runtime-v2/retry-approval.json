@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "approved": true,
+  "authority": "Explicit maintainer approval in chat",
+  "instruction": "Approve one retry and scheduled continuation",
+  "approved_question": "One delayed retry of the failed Flash request and scheduled continuation, within 48 cumulative attempts, stopping on another rate limit.",
+  "retry_case_role": [
+    "RQ01",
+    "glm_flash"
+  ],
+  "max_additional_retries": 1,
+  "max_provider_attempts_cumulative": 48,
+  "not_before_utc": "2026-10-27T00:00:00.503737+00:00",
+  "not_before_epoch": 1793059200.503737,
+  "original_failure_sha256": "63b8b13e72536b7fcdad1c64632a2e0ab534584469174e77fc7a1131cfbee318",
+  "original_authority_path": "evals/remedy/results/runtime-qualification-2026-10-26/concise-v2/packet/execution-authority.json",
+  "original_authority_sha256": "3cdfcb15c75e3e0333308cbffda91c0ecbebaaec9d7f88590634398a7cf1c099",
+  "executor_sha256": "4e8d45c33d063112f33a46859d788ef42920e0e4e256c9fd481d13289da763fc",
+  "scope": "Preserve original failure; store one retry under approved-retry without replacing it. All other requests have at most one attempt. No paid fallback, secondary account, profile/prompt change or production activation. Abort on another access/profile/identity hold."
+}

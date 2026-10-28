@@ -71,10 +71,13 @@ def _vote(role: str):
     )
 
 
-def test_live_p3_stays_closed_in_current_shadow_config():
+def test_current_production_requires_reviewed_manual_authorization():
     config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
-    assert config.mode == "shadow"
-    assert not p3_enabled(config)
+    assert config.mode == "manual"
+    assert config.publication_mode == "live"
+    assert not config.qualified_alias_types
+    assert not p3_enabled(config)  # No trust root means no activation.
+    assert p3_enabled(config, repo_root=Path.cwd())
 
 
 def test_daily_policy_hold_writes_report_without_storage_or_worker_access(monkeypatch, tmp_path):
@@ -284,7 +287,9 @@ def test_daily_runner_reconciles_deferred_worker_handle_before_recording(monkeyp
         storage=object(),
         backend=backend,
         lease_factory=lambda: None,
-        config=RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text())),
+        config=RemedyConfig.model_validate(
+            yaml.safe_load(Path("config/remedy.yml").read_text())
+        ).model_copy(update={"p3_role_plan": "legacy-sol-v1"}),
         repo_root=".",
     )
     recorded = []
@@ -305,3 +310,431 @@ def test_daily_runner_reconciles_deferred_worker_handle_before_recording(monkeyp
     backend.reconcile.assert_called_once()
     assert len(recorded) == 1
     assert recorded[0].route_id == P3_ROUTES["sol"]
+
+
+def test_selected_plan_pins_new_initial_and_independent_chat_roles():
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    assert plan.initial == ("glm_flash", "deepseek")
+    assert plan.chat == "gemini"
+    job = _chat_job(
+        role="gemini",
+        role_plan=plan.name,
+        finding_id="f0",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        evidence=_evidence(),
+    )
+    assert job.inputs["llm_policy"].allowed_route_ids == (plan.routes["gemini"],)
+    assert "sol" not in plan.routes
+
+
+def test_role_plan_rejects_self_adjudication():
+    from dataclasses import replace
+
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    with pytest.raises(ValueError, match="four distinct roles"):
+        replace(P3_ROLE_PLANS["flash-deepseek-v2"], chat="deepseek")
+
+
+@pytest.mark.parametrize(
+    "plan,roles,captions",
+    [
+        ("legacy-sol-v1", ("sol", "glm_flash"), ("Sol proposal", "GLM Flash proposal")),
+        (
+            "flash-deepseek-v2",
+            ("glm_flash", "deepseek"),
+            ("Initial proposal A", "Initial proposal B"),
+        ),
+    ],
+)
+def test_runtime_jev_choice_captions_follow_role_plan(plan, roles, captions):
+    _, _, item = _jev_job(
+        role_plan=plan,
+        finding_id="f0",
+        initial_votes=tuple(_vote(r) for r in roles),
+        evidence=_evidence(),
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        extra_context={},
+    )
+    assert item.options[:2] == (("A", captions[0]), ("B", captions[1]))
+
+
+def test_isolated_plan_is_held_before_any_backend_or_production_storage(monkeypatch, tmp_path):
+    import hashlib
+
+    from scripts import remedy_p3_daily
+
+    root = tmp_path
+    directory = root / "evals/remedy"
+    directory.mkdir(parents=True)
+    config = yaml.safe_load(Path("config/remedy.yml").read_text())
+    config.update(mode="manual", publication_mode="report_only", p3_role_plan="flash-deepseek-v2")
+    raw = json.dumps({"version": 1, "config": config, "evidence": {}}).encode()
+    plan = directory / "run.json"
+    plan.write_bytes(raw)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("gate must precede storage/backend initialization")
+
+    monkeypatch.setattr(remedy_p3_daily, "make_default_backend", forbidden)
+    monkeypatch.setattr(remedy_p3_daily, "make_storage", forbidden)
+    result = remedy_p3_daily.run_daily(
+        repo_root=root,
+        output=root / "report.json",
+        report_only_plan=plan,
+        plan_sha256=hashlib.sha256(raw).hexdigest(),
+    )
+    assert result["status"] == "policy_hold"
+    assert not list(root.glob("p3-run-*"))
+
+
+def test_selected_plan_evidence_hash_uses_runtime_schema_and_nonrecursive_policy():
+    from types import SimpleNamespace
+
+    from citypods.remedy_p3_runner import p3_runtime_bindings
+
+    config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
+    config = config.model_copy(
+        update={"p3_role_plan": "flash-deepseek-v2", "publication_mode": "report_only"}
+    )
+    entry = SimpleNamespace(
+        physical_route_ids=[P3_ROUTES["glm_flash"]],
+        upstream_model="z-ai/glm-5.3-flash-free",
+        request_params_hash="a" * 64,
+    )
+    first = p3_runtime_bindings(config, entry)
+    second = p3_runtime_bindings(config.model_copy(update={"admissions": [entry]}), entry)
+    assert first == second  # Trust-anchor SHA must not recursively depend on itself.
+    assert first["output_tokens"] == 16384
+    assert first["accepted_returned_model_ids"] == [
+        "z-ai/glm-5.3-flash-free",
+        "zai-org/glm-5.3-flash",
+    ]
+
+
+@pytest.mark.parametrize("returned", ["z-ai/glm-5.3-flash-free", "zai-org/glm-5.3-flash"])
+@pytest.mark.parametrize("publication_mode", ["report_only", "live"])
+def test_approved_glm_alias_preserves_actual_returned_id(returned, publication_mode, monkeypatch):
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    result = JobResult(
+        task="judge",
+        recipe_hash="d" * 64,
+        model=plan.models["glm_flash"],
+        route_id=plan.routes["glm_flash"],
+        upstream_model="z-ai/glm-5.3-flash-free",  # Catalog identity supplied by Worker backend.
+        output={
+            "model": returned,
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "decision": {
+                                    "finding_id": "f0",
+                                    "action": "manual_review",
+                                    "rationale": "Hold",
+                                },
+                            }
+                        )
+                    }
+                }
+            ],
+        },
+    )
+    backend = Mock()
+    backend.run_inference.return_value = result
+    config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
+    config = config.model_copy(
+        update={
+            "p3_role_plan": plan.name,
+            "publication_mode": publication_mode,
+        }
+    )
+    assert not p3_enabled(config, repo_root=Path.cwd())  # Identity approval never grants admission.
+    runner = P3DailyRunner(
+        storage=object(),
+        backend=backend,
+        lease_factory=lambda: None,
+        config=config,
+        repo_root=".",
+    )
+    recorded = []
+    monkeypatch.setattr(runner, "_append", recorded.append)
+    assert runner._submit(
+        role="glm_flash",
+        stage="initial",
+        source_key="test-city",
+        finding_id="finding-1",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        evidence=_evidence(),
+    ) == (True, False)
+    assert recorded[0].upstream_model == returned
+    assert result.upstream_model == "z-ai/glm-5.3-flash-free"
+
+
+@pytest.mark.parametrize("returned", [None, "z-ai/glm-5.3", "ZAI-ORG/GLM-5.3-FLASH", "other"])
+def test_glm_catalog_metadata_does_not_mask_unapproved_returned_model(returned):
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    result = JobResult(
+        task="judge",
+        recipe_hash="d" * 64,
+        model=plan.models["glm_flash"],
+        route_id=plan.routes["glm_flash"],
+        upstream_model="z-ai/glm-5.3-flash-free",
+        output={"model": returned},
+    )
+    with pytest.raises(ValueError, match="returned-model identity mismatch"):
+        _response_from_result(result, role="glm_flash", finding_id="f0", role_plan=plan.name)
+
+
+def test_glm_alias_is_exact_route_and_requested_id_only():
+    from citypods.remedy_p3_runner import _accepted_returned_models
+
+    alias = "zai-org/glm-5.3-flash"
+    assert alias not in _accepted_returned_models("other-route", "z-ai/glm-5.3-flash-free")
+    assert alias not in _accepted_returned_models(
+        "orcarouter_zai_glm_5_3_flash_free", "z-ai/glm-5.3"
+    )
+
+
+def test_selected_consensus_orders_judge_choice_by_plan_not_vote_input_order():
+    from citypods.audit_remedy import (
+        P3_ROLE_PLANS,
+        P3Adjudication,
+        build_p3_review_decision,
+    )
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    flash, deepseek = _vote("glm_flash"), _vote("deepseek")
+    deepseek = deepseek.model_copy(
+        update={
+            "decision": deepseek.decision.model_copy(update={"target_feeds": []}),
+        }
+    )
+    chat = flash.model_copy(update={"route_id": plan.routes["gemini"]})
+    judge = P3Adjudication(
+        chat=chat,
+        jev_route_id=plan.routes["jev"],
+        jev_upstream_model="jev-1.13-free",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        response_hash="c" * 64,
+        choice="A",
+        supported_a=0.9,
+        supported_b=0.1,
+    )
+    result = build_p3_review_decision(
+        role_plan=plan.name,
+        finding_id="finding-1",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        initial_votes=[deepseek, flash],
+        initial_validators={plan.routes[r]: True for r in plan.initial},
+        adjudication=judge,
+        adjudication_validator_passed=True,
+        admitted_routes=frozenset(plan.routes.values()),
+    )
+    assert result.disposition == "pr_candidate"
+    with pytest.raises(ValueError, match="legacy DeepSeek field"):
+        build_p3_review_decision(
+            role_plan=plan.name,
+            finding_id="finding-1",
+            evidence_hash="a" * 64,
+            policy_hash="b" * 64,
+            initial_votes=[deepseek, flash],
+            initial_validators={plan.routes[r]: True for r in plan.initial},
+            adjudication=judge.model_copy(update={"deepseek": chat}),
+            admitted_routes=frozenset(plan.routes.values()),
+        )
+
+
+def test_report_only_intent_precedes_submit_and_saved_handle_resumes_without_resubmit(tmp_path):
+    from citypods.remedy_p3_runner import P3LocalReportRunner
+
+    config = RemedyConfig.model_validate(yaml.safe_load(Path("config/remedy.yml").read_text()))
+    config = config.model_copy(
+        update={"p3_role_plan": "flash-deepseek-v2", "publication_mode": "report_only"}
+    )
+    backend = Mock()
+    runner = P3LocalReportRunner(
+        artifact_root=tmp_path,
+        storage=None,
+        backend=backend,
+        config=config,
+        repo_root=".",
+    )
+    job = _chat_job(
+        role="deepseek",
+        role_plan=config.p3_role_plan,
+        finding_id="f0",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        evidence=_evidence(),
+    )
+    handle = JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend="worker", ref="job-1")
+
+    def submit(_job):
+        assert (tmp_path / "calls" / (job.recipe_hash + "-intent.json")).exists()
+        return handle
+
+    backend.run_inference.side_effect = submit
+    assert runner._run_job(job) == handle
+    assert runner._run_job(job) == handle
+    backend.run_inference.assert_called_once()
+    receipt = tmp_path / "calls" / (job.recipe_hash + "-receipt.json")
+    saved = json.loads(receipt.read_text())
+    saved["value"]["recipe_hash"] = "f" * 64
+    receipt.write_text(json.dumps(saved))
+    with pytest.raises(ValueError, match="request binding"):
+        runner._run_job(job)
+    backend.run_inference.assert_called_once()
+    receipt.unlink()
+    with pytest.raises(RuntimeError, match="unresolved"):
+        runner._run_job(job)
+    backend.run_inference.assert_called_once()
+
+
+def test_evaluation_adapter_preserves_feed_set_and_one_recording_scope():
+    from citypods.remedy_p3_runner import adapt_evaluated_body_selection
+
+    case = {
+        "case_id": "case-1",
+        "existing_feeds": [{"slug": "test-city-council"}],
+        "evidence_refs": [{"id": "official"}],
+        "recordings": [{"uid": "uid-1", "provider_guid": "guid-1"}],
+    }
+    answer = {
+        "case_id": "case-1",
+        "publication_action": "assign_existing",
+        "feed_slugs": ["test-city-council"],
+        "evidence_ref_ids": ["official"],
+        "bodies": [{"name": "Council"}],
+        "missing_evidence": [],
+    }
+    result = adapt_evaluated_body_selection(answer, case)
+    assert result.action == "single_uid_inclusion"
+    assert result.target_feeds == ["test-city-council"]
+    assert result.episode_ids == ["e0"] and result.all_observed_episodes is False
+    for action in [
+        "unresolved",
+        "archive_only",
+        "archive_series",
+        "exclude_event",
+        "unconfigured_body",
+    ]:
+        held = adapt_evaluated_body_selection(answer | {"publication_action": action}, case)
+        assert held.action == "manual_review" and not held.target_feeds
+    with pytest.raises(ValueError, match="case ID"):
+        adapt_evaluated_body_selection(answer | {"case_id": "other"}, case)
+    with pytest.raises(ValueError, match="unknown or duplicate feed"):
+        adapt_evaluated_body_selection(answer | {"feed_slugs": ["invented"]}, case)
+    held = adapt_evaluated_body_selection(answer | {"missing_evidence": ["ownership"]}, case)
+    assert held.action == "manual_review"
+
+
+def test_concise_adjudicators_keep_each_evidence_block_once():
+    from citypods.audit_remedy import P3_ROLE_PLANS, _compact_evidence
+    from citypods.remedy_p3_runner import _adjudication_context
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    evidence = _evidence()
+    evidence["historical_archive"] = {"note": "unique_archive_marker"}
+    votes = [_vote(role) for role in plan.initial]
+    context = _adjudication_context(votes, evidence, plan.name)
+    assert set(context) == {"initial_proposals", "archive_context"}
+    taxonomy = json.dumps(_compact_evidence(evidence)["existing_feeds"], sort_keys=True)
+    chat = _chat_job(
+        role="gemini",
+        role_plan=plan.name,
+        finding_id="f0",
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        evidence=evidence,
+        extra_context=context,
+    )
+    prompt = chat.inputs["messages"][0]["content"]
+    assert prompt.count(taxonomy) == 1
+    assert prompt.count("unique_archive_marker") == 1
+    assert all(v.route_id not in prompt for v in votes)
+    job, _, item = _jev_job(
+        role_plan=plan.name,
+        finding_id="f0",
+        initial_votes=tuple(votes),
+        evidence=evidence,
+        evidence_hash="a" * 64,
+        policy_hash="b" * 64,
+        extra_context=context,
+    )
+    wire = next(iter(job.inputs["systemone"]["questions"].values()))["instructions"]
+    assert wire.count(taxonomy) == 1
+    assert wire.count(item.question.instruction) == 1
+    assert wire.count("unique_archive_marker") == 1
+    data = json.loads(item.evidence.text)
+    assert data["source_evidence"] == _compact_evidence(evidence)
+    assert "initial_proposals" not in data
+    assert data["A"] == votes[0].decision.model_dump(mode="json")
+    assert data["B"] == votes[1].decision.model_dump(mode="json")
+
+
+def test_concise_jev_recipe_changes_when_actual_proposal_changes():
+    from citypods.audit_remedy import P3_ROLE_PLANS
+    from citypods.remedy_p3_runner import _adjudication_context
+
+    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    evidence = _evidence()
+    votes = [_vote(role) for role in plan.initial]
+
+    def build(current):
+        return _jev_job(
+            role_plan=plan.name,
+            finding_id="f0",
+            initial_votes=tuple(current),
+            evidence=evidence,
+            evidence_hash="a" * 64,
+            policy_hash="b" * 64,
+            extra_context=_adjudication_context(current, evidence, plan.name),
+        )[0]
+
+    original = build(votes)
+    changed = votes[0].model_copy(
+        update={"decision": votes[0].decision.model_copy(update={"rationale": "Changed candidate"})}
+    )
+    assert build([changed, votes[1]]).recipe_hash != original.recipe_hash
+
+
+@pytest.mark.parametrize("digest", [None, "", "bad", "A" * 64])
+def test_report_only_plan_requires_reviewed_digest_before_reading_files(tmp_path, digest):
+    from scripts.remedy_p3_daily import run_report_only_plan
+
+    with pytest.raises(ValueError, match="requires an exact lowercase --plan-sha256"):
+        run_report_only_plan(
+            repo_root=tmp_path,
+            output=tmp_path / "output.json",
+            plan_path=tmp_path / "absent.json",
+            plan_sha256=digest,
+        )
+    assert not list(tmp_path.iterdir())
+
+
+def test_atomic_local_receipts_preserve_existing_bytes_and_leave_no_partial_json(tmp_path):
+    from citypods.remedy_p3_runner import _write_local_json_exclusive
+
+    target = tmp_path / "receipt.json"
+    with pytest.raises(TypeError):
+        _write_local_json_exclusive(target, {"invalid": object()})
+    assert not list(tmp_path.iterdir())
+    _write_local_json_exclusive(target, {"complete": True})
+    before = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        _write_local_json_exclusive(target, {"replace": True})
+    assert target.read_bytes() == before
+    assert list(tmp_path.iterdir()) == [target]
