@@ -1,159 +1,20 @@
-# Runtime-contract challenge — outcomes and 48-attempt budget approved
+# Runtime-contract challenge baseline
 
-This packet tests the actual P3 prompt/schema/role plan on twelve real historical source findings.
-It is a bounded challenge, with source-family overlap and some reused recordings, not an
-independent production-admission holdout. The maintainer approved all RQ01–RQ12 expectations
-on October 26; `outcome-acceptance.json` records the exact instruction and reviewed hashes.
-The separate maximum 48-attempt budget is approved in `budget-approval.json`.
-The earlier outcome-only approval remains an immutable historical record.
+The retained twelve-case spec, approved outcome decisions and budgets record the original
+runtime-prompt challenge. The cohort is a reused historical challenge, not an independent holdout.
+Generation/scoring instructions are maintained in [EXPERIMENTS.md](../../EXPERIMENTS.md).
 
-Retain `cases-draft.json` (curated selections and draft expectations) and the reusable builder:
+`answers.json` and `continuation-answers.json` retain all actual completed/held responses and
+source hashes with shared physical request profiles. `evidence_archive.load_observations` expands
+profiles for the scorer; summaries and comparison tables are derived, not duplicated here.
+The original expanded JSON and detailed receipts remain local/ignored and unchanged.
 
-```bash
-PYTHONPATH="$PWD" python evals/remedy/runtime_qualification.py \
-  --acceptance evals/remedy/qualification/runtime-v1/outcome-acceptance.json \
-  --output /tmp/p3-runtime-review
-```
+The maintainer approved RQ01–RQ12, allowed current manual fallback for RQ04/RQ05, confirmed RQ07's
+new-feed expectation and accepted manual control for RQ12. A subsequent case-specific acceptance
+covers RQ06's observed union; it does not rewrite raw gold or transfer to other answers/cases.
+See `outcome-acceptance.json` and `rq06-observed-acceptance.json`.
 
-The output directory must not exist. The builder verifies the retained inventory/cohort hashes,
-binds current source configs and runtime code/catalog hashes, checks the proposed decisions
-through the real deterministic validator, and creates:
-
-- `REVIEW.md`: case-by-case actions, complete feed sets, actual recording links, proof limitations
-  and explicit current validator holds. Start with its summary table.
-- `expected-decisions-draft.json`: unapproved expected decisions, separate from inference inputs.
-- `model-inputs.json`: runtime evidence, actual `_chat_job` outputs and direct measurement payloads
-  using shared route shaping. No expected answer, historical recommendation or acceptance enters
-  the request. These are runtime selector/policy-aware inputs, not blind-owner discovery inputs.
-- `record-provenance.json`: original UIDs/GUIDs and mirrored-view aliases. Native clips are counted
-  once for this challenge; no archived meeting record is removed or changed.
-- `run-plan-draft.json`: exact hashes, runtime bindings and unapproved request budget.
-
-Generated files stay local/ignored. The builder has no execution mode, reads no credentials and
-makes no provider requests. Rebuilding into a new directory is deterministic for the same sources.
-A source/config/prompt/schema change requires a rebuilt packet and new reviewed hashes.
-
-## How to review
-
-For each case, confirm the action, complete feed set, exact recording scope, and whether the
-runtime-visible evidence justifies the expectation. Use approve / change / omit by case ID.
-Rationale wording is not an answer key. New-feed wording/slug alternatives require semantic
-review; do not automatically classify equivalent wording as a new error or acceptance.
-
-Four decisions need particular attention:
-
-- **RQ04/RQ05:** the proposed Addison joint-event memberships preserve two/three owning feeds.
-  The current validator rejects P&Z/CPAC abbreviations. Choose whether to accept a manual runtime
-  fallback for this pilot or require a separate validator correction before calls. Do not drop a
-  correct feed just to make the validator pass.
-- **RQ07:** four distinct Dallas Joint Education Task Force recordings support a proposed new
-  body/feed direction. Confirm its public-body identity and scope, or change the expectation to
-  manual pending stronger proof. This review does not create a feed or authorize publication.
-- **RQ12:** the prior candidate-forum archive decision has no literal runtime action, and that
-  archive policy is absent from the initial prompt. Decide whether manual fallback is a fair
-  conservative expectation for this input, or omit/revise the control before inference.
-
-Other useful controls include RQ08 (four mirrored rows are only two native clips), RQ09 (Citizen's
-Council is not automatically the municipal council or Minority/Women committee), and RQ11 (an
-unnamed joint board is not enough to invent ownership). All twelve expectations are now approved; see the authority record below.
-
-## Proposed measurement budget and scope
-
-Twelve cases × Flash/DeepSeek = **24 initial requests**. Only actual disagreements may receive
-Gemini/JEV = **up to 24 additional requests**, for **48 provider attempts maximum**. No retries,
-HTTP redirects, SDK/Gateway retry loops, paid fallback or secondary BeatAPI account are included.
-Maximum split: OrcaRouter 12; primary BeatAPI 36. If a request fails, preserve the failure rather
-than retrying outside the budget. A new retry allowance would need separate approval.
-
-The measurement transport is direct, single-attempt delivery of the runtime-generated payloads.
-This keeps the attempt budget enforceable: the normal Worker queue has automatic retries and
-cannot honestly be described as a 48-attempt cap. Worker end-to-end integration remains for the
-later monitored run. Preserve exact route/endpoint/model/profile and identity checks, owned
-provider pause/drain/restore, exact registered-route reservations, 65-second single-flight
-spacing, default reasoning/no temperature, 16,384 chat output tokens and the 720-second hard
-response deadline. JEV keeps its native systemone wire and has no chat output controls.
-
-The Gemini/JEV payloads must be built from actual initial responses using runtime `_chat_job`,
-`_adjudication_context` and `_jev_job`; never use draft expected answers as proposals. Their runtime
-bindings are frozen in the run plan. No actual disagreement means no new qualification evidence
-for those adjudicator roles. Do not force a fabricated disagreement to fill coverage.
-
-Score semantic decisions, deterministic validator outcomes and final exact-consensus/manual
-outcomes separately. All-manual is not a passing result on positive cases; schema validity alone
-is not success. Preserve incorrect agreements, invalid outputs, identity failures and all holds.
-No passing evaluation envelope, AA score, independent-holdout count or production admission is
-created by preparation or by approval of this challenge. Publication and activation stay gated.
-
-The offline preflight also corrected stale Sol/GLM option captions in the selected runtime JEV
-plan to neutral initial A/B captions; legacy captions stay unchanged. That exact updated runtime
-contract is what this packet binds, not the previous evaluated body-selection/JEV question set.
-
-## Expected-outcome approval — October 26
-
-The immutable draft is now approved by the separate `outcome-acceptance.json` authority record;
-its original pending fields are historical, not an unresolved review request. The approved-mode
-builder checks the exact curated spec, model-input bytes and original draft expectation bytes
-against the reviewed hashes before generating `expected-decisions-approved.json`.
-
-All twelve expected outcomes are confirmed. RQ04/RQ05 accept the existing manual fallback and
-also accept a correct automatic resolution with the full feed set and exact recording scope.
-No validator correction or bypass is requested now; revisit only if review volume warrants it.
-RQ07 is confirmed as a new-feed expectation, without authorizing actual feed creation. RQ12's
-manual-control fallback is accepted. Original semantic targets and dataset gold are unchanged.
-
-Generated plans record expected_outcomes_approved=true while execution_enabled=false and
-call_budget_approved=false. Approving expected outcomes does not qualify the runtime prompt,
-create evidence of model performance, waive ordinary model admission, activate production or
-spend the proposed maximum 48 single-attempt provider requests.
-
-## Measurement budget approved — pre-merge
-
-The maintainer approved the maximum 48 attempts on October 26. `budget-approval.json` records
-that authority, the exact frozen plan/approved-expectation hashes, executor hash and single output
-ledger. Run this direct runtime-payload qualification **before** merging; review the results in
-PR #2541 before merge. The deployed Worker integration run remains a separate later step.
-
-The reusable executor is `evals/remedy/run_runtime_qualification.py`. Without `--execute`, it
-validates authority, frozen files, twelve cases and unresolved-request/access holds offline.
-Execution requires the suppressed citypods-env wrapper and approved credential escalation:
-
-```bash
-PYTHONPATH="$PWD" python evals/remedy/run_runtime_qualification.py \
-  --plan evals/remedy/results/runtime-qualification-2026-10-26/outcomes-approved-v2/run-plan-draft.json \
-  --authority evals/remedy/qualification/runtime-v1/budget-approval.json \
-  --output evals/remedy/results/runtime-qualification-2026-10-26/measurement
-```
-
-The generated plan is recreated with the builder and outcome acceptance. Historical budget
-approval is not reusable permission to repeat this experiment in a fresh ledger or checkout.
-The executor refuses changed sources, changed approved expectations, a different output ledger,
-unresolved requests, identity holds and access/profile failures. Each case/role has one immutable
-intent/result, at most 48 provider attempts overall. Foreign pauses are preserved, owned provider
-pauses are renewed/restored, and Gemini uses approved provider coordination if its candidate route
-is not deployed. No reservation is charged to another route. No SDK/Gateway retries or redirects.
-
-Consensus results are explicitly an eligibility-assuming sandbox simulation; they do not make
-routes admitted in production. Per-role semantic correctness, accepted manual fallbacks, contract
-holds, transport holds and exact-consensus outcomes remain separate. All raw run files remain
-local/ignored; a small observed-output summary can be retained after measurement and review.
-
-## Observed measurement — stopped
-
-See [RESULTS.md](RESULTS.md) and `observed-results.json`. The run stopped after 31 attempts
-on a non-retryable JEV input-length HTTP 400. Contract transfer remains unqualified: three of six
-sandbox automatic candidates violated the approved joint ownership or recording scope. Both owned
-provider pauses were restored; no retry or activation occurred. Review the failed baseline before
-authorizing any revised contract or further requests.
-
-## Explicit continuation of untouched cases
-
-`continuation-approval.json` records the subsequent request to complete RQ11/RQ12 only. The
-reusable `continue_runtime_qualification.py` acknowledges the two exact terminal input-length
-receipts without retrying either request; all source/profile checks, the cumulative 48-attempt
-ledger and shared controller lock remain enforced. Any different access/profile/identity hold
-or unknown outcome blocks continuation. This approval does not authorize another experiment,
-modified prompts or production behavior. No routing policy has been chosen by this continuation.
-
-RQ11/RQ12 are now measured; all 12 initial cases have answers. See the final section of
-`RESULTS.md` and `completion-summary.json` for acceptance-aware rates and PR-versus-issue counts.
-The terminal JEV limits remain documented. No further requests or routing changes are enabled.
+The 48-attempt authority and bounded untouched-case continuation are historical execution records.
+The completed baseline had 36 judgments and two JEV input-size holds. New runs require new reviewed
+source/prompt/profile/case hashes and explicit call authority; old approvals must not be refreshed
+silently. No historical measurement admits a production route or authorizes automatic feed changes.

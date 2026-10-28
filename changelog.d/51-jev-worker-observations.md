@@ -24,3 +24,8 @@
   evidence, including the maintainer-approved Flash alias. Historical full-GLM measurements retain
   mixed output-profile and provider provenance; they do not authorize a new production route.
   No media pipeline version, episode UID, source record or stored audio backfill changes.
+- **Reproducible evidence retention.** Factor expanded judging inputs into original cases,
+  blinded proposal references and unique retrieved evidence; rebuild both approved packets with
+  identical byte hashes. Normalize actual runtime answers with shared profiles and recompute
+  comparisons. Keep dated helpers and generated artifacts locally, excluded from Git. Update
+  manual authorization references to equivalent retained evidence without changing its scope.

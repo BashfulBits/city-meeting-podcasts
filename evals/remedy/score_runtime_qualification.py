@@ -9,6 +9,7 @@ from pathlib import Path
 from run_runtime_qualification import ROOT, digest, read, semantic
 
 from citypods.audit_remedy import BodyDecision, _p3_assignment_key
+from evals.remedy.evidence_archive import load_observations
 
 
 def summarize(directory, plan_path, authority_path):
@@ -122,7 +123,9 @@ def freeze_additional(directory, plan_path, authority_path, baseline_path, outpu
             if not result.exists() or read(result).get("provider_outcome") == "unknown":
                 raise ValueError("cannot freeze unresolved provider requests")
         baseline = (
-            read(baseline_path) if baseline_path else {"observed_results": [], "case_outcomes": []}
+            load_observations(baseline_path)
+            if baseline_path
+            else {"observed_results": [], "case_outcomes": []}
         )
         known = {(r["case_id"], r["role"]) for r in baseline["observed_results"]}
         results = []
@@ -189,8 +192,8 @@ def freeze_additional(directory, plan_path, authority_path, baseline_path, outpu
 
 def compare_runs(baseline_paths, candidate_path, plan_path, acceptance_path):
     """Compare completed judgments on identical cases; keep original and accepted views apart."""
-    baseline = [r for path in baseline_paths for r in read(path)["observed_results"]]
-    candidate = read(candidate_path)["observed_results"]
+    baseline = [r for path in baseline_paths for r in load_observations(path)["observed_results"]]
+    candidate = load_observations(candidate_path)["observed_results"]
     acceptance = read(acceptance_path)
     cid_accepted = acceptance["case_id"]
 
@@ -205,10 +208,13 @@ def compare_runs(baseline_paths, candidate_path, plan_path, acceptance_path):
     if acceptance.get("maintainer_disposition") != "accepted_exception":
         raise ValueError("missing separate observed-case acceptance")
     cases = {c["case_id"]: c for c in read(plan_path.parent / "model-inputs.json")["cases"]}
-    wanted = {
-        c["case_id"]: c
-        for c in read(plan_path.parent / "expected-decisions-approved.json")["cases"]
-    }
+    wanted_path = plan_path.parent / "expected-decisions-approved.json"
+    if not wanted_path.exists():
+        wanted_path = plan_path.parent / "expected-decisions-draft.json"
+        reviewed = read(ROOT / "evals/remedy/qualification/runtime-v1/outcome-acceptance.json")
+        if digest(wanted_path) != reviewed["reviewed_expected_draft_sha256"]:
+            raise ValueError("rebuilt expectations differ from maintainer-reviewed gold")
+    wanted = {c["case_id"]: c for c in read(wanted_path)["cases"]}
 
     def judgments(rows):
         decisions = {
@@ -259,9 +265,9 @@ def compare_runs(baseline_paths, candidate_path, plan_path, acceptance_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--directory", type=Path)
     parser.add_argument("--plan", type=Path, required=True)
-    parser.add_argument("--authority", type=Path, required=True)
+    parser.add_argument("--authority", type=Path)
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--freeze-additional", type=Path)
     parser.add_argument("--freeze", type=Path, help="freeze a complete independent run")
@@ -269,6 +275,10 @@ if __name__ == "__main__":
     parser.add_argument("--candidate", type=Path)
     parser.add_argument("--acceptance", type=Path)
     args = parser.parse_args()
+    if (args.freeze or args.freeze_additional or not args.compare_baseline) and (
+        not args.directory or not args.authority
+    ):
+        parser.error("ledger scoring/freezing requires --directory and --authority")
     if args.freeze and args.freeze_additional:
         parser.error("choose either --freeze or --freeze-additional")
     if args.freeze:
@@ -279,7 +289,6 @@ if __name__ == "__main__":
         freeze_additional(
             args.directory, args.plan, args.authority, args.baseline, args.freeze_additional
         )
-    summary = summarize(args.directory, args.plan, args.authority)
     if args.compare_baseline:
         if not args.candidate or not args.acceptance:
             parser.error("comparison requires --candidate and --acceptance")
@@ -290,4 +299,6 @@ if __name__ == "__main__":
             )
         )
     else:
-        print(json.dumps(summary, indent=2))
+        if not args.directory or not args.authority:
+            parser.error("ledger scoring requires --directory and --authority")
+        print(json.dumps(summarize(args.directory, args.plan, args.authority), indent=2))

@@ -132,8 +132,17 @@ def build(spec_path, output, acceptance_path=None):
     old_keys = {(c["source_key"], native_key(c["recordings"][0]["provider_guid"])) for c in cohort}
     feeds = load_city_configs(ROOT / "config", load_site_config(ROOT / "config/site_config.yml"))
     config = RemedyConfig.model_validate(yaml.safe_load((ROOT / "config/remedy.yml").read_text()))
-    assert config.mode == "shadow" and not config.admissions
-    config = config.model_copy(update={"mode": "manual", "p3_role_plan": "flash-deepseek-v2"})
+    # Offline challenge settings are independent of current production activation/admissions.
+    config = config.model_copy(
+        update={
+            "mode": "manual",
+            "publication_mode": "report_only",
+            "p3_role_plan": "flash-deepseek-v2",
+            "admissions": [],
+            "manual_review_authorization": None,
+            "qualified_alias_types": [],
+        }
+    )
     plan = P3_ROLE_PLANS[config.p3_role_plan]
     bindings = {}
     for role, route_id in plan.routes.items():

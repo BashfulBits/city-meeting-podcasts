@@ -13,12 +13,13 @@ from citypods.remedy_p3_runner import (
     _validator_passed,
     stable_finding_id,
 )
+from evals.remedy.evidence_archive import load_observations
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def replay(observed_path, inputs_path):
-    observed = json.loads(observed_path.read_text())
+    observed = load_observations(observed_path)
     inputs = json.loads(inputs_path.read_text())["cases"]
     rows = {
         (r["case_id"], r["role"]): r

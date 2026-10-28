@@ -13,6 +13,7 @@ from citypods.audit_remedy import P3Vote, _compact_evidence
 from citypods.compute.llm_policy import estimate_tokens
 from citypods.remedy_evaluation import canonical_hash
 from citypods.remedy_p3_runner import _adjudication_context, _jev_job, stable_finding_id
+from evals.remedy.evidence_archive import load_observations
 
 
 def prepare(approval_path, output):
@@ -98,8 +99,8 @@ def prepare(approval_path, output):
 
 def audit_packets(inputs, approval):
     """Use retained initial outputs only to audit worst-case judge shaping, never as new answers."""
-    observed = read(ROOT / approval["baseline_path"])["observed_results"]
-    observed += read(ROOT / approval["continuation_path"])["observed_results"]
+    observed = load_observations(ROOT / approval["baseline_path"])["observed_results"]
+    observed += load_observations(ROOT / approval["continuation_path"])["observed_results"]
     rows = {(r["case_id"], r["role"]): r for r in observed}
     audit = []
     for case in inputs["cases"]:

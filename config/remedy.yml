@@ -21,8 +21,8 @@ admissions:
   catalog_hash: 4769d0c2eb53f77387bd572e030b01338426c2d762405efa2f003d2f152d229a
   reviewed_result_paths:
   - evals/remedy/qualification/human-review-v3/decision.json
-  - evals/remedy/qualification/runtime-v2/observed-results.json
-  - evals/remedy/qualification/runtime-v2/completion-summary.json
+  - evals/remedy/qualification/runtime-v2/answers.json
+  - evals/remedy/qualification/runtime-v2/conclusions.json
   - evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json
   reviewed_admission_ref: evals/remedy/qualification/human-review-v3/production-authorization.json
 - status: admitted
@@ -42,8 +42,8 @@ admissions:
   catalog_hash: 8d8c68178512ca3b37829c27725e8ca8092bd73b6200d28366bc98e6c1b6a565
   reviewed_result_paths:
   - evals/remedy/qualification/human-review-v3/decision.json
-  - evals/remedy/qualification/runtime-v2/observed-results.json
-  - evals/remedy/qualification/runtime-v2/completion-summary.json
+  - evals/remedy/qualification/runtime-v2/answers.json
+  - evals/remedy/qualification/runtime-v2/conclusions.json
   - evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json
   reviewed_admission_ref: evals/remedy/qualification/human-review-v3/production-authorization.json
 qualified_alias_types: []
@@ -57,4 +57,4 @@ onboarding_exceptions: []
 policy_templates: []
 manual_review_authorization:
   path: evals/remedy/qualification/human-review-v3/production-authorization.json
-  sha256: 04639d45b72864c7f8af7c4ea229cfcd89639fff55f359a6dcec5b83b0d47314
+  sha256: b06fdafbaf64b22c54f978d0bb532acb561d30e078f0ca6e466ad1bfb079d976

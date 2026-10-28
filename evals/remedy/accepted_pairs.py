@@ -203,9 +203,12 @@ def score(evidence, additional=()):
         )
     base = RESULTS / "accepted-pairs-2026-10-24"
     approval = read(base / "adjudication-approval.json")
+    from evals.remedy.evidence_archive import load_packets
+
+    packets = load_packets()
     cascades = []
     for pair, roles in approval["judge_mapping"].items():
-        packet = read(ROOT / approval["packets"][pair]["path"])
+        packet = packets[pair]
         chat = next(r for r in roles if r != "jev")
         counts = Counter()
         for entry in packet["cases"]:

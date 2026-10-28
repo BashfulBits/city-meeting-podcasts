@@ -57,16 +57,17 @@
       "sha256": "0874bdbf07358937838860249a8d80a32561b5dc19062147628ca37ac3058d58"
     },
     {
-      "path": "evals/remedy/qualification/runtime-v2/observed-results.json",
-      "sha256": "379e33b80bb600b596a452ba6d2fd11e6b4d7d6490173a9cdf285790b0030175"
+      "path": "evals/remedy/qualification/runtime-v2/answers.json",
+      "sha256": "5686ff771bf2bf65968f9297edf98fc94fe44cd5ecbbd4e1758e097fdae17747"
     },
     {
-      "path": "evals/remedy/qualification/runtime-v2/completion-summary.json",
-      "sha256": "cd50d270f65eb4e550d23c6ee63d5da9108df9e3a4da019737742b5ae5b82aa9"
+      "path": "evals/remedy/qualification/runtime-v2/conclusions.json",
+      "sha256": "05f090f190c71fd070f2c61985fa84026b323cf9eb9621aebd9a30d658ab58cb"
     },
     {
       "path": "evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json",
       "sha256": "d5b5415987fbe037c710b339e2f79b73de9a87c92899c6bb18dc55938f1e0bc4"
     }
-  ]
+  ],
+  "retention_note": "Equivalent normalized answers and compact outcome facts replace generated views; scope, model outputs and runtime bindings are unchanged."
 }

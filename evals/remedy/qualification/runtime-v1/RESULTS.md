@@ -6,7 +6,7 @@ input was held locally before sending. No retries, payload reductions or fallbac
 Both owned provider pauses were restored successfully; there are no unresolved intents.
 RQ11 and RQ12 were never attempted. RQ10 has chat answers but no final cascade summary.
 
-`observed-results.json` retains compact normalized observations and original-result hashes.
+`answers.json` retains compact normalized observations and original-result hashes.
 Raw receipts, generated requests, pause/reservation logs and controller files remain local and
 ignored. These normalized observations are not transport attestations. The reusable read-only
 `evals/remedy/score_runtime_qualification.py` scores the local frozen measurement ledger.
@@ -122,7 +122,7 @@ instead require human triage of all 12 cases before any remedy PR; this experime
 whether human reviewers actually catch the wrong proposals. Neither output policy was activated.
 These small challenge-set rates are descriptive, not a production error-rate estimate.
 
-`completion-summary.json` records this acceptance-aware decision view separately from original
+The original local `completion-summary.json` records this acceptance-aware view separately from raw
 scores. `observed-continuation.json` retains only the six additional normalized observations and
 two new case summaries, linked to the original compact baseline by hash. Raw generated artifacts
 remain local. Use the scorer's `--baseline` / `--freeze-additional` options to freeze new immutable

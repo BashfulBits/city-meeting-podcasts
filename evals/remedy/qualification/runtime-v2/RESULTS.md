@@ -6,8 +6,8 @@ retry succeeded. No new transport, input-length, output-contract or identity fai
 Both owned provider pauses were restored; the controller is inactive with no unknown requests.
 The completion heartbeat was deleted. No routing policy, admission, deployment or merge changed.
 
-`observed-results.json` retains normalized judgments, usage, actual identity/profile metadata and
-original intent/result hashes. `completion-summary.json` records the comparison and conclusions.
+`answers.json` retains normalized judgments, usage, actual identity/profile metadata and
+original intent/result hashes. `conclusions.json` records completion facts; comparisons are recomputed from retained answers.
 Raw requests, provider replies, pause receipts, controllers and generated packets remain local.
 The compact record is not a raw transport receipt or a model-weight attestation.
 
@@ -98,23 +98,11 @@ single-flight, spaced observations of different role mixes, not maximum-capacity
 
 ## Reproduce the comparison offline
 
-Generate the frozen packet using the README's Python command. For an existing local ledger,
-`score_runtime_qualification.py --freeze <new-file>` retains compact observations only after the
-controller exits and all requests have known results. It never overwrites an existing artifact.
-Recompute the comparison with:
-
-```bash
-run_root=evals/remedy/results/runtime-qualification-2026-10-26/concise-v2
-qualification_root=evals/remedy/qualification
-PYTHONPATH="$PWD" python evals/remedy/score_runtime_qualification.py \
-  --directory "$run_root/measurement" \
-  --plan "$run_root/packet/run-plan-draft.json" \
-  --authority "$run_root/packet/execution-authority.json" \
-  --compare-baseline "$qualification_root/runtime-v1/observed-results.json" \
-  --compare-baseline "$qualification_root/runtime-v1/observed-continuation.json" \
-  --candidate "$qualification_root/runtime-v2/observed-results.json" \
-  --acceptance "$qualification_root/runtime-v1/rq06-observed-acceptance.json"
-```
+Follow [EXPERIMENTS.md](../../EXPERIMENTS.md) to regenerate inputs and compare retained answers
+from a clean checkout. No raw ledger, authority file, inference or credential access is required for
+that comparison. For an existing local execution ledger, `score_runtime_qualification.py --freeze`
+can retain normalized observations after the controller exits and every request has a known result.
+The profile-factor archive command then removes repeated metadata and derived scoring views.
 
 The acceptance view checks matching structured assignments and case ID. Original raw scores
 remain visible. The source/schema/prompt manifests, generator and scorer are retained; bulk

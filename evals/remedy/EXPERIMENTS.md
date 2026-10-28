@@ -1,167 +1,124 @@
-# Reproduce the accepted-pair experiment or evaluate another model
+# Reproduce remedy evaluations or add a model
 
-This is the maintained entry point for the October 2026 body-selection and adjudication work.
-Use the same frozen 60 cases, original prompt and original gold when comparing another model.
-Quality acceptance is separate from serving identity, runtime-contract qualification and admission.
-Nothing here enables production or authorizes new provider calls.
+Keep unique inputs and actual outputs, not an expanded run directory. All commands below are
+offline unless explicitly described as execution. Historical approvals do not authorize new calls.
 
-## What belongs in Git
+## Retained evidence and generated views
 
-Keep the reusable generation, transport, judging and scoring scripts; the frozen cohort and gold;
-the two actual blinded, expanded adjudication packets; maintainer acceptance and scope decisions;
-and compact observed model outputs that cannot be reproduced without a new inference run.
+- Frozen 60-case cohort/gold and the original prompt/schema remain in their existing locations.
+- `results/accepted-pairs-2026-10-24/evidence.json` retains 298 initial answers, 24 judge answers,
+  two invalid full-GLM response texts and attempt/profile/identity metadata with original hashes.
+- `results/accepted-pairs-2026-10-24/judging-inputs.json` retains only additional retrieved evidence,
+  changes from original cases and blinded proposal references. Both expanded packets are rebuilt
+  from these inputs and the actual retained answers; their original approved byte hashes must match.
+- `qualification/runtime-v1/{answers,continuation-answers}.json` and runtime-v2 `answers.json`
+  retain every actual normalized runtime answer, status, identity, usage and source-result hash.
+  Shared request profiles are stored once. Derived scores, case summaries and comparison tables
+  are recomputed rather than duplicated in each observation bundle.
+- `qualification/runtime-v2/conclusions.json` records compact completion facts; maintainer case,
+  budget, retry, identity and manual-production approvals remain separate from raw gold.
 
-`results/accepted-pairs-2026-10-24/evidence.json` contains 298 selected initial answers, 24 judge
-responses, two completed invalid full-GLM response texts, and compact attempt/profile/identity/
-usage/latency metadata. Original source hashes identify the local raw receipts. Normalized JSON
-has different bytes and must never be presented as the original transport receipt or attestation.
-The final accepted-pair score and written conclusions are retained as the small decision record.
+Normalized files are not original transport receipts. Original hashes identify local sources;
+no claim is made that normalization preserves raw receipt bytes or proves physical serving weights.
+Generated packets/requests, score snapshots, readiness bundles, dated polling/restart helpers,
+logs, downloaded pages, controller state and raw responses remain local and ignored. Cleanup removes
+these files only from Git's index; it does not delete the local archive. Re-fetching websites would
+produce new evidence, not reproduce the historical snapshot.
 
-Do not commit generated per-case requests, intermediate score snapshots, runtime replay output,
-HTML/PDF downloads, raw SSE frames, polling/pause/reservation receipts, controller PIDs, locks,
-logs, or generated admission preflight sentinels. These remain locally available for this run.
-Narrow `.gitignore` rules keep them out of future commits. No local archive files were deleted.
-
-## Offline rescore from a clean checkout
-
-Install the normal development/LLM dependencies from CONTRIBUTING.md. From the repository root:
+## Rescore the original cohort and adjudications
 
 ```bash
 PYTHONPATH="$PWD" python evals/remedy/accepted_pairs.py score > /tmp/remedy-pairs.json
 ```
 
-This validates cohort/gold hashes, validates every selected answer against its frozen case,
-recomputes each pair on its identical answered-case intersection, shows total 60-case coverage,
-and recomputes the two adjudication resolution tables. It reads no credentials or network.
-Expected coverage is Sol/Flash/DeepSeek/Gemini 60 each and full GLM 58. Flash/DeepSeek adjudication
-has four correct resolutions and three manual disagreements; Flash/full-GLM has five correct
-resolutions. No new wrong resolutions are accepted. The final evaluated cascades remain 55/2/3
-and 55/3/2 (original-gold correct / pair-specific accepted initial exceptions / manual or contract
-holds). Acceptance never changes gold or excuses a new wrong judgment.
+This checks cohort/gold/prompt/schema identities, validates retained answers and recomputes all ten
+model pairs on identical answered-case intersections. Coverage remains 60 each for Sol, Flash,
+DeepSeek and Gemini, and 58 for full GLM plus two contract holds. The approved pair cascades remain
+four correct resolutions/three manual disagreements and five correct resolutions respectively.
+Original scores and explicitly accepted exceptions remain separate.
 
-## Prepare the identical cohort for another chat model
+Rebuild both expanded judging packets into a NEW directory:
+
+```bash
+PYTHONPATH="$PWD" python evals/remedy/evidence_archive.py packets \
+  --output /tmp/remedy-rebuilt-packets
+```
+
+The output mirrors repository-relative paths. Its packets must match the SHA256 values in the
+unchanged `adjudication-approval.json`. To inspect the historical 24 job payloads in a separate clean
+checkout, copy those rebuilt packet files into their matching paths, then run the retained
+`results/accepted-pairs-2026-10-24/run.py` **without** `--execute`. It validates 24 jobs without
+network/credentials. Do not execute an old approved run against its original output directory.
+The retained `prepare.py`/`expand.py` scripts generate disagreements and retrieve evidence for a
+new run; the archive builder reproduces old inputs without re-fetching websites.
+
+## Rescore runtime prompts and the selected human filter
+
+Generate fresh local inputs using the real runtime factories and retained twelve-case spec:
+
+```bash
+PYTHONPATH="$PWD" python evals/remedy/runtime_qualification.py --output /tmp/remedy-runtime
+PYTHONPATH="$PWD" python evals/remedy/score_runtime_qualification.py \
+  --plan /tmp/remedy-runtime/run-plan-draft.json \
+  --compare-baseline evals/remedy/qualification/runtime-v1/answers.json \
+  --compare-baseline evals/remedy/qualification/runtime-v1/continuation-answers.json \
+  --candidate evals/remedy/qualification/runtime-v2/answers.json \
+  --acceptance evals/remedy/qualification/runtime-v1/rq06-observed-acceptance.json
+PYTHONPATH="$PWD" python evals/remedy/replay_human_review.py \
+  --observed evals/remedy/qualification/runtime-v2/answers.json \
+  --inputs /tmp/remedy-runtime/model-inputs.json
+```
+
+When no generated approved-expectation view exists, comparison verifies the rebuilt draft's hash
+against the original maintainer-reviewed expectations before scoring. It grants no call authority.
+The selected policy replay remains four PR candidates (three correct, one shared wrong RQ05) and
+eight human issues. These reused hard examples are not independent production qualification.
+Original model decisions are never repaired to improve scores. RQ06 acceptance is scoped and
+separate from raw gold; other wrong outputs are not implicitly accepted.
+
+## Evaluate an additional model
 
 ```bash
 PYTHONPATH="$PWD" python evals/remedy/accepted_pairs.py prepare \
   --model exact-upstream-id --output-cap 16384 --output-dir /tmp/new-model-requests
-```
-
-The output directory must not exist. This generates 60 original-prompt requests, the exact
-BodySelectionAnswer schema and a request hash manifest. It reads no gold and makes no calls.
-Settings are default reasoning, no temperature override, no client retries, and a 720-second
-response deadline. A 32,768-token option is available for a separately approved profile; report
-mixed profiles explicitly. The old full-GLM requests used 16k first and 32k for approved retries.
-Do not compare modified prompts or repaired answers as if they were the original-prompt run.
-
-The retained runners show the execution and coordination protocol:
-
-- `results/gemini-replacement-2026-10-24/run.py`: chat transport, immutable intents/results,
-  returned-identity/schema checks, optional streaming, owned provider pause/drain/restore,
-  single-flight pacing and transient-only retry/backoff.
-- `results/glm-full-2026-10-24/run.py` and `nvidia/run.py`: provider/profile/partition wrappers.
-  The original run split even/odd indices across BeatAPI/NVIDIA; do not change the cohort.
-- `results/accepted-pairs-2026-10-24/prepare.py` and `expand.py`: deterministic disagreement
-  selection, blinded A/B mapping and bounded additional evidence retrieval.
-- `results/accepted-pairs-2026-10-24/run.py`: approved chat/JEV judge job construction; without
-  `--execute` it validates the 24 frozen jobs without inference.
-- `results/gemini-replacement-2026-10-24/adjudicate.py` and the Worker qualification scripts:
-  chat payload shaping and JEV's native systemone wire. Do not send chat controls to systemone.
-
-For a new live run, create a fresh output directory and a small wrapper around the retained chat
-runner, binding OUT, MODEL, BASE_ROUTE_ID and CANDIDATE_ROUTE_ID to the exact approved physical
-route, PROVIDER_OVERRIDE to its provider, and API_BASE_OVERRIDE only when reviewed. Generate that
-run's request manifest and explicit approval files in the fresh directory. Those dated scripts
-retain historical defaults; never invoke their `--execute` mode against an old output directory
-or treat old approval files as permission for a new model, account, endpoint or profile.
-
-Before execution, review the exact route/provider, context and output limits, returned identity,
-profile, call count and coordination. Primary accounts only: the secondary BeatAPI account is
-banned and must never be used or retried. Never create accounts. Credentials come only through
-the suppressed citypods-env wrapper. Use owned provider pauses, preserve foreign pauses, exact
-reservations for registered routes, no false route charging, and 65-second single-flight spacing.
-Never duplicate a live controller or unresolved intent. Stop 401/402/403/404; retry only authorized
-transient transport/5xx/429 failures after five minutes with immutable attempts. Never retry a
-valid wrong answer, completed invalid answer, or 32k truncation to improve semantic quality.
-
-Collect valid new-model responses into a JSON list of `{case_id, answer}` rows. Preserve failed
-and invalid attempts separately; they contribute to coverage, never answered-case quality. Add a
-new label for each provider/profile rather than replacing a historical model:
-
-```bash
 PYTHONPATH="$PWD" python evals/remedy/accepted_pairs.py score \
-  --additional-model new-model-profile=/tmp/new-model-answers.json > /tmp/expanded-pairs.json
+  --additional-model new-model-profile=/tmp/new-model-answers.json
 ```
 
-## Rebuild disposable inputs for the historical scripts
+Preparation generates all 60 original-prompt requests/schema/hashes with no gold in model messages.
+The scoring input is a JSON list of `{case_id, answer}` rows. Use a new label for each provider or
+profile; never replace historical answers. Failed/invalid attempts affect coverage, not answered-case
+quality. A valid wrong answer must be retained. Keep actual new outputs and minimal provenance.
 
-The compact scorer above needs no raw archive. If inspecting the old packet preparation or
-runtime adapter replay, materialize normalized scorer inputs into a NEW tree:
+For live execution, obtain approval for the exact route/account/endpoint, returned IDs, input/output
+limits, case count and deadline. Create a fresh directory and wrapper around the retained common
+chat runner `results/gemini-replacement-2026-10-24/run.py`, binding OUT, MODEL, BASE_ROUTE_ID,
+CANDIDATE_ROUTE_ID, PROVIDER_OVERRIDE, API_BASE_OVERRIDE and the approved profile. The small full-GLM
+provider wrappers illustrate partitioning and streaming; they are not new-run authorization.
+Use the existing structured shaping/schema checks. Native JEV job construction is retained in
+`results/worker-qualification-2026-10-19/observe.py` and the shared adjudication builders.
+For a runtime-prompt challenge use `runtime_qualification.py`, `prepare_runtime_reevaluation.py`,
+`run_runtime_qualification.py` and `score_runtime_qualification.py`. Those tools bind the selected
+runtime role map; testing a different role/model requires a newly reviewed mapping and fresh hashes,
+not substituting a model ID in a previously approved packet. Old approvals are immutable history;
+a source/hash mismatch must not be bypassed or silently refreshed to reuse past call authority.
 
-```bash
-PYTHONPATH="$PWD" python evals/remedy/accepted_pairs.py materialize \
-  --output-dir /tmp/remedy-reconstructed
-```
+Primary accounts only; the secondary BeatAPI account is banned. Use suppressed `citypods-env`
+credentials, existing provider pauses/drain/owned-only restoration, exact registered-route
+reservations and no false charging for unregistered candidates. Preserve 65-second provider
+single-flight spacing, the approved output cap and 720-second deadline; no paid fallback or
+implicit retries. Never duplicate an active controller or unknown request. Stop forbidden/access
+errors; retry only under explicit run authority. Measurements do not authorize production routing.
 
-This creates an `evals/remedy/results/` subtree with selected normalized answers, an index with
-new hashes, and normalized judge outputs. Copy that subtree into a separate clean checkout for
-experimentation, never over the retained local archive. From that checkout run:
+## Archive a new completed run and validate changes
 
-```bash
-PYTHONPATH="$PWD" python evals/remedy/results/accepted-pairs-2026-10-24/prepare.py
-PYTHONPATH="$PWD" python evals/remedy/results/accepted-pairs-2026-10-24/score.py
-PYTHONPATH="$PWD" python \
-  evals/remedy/results/accepted-pairs-2026-10-24/adoption/route-replay-2026-10-25/replay.py
-```
+`evidence_archive.py archive-observations --source ORIGINAL --output NEW` factors shared profiles
+while preserving all actual response fields and source hashes. `archive-packets --output NEW`
+is the one-time extraction command for the original judging snapshots. Neither overwrites files.
+`accepted_pairs.py compact` similarly extracts initial answers from an existing complete local run;
+`materialize --output-dir NEW` rebuilds normalized scorer inputs for historical adapter inspection.
 
-Generated provenance hashes identify the reconstructed JSON, not the original raw receipts.
-The expanded frozen packets are retained so the 24 judge inputs remain auditable despite later
-website changes. Re-fetching pages is a new evidence snapshot and requires a newly reviewed
-packet hash. The replay should still show 322 projections: 195 bounded candidates needing source
-policy checks and 127 manual holds. These are representation counts, not runtime qualification.
-
-The `compact` subcommand is an archival extraction tool for the existing complete local run tree.
-It requires the original local index/results, refuses to overwrite its destination, and is not
-needed to rescore a clean checkout. Historical reports may reference untracked raw files and
-intermediate snapshots; those references describe the original run, not clean-checkout inputs.
-
-## Remaining gates
-
-GLM's exact returned-model alias was accepted by the maintainer on October26 for report-only
-and production P3 identity checks; see `adoption/glm-alias-acceptance.json` under the accepted-pairs
-results. This is not provider/weight attestation or production activation. The runtime contract needs
-qualification or explicit bounded transfer acceptance, followed by ordinary admission eligibility
-checks. The candidate bundle remains held. Merging candidate route registration deploys the
-Worker through the existing workflow; it does not grant admissions or start monitored inference.
-
-## Validation of this retention change
-
-A clean tracked-file export reproduced all ten original pair tables, all 60 original request
-payloads and all 24 judge payloads exactly. Reconstructed scoring retained the 4-correct/3-manual
-and 5-correct judge results; reconstructed runtime replay retained all 322 projections. A distinct
-additional-model label imported successfully without replacing historical results. All 2,042
-untracked local archive files were verified still present with identical hashes. No inference,
-credential access, deployment or admission change occurred.
-
-Whole-repository Ruff/format checks passed. The unchanged runtime implementation's preceding
-full validation passed 6,902 Python tests (17 deselected) and 572 Worker tests. To repeat normal
-repository validation, use `ruff check .`, `ruff format --check .` and `pytest -q`; run `npm test`
-in `workers/llm-dispatch-v2`. The offline commands above specifically verify evidence retention
-and reconstruction without relying on ignored local files.
-
-## Runtime-contract challenge preparation
-
-The approved twelve-case source/finding challenge and 48-attempt budget are described in
-[qualification/runtime-v1/README.md](qualification/runtime-v1/README.md). Its curated draft
-expectations and reusable builder are tracked; generated review/input/preflight files stay local.
-This separately tests runtime-generated prompts/schema rather than assuming the earlier answer
-projection transferred accuracy. It is not an independent production holdout or live approval.
-
-The October26 runtime-payload challenge stopped on a JEV input-length hold after31 attempts.
-Review `qualification/runtime-v1/RESULTS.md` and compact `observed-results.json` for the failed
-contract-transfer baseline. Prior pair acceptance does not waive the new wrong automatic outcomes.
-The read-only `score_runtime_qualification.py` recomputes quality from the frozen local ledger.
-
-For the repeatable concise-prompt runtime reevaluation, use
-`prepare_runtime_reevaluation.py` and `qualification/runtime-v2/README.md`. The generator rebuilds
-all12 cases, verifies unchanged expectations, records hashes, and audits each judge payload.
-Generated packets remain local/ignored; the fresh run does not replace the failed baseline.
+Run `ruff check .`, `ruff format --check .`, `python scripts/compile_changelog.py --check` and
+`pytest -q`. The retention regression checks packet hashes, answer/profile reconstruction and
+actual clean-checkout scoring. Production's hash-bound manual PR/issue authorization is separate
+from general model qualification; automatic remedy merging and alias grants remain disabled.

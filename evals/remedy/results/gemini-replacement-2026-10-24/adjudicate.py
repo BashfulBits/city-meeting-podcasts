@@ -12,8 +12,6 @@ from pathlib import Path
 OUT = Path(__file__).resolve().parent
 ROOT = OUT.parents[3]
 sys.path.insert(0, str(ROOT / "evals/remedy/results/worker-qualification-2026-10-19"))
-import chat_observe  # noqa: E402
-import midnight_local as local  # noqa: E402
 import observe  # noqa: E402
 
 from citypods.compute.llm_dispatch_pause import DispatchPauseClient, Selection  # noqa: E402
@@ -23,6 +21,8 @@ from citypods.compute.structured_shaping import shape_for_route  # noqa: E402
 from citypods.judging.backends import JevBackend  # noqa: E402
 from citypods.remedy_evaluation import canonical_hash  # noqa: E402
 from citypods.security import validate_source_url  # noqa: E402
+from evals.remedy import evaluation_support as chat_observe  # noqa: E402
+from evals.remedy import evaluation_support as local  # noqa: E402
 
 DIRECTORY = OUT / "adjudication"
 REASON = "review51-gemini-adjudication-2026-10-24"

@@ -35,7 +35,7 @@ Generate source inputs into a new scratch folder using the retained Python build
 ```bash
 PYTHONPATH="$PWD" python evals/remedy/runtime_qualification.py --output /tmp/human-policy-inputs
 PYTHONPATH="$PWD" python evals/remedy/replay_human_review.py \
-  --observed evals/remedy/qualification/runtime-v2/observed-results.json \
+  --observed evals/remedy/qualification/runtime-v2/answers.json \
   --inputs /tmp/human-policy-inputs/model-inputs.json
 ```
 

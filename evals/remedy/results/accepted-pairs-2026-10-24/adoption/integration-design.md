@@ -14,7 +14,8 @@ The approved60-case measurement yielded55 originally correct outcomes,2 explicit
 initial exceptions and3 manual outcomes for this selected cascade, with zero new wrong accepted
 adjudications. The fullGLM alternative yielded55/3/2 (correct/accepted exceptions/contract holds).
 The accepted exceptions are pairing-specific judgments, not new universal truth. Bind the exact
-maintainer-acceptance.json, adjudication-approval.json, score-final.json and all packet/result hashes.
+maintainer-acceptance.json, adjudication-approval.json and all packet/result hashes. The expanded
+packets and score-final.json are now local generated views; EXPERIMENTS.md documents reconstruction.
 This is reused-cohort task evidence, not an independent heldout precision claim.
 
 Exact active roles proposed:
