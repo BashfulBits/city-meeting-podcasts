@@ -19,7 +19,7 @@ jobs:
   test:
     # The pinned FFmpeg binary needs Noble ABI libraries (including libvpx9).
     # ubuntu-latest is migrating to 26.04, which no longer provides that ABI.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       # Same checksum-pinned build audio.yml's host fallback uses (citypods-audio-runner:py312-
       # ffmpeg71-v1) -- NOT `apt-get install ffmpeg`, which on Ubuntu 24.04 ("noble") resolves
@@ -93,7 +93,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Test Granicus Cloudflare Worker
         working-directory: workers/granicus-media-proxy
@@ -133,7 +133,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Validate Renovate configuration
         env:
