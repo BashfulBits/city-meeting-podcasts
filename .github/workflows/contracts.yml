@@ -28,7 +28,7 @@ concurrency:
 jobs:
   contracts:
     # Match the pinned FFmpeg bundle's Ubuntu noble codec/TLS ABI.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       # Match the checksum-pinned FFmpeg runtime used by Audio.  The media-fetch contract must
       # exercise the same remux path as production rather than Ubuntu's independently-versioned

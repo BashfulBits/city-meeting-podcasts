@@ -46,7 +46,7 @@ jobs:
   remedy:
     timeout-minutes: 58
     # Match the pinned FFmpeg bundle's Ubuntu noble codec/TLS ABI.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
       FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
