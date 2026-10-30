@@ -138,11 +138,6 @@ export function serializeBounded(value, label, maxBytes) {
   return text;
 }
 
-/** Lease registry entry for a leased jobs row. */
-export const leaseEntry = job => ({
-  bundle_id: job.bundle_id ?? null, lease_route_id: job.lease_route_id, lease_expires_at: job.lease_expires_at,
-});
-
 // ---------------------------------------------------------------------------------------------
 // Telemetry shards: attempt usage and failure counters.
 // ---------------------------------------------------------------------------------------------
