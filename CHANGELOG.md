@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Provider catalog issue keeps its marker.** When the machine state filled the issue body, the
+  report truncation dropped the leading marker, so `/apply` and the issue lookup silently skipped.
+  The marker is now always kept and display-only observations are shed from the state first.
+
 - **LLM dispatch packed scheduler state (dormant).** The v2 coordinator can keep its compact
   queue, provider, route and estimate ledgers, active-lease registry and route-sharded usage and
   failure telemetry in packed form, cutting measured writes per cron tick by about 56% in replay.
