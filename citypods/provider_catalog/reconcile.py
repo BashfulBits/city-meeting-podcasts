@@ -38,6 +38,7 @@ from citypods.provider_catalog.evidence import (
     catalog_digest,
     digest,
     logical_identity,
+    model_catalog_digest,
     positive_bound,
 )
 from citypods.provider_catalog.probe import (
@@ -568,6 +569,7 @@ def reconcile(
                     for m, e in (method_results or {}).items()
                 ),
                 contended,
+                model_digest=model_catalog_digest(catalog_evidence, model),
             ).to_dict()
             candidate.evidence_digest = candidate_digest(
                 RouteEvidence.from_dict(candidate.evidence), candidate.lanes
