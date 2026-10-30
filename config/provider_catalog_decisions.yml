@@ -11,6 +11,10 @@
 # `/apply` on the rolling issue (Slice 2) appends to this file in its curated PR; hand edits are
 # fine too. Every entry needs a reason and a date.
 
-ignored: []
+ignored:
+  - provider: groq
+    model: openai/gpt-oss-20b
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-30'
 
 acknowledged: []
