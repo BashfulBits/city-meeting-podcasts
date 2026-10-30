@@ -36,6 +36,13 @@ function createMockEnv(overrides = {}) {
 test("validateConfig accepts valid configuration and rejects invalid", () => {
   const validEnv = createMockEnv();
   assert.doesNotThrow(() => validateConfig(validEnv));
+  for (const value of ["-1", "1.5", "1441", "invalid"]) {
+    assert.throws(() => validateConfig({ ...validEnv, RECOVERY_INTERVAL_MINUTES: value }),
+      /RECOVERY_INTERVAL_MINUTES/);
+  }
+  for (const value of ["0", "10", "1440"]) {
+    assert.doesNotThrow(() => validateConfig({ ...validEnv, RECOVERY_INTERVAL_MINUTES: value }));
+  }
 
   // Lease duration < window + response + reserve
   assert.throws(() =>
@@ -612,6 +619,31 @@ test("row-budget repair requires authentication and a valid same-day observation
   assert.equal((await response.json()).rows_written_today, 65002);
 });
 
+
+test("packed-state moves are authenticated, confirmed, bounded and refused without a drained pause", async () => {
+  const env = createMockEnv();
+  const limits = { maxJobs: 100, maxModelRows: 200, maxGroups: 100, maxProviders: 10, maxStateRows: 100,
+    reserveOtherWrites: 100 };
+  const call = (method, body, auth = true) => handleRequest(new Request("https://worker/v2/packed-state", {
+    method, headers: auth ? { Authorization: "Bearer secret-token" } : {},
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }), env);
+  assert.equal((await call("GET", undefined, false)).status, 401);
+  assert.deepEqual(await (await call("GET")).json(),
+    { compact_queue: false, packed_providers: false, packed_state: false });
+  for (const bad of [null, {}, { action: "cutover" }, { action: "cutover", confirm: "packed-state-rollback", limits },
+    { action: "other", confirm: "packed-state-other" }]) {
+    assert.equal((await call("POST", bad)).status, 400, JSON.stringify(bad));
+  }
+  const unbounded = await call("POST", { action: "cutover", confirm: "packed-state-cutover",
+    limits: { ...limits, maxJobs: 1e9 } });
+  assert.equal(unbounded.status, 409);
+  const refused = await call("POST", { action: "cutover", confirm: "packed-state-cutover", limits });
+  assert.equal(refused.status, 409);
+  assert.match(JSON.stringify(await refused.json()), /drained global pause/);
+  assert.deepEqual(await (await call("GET")).json(),
+    { compact_queue: false, packed_providers: false, packed_state: false });
+});
 
 test("counter-only stats is authenticated, mutually exclusive and never calls historical stats", async () => {
   const env = createMockEnv();

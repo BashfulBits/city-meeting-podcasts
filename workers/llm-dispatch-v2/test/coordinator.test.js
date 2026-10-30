@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
+import { COMPACT_PRIORITY_SYNC_TRIGGER, buildCompactMigration, planCompactMigration } from "../src/compact_queue.js";
 import INGRESS_RESERVATIONS from "../src/ingress_reservations.json" with { type: "json" };
 import {
   activeBundles, createMockSqlStorage, createRecordingSqlStorage, insertActiveBundle, withTestReservations,
@@ -2136,6 +2137,35 @@ test("completeBatch records route_failures telemetry for non-429 failures", asyn
   assert.equal(row400.count, 1);
 });
 
+test("completion combines same-route failure telemetry without changing its values", async (t) => {
+  const fixture = createRecordingSqlStorage();
+  const { coordinator, sql } = makeCoordinator(undefined, fixture);
+  const control = makeCoordinator();
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  const results = [
+    { job_id: "failure-one", outcome: "terminal_error", failure_class: "output_budget_exhausted",
+      provider_status_code: 500, requested_max_tokens: 400, observed_output_tokens: 300 },
+    { job_id: "failure-two", outcome: "terminal_error", failure_class: "output_budget_exhausted",
+      provider_status_code: 503, requested_max_tokens: 200, observed_output_tokens: 100 },
+    { job_id: "failure-three", outcome: "terminal_error", failure_class: "output_budget_exhausted",
+      provider_status_code: 502, requested_max_tokens: null, observed_output_tokens: null },
+  ];
+  for (const result of results) {
+    control.coordinator._recordRouteFailure(control.coordinator._getSql(), now, "shared-route",
+      result.failure_class, result.provider_status_code,
+      { sentMaxTokens: result.requested_max_tokens, outputTokens: result.observed_output_tokens });
+  }
+  fixture.recorder.start();
+  await completeLeased(sql, coordinator, "failure-batch", results.map(result =>
+    [result.job_id, "topic-tags:tagger", 100, "shared-route"]), results);
+  const writes = fixture.recorder.statements.filter(entry =>
+    entry.query.startsWith("INSERT INTO route_failures"));
+  assert.equal(writes.length, 1);
+  assert.deepEqual([...sql.exec("SELECT * FROM route_failures")],
+    [...control.sql.exec("SELECT * FROM route_failures")]);
+});
+
 test("_pruneTerminalRecords prunes route_failures older than attempt retention", async () => {
   const { coordinator, sql } = makeCoordinator({
     ATTEMPT_RETENTION_DAYS: "7",
@@ -2542,6 +2572,202 @@ const pauseJob = (id) => ({
   payload_key: `payloads/${id}/request.json`,
 });
 
+test("compact and provider cutover requires a drained pause and commits atomically", async () => {
+  const env = { MAX_JOBS_PER_UTC_DAY: "100" };
+  const { coordinator, sql, storage } = makeCoordinator(env);
+  const now = Date.now();
+  const limits = { maxJobs: 10, maxModelRows: 20, maxGroups: 20, maxProviders: 10, maxStateRows: 200,
+    reserveOtherWrites: 1000 };
+  await coordinator.enqueueBatch([pauseJob("cutover-a"), pauseJob("cutover-b")]);
+  sql.exec("INSERT INTO providers (provider, tpm_reserved) VALUES (?, ?)", "cutover-provider", 15);
+  const stage = () => coordinator._transactionSync(() => coordinator._stagePackedCutover(now, limits));
+  assert.throws(stage, /drained global pause/);
+  await coordinator.pauseDispatch({ scope: "global", seconds: 3600 }, now);
+  assert.throws(stage, /drained global pause/);
+  await coordinator.pauseDispatch({ scope: "global", seconds: 3600 }, now - 960_000);
+  sql.exec("ALTER TABLE providers ADD COLUMN extra_data TEXT");
+  assert.throws(stage, /unsupported provider migration schema/);
+  sql.exec("ALTER TABLE providers DROP COLUMN extra_data");
+  sql.exec("ALTER TABLE job_models ADD COLUMN extra_data TEXT");
+  assert.throws(stage, /unsupported model-index migration schema/);
+  sql.exec("ALTER TABLE job_models DROP COLUMN extra_data");
+  sql.exec("CREATE TRIGGER cutover_test_provider_trigger AFTER DELETE ON providers BEGIN SELECT 1; END");
+  assert.throws(stage, /unsupported trigger on migration source table/);
+  sql.exec("DROP TRIGGER cutover_test_provider_trigger");
+  sql.exec("CREATE TRIGGER cutover_test_scheduler_trigger AFTER UPDATE ON scheduler BEGIN SELECT 1; END");
+  assert.throws(stage, /unsupported trigger on migration source table/);
+  sql.exec("DROP TRIGGER cutover_test_scheduler_trigger");
+  assert.throws(() => coordinator._transactionSync(() => coordinator._stagePackedCutover(
+    now, { ...limits, reserveOtherWrites: 1_000_000 }
+  )), /write reserve unavailable/);
+  assert.throws(() => coordinator._transactionSync(() => {
+    coordinator._stagePackedCutover(now, limits);
+    throw new Error("cutover rollback");
+  }), /cutover rollback/);
+  assert.throws(() => coordinator._transactionSync(() => {
+    coordinator._stagePackedCutover(now, limits);
+    coordinator._compactQueueEnabled();
+  }), /queue access after cutover was staged/);
+  assert.throws(() => coordinator._transactionSync(() => {
+    coordinator._stagePackedCutover(now, limits);
+    coordinator._providerPackedStateForTransaction();
+  }), /provider access after cutover was staged/);
+  const originalNow = Date.now;
+  const originalExec = sql.exec;
+  let simulatedNow = now;
+  try {
+    Date.now = () => simulatedNow;
+    sql.exec = (query, ...args) => {
+      const cursor = originalExec.call(sql, query, ...args);
+      if (query.startsWith("INSERT INTO compact_queue")) simulatedNow = now + 2_640_000 - 59_000;
+      return cursor;
+    };
+    assert.throws(stage, /pause is too close to expiry/);
+  } finally {
+    Date.now = originalNow;
+    sql.exec = originalExec;
+  }
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM sqlite_schema WHERE name='compact_queue'")[0].n, 0);
+  assert.equal(sql.exec("SELECT compact_queue_active FROM scheduler WHERE id=1")[0].compact_queue_active, 0);
+  const result = stage();
+  assert.equal(result.jobs, 2);
+  assert.equal(result.providers, 1);
+  const row = sql.exec("SELECT compact_queue_active, packed_providers_active, packed_providers_json " +
+    "FROM scheduler WHERE id=1")[0];
+  assert.equal(row.compact_queue_active, 1);
+  assert.equal(row.packed_providers_active, 1);
+  assert.equal(JSON.parse(row.packed_providers_json)["cutover-provider"].tpm_reserved, 15);
+  const restarted = makeCoordinator(env, { sql, storage }).coordinator;
+  assert.equal((await restarted.detailedStats(now)).jobs.queued_without_model_index, 0);
+  await restarted.enqueueBatch([pauseJob("cutover-c")]);
+  await restarted.cancelBatch(["cutover-a"]);
+  restarted._transactionSync(() => {
+    const ledger = restarted._getOrCreateProviderLedger("cutover-provider", now, { tpm: 500 });
+    restarted._writeProviderLedger({ ...ledger, tpm_reserved: 77 });
+  });
+  sql.exec("ALTER TABLE providers ADD COLUMN extra_data TEXT");
+  assert.throws(() => restarted._transactionSync(() => restarted._stagePackedRollback(now, limits)),
+    /unsupported provider migration schema/);
+  sql.exec("ALTER TABLE providers DROP COLUMN extra_data");
+  sql.exec("CREATE INDEX cutover_test_provider_index ON providers(tpm_reserved)");
+  sql.exec("CREATE INDEX cutover_test_model_index ON job_models(job_id)");
+  sql.exec("DROP TRIGGER trg_compact_priority_sync");
+  assert.throws(() => restarted._transactionSync(() => restarted._stagePackedRollback(now, limits)),
+    /unsupported compact rollback trigger/);
+  sql.exec(COMPACT_PRIORITY_SYNC_TRIGGER);
+  assert.throws(() => restarted._transactionSync(() => restarted._stagePackedRollback(
+    now, { ...limits, reserveOtherWrites: 1_000_000 }
+  )), /write reserve unavailable/);
+  assert.throws(() => restarted._transactionSync(() => {
+    restarted._stagePackedRollback(now, limits);
+    throw new Error("rollback failpoint");
+  }), /rollback failpoint/);
+  assert.equal(sql.exec("SELECT compact_queue_active FROM scheduler WHERE id=1")[0].compact_queue_active, 1);
+  const rollback = restarted._transactionSync(() => restarted._stagePackedRollback(now, limits));
+  assert.equal(rollback.jobs, 2);
+  assert.equal(rollback.model_write_multiplier, 2);
+  assert.equal(rollback.provider_write_multiplier, 3);
+  assert.equal(sql.exec("SELECT compact_queue_active FROM scheduler WHERE id=1")[0].compact_queue_active, 0);
+  assert.equal(sql.exec("SELECT tpm_reserved FROM providers WHERE provider='cutover-provider'")[0].tpm_reserved, 77);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id='cutover-a'")[0].n, 0);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id='cutover-c'")[0].n, 1);
+  assert.equal((await makeCoordinator(env, { sql, storage }).coordinator.detailedStats(now))
+    .jobs.queued_without_model_index, 0);
+});
+
+test("compact queue authority survives restart and maintains claim, recovery and cancellation", async () => {
+  const env = { MAX_JOBS_PER_UTC_DAY: "100" };
+  const { coordinator, sql, storage } = makeCoordinator(env);
+  const now = Date.now();
+  await coordinator.enqueueBatch([pauseJob("compact-a"), pauseJob("compact-b")]);
+  storage.transactionSync(() => {
+    const plan = planCompactMigration(sql, {
+      maxJobs: 10, maxModelRows: 20, maxGroups: 20, maxWrites: 30,
+    });
+    buildCompactMigration(sql, plan);
+    sql.exec("DROP TRIGGER trg_jobs_priority_sync");
+    sql.exec("UPDATE scheduler SET compact_queue_active=1 WHERE id=1");
+  });
+  sql.exec("ALTER TABLE routes DROP COLUMN tpd_used");
+  const restarted = makeCoordinator(env, { sql, storage }).coordinator;
+  assert.ok(sql.exec("PRAGMA table_info(routes)").some(row => row.name === "tpd_used"));
+  await restarted.enqueueBatch([pauseJob("compact-c")]);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id='compact-c'")[0].n, 0);
+  sql.exec("UPDATE jobs SET priority=0 WHERE id='compact-c'");
+  assert.equal(sql.exec("SELECT priority FROM compact_queue WHERE job_id='compact-c'")[0].priority, 0);
+  const before = await restarted.detailedStats(now);
+  assert.equal(before.jobs.queued_without_model_index, 0);
+  assert.equal(before.queued_by_model.find(row => row.model === PAUSE_MODEL).queued, 3);
+  const group = sql.exec("SELECT model, model_set FROM compact_groups LIMIT 1")[0];
+  sql.exec("DELETE FROM compact_groups WHERE model=? AND model_set=?", group.model, group.model_set);
+  assert.ok((await restarted.detailedStats(now)).jobs.queued_without_model_index > 0);
+  sql.exec("INSERT INTO compact_groups VALUES (?, ?)", group.model, group.model_set);
+  sql.exec("INSERT INTO compact_groups VALUES (?, ?)", "stale-model", '["stale-model"]');
+  const maintenance = await restarted.recountQueuedJobs();
+  assert.equal(maintenance.compact_groups.removed, 1);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM compact_groups WHERE model='stale-model'")[0].n, 0);
+  sql.exec("INSERT INTO compact_groups VALUES (?, ?)", "stale-budget", '["stale-budget"]');
+  sql.exec("UPDATE scheduler SET rows_written_today=89998, hourly_burndown_json='[]' WHERE id=1");
+  const budgeted = await restarted.recountQueuedJobs();
+  assert.equal(budgeted.compact_groups, null);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM compact_groups WHERE model='stale-budget'")[0].n, 1);
+  assert.ok(sql.exec("SELECT rows_written_today FROM scheduler WHERE id=1")[0].rows_written_today <= 90000);
+  sql.exec("UPDATE scheduler SET rows_written_today=0 WHERE id=1");
+  const plan = await restarted.claimDispatchWindow(now, 30);
+  assert.ok(plan.jobs.length > 0);
+  for (const job of plan.jobs) {
+    assert.equal(sql.exec("SELECT COUNT(*) AS n FROM compact_queue WHERE job_id=?", job.id)[0].n, 0);
+  }
+  const first = plan.jobs[0];
+  sql.exec("UPDATE jobs SET lease_expires_at=? WHERE id=?", now - 1, first.id);
+  await restarted.claimDispatchWindow(now + 1, 30);
+  const job = sql.exec("SELECT * FROM jobs WHERE id=?", first.id)[0];
+  assert.ok(["leased", "queued"].includes(job.state));
+  const count = sql.exec("SELECT COUNT(*) AS n FROM compact_queue WHERE job_id=?", first.id)[0].n;
+  assert.equal(count, Number(job.state === "queued"));
+  const remaining = sql.exec("SELECT id FROM jobs WHERE state='queued'");
+  if (remaining.length) {
+    await restarted.cancelBatch([remaining[0].id]);
+    assert.equal(sql.exec("SELECT COUNT(*) AS n FROM compact_queue WHERE job_id=?", remaining[0].id)[0].n, 0);
+  }
+});
+
+test("an incomplete active compact queue fails closed on restart", () => {
+  const env = { MAX_JOBS_PER_UTC_DAY: "100" };
+  const { sql, storage } = makeCoordinator(env);
+  sql.exec("UPDATE scheduler SET compact_queue_active=1 WHERE id=1");
+  assert.throws(() => makeCoordinator(env, { sql, storage }), /Compact queue schema not ready/);
+  assert.equal(sql.exec("SELECT compact_queue_active FROM scheduler WHERE id=1")[0].compact_queue_active, 1);
+});
+
+test("packed provider ledger persists atomically and does not dual-write legacy rows", () => {
+  const env = { MAX_JOBS_PER_UTC_DAY: "100" };
+  const { coordinator, sql, storage } = makeCoordinator(env);
+  sql.exec("UPDATE scheduler SET packed_providers_active=1, packed_providers_json='{}' WHERE id=1");
+  coordinator._transactionSync(() => {
+    const ledger = coordinator._getOrCreateProviderLedger("provider-a", 1000, { tpm: 500 });
+    coordinator._writeProviderLedger({ ...ledger, tpm_reserved: 40 });
+  });
+  const state = () => JSON.parse(sql.exec("SELECT packed_providers_json FROM scheduler WHERE id=1")[0]
+    .packed_providers_json);
+  assert.equal(state()["provider-a"].tpm_reserved, 40);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM providers")[0].n, 0);
+  assert.throws(() => coordinator._transactionSync(() => {
+    const ledger = coordinator._getOrCreateProviderLedger("provider-a", 1001, { tpm: 500 });
+    coordinator._writeProviderLedger({ ...ledger, tpm_reserved: 90 });
+    throw new Error("provider rollback");
+  }), /provider rollback/);
+  assert.equal(state()["provider-a"].tpm_reserved, 40);
+  assert.throws(() => coordinator._transactionSync(() => {
+    coordinator._getOrCreateProviderLedger("x".repeat(130_000), 1001, { tpm: 500 });
+  }), /exceeds safety limit/);
+  assert.deepEqual(Object.keys(state()), ["provider-a"]);
+  const restarted = makeCoordinator(env, { sql, storage }).coordinator;
+  restarted._transactionSync(() => {
+    assert.equal(restarted._getOrCreateProviderLedger("provider-a", 1002, { tpm: 500 }).tpm_reserved, 40);
+  });
+});
+
 test("a provider pause stops claims on that provider until resumed", async () => {
   const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
   await coordinator.enqueueBatch([pauseJob("p1"), pauseJob("p2")]);
@@ -2691,6 +2917,107 @@ test("the drain signal ignores expired leases, which a global pause never reaps"
   assert.equal((await coordinator.stats(later)).in_flight.by_provider.gemini, undefined);
 });
 
+
+test("global pause drain excludes expired leases while their completion can still settle", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("pause-late")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(plan.jobs.length, 1);
+  await coordinator.pauseDispatch({ scope: "global", seconds: 3600 }, now);
+  sql.exec("UPDATE jobs SET lease_expires_at = ? WHERE id = ?", now - 1, plan.jobs[0].id);
+  const bundles = JSON.parse(sql.exec("SELECT active_bundles_json FROM scheduler WHERE id = 1")[0].active_bundles_json);
+  bundles[plan.bundle_id].lease_expires_at = now - 1;
+  sql.exec("UPDATE scheduler SET active_bundles_json = ? WHERE id = 1", JSON.stringify(bundles));
+  assert.equal((await coordinator.dispatchPauseStatus({ scope: "global" }, now)).in_flight, 0);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id = ?", plan.jobs[0].id)[0].state, "leased");
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [{
+    job_id: plan.jobs[0].id, lease_token: plan.jobs[0].lease_token,
+    attempt_id: "pause-late-attempt", outcome: "success", provider_status_code: 200,
+    actual_start_at: now, actual_end_at: now + 1, result_key: "results/pause-late.json",
+    observed_input_tokens: 10, observed_output_tokens: 10,
+  }]);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id = ?", plan.jobs[0].id)[0].state, "completed");
+});
+
+test("recovery telemetry counts committed empty and useful sweeps", async () => {
+  const { coordinator, sql, storage } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const now = Date.now();
+  await coordinator.enqueueBatch([pauseJob("recovery-count")]);
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(plan.jobs.length, 1);
+  let recovery = (await coordinator.stats(now)).recovery;
+  assert.equal(recovery.checks, 1);
+  assert.equal(recovery.checks_without_work, 1);
+  sql.exec("UPDATE jobs SET lease_expires_at = ? WHERE id = ?", now - 1, plan.jobs[0].id);
+  await coordinator.claimDispatchWindow(now + 1, 30);
+  recovery = (await coordinator.stats(now + 1)).recovery;
+  assert.equal(recovery.checks, 2);
+  assert.equal(recovery.checks_with_work, 1);
+  assert.equal(recovery.jobs_requeued, 1);
+  assert.equal(recovery.orphan_bundles, 1);
+  assert.equal(recovery.last_work_at, now + 1);
+  const restarted = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" }, { sql, storage }).coordinator;
+  assert.deepEqual((await restarted.stats(now + 1)).recovery, recovery);
+  await restarted.pauseDispatch({ scope: "global", seconds: 3600 }, now + 1);
+  await restarted.claimDispatchWindow(now + 2, 30);
+  assert.deepEqual((await restarted.stats(now + 2)).recovery, recovery);
+});
+
+test("configurable recovery cadence skips intermediate sweeps and survives restart", async (t) => {
+  const env = { MAX_JOBS_PER_UTC_DAY: "100", RECOVERY_INTERVAL_MINUTES: "10" };
+  const { coordinator, sql, storage } = makeCoordinator(env);
+  const now = Date.now();
+  await coordinator.enqueueBatch([pauseJob("recovery-cadence")]);
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(plan.jobs.length, 1);
+  sql.exec("UPDATE jobs SET lease_expires_at=? WHERE id=?", now - 1, plan.jobs[0].id);
+  await coordinator.claimDispatchWindow(now + 60_000, 30);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id=?", plan.jobs[0].id)[0].state, "leased");
+  assert.equal((await coordinator.stats(now + 60_000)).recovery.checks, 1);
+  const restarted = makeCoordinator(env, { sql, storage }).coordinator;
+  t.mock.method(restarted, "_rankModelsByCapacity", () => []);
+  await restarted.claimDispatchWindow(now + 600_000, 30);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id=?", plan.jobs[0].id)[0].state, "queued");
+  const recovery = (await restarted.stats(now + 600_000)).recovery;
+  assert.equal(recovery.checks, 2);
+  assert.equal(recovery.jobs_requeued, 1);
+});
+
+test("failed recovery rolls back its telemetry and the expired lease", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const now = Date.now();
+  await coordinator.enqueueBatch([pauseJob("recovery-rollback")]);
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  sql.exec("UPDATE jobs SET lease_expires_at = ? WHERE id = ?", now - 1, plan.jobs[0].id);
+  const before = (await coordinator.stats(now)).recovery;
+  const record = coordinator._recordClaimOutcome;
+  coordinator._recordClaimOutcome = () => { throw new Error("recovery test failure"); };
+  await assert.rejects(coordinator.claimDispatchWindow(now + 1, 30), /recovery test failure/);
+  coordinator._recordClaimOutcome = record;
+  assert.deepEqual((await coordinator.stats(now + 1)).recovery, before);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id = ?", plan.jobs[0].id)[0].state, "leased");
+});
+
+test("recovery releases multiple expired reservations on one route without underflow", async (t) => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const now = Date.now();
+  await coordinator.enqueueBatch([pauseJob("recovery-shared-a"), pauseJob("recovery-shared-b")]);
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(plan.jobs.length, 2);
+  const routeId = plan.jobs[0].route_id;
+  assert.ok(routeId);
+  sql.exec("UPDATE routes SET provisional_reservation=10 WHERE route_id=?", routeId);
+  for (const [index, job] of plan.jobs.entries()) {
+    sql.exec("UPDATE jobs SET lease_expires_at=?, lease_route_id=?, token_reservation=? WHERE id=?",
+      now - 1, routeId, index === 0 ? 7 : 8, job.id);
+  }
+  t.mock.method(coordinator, "_rankModelsByCapacity", () => []);
+  await coordinator.claimDispatchWindow(now + 1, 30);
+  assert.equal(sql.exec("SELECT provisional_reservation FROM routes WHERE route_id=?", routeId)[0]
+    .provisional_reservation, 0);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='queued'")[0].n, 2);
+});
 
 /** Lease `jobs` ([id, purpose, reservedOutput, route]) in a fresh bundle and complete them. */
 function completeLeased(sql, coordinator, bundleId, jobs, results) {
@@ -2930,6 +3257,30 @@ test("TPD reserves and settles daily tokens to actual usage", async () => {
     attempt_id: 'tpd-a', planned_at: now, outcome: 'success', provider_status_code: 200,
     observed_input_tokens: 800, observed_output_tokens: 200 }]);
   assert.equal(sql.exec("SELECT tpd_used FROM routes WHERE route_id=?", routeId)[0].tpd_used, 1000);
+});
+
+test("route claim ledger preserves other fields and rolls back atomically", () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now(), routeId = "route-ledger-boundary";
+  coordinator._transactionSync(() => coordinator._getOrCreateRouteLedger(routeId, now, { tpm: 1000 }));
+  sql.exec("UPDATE routes SET last_provider_status=?, blocked_until=? WHERE route_id=?", 429, now + 1000, routeId);
+  const original = { ...sql.exec("SELECT * FROM routes WHERE route_id=?", routeId)[0] };
+  const changed = { ...original, rpm_count: 2, rpd_count: 3, tpd_used: 50,
+    provisional_reservation: 100, input_window_json: JSON.stringify([{ at: now, tokens: 50 }]) };
+  assert.throws(() => coordinator._transactionSync(() => {
+    coordinator._writeRouteLedger(changed);
+    throw new Error("route claim rollback");
+  }), /route claim rollback/);
+  assert.deepEqual({ ...sql.exec("SELECT * FROM routes WHERE route_id=?", routeId)[0] }, original);
+  coordinator._transactionSync(() => coordinator._writeRouteLedger(changed));
+  const saved = sql.exec("SELECT * FROM routes WHERE route_id=?", routeId)[0];
+  assert.equal(saved.rpm_count, 2);
+  assert.equal(saved.rpd_count, 3);
+  assert.equal(saved.tpd_used, 50);
+  assert.equal(saved.provisional_reservation, 100);
+  assert.equal(saved.input_window_json, changed.input_window_json);
+  assert.equal(saved.last_provider_status, 429);
+  assert.equal(saved.blocked_until, now + 1000);
 });
 
 test("Orca prompt cap requeues and learns a size bound without blocking short work", async () => {

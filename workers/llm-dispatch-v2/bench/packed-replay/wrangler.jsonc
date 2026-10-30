@@ -1,0 +1,13 @@
+{
+  "name": "citypods-packed-replay",
+  "main": "replay.js",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": { "bindings": [{ "name": "BENCH", "class_name": "ReplayDO" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ReplayDO"] }],
+  "vars": {
+    "MAX_ACTIVE_BUNDLES": "15",
+    "MAX_IN_FLIGHT_LLM_CALLS": "90",
+    "MAX_JOBS_PER_UTC_DAY": "100000"
+  }
+}

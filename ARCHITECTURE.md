@@ -926,9 +926,10 @@ per-attempt journal: each `completeBatch` folds its calls into one `attempt_usag
 route/model/prompt-family window holds 32 samples, then a deterministic 1-in-4 sample by job id;
 and same-row bookkeeping in one transaction (per-purpose ingress counters, a success's route
 settlement, the claim-outcome scheduler row with its bundle/lease/queued counters) is folded into
-one statement. An empty claim whose reason matches the stored last outcome is persisted at most
-every ten minutes, its skipped ticks counted in memory and folded into the next write, so an idle
-queue costs ~0.2 billed rows per cron tick. The executor makes no DO call before a provider call:
+one statement. Each recovery sweep persists cumulative checks and requeued-job counts on that
+scheduler row, and folds the claim outcome into the same write; an idle sweep writes one scheduler
+row. An unchanged empty claim without a recovery sweep can still be coalesced for ten minutes.
+The executor makes no DO call before a provider call:
 the claim counts the attempt in its lease UPDATE (a granted 429 retry counts its own; a result
 that never reached a provider gives it back), and each call starts only if it can finish before
 the claimed `lease_expires_at`, the only point at which the DO may reap the lease. The queued-job counter is maintained by those explicit deltas, not per-row
@@ -951,6 +952,19 @@ override: a `--site-config` chooses site content, but never which purposes
 exist or what each may spend, because the deployed Worker's reservation map is compiled from the
 committed file alone. `llm_lanes` chooses *among* the catalog below; the catalog itself — physical
 routes, quotas, and capabilities — remains `config/provider_limits.yml`'s job.
+
+**Packed scheduler state (dormant until an operator cutover; [review/57](review/57-llm-dispatch-row-efficiency.md)).**
+Durable scheduler flags (`compact_queue_active`, `packed_providers_active`, `packed_state_active`)
+select exactly one authoritative representation per ledger in every committed transaction; all
+default to the legacy tables. Packed authority keeps the compact model-set queue, the provider and
+route ledgers, calibration estimates and the active-lease registry as JSON sections on the scheduler
+row (written by the one accounting `UPDATE` each transaction already issues), and attempt usage and
+failure counters in eight route-hashed `packed_telemetry` shards (oldest days evicted past a size
+cap, never aborting a completion). `POST /v2/packed-state` moves between the two representations in
+one synchronous transaction, only under a drained global pause at least 15 minutes old with a
+sufficient write reserve; rollback rebuilds the legacy tables. Measured in replay, packed authority
+halves mean writes per cron at a modest read increase. Idle ticks now write one scheduler row
+carrying recovery statistics.
 
 A lane may also declare `backup_models`/`backup_after_attempts`: models eligible only once a
 queued job has been dispatched that many times without a successful response, or has already
