@@ -143,5 +143,5 @@ Merging deploys the Worker, and a deploy can restart the object, so the pause an
   Cloudflare's billed totals; compare the first production day's rows against these figures.
 - Compact-group cleanup is capped at 64 memberships per hourly pass; watch group cardinality.
 - Reproduction: [bench/packed-replay](../workers/llm-dispatch-v2/bench/packed-replay/README.md);
-  `cd workers/llm-dispatch-v2 && npm test` (603 tests, including the differential
+  `cd workers/llm-dispatch-v2 && npm test` (606 tests, including the differential
   `test/packed-state.test.js`).

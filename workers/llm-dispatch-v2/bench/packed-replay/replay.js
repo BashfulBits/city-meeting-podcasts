@@ -158,6 +158,13 @@ export default {
   async fetch(request, env) {
     const host = new URL(request.url).hostname;
     if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) return new Response("local only", { status: 403 });
+    // A custom header forces a browser preflight that this Worker never answers, so a web page open
+    // on this machine cannot write rows with a cross-site "simple" POST. The Host check above is a
+    // guard rail only (the client controls Host): also keep the dev server bound to loopback.
+    if (request.method !== "POST" || request.headers.get("x-citypods-replay") !== "1" ||
+        !(request.headers.get("content-type") || "").startsWith("application/json")) {
+      return new Response("forbidden", { status: 403 });
+    }
     const body = await request.json();
     const stub = env.BENCH.getByName(body.name);
     const run = {

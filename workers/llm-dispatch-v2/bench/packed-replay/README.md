@@ -4,8 +4,9 @@ Local-only. Replays a read-only scheduling capture through the **real** `LLMSche
 `wrangler dev` and meters billed rows per cron tick for legacy versus packed authority.
 The capture holds private job metadata and lease tokens: keep it and every output outside the
 repository. The Worker is unauthenticated and writes arbitrary rows; bind it to loopback only and
-never deploy it (`replay.js` also refuses non-loopback hosts, which is a guard rail, not
-authentication).
+never deploy it. `replay.js` refuses non-loopback Host headers (a guard rail, not
+authentication) and requires the `X-Citypods-Replay` header, which `run.py` sends, so a web page
+open on the same machine cannot write rows with a cross-site POST.
 
 ```sh
 cd workers/llm-dispatch-v2

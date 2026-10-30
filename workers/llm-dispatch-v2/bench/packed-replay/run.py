@@ -155,7 +155,7 @@ def main():
         request = urllib.request.Request(
             args.url,
             data=json.dumps({"name": name, **payload}).encode(),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "X-Citypods-Replay": "1"},
         )
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
