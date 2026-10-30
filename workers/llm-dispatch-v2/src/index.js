@@ -90,6 +90,10 @@ export function validateConfig(env) {
   const maxIngressWriteUnits = Number(env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY || maxJobsPerDay * 4);
   const max5xxRetries = Number(env.MAX_5XX_RETRIES || 1);
   const max5xxBackoffSeconds = Number(env.MAX_5XX_BACKOFF_SECONDS || 300);
+  const recoveryMinutes = Number(env.RECOVERY_INTERVAL_MINUTES ?? 0);
+  if (!Number.isInteger(recoveryMinutes) || recoveryMinutes < 0 || recoveryMinutes > 1440) {
+    throw new Error("Invalid config: RECOVERY_INTERVAL_MINUTES must be an integer from 0 to 1440");
+  }
 
   if (dispatchWindow + maxResponse + finalizationReserve > leaseDuration) {
     throw new Error(
@@ -450,6 +454,30 @@ export async function handleRequest(request, env) {
     try {
       const result = await coordinator.reconcileRowBudget(body, Date.now());
       return result.ok ? jsonResponse(result) : errorResponse(400, result.error, result.detail);
+    } catch (err) {
+      return errorResponse(500, "coordinator_error", describeError(err));
+    }
+  }
+
+  // Guarded operator moves between legacy and packed authority. The coordinator refuses unless a
+  // drained global pause is in effect; the explicit confirmation guards against a stray request.
+  if (path === "/v2/packed-state" && (request.method === "GET" || request.method === "POST")) {
+    try {
+      if (request.method === "GET") return jsonResponse(await coordinator.packedAuthority());
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+      }
+      if (!body || (body.action !== "cutover" && body.action !== "rollback") ||
+          body.confirm !== `packed-state-${body.action}`) {
+        return errorResponse(400, "bad_request", "action and matching confirm are required");
+      }
+      const result = body.action === "cutover"
+        ? await coordinator.packedCutover(body.limits, Date.now())
+        : await coordinator.packedRollback(body.limits, Date.now());
+      return result.ok ? jsonResponse(result) : errorResponse(409, result.error, result.detail);
     } catch (err) {
       return errorResponse(500, "coordinator_error", describeError(err));
     }

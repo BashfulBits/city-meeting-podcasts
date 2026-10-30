@@ -13,6 +13,20 @@ import {
   GEMMA_COMBINED_TARGET, gemmaPackingStatus, recordGemmaPacking,
 } from "./gemma-packing.js";
 import { canonicalJson, sha256Hex, validateReserveRequest } from "./protocol.js";
+import { getOrCreateRouteLedger, readRouteLedgers, writeRouteClaim } from "./route_ledger.js";
+import {
+  PACKED_LEASES_MAX_ENTRIES, PackedTx, TELEMETRY_SHARDS,
+  applyRouteSet, byteLength, failureKey, foldFailureCell, foldUsageCell, legacyRouteUpdate,
+  newRouteRow, pruneShard, shardFor, usageKey,
+} from "./packed_state.js";
+import {
+  PACKED_ROLLBACK_SETS, buildPackedMigration, buildPackedRollback, packedActivationSets,
+  planPackedMigration, planPackedRollback,
+} from "./packed_migration.js";
+import {
+  buildCompactMigration, buildCompactRollback, indexCompactJob, planCompactMigration,
+  planCompactRollback, pruneEmptyCompactGroups, readCompactCandidates, unindexCompactJob,
+} from "./compact_queue.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
@@ -272,6 +286,21 @@ const ROUTE_QUOTA_COLUMNS = {
 
 // Columns added after the initial table definitions. Keep this list aligned with the
 // _ensureColumn calls below: a current-schema fast path is safe only when all of these exist.
+/** Scheduler columns the packed-state rollout adds; present (inactive) before any cutover. */
+/** The route columns a claim rewrites (route_ledger.js writeRouteClaim). */
+const CLAIM_ROUTE_COLUMNS = [
+  "rpm_window_start", "rpm_count", "rpd_window_start", "rpd_count", "rpd_day_key",
+  "tpm_window_start", "tpm_reserved", "full_token_budget", "token_budget_updated_at",
+  "provisional_reservation", "tpd_used", "tpd_updated_at", "input_window_json",
+];
+
+const PACKED_STATE_SCHEDULER_COLUMNS = {
+  packed_state_active: "INTEGER NOT NULL DEFAULT 0",
+  packed_routes_json: "TEXT NOT NULL DEFAULT '{}'",
+  packed_estimates_json: "TEXT NOT NULL DEFAULT '{}'",
+  packed_leases_json: "TEXT NOT NULL DEFAULT '{}'",
+};
+
 const CONTEXT_PROBE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS context_probe_weeks (
     week_start TEXT PRIMARY KEY, run_id TEXT NOT NULL, catalog_digest TEXT NOT NULL,
@@ -348,6 +377,15 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "last_empty_claim_diagnostics_json",
     "mistral_latest_migrated",
     "active_bundles_json",
+    "recovery_stats_json",
+    "compact_queue_active",
+    "compact_group_cursor_json",
+    "packed_providers_active",
+    "packed_providers_json",
+    "packed_state_active",
+    "packed_routes_json",
+    "packed_estimates_json",
+    "packed_leases_json",
     "catalog_digest",
     "catalog_rescue_cursor",
     "catalog_rescue_complete",
@@ -411,8 +449,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
           "table:context_manual_weeks", "table:context_manual_attempts"].includes(item) ||
         item === "column:jobs.quota_excluded_routes" ||
         item === "column:jobs.response_timeout_routes" ||
+        (item.startsWith("column:scheduler.") &&
+          Object.hasOwn(PACKED_STATE_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length))) ||
         (item.startsWith("column:routes.") &&
           Object.hasOwn(ROUTE_QUOTA_COLUMNS, item.slice("column:routes.".length))));
+      if ((readiness.compactActive || readiness.packedActive) && !additiveOnly) {
+        throw new Error(`Compact queue schema not ready: ${readiness.missing.join(", ")}`);
+      }
       if (additiveOnly) {
         if (readiness.missing.some(item => item.startsWith("table:context_probe_"))) {
           this._getSql().exec(CONTEXT_PROBE_SCHEMA);
@@ -425,6 +468,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         if (readiness.missing.includes("column:jobs.response_timeout_routes")) {
           this._ensureColumn("jobs", "response_timeout_routes", "TEXT");
+        }
+        for (const [column, definition] of Object.entries(PACKED_STATE_SCHEDULER_COLUMNS)) {
+          if (readiness.missing.includes(`column:scheduler.${column}`)) {
+            this._ensureColumn("scheduler", column, definition);
+          }
         }
         for (const [column, definition] of Object.entries(ROUTE_QUOTA_COLUMNS)) {
           if (readiness.missing.includes(`column:routes.${column}`)) {
@@ -531,6 +579,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._txSchedulerSets = [];
     this._txBundles = null;
     this._txBundlesDirty = false;
+    this._txCompactQueue = undefined;
+    this._txPackedProviders = undefined;
+    this._txPackedProvidersDirty = false;
+    this._txPacked = undefined;
+    this._txCutoverStaged = false;
+    this._txRecoveryStaged = false;
     try {
       return this.ctx.storage.transactionSync(() => {
         const result = callback();
@@ -548,6 +602,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._txSchedulerSets = null;
       this._txBundles = null;
       this._txBundlesDirty = false;
+      this._txCompactQueue = undefined;
+      this._txPackedProviders = undefined;
+      this._txPackedProvidersDirty = false;
+      this._txPacked = undefined;
+      this._readView = undefined;
+      this._txCutoverStaged = false;
+      this._txRecoveryStaged = false;
     }
   }
 
@@ -595,9 +656,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   _persistRowCount() {
+    const sql = this._getSql();
+    const packed = this._txPacked || null;
+    const sets = [...(this._txSchedulerSets || [])];
+    if (packed) this._flushPackedState(sql, packed, sets);
     this._drainRowCount();
     const pending = this._rowsUnflushed || 0;
-    const sets = [...(this._txSchedulerSets || [])];
+    if (this._txPackedProvidersDirty) {
+      const serialized = JSON.stringify(this._txPackedProviders);
+      // The scheduler row contains other fields too. Keep provider data well below the
+      // platform row limit; the combined row still needs a separate cutover size check.
+      if (new TextEncoder().encode(serialized).length > 128 * 1024) {
+        throw new Error("packed provider data exceeds safety limit");
+      }
+      sets.push({ assignment: "packed_providers_json = ?", params: [serialized] });
+    }
     if (this._txBundlesDirty) {
       sets.push({
         assignment: "active_bundles_json = ?",
@@ -632,7 +705,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       sched && sched.utc_day === this._currentUtcDay(Date.now())
         ? Number(sched.rows_written_today) || 0
         : 0;
-    return persisted + (this._rowsUnflushed || 0);
+    return persisted + (this._rowsUnflushed || 0) + (this._txPacked?.shardDirty.size || 0);
   }
 
   /** Operator repair: raise today's estimate from a dated platform/log observation. */
@@ -662,6 +735,62 @@ export class LLMSchedulerDO extends DurableObjectBase {
     result.rows_written_today = this._readRowsWrittenToday();
     console.log(JSON.stringify({ event: "do_row_budget_reconciled", ...result }));
     return result;
+  }
+
+  static PACKED_LIMIT_BOUNDS = Object.freeze({
+    maxJobs: 50_000, maxModelRows: 500_000, maxGroups: 10_000, maxProviders: 64, maxStateRows: 10_000,
+    reserveOtherWrites: 50_000,
+  });
+
+  static validatePackedLimits(limits) {
+    const bounds = LLMSchedulerDO.PACKED_LIMIT_BOUNDS;
+    if (!limits || typeof limits !== "object" || Array.isArray(limits)) return null;
+    const out = {};
+    for (const [key, max] of Object.entries(bounds)) {
+      const value = limits[key];
+      if (!Number.isSafeInteger(value) || value < (key === "reserveOtherWrites" ? 0 : 1) || value > max) return null;
+      out[key] = value;
+    }
+    return out;
+  }
+
+  /** Which representation is authoritative for each ledger (read-only). */
+  async packedAuthority() {
+    const [row] = [...this._getSql().exec(
+      "SELECT compact_queue_active, packed_providers_active, packed_state_active FROM scheduler WHERE id = 1"
+    )];
+    return {
+      compact_queue: row?.compact_queue_active === 1,
+      packed_providers: row?.packed_providers_active === 1,
+      packed_state: row?.packed_state_active === 1,
+    };
+  }
+
+  /**
+   * Operator RPC: switch to packed authority. Refuses unless a drained global pause is in effect
+   * (see _compactMigrationContext) and the whole move fits the write reserve. All-or-nothing.
+   */
+  async packedCutover(limits, now = Date.now()) {
+    return this._packedSwitch(limits, now, "cutover");
+  }
+
+  async packedRollback(limits, now = Date.now()) {
+    return this._packedSwitch(limits, now, "rollback");
+  }
+
+  _packedSwitch(rawLimits, now, direction) {
+    const limits = LLMSchedulerDO.validatePackedLimits(rawLimits);
+    if (!limits) return { ok: false, error: "bad_request", detail: "Bounded integer limits are required" };
+    try {
+      const summary = this._transactionSync(() => direction === "cutover"
+        ? this._stagePackedCutover(now, limits) : this._stagePackedRollback(now, limits));
+      console.log(JSON.stringify({ event: `packed_state_${direction}`, ...summary }));
+      return { ok: true, direction, ...summary };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(JSON.stringify({ event: `packed_state_${direction}_failed`, detail }));
+      return { ok: false, error: `${direction}_refused`, detail };
+    }
   }
 
   /** Read-only variant for handlers that do not otherwise touch the scheduler row. */
@@ -889,8 +1018,45 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
     }
 
+    const schedulerColumns = tableColumns.get("scheduler");
+    const scheduler = schedulerColumns?.has("mistral_latest_migrated")
+      ? [...sql.exec(`SELECT mistral_latest_migrated${schedulerColumns.has("compact_queue_active")
+        ? ", compact_queue_active" : ""}${schedulerColumns.has("packed_state_active")
+        ? ", packed_state_active" : ""} FROM scheduler WHERE id = 1`)][0]
+      : null;
+    const compactActive = scheduler?.compact_queue_active === 1;
+    const packedActive = schedulerColumns?.has("packed_state_active") && scheduler != null &&
+      scheduler.packed_state_active !== 0;
+    if (packedActive && scheduler.packed_state_active !== 1) {
+      missing.push("invalid:packed_state_active");
+    }
+    if (packedActive && !objects.has("table:packed_telemetry")) missing.push("table:packed_telemetry");
     for (const [type, name] of CURRENT_SCHEMA_OBJECTS) {
+      if (compactActive && name === "trg_jobs_priority_sync") continue;
       if (!objects.has(`${type}:${name}`)) missing.push(`${type}:${name}`);
+    }
+    if (compactActive) {
+      for (const [type, name] of [["table", "compact_queue"], ["table", "compact_groups"],
+        ["trigger", "trg_compact_priority_sync"]]) {
+        if (!objects.has(`${type}:${name}`)) missing.push(`${type}:${name}`);
+      }
+      for (const [name, primaryKey] of [["compact_queue", ["model_set", "priority", "created_at", "job_id"]],
+        ["compact_groups", ["model", "model_set"]]]) {
+        const table = objects.get(`table:${name}`);
+        if (!table) continue;
+        const columns = [...sql.exec(`PRAGMA table_info(${name})`)];
+        const actualKey = columns.filter(column => column.pk > 0)
+          .sort((a, b) => a.pk - b.pk).map(column => column.name);
+        if (!/WITHOUT\s+ROWID/i.test(String(table.sql)) ||
+            JSON.stringify(actualKey) !== JSON.stringify(primaryKey)) {
+          missing.push(`table-shape:${name}`);
+        }
+      }
+      const compactTrigger = objects.get("trigger:trg_compact_priority_sync");
+      if (compactTrigger && !/compact_queue/i.test(String(compactTrigger.sql))) {
+        missing.push("trigger-shape:trg_compact_priority_sync");
+      }
+      if (objects.has("trigger:trg_jobs_priority_sync")) missing.push("retired-trigger:trg_jobs_priority_sync");
     }
     for (const [type, name] of RETIRED_SCHEMA_OBJECTS) {
       if (objects.has(`${type}:${name}`)) missing.push(`retired-${type}:${name}`);
@@ -906,15 +1072,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       missing.push("table-shape:job_models WITHOUT ROWID");
     }
 
-    const schedulerColumns = tableColumns.get("scheduler");
-    const scheduler = schedulerColumns?.has("mistral_latest_migrated")
-      ? [...sql.exec("SELECT mistral_latest_migrated FROM scheduler WHERE id = 1")][0]
-      : null;
     if (scheduler?.mistral_latest_migrated !== 1) {
       missing.push("migration:mistral_latest_migrated");
     }
 
-    return { current: missing.length === 0, existingTables, missing };
+    return { current: missing.length === 0, existingTables, missing, compactActive, packedActive };
   }
 
   _runSchemaInitStep(label, work) {
@@ -1090,7 +1252,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
         next_maintenance_alarm_at           INTEGER,
         -- Active bundles by id (see _activeBundles): at most MAX_ACTIVE_BUNDLES entries, written
         -- by the accounting UPDATE each claim and completion already make.
-        active_bundles_json                 TEXT NOT NULL DEFAULT '{}'
+        active_bundles_json                 TEXT NOT NULL DEFAULT '{}',
+        recovery_stats_json                 TEXT NOT NULL DEFAULT '{}',
+        compact_queue_active                INTEGER NOT NULL DEFAULT 0,
+        compact_group_cursor_json           TEXT,
+        packed_providers_active             INTEGER NOT NULL DEFAULT 0,
+        packed_providers_json               TEXT NOT NULL DEFAULT '{}',
+        packed_state_active                 INTEGER NOT NULL DEFAULT 0,
+        packed_routes_json                  TEXT NOT NULL DEFAULT '{}',
+        packed_estimates_json               TEXT NOT NULL DEFAULT '{}',
+        packed_leases_json                  TEXT NOT NULL DEFAULT '{}'
       );
 
       -- One small row per purpose/day makes ingress reservations durable without turning a
@@ -1293,6 +1464,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     this._ensureColumn("scheduler", "mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "active_bundles_json", "TEXT NOT NULL DEFAULT '{}'");
+    this._ensureColumn("scheduler", "recovery_stats_json", "TEXT NOT NULL DEFAULT '{}'");
+    this._ensureColumn("scheduler", "compact_queue_active", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "compact_group_cursor_json", "TEXT");
+    this._ensureColumn("scheduler", "packed_providers_active", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "packed_providers_json", "TEXT NOT NULL DEFAULT '{}'");
+    for (const [column, definition] of Object.entries(PACKED_STATE_SCHEDULER_COLUMNS)) {
+      this._ensureColumn("scheduler", column, definition);
+    }
     this._runSchemaInitStep("move active bundles into the scheduler row", () =>
       this._migrateBundlesToScheduler()
     );
@@ -1456,6 +1635,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["quota_excluded_routes", "TEXT"],
       ["response_timeout_routes", "TEXT"],
       ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["recovery_stats_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["compact_queue_active", "INTEGER NOT NULL DEFAULT 0"],
+      ["compact_group_cursor_json", "TEXT"],
+      ["packed_providers_active", "INTEGER NOT NULL DEFAULT 0"],
+      ["packed_providers_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["packed_state_active", "INTEGER NOT NULL DEFAULT 0"],
+      ["packed_routes_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["packed_estimates_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["packed_leases_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["last_max_tokens_sent", "INTEGER"],
       ["last_output_tokens", "INTEGER"],
       ["max_output_tokens", "INTEGER"],
@@ -1493,7 +1681,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ROWS_PER_BUNDLE * (Number(sched.bundle_count_today) || 0) +
       ROWS_PER_LEASE_WORST * (Number(sched.lease_count_today) || 0) +
       ROWS_PER_CLEANUP_JOB * cleanupRuns * this._envInt("PURGE_BATCH_LIMIT", 15) +
-      2 * minutes; // Each ordinary idle tick writes its outcome and accounting row.
+      2 * minutes; // Conservative allowance for earlier deployments' idle ticks and counter drift.
     sql.exec("UPDATE scheduler SET rows_written_today = ? WHERE id = 1", estimate);
   }
 
@@ -2032,11 +2220,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _inFlightCounts(now, dispatchLimits = this._dispatchLimits()) {
     const byRoute = {};
     const byProvider = {};
-    for (const row of this._getSql().exec(
-      `SELECT lease_route_id, COUNT(*) AS cnt FROM jobs
-        WHERE state = 'leased' AND lease_expires_at > ? GROUP BY lease_route_id`,
-      now
-    )) {
+    for (const row of this._leaseCountsByRoute(now)) {
       if (!row.lease_route_id) continue;
       byRoute[row.lease_route_id] = row.cnt;
       const provider = dispatchLimits?.routes_by_id?.[row.lease_route_id]?.provider;
@@ -2070,11 +2254,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const routes = {};
     if (scope !== "global") {
       const ledgers = new Map(
-        [...this._getSql().exec(
-          `SELECT route_id, rpd_count, rpd_day_key FROM routes
-            WHERE route_id IN (${selectedRouteIds.map(() => "?").join(",") || "''"})`,
-          ...selectedRouteIds
-        )].map((row) => [row.route_id, row])
+        (this._packed()
+          ? selectedRouteIds.map(id => this._routeRow(id)).filter(Boolean)
+          : [...this._getSql().exec(
+            `SELECT route_id, rpd_count, rpd_day_key FROM routes
+              WHERE route_id IN (${selectedRouteIds.map(() => "?").join(",") || "''"})`,
+            ...selectedRouteIds
+          )]).map((row) => [row.route_id, row])
       );
       for (const routeId of selectedRouteIds) {
         const catalogRoute = catalog.routes_by_id[routeId];
@@ -2425,7 +2611,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       return { ok: false, error: "pause_not_drained" };
     }
     // No seeded ledger writes until every read-only admission check has passed.
-    const prior = [...sql.exec("SELECT * FROM routes WHERE route_id = ?", body.route_id)][0];
+    const prior = this._routeRow(body.route_id);
     const merged = { ...route, ...(prior || { full_token_budget: Number(route.tpm) * FULL_TOKEN_BUDGET_WINDOWS,
       token_budget_updated_at: now }), reset_timezone: catalog.providers[route.provider].reset_timezone || "UTC" };
     const job = { input_token_estimate: body.input_tokens, max_output_token_estimate: body.output_tokens };
@@ -2493,7 +2679,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       `SELECT utc_day, bundle_count_today, lease_count_today, jobs_ingested_today,
               ingress_write_units_today, claim_empty_count_today, claim_reason_counts_json,
               rows_written_today, queued_job_count, last_claim_at,
-              last_claim_result, last_claim_reason, last_claim_diagnostics_json
+              last_claim_result, last_claim_reason, last_claim_diagnostics_json,
+              recovery_stats_json
        FROM scheduler WHERE id = 1`
     )];
     if (rows.length === 0) {
@@ -3235,8 +3422,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const snapshot = { kind: "rate_failures", utc_day: utcDay, route_failures: [], truncated: false };
     if (routes.length > 128) return { ...snapshot, truncated: true };
     const sql = this._getSql();
+    const packed = this._packed();
     for (const route of routes) {
       for (const failureClass of ["own_rpm", "own_tpm", "unknown_429"]) {
+        if (packed) {
+          const cell = packed.shard(shardFor(route)).failures[failureKey(utcDay, route, failureClass)];
+          if (cell) {
+            snapshot.route_failures.push({ utc_day: cell.utc_day, route_id: cell.route_id,
+              failure_class: cell.failure_class, count: cell.count });
+          }
+          continue;
+        }
         const rows = [...sql.exec(
           `SELECT utc_day, route_id, failure_class, count FROM route_failures
            WHERE utc_day = ? AND route_id = ? AND failure_class = ?`,
@@ -3265,7 +3461,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 last_claim_reason, last_empty_claim_diagnostics_json,
                 claim_empty_count_today, claim_reason_counts_json,
                 completed_today, failed_today, retried_today, hourly_burndown_json,
-                catalog_digest, catalog_rescue_cursor, catalog_rescue_complete
+                catalog_digest, catalog_rescue_cursor, catalog_rescue_complete, recovery_stats_json,
+                compact_queue_active, packed_providers_active, packed_state_active,
+                length(packed_routes_json) AS packed_routes_bytes,
+                length(packed_estimates_json) AS packed_estimates_bytes,
+                length(packed_leases_json) AS packed_leases_bytes,
+                length(packed_providers_json) AS packed_providers_bytes
            FROM scheduler WHERE id = 1`
       );
       // The helper already unwraps the compiled file and returns the purpose-keyed map,
@@ -3329,6 +3530,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
           next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
         },
         row_budget: this._rowBudgetSnapshot(scheduler),
+        recovery: parseJsonObject(scheduler.recovery_stats_json),
+        authority: {
+          compact_queue: scheduler.compact_queue_active === 1,
+          packed_providers: scheduler.packed_providers_active === 1,
+          packed_state: scheduler.packed_state_active === 1,
+          // Characters, not bytes: a monitor compares these with the limits in packed_state.js.
+          packed_chars: scheduler.packed_state_active === 1 ? {
+            routes: scheduler.packed_routes_bytes, estimates: scheduler.packed_estimates_bytes,
+            leases: scheduler.packed_leases_bytes, providers: scheduler.packed_providers_bytes,
+          } : null,
+        },
         claim: this._claimSnapshot(scheduler),
         catalog_rescue: {
           digest: scheduler.catalog_digest ?? null,
@@ -3356,7 +3568,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   _usageToday(sql, now) {
     const today = new Date(now).toISOString().slice(0, 10);
-    return [...sql.exec("SELECT * FROM attempt_usage WHERE utc_day = ?", today)]
+    const packed = this._packed();
+    const rows = packed
+      ? Array.from({ length: TELEMETRY_SHARDS }, (_, index) => Object.values(packed.shard(index).usage))
+        .flat().filter(cell => cell.utc_day === today)
+      : [...sql.exec("SELECT * FROM attempt_usage WHERE utc_day = ?", today)];
+    return rows
       .map((row) => {
         const outputs = parseNumberList(row.outputs_json).sort((a, b) => a - b);
         const inputRatios = parseNumberList(row.input_ratios_json).sort((a, b) => a - b);
@@ -3433,6 +3650,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const day = new Date(now).toISOString().slice(0, 10);
     const cap = LLMSchedulerDO.ATTEMPT_USAGE_SAMPLE_CAP;
+    const packed = this._packed();
+    if (packed) {
+      for (const cell of cells.values()) {
+        const index = shardFor(cell.route_id);
+        const shard = packed.shard(index);
+        const key = usageKey(day, cell.purpose, cell.route_id);
+        shard.usage[key] = foldUsageCell(shard.usage[key], cell, day, cap);
+        packed.markShardDirty(index);
+      }
+      return;
+    }
     const append = (stored, added) => {
       const values = parseNumberList(stored);
       return JSON.stringify(values.concat(added.slice(0, Math.max(0, cap - values.length))));
@@ -3476,11 +3704,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _calibrationStats(sql) {
     const routes = this._dispatchLimits()?.routes_by_id || {};
     const cells = [];
-    for (const row of sql.exec(
-      `SELECT key, recent_observed_summary, updated_at FROM estimates
-        ORDER BY updated_at DESC LIMIT ?`,
-      LLMSchedulerDO.CALIBRATION_STATS_LIMIT
-    )) {
+    const packed = this._packed();
+    const estimateRows = packed
+      ? Object.values(packed.estimates).sort((a, b) => b.updated_at - a.updated_at)
+        .slice(0, LLMSchedulerDO.CALIBRATION_STATS_LIMIT)
+      : sql.exec(
+        `SELECT key, recent_observed_summary, updated_at FROM estimates
+          ORDER BY updated_at DESC LIMIT ?`,
+        LLMSchedulerDO.CALIBRATION_STATS_LIMIT
+      );
+    for (const row of estimateRows) {
       if (row.key.startsWith("pool:")) {
         // Pooled ring (review/55 piece 1): `pool:<tokenizer family>:<prompt family>`. The
         // tokenizer family can itself contain ":" (e.g. "...:free"); the prompt family does not.
@@ -3556,7 +3789,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // The routes table holds one row per route ever touched -- a small, fixed population, not a
     // traffic-growing table -- so reading all of it is cheap and `limit` only truncates the
     // listing for display.
-    const routeRows = [...sql.exec(
+    const routeRows = this._packed() ? this._routeRows() : [...sql.exec(
       `SELECT route_id, blocked_until, throttle_streak, payment_required_streak,
               last_provider_status, rpd_count, rpd_day_key, buffer_seconds, buffer_updated_at,
               provisional_reservation, settled_usage, tpd_used, tpd_updated_at, prompt_cap_estimate,
@@ -3568,10 +3801,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const catalog = this._dispatchLimits();
     const windowSeconds = this._dispatchWindowSecondsForStats();
     const leasedByRoute = new Map();
-    for (const row of sql.exec(
-      "SELECT lease_route_id, COUNT(*) AS n FROM jobs WHERE state = 'leased' GROUP BY lease_route_id"
-    )) {
-      if (row.lease_route_id) leasedByRoute.set(row.lease_route_id, row.n);
+    for (const row of this._leaseCountsByRoute()) {
+      if (row.lease_route_id) leasedByRoute.set(row.lease_route_id, row.cnt);
     }
     const leasedByProvider = new Map();
     for (const [routeId, count] of leasedByRoute) {
@@ -3711,7 +3942,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Without the legacy job_id index, look each queued job's rows up by the primary key its
     // recorded queue_models implies. A NULL list after that index is retired is itself a defect
     // and counts as unindexed.
-    const unindexed = this._hasLegacyJobModelsIndex()
+    const compactQueue = this._compactQueueEnabled();
+    const unindexed = compactQueue ? one(
+      `SELECT COUNT(*) AS n FROM jobs j WHERE j.state = 'queued'
+         AND (NOT EXISTS (SELECT 1 FROM compact_queue q WHERE q.model_set = j.queue_models
+           AND q.priority = j.priority AND q.created_at = j.created_at AND q.job_id = j.id)
+         OR CASE WHEN json_valid(j.queue_models) THEN
+           CASE WHEN json_type(j.queue_models) = 'array' AND json_array_length(j.queue_models) > 0
+             THEN EXISTS (SELECT 1 FROM json_each(j.queue_models) m WHERE NOT EXISTS (
+               SELECT 1 FROM compact_groups g WHERE g.model = m.value AND g.model_set = j.queue_models
+             )) ELSE 1 END
+           ELSE 1 END)`
+    ).n : this._hasLegacyJobModelsIndex()
       ? one(
         `SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'
            AND NOT EXISTS (SELECT 1 FROM job_models WHERE job_models.job_id = jobs.id)`
@@ -3730,7 +3972,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     ).t;
 
     // What the scheduler actually ranks over: queued work grouped by the model it can run on.
-    const queuedByModel = [...sql.exec(
+    const queuedByModel = compactQueue ? [...sql.exec(
+      `SELECT g.model AS model, COUNT(*) AS queued
+         FROM compact_groups g JOIN compact_queue q ON q.model_set = g.model_set
+         JOIN jobs j ON j.id = q.job_id WHERE j.state = 'queued'
+        GROUP BY g.model ORDER BY queued DESC LIMIT ?`, limit
+    )] : [...sql.exec(
       `SELECT m.model AS model, COUNT(*) AS queued
          FROM job_models m JOIN jobs j ON j.id = m.job_id
         WHERE j.state = 'queued'
@@ -3768,7 +4015,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // A caller that names failure classes (the budget monitor) gets every row of those classes,
     // up to FILTERED_FAILURE_LIMIT, so unrelated high-count rows cannot push them past `limit`.
     const classes = Array.isArray(failureClasses) && failureClasses.length ? failureClasses : null;
-    const routeFailures = [...sql.exec(
+    const failureLimit = classes ? LLMSchedulerDO.FILTERED_FAILURE_LIMIT : limit;
+    const packedState = this._packed();
+    const routeFailures = packedState
+      ? Array.from({ length: TELEMETRY_SHARDS }, (_, index) => Object.values(packedState.shard(index).failures))
+        .flat()
+        .filter(cell => cell.utc_day === today && (!classes || classes.includes(cell.failure_class)))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, failureLimit)
+        .map(({ utc_day, route_id, failure_class, count, last_status, last_seen_at, last_max_tokens_sent,
+          last_output_tokens, max_output_tokens }) => ({ utc_day, route_id, failure_class, count, last_status,
+          last_seen_at, last_max_tokens_sent, last_output_tokens, max_output_tokens }))
+      : [...sql.exec(
       `SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at,
               last_max_tokens_sent, last_output_tokens, max_output_tokens
          FROM route_failures
@@ -3777,7 +4035,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         LIMIT ?`,
       today,
       ...(classes || []),
-      classes ? LLMSchedulerDO.FILTERED_FAILURE_LIMIT : limit
+      failureLimit
     )];
 
     return {
@@ -3998,12 +4256,241 @@ export class LLMSchedulerDO extends DurableObjectBase {
   // completion settlement and calibration (Units 5 and 7).
   // ---------------------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------------------
+  // Packed authority (routes, estimates, leases on the scheduler row; usage and failures in
+  // route-hashed telemetry shards). Every accessor below has a legacy-table twin: exactly one is
+  // authoritative per committed transaction, selected by scheduler.packed_state_active.
+  // ---------------------------------------------------------------------------------------
+
+  /** The transaction's packed view, or null while the legacy tables are authoritative. Outside a
+   * transaction a fresh, never-flushed view is returned for read-only RPCs. */
+  _packed() {
+    if (this._txCutoverStaged) throw new Error("packed state access after cutover was staged");
+    const inTransaction = Array.isArray(this._txSchedulerSets);
+    if (inTransaction && this._txPacked !== undefined) return this._txPacked;
+    // Read-only RPCs share one parsed view until the next transaction commits or rolls back.
+    if (!inTransaction && this._readView !== undefined) return this._readView;
+    const sql = this._getSql();
+    const [row] = [...sql.exec(
+      `SELECT packed_state_active, packed_routes_json, packed_estimates_json, packed_leases_json
+         FROM scheduler WHERE id = 1`
+    )];
+    if (!row || ![0, 1].includes(row.packed_state_active)) throw new Error("invalid packed state authority");
+    const packed = row.packed_state_active === 0 ? null : new PackedTx(row, index => {
+      const [shard] = [...sql.exec("SELECT json FROM packed_telemetry WHERE shard = ?", index)];
+      return shard ? shard.json : null;
+    });
+    if (inTransaction) this._txPacked = packed;
+    else this._readView = packed;
+    return packed;
+  }
+
+  _flushPackedState(sql, packed, sets) {
+    sets.push(...packed.schedulerSets());
+    const today = this._currentUtcDay(this._transactionNow);
+    const { writes, evicted } = packed.shardWrites(today);
+    for (const [index, text] of writes) {
+      sql.exec(
+        `INSERT INTO packed_telemetry (shard, json) VALUES (?, ?)
+         ON CONFLICT (shard) DO UPDATE SET json = excluded.json`, index, text
+      );
+    }
+    if (evicted > 0 || packed.estimatesEvicted) {
+      console.warn(JSON.stringify({ event: "packed_telemetry_evicted", cells: evicted,
+        estimates: packed.estimatesEvicted || 0 }));
+    }
+  }
+
+  /** Run `packedFn(row)` on the packed route row, or `legacyFn()` (the original SQL) otherwise. */
+  _mutateRoute(routeId, packedFn, legacyFn) {
+    const packed = this._packed();
+    if (!packed) return legacyFn();
+    const row = packed.routes[routeId];
+    if (!row) return;
+    packedFn(row);
+    packed.markDirty("routes");
+  }
+
+  // Lease registry: the slim {bundle_id, lease_route_id, lease_expires_at} view of every leased
+  // job, so active-call counts, route concurrency, expiry and bundle completion never scan jobs.
+  // Legacy mode keeps the indexed jobs queries, so these are no-ops there.
+
+  _leaseSet(job, leaseExpiresAt, routeId, bundleId) {
+    const packed = this._packed();
+    if (!packed) return;
+    if (!Object.hasOwn(packed.leases, job.id) &&
+        Object.keys(packed.leases).length >= PACKED_LEASES_MAX_ENTRIES) {
+      throw new Error("packed lease registry full");
+    }
+    packed.leases[job.id] = { bundle_id: bundleId ?? null, lease_route_id: routeId, lease_expires_at: leaseExpiresAt };
+    packed.markDirty("leases");
+  }
+
+  _leaseDelete(jobId) {
+    const packed = this._packed();
+    if (packed && Object.hasOwn(packed.leases, jobId)) {
+      delete packed.leases[jobId];
+      packed.markDirty("leases");
+    }
+  }
+
+  /** Count of leased jobs, optionally only those still unexpired. */
+  _leaseCount(now = null) {
+    const packed = this._packed();
+    if (packed) {
+      return Object.values(packed.leases).filter(l => now === null || l.lease_expires_at > now).length;
+    }
+    return Number([...this._getSql().exec(now === null
+      ? "SELECT COUNT(*) AS n FROM jobs WHERE state='leased'"
+      : "SELECT COUNT(*) AS n FROM jobs WHERE state='leased' AND lease_expires_at > ?", ...(now === null ? [] : [now]))][0]?.n) || 0;
+  }
+
+  /** [{lease_route_id, cnt}] for leased jobs, only unexpired ones when `now` is given. */
+  _leaseCountsByRoute(now = null) {
+    const packed = this._packed();
+    if (packed) {
+      const counts = new Map();
+      for (const lease of Object.values(packed.leases)) {
+        if (now !== null && !(lease.lease_expires_at > now)) continue;
+        counts.set(lease.lease_route_id, (counts.get(lease.lease_route_id) || 0) + 1);
+      }
+      return [...counts].map(([lease_route_id, cnt]) => ({ lease_route_id, cnt }));
+    }
+    return [...this._getSql().exec(now === null
+      ? "SELECT lease_route_id, COUNT(*) AS cnt FROM jobs WHERE state='leased' GROUP BY lease_route_id"
+      : `SELECT lease_route_id, COUNT(*) AS cnt FROM jobs
+          WHERE state = 'leased' AND lease_expires_at > ? GROUP BY lease_route_id`, ...(now === null ? [] : [now]))];
+  }
+
+  /** Full job rows whose lease expired before `now`. */
+  _expiredLeasedJobs(now) {
+    const packed = this._packed();
+    if (!packed) {
+      return [...this._getSql().exec("SELECT * FROM jobs WHERE state='leased' AND lease_expires_at < ?", now)];
+    }
+    const rows = [];
+    for (const [id, lease] of Object.entries(packed.leases)) {
+      if (!(lease.lease_expires_at < now)) continue;
+      const [job] = [...this._getSql().exec("SELECT * FROM jobs WHERE id = ?", id)];
+      // A registry entry whose job is no longer leased is stale: drop it rather than requeue.
+      if (job?.state === "leased") rows.push(job);
+      else this._leaseDelete(id);
+    }
+    return rows;
+  }
+
+  _leasedBundleIds() {
+    const packed = this._packed();
+    if (packed) return new Set(Object.values(packed.leases).map(l => l.bundle_id).filter(Boolean));
+    return new Set([...this._getSql().exec(
+      "SELECT DISTINCT bundle_id FROM jobs WHERE state='leased' AND bundle_id IS NOT NULL"
+    )].map(row => row.bundle_id));
+  }
+
+  _leasedInBundle(bundleId) {
+    const packed = this._packed();
+    if (packed) return Object.values(packed.leases).filter(l => l.bundle_id === bundleId).length;
+    return [...this._getSql().exec(
+      "SELECT COUNT(*) as n FROM jobs WHERE bundle_id = ? AND state = 'leased'", bundleId
+    )][0]?.n || 0;
+  }
+
+  _routeRow(routeId) {
+    const packed = this._packed();
+    if (packed) {
+      const row = packed.routes[routeId];
+      return row ? { ...row } : undefined;
+    }
+    return [...this._getSql().exec("SELECT * FROM routes WHERE route_id = ?", routeId)][0];
+  }
+
+  _routeRows() {
+    const packed = this._packed();
+    if (packed) return Object.values(packed.routes).map(row => ({ ...row }));
+    return [...this._getSql().exec("SELECT * FROM routes")];
+  }
+
+  /** Apply `set` (see applyRouteSet) to a route's ledger row. */
+  _updateRoute(routeId, set) {
+    const packed = this._packed();
+    if (packed) {
+      const row = packed.routes[routeId];
+      if (!row) return;
+      applyRouteSet(row, set);
+      packed.markDirty("routes");
+      return;
+    }
+    const { sql, params } = legacyRouteUpdate(routeId, set);
+    this._getSql().exec(sql, ...params);
+  }
+
+  _estimateRow(key) {
+    const packed = this._packed();
+    if (packed) {
+      const row = packed.estimates[key];
+      return row ? { ...row } : undefined;
+    }
+    return [...this._getSql().exec("SELECT * FROM estimates WHERE key = ?", key)][0];
+  }
+
+  _insertEstimate(key, marginTokens, sampleCount, summary, now) {
+    const packed = this._packed();
+    if (packed) {
+      packed.estimates[key] = {
+        key, margin_tokens: marginTokens, sample_count: sampleCount,
+        recent_observed_summary: summary, updated_at: now,
+      };
+      packed.markDirty("estimates");
+      return;
+    }
+    this._getSql().exec(
+      `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+       VALUES (?, ?, ?, ?, ?)`, key, marginTokens, sampleCount, summary, now
+    );
+  }
+
+  /** `margin` is raised to at least `marginFloor` when given; sample_count is set or incremented. */
+  _updateEstimate(key, { marginFloor = null, sampleCount = null, addSample = false, summary, now }) {
+    const packed = this._packed();
+    if (packed) {
+      const row = packed.estimates[key];
+      if (!row) return;
+      if (marginFloor !== null) row.margin_tokens = Math.max(row.margin_tokens, marginFloor);
+      if (addSample) row.sample_count += 1;
+      else if (sampleCount !== null) row.sample_count = sampleCount;
+      row.recent_observed_summary = summary;
+      row.updated_at = now;
+      packed.markDirty("estimates");
+      return;
+    }
+    const sets = [];
+    const params = [];
+    if (marginFloor !== null) { sets.push("margin_tokens = MAX(margin_tokens, ?)"); params.push(marginFloor); }
+    if (addSample) sets.push("sample_count = sample_count + 1");
+    else if (sampleCount !== null) { sets.push("sample_count = ?"); params.push(sampleCount); }
+    sets.push("recent_observed_summary = ?", "updated_at = ?");
+    this._getSql().exec(`UPDATE estimates SET ${sets.join(", ")} WHERE key = ?`, ...params, summary, now, key);
+  }
+
   /**
    * Increment bounded per-class failure telemetry (Initiative 20 / review/45 §20.7).
    * Keyed by (utc_day, route_id, failure_class) so it can never grow with traffic.
    */
-  _recordRouteFailure(sql, now, routeId, failureClass, lastStatus, detail = null) {
+  _recordRouteFailure(sql, now, routeId, failureClass, lastStatus, detail = null, batch = null) {
     if (!routeId || !failureClass) return;
+    const packed = this._packed();
+    if (packed) {
+      const index = shardFor(routeId);
+      const shard = packed.shard(index);
+      const day = new Date(now).toISOString().slice(0, 10);
+      const key = failureKey(day, routeId, failureClass);
+      shard.failures[key] = foldFailureCell(shard.failures[key], {
+        now, routeId, failureClass, status: lastStatus, detail,
+        count: batch?.count ?? 1, maxOutput: batch ? batch.maxOutput : undefined,
+      });
+      packed.markShardDirty(index);
+      return;
+    }
     const utcDay = new Date(now).toISOString().slice(0, 10);
     const sent = Number(detail?.sentMaxTokens);
     const output = Number(detail?.outputTokens);
@@ -4011,9 +4498,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       `INSERT INTO route_failures (
          utc_day, route_id, failure_class, count, last_status, last_seen_at,
          last_max_tokens_sent, last_output_tokens, max_output_tokens
-       ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(utc_day, route_id, failure_class) DO UPDATE SET
-         count = count + 1,
+         count = count + excluded.count,
          last_status = excluded.last_status,
          last_seen_at = excluded.last_seen_at,
          last_max_tokens_sent = COALESCE(excluded.last_max_tokens_sent, last_max_tokens_sent),
@@ -4022,11 +4509,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
       utcDay,
       routeId,
       failureClass,
+      batch?.count ?? 1,
       lastStatus != null ? Number(lastStatus) : null,
       now,
       Number.isFinite(sent) && sent > 0 ? sent : null,
       Number.isFinite(output) && output >= 0 && detail?.outputTokens != null ? output : null,
-      Number.isFinite(output) && output >= 0 && detail?.outputTokens != null ? output : null
+      batch ? batch.maxOutput :
+        Number.isFinite(output) && output >= 0 && detail?.outputTokens != null ? output : null
     );
   }
 
@@ -4034,50 +4523,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * first time this route is ever touched. `catalogRoute` supplies the static tpm limit used to
    * size the seed budget; it is not persisted (the catalog itself is not per-DO state). */
   _getOrCreateRouteLedger(routeId, now, catalogRoute) {
-    const sql = this._getSql();
-    const rows = [...sql.exec("SELECT * FROM routes WHERE route_id = ?", routeId)];
-    if (rows.length > 0) return rows[0];
-    const tpm = Number(catalogRoute?.tpm) || 0;
-    const seedBudget = tpm * FULL_TOKEN_BUDGET_WINDOWS;
-    sql.exec(
-      `INSERT INTO routes (
-        route_id, rpm_window_start, rpm_count, rpd_window_start, rpd_count, rpd_day_key,
-        tpm_window_start, tpm_reserved, full_token_budget, token_budget_updated_at,
-        provisional_reservation, settled_usage, cost_accumulated,
-        throttle_streak, last_provider_status, blocked_until, buffer_seconds,
-        payment_required_streak
-      ) VALUES (?, 0, 0, 0, 0, '', 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0, 0)`,
-      routeId,
-      seedBudget,
-      now
-    );
-    return {
-      route_id: routeId,
-      rpm_window_start: 0,
-      rpm_count: 0,
-      rpd_window_start: 0,
-      rpd_day_key: "",
-      rpd_count: 0,
-      tpd_used: 0,
-      input_window_json: "[]",
-      tpm_window_start: 0,
-      tpm_reserved: 0,
-      full_token_budget: seedBudget,
-      token_budget_updated_at: now,
-      provisional_reservation: 0,
-      settled_usage: 0,
-      cost_accumulated: 0,
-      throttle_streak: 0,
-      last_provider_status: null,
-      blocked_until: null,
-      buffer_seconds: 0,
-      payment_required_streak: 0,
-    };
+    const packed = this._packed();
+    if (packed) {
+      const existing = packed.routes[routeId];
+      if (existing) return { ...existing };
+      const seedBudget = (Number(catalogRoute?.tpm) || 0) * FULL_TOKEN_BUDGET_WINDOWS;
+      const created = newRouteRow(routeId, seedBudget, now);
+      packed.routes[routeId] = created;
+      packed.markDirty("routes");
+      return { ...created };
+    }
+    return getOrCreateRouteLedger(this._getSql(), routeId, now, catalogRoute);
   }
 
   /** Read a provider's live ledger row, seeding a fresh one the first time this provider is touched. */
   _getOrCreateProviderLedger(providerName, now, providerCfg) {
     const sql = this._getSql();
+    const packed = this._providerPackedStateForTransaction();
+    if (packed) {
+      if (Object.hasOwn(packed, providerName)) return { ...packed[providerName] };
+      const created = {
+        provider: providerName, tpm_window_start: 0, tpm_reserved: 0,
+        full_token_budget: (Number(providerCfg?.tpm) || 0) * FULL_TOKEN_BUDGET_WINDOWS,
+        token_budget_updated_at: now,
+      };
+      packed[providerName] = created;
+      this._txPackedProvidersDirty = true;
+      return { ...created };
+    }
     const rows = [...sql.exec("SELECT * FROM providers WHERE provider = ?", providerName)];
     if (rows.length > 0) return rows[0];
     const tpm = Number(providerCfg?.tpm) || 0;
@@ -4097,6 +4570,39 @@ export class LLMSchedulerDO extends DurableObjectBase {
       full_token_budget: seedBudget,
       token_budget_updated_at: now,
     };
+  }
+
+  /** Read packed provider authority only inside the synchronous transaction that uses it. */
+  _providerPackedStateForTransaction() {
+    if (!Array.isArray(this._txSchedulerSets)) throw new Error("provider state requires a transaction");
+    if (this._txCutoverStaged) throw new Error("provider access after cutover was staged");
+    if (this._txPackedProviders !== undefined) return this._txPackedProviders;
+    const [row] = [...this._getSql().exec(
+      "SELECT packed_providers_active, packed_providers_json FROM scheduler WHERE id = 1"
+    )];
+    if (!row || ![0, 1].includes(row.packed_providers_active)) {
+      throw new Error("invalid provider ledger authority");
+    }
+    if (!row.packed_providers_active) return (this._txPackedProviders = null);
+    if (typeof row.packed_providers_json !== "string" ||
+        new TextEncoder().encode(row.packed_providers_json).length > 128 * 1024) {
+      throw new Error("invalid packed provider data size");
+    }
+    const data = JSON.parse(row.packed_providers_json);
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("invalid packed provider data");
+    }
+    const state = Object.create(null);
+    for (const [provider, value] of Object.entries(data)) {
+      if (!value || typeof value !== "object" || Array.isArray(value) || value.provider !== provider ||
+          ["tpm_window_start", "tpm_reserved", "full_token_budget", "token_budget_updated_at"]
+            .some(key => typeof value[key] !== "number" || !Number.isFinite(value[key]))) {
+        throw new Error("invalid packed provider ledger");
+      }
+      state[provider] = value;
+    }
+    this._txPackedProviders = state;
+    return state;
   }
 
   /** Canonical models with a policy-eligible configured route that fits the job's structural
@@ -4148,6 +4654,253 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return models.length > 0 ? models : ["__unroutable__"];
   }
 
+  /** The queue format is selected durably, and cached only within the current transaction. */
+  _compactQueueEnabled() {
+    if (this._txCutoverStaged) throw new Error("queue access after cutover was staged");
+    if (Array.isArray(this._txSchedulerSets) && this._txCompactQueue !== undefined) {
+      return this._txCompactQueue;
+    }
+    const [row] = [...this._getSql().exec("SELECT compact_queue_active FROM scheduler WHERE id = 1")];
+    if (!row || ![0, 1].includes(row.compact_queue_active)) {
+      throw new Error("invalid compact queue authority");
+    }
+    const active = row.compact_queue_active === 1;
+    if (Array.isArray(this._txSchedulerSets)) this._txCompactQueue = active;
+    return active;
+  }
+
+  /**
+   * Validate a drained pause and reserve space for in-flight and other migration work. The caller
+   * must use this within an otherwise untouched synchronous transaction, then stage its switch
+   * last. Account-wide usage outside this object must also be checked by the operator.
+   */
+  _compactMigrationContext(now, reserveOtherWrites) {
+    if (!Array.isArray(this._txSchedulerSets) || this._txSchedulerSets.length ||
+        this._txPackedProvidersDirty || this._txCompactQueue !== undefined || this._txPacked !== undefined) {
+      throw new Error("cutover requires an otherwise untouched transaction");
+    }
+    if (!Number.isSafeInteger(now) || !Number.isSafeInteger(reserveOtherWrites) || reserveOtherWrites < 0) {
+      throw new Error("invalid cutover limits");
+    }
+    const sql = this._getSql();
+    const [pause] = [...sql.exec(
+      "SELECT paused_until, created_at FROM dispatch_pause WHERE scope = 'global'"
+    )];
+    if (!pause || !Number.isSafeInteger(pause.created_at) || !Number.isSafeInteger(pause.paused_until) ||
+        pause.created_at > now - 900_000 || pause.paused_until < now + 60_000) {
+      throw new Error("cutover requires a drained global pause with at least one minute remaining");
+    }
+    const [scheduler] = [...sql.exec("SELECT * FROM scheduler WHERE id = 1")];
+    if (!scheduler) throw new Error("cutover requires a scheduler row");
+    const triggers = [...sql.exec(
+      `SELECT name FROM sqlite_master WHERE type='trigger'
+       AND tbl_name IN ('providers', 'job_models', 'scheduler', 'compact_queue', 'compact_groups') LIMIT 1`
+    )];
+    if (triggers.length) throw new Error("unsupported trigger on migration source table");
+    const modelColumns = [...sql.exec("PRAGMA table_info(job_models)")];
+    const modelNames = modelColumns.map(row => row.name).sort();
+    const modelKey = modelColumns.filter(row => row.pk > 0).sort((a, b) => a.pk - b.pk).map(row => row.name);
+    if (JSON.stringify(modelNames) !== JSON.stringify(["created_at", "job_id", "model", "priority"]) ||
+        JSON.stringify(modelKey) !== JSON.stringify(["model", "priority", "created_at", "job_id"])) {
+      throw new Error("unsupported model-index migration schema");
+    }
+    this._drainRowCount();
+    if (this._rowsUnflushed) throw new Error("cutover requires an otherwise untouched transaction");
+    const activeLeases = Number([...sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='leased'")][0].n);
+    const reserve = activeLeases * ROWS_PER_LEASE_WORST + this._activeBundles().size * ROWS_PER_BUNDLE;
+    // Workerd bills schema rows too: reserve for DDL, day rollover and accounting in addition
+    // to the data rows counted by the individual migration planners.
+    const available = Math.floor(
+      this._enqueueRowStop() - this._rowsWrittenToday(scheduler) - reserve - reserveOtherWrites - 16
+    );
+    if (available < 1) throw new Error("cutover write reserve unavailable");
+    return { sql, scheduler, pause, reserve, available };
+  }
+
+  _assertMigrationPauseMargin(pause) {
+    if (pause.paused_until < Date.now() + 60_000) {
+      throw new Error("global pause is too close to expiry for migration");
+    }
+  }
+
+  _assertProviderMigrationSchema(sql) {
+    const columns = [...sql.exec("PRAGMA table_info(providers)")];
+    const actual = columns.map(row => row.name).sort();
+    const primaryKey = columns.filter(row => row.pk > 0).sort((a, b) => a.pk - b.pk).map(row => row.name);
+    const expected = ["provider", "tpm_window_start", "tpm_reserved", "full_token_budget",
+      "token_budget_updated_at"].sort();
+    if (JSON.stringify(actual) !== JSON.stringify(expected) || JSON.stringify(primaryKey) !== '["provider"]') {
+      throw new Error("unsupported provider migration schema");
+    }
+    // providers is a rowid table: reserve its table row and every index entry on each mutation.
+    return 1 + [...sql.exec("PRAGMA index_list(providers)")].length;
+  }
+
+  _assertCompactMigrationSchema(sql, active) {
+    const entries = [...sql.exec(`SELECT type, name, sql FROM sqlite_master WHERE name IN (
+      'compact_queue', 'compact_groups', 'trg_compact_priority_sync', 'trg_jobs_priority_sync')`)];
+    const objects = new Map(entries.map(row => [`${row.type}:${row.name}`, row]));
+    const legacyTrigger = objects.get("trigger:trg_jobs_priority_sync");
+    const compactTrigger = objects.get("trigger:trg_compact_priority_sync");
+    if (!active) {
+      if (!legacyTrigger || !/job_models/i.test(legacyTrigger.sql) || !/queue_models/i.test(legacyTrigger.sql) ||
+          compactTrigger || objects.has("table:compact_queue") || objects.has("table:compact_groups")) {
+        throw new Error("unsupported compact cutover schema");
+      }
+      return;
+    }
+    if (legacyTrigger || !compactTrigger || !/compact_queue/i.test(compactTrigger.sql)) {
+      throw new Error("unsupported compact rollback trigger");
+    }
+    for (const [name, columns, key] of [
+      ["compact_queue", ["created_at", "job_id", "model_set", "priority"],
+        ["model_set", "priority", "created_at", "job_id"]],
+      ["compact_groups", ["model", "model_set"], ["model", "model_set"]],
+    ]) {
+      const table = objects.get(`table:${name}`);
+      if (!table || !/WITHOUT\s+ROWID/i.test(table.sql)) throw new Error("unsupported compact rollback schema");
+      const info = [...sql.exec(`PRAGMA table_info(${name})`)];
+      const names = info.map(row => row.name).sort();
+      const primary = info.filter(row => row.pk > 0).sort((a, b) => a.pk - b.pk).map(row => row.name);
+      if (JSON.stringify(names) !== JSON.stringify(columns) || JSON.stringify(primary) !== JSON.stringify(key)) {
+        throw new Error("unsupported compact rollback schema");
+      }
+    }
+  }
+
+  /**
+   * Switch every hot ledger to packed authority in the caller's ONE synchronous transaction, after
+   * a drained global pause (>= 15 minutes old, >= 1 minute left): the compact model-set queue, the
+   * provider ledger, and the packed routes, estimates, leases, usage and failure counters. Any
+   * throw rolls the whole move back. This is the only way authority changes; it is reachable only
+   * through the guarded operator RPC (packedCutover).
+   */
+  _stagePackedCutover(now, { maxJobs, maxModelRows, maxGroups, maxProviders, maxStateRows, reserveOtherWrites }) {
+    if (!Number.isSafeInteger(maxProviders) || maxProviders < 1 || maxProviders >= Number.MAX_SAFE_INTEGER ||
+        !Number.isSafeInteger(maxStateRows) || maxStateRows < 1) {
+      throw new Error("invalid cutover limits");
+    }
+    const { sql, scheduler, pause, reserve, available } = this._compactMigrationContext(now, reserveOtherWrites);
+    if (scheduler.compact_queue_active !== 0 || scheduler.packed_providers_active !== 0 ||
+        scheduler.packed_state_active !== 0) {
+      throw new Error("cutover requires legacy queue, provider and state authority");
+    }
+    this._assertCompactMigrationSchema(sql, false);
+    this._assertProviderMigrationSchema(sql);
+    const providers = [...sql.exec("SELECT * FROM providers LIMIT ?", maxProviders + 1)];
+    if (providers.length > maxProviders) throw new Error("cutover provider limit exceeded");
+    const packed = Object.create(null);
+    for (const row of providers) {
+      if (typeof row.provider !== "string" || !row.provider || Object.hasOwn(packed, row.provider) ||
+          ["tpm_window_start", "tpm_reserved", "full_token_budget", "token_budget_updated_at"]
+            .some(key => typeof row[key] !== "number" || !Number.isFinite(row[key]))) {
+        throw new Error("invalid legacy provider ledger");
+      }
+      packed[row.provider] = row;
+    }
+    const serialized = JSON.stringify(packed);
+    const providerBytes = byteLength(serialized);
+    if (providerBytes > 128 * 1024) throw new Error("packed provider data exceeds safety limit");
+    // Account for every existing scheduler field, including obsolete columns. Keep a substantial
+    // margin below Cloudflare's row limit for SQLite record encoding and concurrent future growth.
+    let schedulerBytes = 16 * Object.keys(scheduler).length;
+    for (const [key, value] of Object.entries(scheduler)) {
+      if (key === "packed_providers_json") schedulerBytes += providerBytes;
+      else if (typeof value === "string") schedulerBytes += byteLength(value);
+      else if (value instanceof ArrayBuffer) schedulerBytes += value.byteLength;
+      else if (value !== null && typeof value !== "number") throw new Error("invalid scheduler value");
+      else schedulerBytes += 8;
+    }
+    const statePlan = planPackedMigration(sql, { maxRows: maxStateRows, schedulerBytes, maxWrites: available });
+    const plan = planCompactMigration(sql, { maxJobs, maxModelRows, maxGroups,
+      maxWrites: available - statePlan.expectedWrites });
+    this._assertMigrationPauseMargin(pause);
+    buildCompactMigration(sql, plan);
+    buildPackedMigration(sql, statePlan);
+    sql.exec("DROP TRIGGER trg_jobs_priority_sync");
+    this._assertMigrationPauseMargin(pause);
+    this._stageSchedulerSet("compact_queue_active = 1, compact_group_cursor_json = NULL, " +
+      "packed_providers_active = 1, packed_providers_json = ?", serialized);
+    const activation = packedActivationSets(statePlan);
+    this._stageSchedulerSet(activation.assignment, ...activation.params);
+    this._txCutoverStaged = true;
+    return { jobs: plan.jobs.length, groups: plan.groups.size, providers: providers.length,
+      leases: statePlan.leases, state_rows: statePlan.counts,
+      planned_queue_writes: plan.expectedWrites, planned_state_writes: statePlan.expectedWrites,
+      provider_bytes: providerBytes, scheduler_bytes: schedulerBytes,
+      reserved_inflight_writes: reserve, reserved_other_writes: reserveOtherWrites };
+  }
+
+  /** Reconstruct every legacy authority from the packed rows, in one transaction while paused. */
+  _stagePackedRollback(now, { maxJobs, maxModelRows, maxGroups, maxProviders, maxStateRows, reserveOtherWrites }) {
+    if (!Number.isSafeInteger(maxProviders) || maxProviders < 1 || maxProviders >= Number.MAX_SAFE_INTEGER ||
+        !Number.isSafeInteger(maxStateRows) || maxStateRows < 1) {
+      throw new Error("invalid cutover limits");
+    }
+    const { sql, scheduler, pause, reserve, available } = this._compactMigrationContext(now, reserveOtherWrites);
+    if (scheduler.compact_queue_active !== 1 || scheduler.packed_providers_active !== 1 ||
+        scheduler.packed_state_active !== 1) {
+      throw new Error("rollback requires compact queue, packed provider and packed state authority");
+    }
+    this._assertCompactMigrationSchema(sql, true);
+    const providerWriteMultiplier = this._assertProviderMigrationSchema(sql);
+    if (typeof scheduler.packed_providers_json !== "string" ||
+        byteLength(scheduler.packed_providers_json) > 128 * 1024) {
+      throw new Error("invalid packed provider data size");
+    }
+    const packed = JSON.parse(scheduler.packed_providers_json);
+    if (!packed || typeof packed !== "object" || Array.isArray(packed)) {
+      throw new Error("invalid packed provider data");
+    }
+    const providers = Object.entries(packed);
+    const oldProviders = [...sql.exec("SELECT provider FROM providers LIMIT ?", maxProviders + 1)];
+    if (providers.length > maxProviders || oldProviders.length > maxProviders) {
+      throw new Error("rollback provider limit exceeded");
+    }
+    for (const [provider, row] of providers) {
+      if (!provider || !row || typeof row !== "object" || Array.isArray(row) || row.provider !== provider ||
+          ["tpm_window_start", "tpm_reserved", "full_token_budget", "token_budget_updated_at"]
+            .some(key => typeof row[key] !== "number" || !Number.isFinite(row[key]))) {
+        throw new Error("invalid packed provider ledger");
+      }
+    }
+    // WITHOUT ROWID's primary key is the table itself; every other index may add a write.
+    const modelWriteMultiplier = 1 + [...sql.exec("PRAGMA index_list(job_models)")]
+      .filter(index => index.origin !== "pk").length;
+    const providerWrites = providerWriteMultiplier * (oldProviders.length + providers.length);
+    const statePlan = planPackedRollback(sql, scheduler, { maxRows: maxStateRows,
+      maxWrites: available - providerWrites });
+    const modelBudget = Math.floor((available - providerWrites - statePlan.expectedWrites) / modelWriteMultiplier);
+    if (modelBudget < 1) throw new Error("rollback write reserve unavailable");
+    const plan = planCompactRollback(sql, {
+      maxJobs, maxModelRows, maxGroups, maxWrites: modelBudget,
+    });
+    this._assertMigrationPauseMargin(pause);
+    buildCompactRollback(sql, plan);
+    buildPackedRollback(sql, statePlan);
+    sql.exec("DELETE FROM providers");
+    for (const [provider, row] of providers) {
+      sql.exec(`INSERT INTO providers (provider, tpm_window_start, tpm_reserved, full_token_budget,
+        token_budget_updated_at) VALUES (?, ?, ?, ?, ?)`, provider, row.tpm_window_start,
+        row.tpm_reserved, row.full_token_budget, row.token_budget_updated_at);
+    }
+    sql.exec("DROP TRIGGER trg_compact_priority_sync");
+    sql.exec("DROP TABLE compact_queue");
+    sql.exec("DROP TABLE compact_groups");
+    sql.exec(JOB_PRIORITY_SYNC_TRIGGER);
+    this._assertMigrationPauseMargin(pause);
+    this._stageSchedulerSet("compact_queue_active = 0, compact_group_cursor_json = NULL, " +
+      "packed_providers_active = 0, packed_providers_json = '{}'");
+    this._stageSchedulerSet(PACKED_ROLLBACK_SETS.assignment);
+    this._txCutoverStaged = true;
+    return { jobs: plan.jobs, old_model_rows: plan.oldRows, new_model_rows: plan.rows.length,
+      providers: providers.length,
+      planned_data_writes: plan.expectedWrites * modelWriteMultiplier + providerWrites + statePlan.expectedWrites,
+      planned_state_writes: statePlan.expectedWrites,
+      model_write_multiplier: modelWriteMultiplier, provider_write_multiplier: providerWriteMultiplier,
+      reserved_inflight_writes: reserve, reserved_other_writes: reserveOtherWrites };
+  }
+
   /**
    * Write `job`'s job_models rows under (model, job.priority, job.created_at, job.id). The caller
    * computes `models` with _modelsToIndex BEFORE writing the job row, and records
@@ -4156,6 +4909,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   _indexQueuedJobModels(job, models) {
     const sql = this._getSql();
+    if (this._compactQueueEnabled()) {
+      indexCompactJob(sql, job, models);
+      return;
+    }
     // Preserve one sentinel for an unrouteable policy at INDEX time. It is never present in
     // model_routes_map, so claimDispatchWindow's per-model scan never reads it -- a job here is
     // invisible to every claim regardless of live route state, not merely paused, until
@@ -4178,6 +4935,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   _unindexQueuedJob(job) {
     const sql = this._getSql();
+    if (this._compactQueueEnabled()) {
+      unindexCompactJob(sql, job);
+      return;
+    }
     const models = parseQueueModels(job.queue_models);
     if (models === null) {
       // Queued before queue_models existed. LEGACY_JOB_MODELS_INDEX serves this until
@@ -4313,7 +5074,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       `SELECT * FROM jobs WHERE state='queued' AND (updated_at, id) > (?, ?)
        AND (updated_at, id) <= (?, ?) ORDER BY updated_at, id LIMIT ?`,
       ...cursor.after, ...cursor.through, limit
-    )] : [...sql.exec(
+    )] : this._compactQueueEnabled() ? readCompactCandidates(sql, "__unroutable__", limit)
+      .map(({ jm_priority, jm_created_at, ...job }) => job) : [...sql.exec(
       `SELECT jobs.* FROM job_models JOIN jobs ON jobs.id=job_models.job_id
        WHERE job_models.model='__unroutable__' AND jobs.state='queued'
        ORDER BY job_models.priority, job_models.created_at LIMIT ?`, limit
@@ -4386,6 +5148,25 @@ export class LLMSchedulerDO extends DurableObjectBase {
     if (attemptLimit > 0) {
       const cutoff = now - this._attemptRetentionMs();
       const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
+      const packed = this._packed();
+      if (packed) {
+        // Reading every shard costs a row each, and nothing ages out faster than a day: look at most
+        // every ten minutes per instance (a fresh instance looks on its first claim).
+        if (now - (this._lastPackedPruneAt ?? -Infinity) < 600_000) return { attemptUsageDeleted, routeFailuresDeleted };
+        this._lastPackedPruneAt = now;
+        // Both counters are pruned against one shared budget, oldest day first within each shard.
+        let remaining = attemptLimit;
+        for (let index = 0; index < TELEMETRY_SHARDS && remaining > 0; index++) {
+          const pruned = pruneShard(packed.shard(index), cutoffDay, remaining);
+          const deleted = pruned.usage + pruned.failures;
+          if (deleted === 0) continue;
+          packed.markShardDirty(index);
+          remaining -= deleted;
+          attemptUsageDeleted += pruned.usage;
+          routeFailuresDeleted += pruned.failures;
+        }
+        return { attemptUsageDeleted, routeFailuresDeleted };
+      }
       // A handful of lane/route cells per day; a primary-key prefix seek by utc_day.
       const staleUsage = [...sql.exec(
         `SELECT utc_day, purpose, route_id FROM attempt_usage
@@ -4528,10 +5309,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** Read the small route ledger once, rank model pools by their aggregate free fraction, and
    * retain a route-level score for preferring the best account inside the chosen model. */
   _rankModelsByCapacity(now, windowSeconds, dispatchLimits) {
-    const sql = this._getSql();
-    const ledgers = new Map(
-      [...sql.exec("SELECT * FROM routes")].map((row) => [row.route_id, row])
-    );
+    const ledgers = this._packed()
+      ? new Map(this._routeRows().map(row => [row.route_id, row]))
+      : readRouteLedgers(this._getSql());
     const catalog = dispatchLimits?.routes_by_id || {};
     return Object.entries(dispatchLimits?.model_routes_map || {})
       .map(([model, routeIds]) => {
@@ -4688,32 +5468,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   /** Persist a route's claim-side ledger (the fields _applyProvisionalReservation advances). */
   _writeRouteLedger(route) {
-    this._getSql().exec(
-      `UPDATE routes SET
-        rpm_window_start=?, rpm_count=?, rpd_window_start=?, rpd_count=?, rpd_day_key=?,
-        tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?,
-        provisional_reservation=?, tpd_used=?, tpd_updated_at=?, input_window_json=?
-       WHERE route_id=?`,
-      route.rpm_window_start,
-      route.rpm_count,
-      route.rpd_window_start,
-      route.rpd_count,
-      route.rpd_day_key,
-      route.tpm_window_start,
-      route.tpm_reserved,
-      route.full_token_budget,
-      route.token_budget_updated_at,
-      route.provisional_reservation,
-      route.tpd_used,
-      route.tpd_updated_at,
-      route.input_window_json,
-      route.route_id
-    );
+    const packed = this._packed();
+    if (packed) {
+      const row = packed.routes[route.route_id];
+      if (!row) return;
+      for (const column of CLAIM_ROUTE_COLUMNS) row[column] = route[column];
+      packed.markDirty("routes");
+      return;
+    }
+    writeRouteClaim(this._getSql(), route);
   }
 
   /** Persist a provider's shared token ledger (the fields _applyProviderProvisionalReservation
    * advances). */
   _writeProviderLedger(providerLedger) {
+    const packed = this._providerPackedStateForTransaction();
+    if (packed) {
+      if (!Object.hasOwn(packed, providerLedger.provider)) throw new Error("missing packed provider ledger");
+      if (["tpm_window_start", "tpm_reserved", "full_token_budget", "token_budget_updated_at"]
+        .some(key => typeof providerLedger[key] !== "number" || !Number.isFinite(providerLedger[key]))) {
+        throw new Error("invalid packed provider ledger");
+      }
+      packed[providerLedger.provider] = { ...providerLedger };
+      this._txPackedProvidersDirty = true;
+      return;
+    }
     this._getSql().exec(
       `UPDATE providers SET
         tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?
@@ -4775,15 +5554,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const key = this._estimatesKey(route, model, promptFamily);
     const cacheKey = `${key}|${route.route_id}`;
     if (cache?.has(cacheKey)) return cache.get(cacheKey);
-    const sql = this._getSql();
-    const rows = [...sql.exec("SELECT recent_observed_summary FROM estimates WHERE key = ?", key)];
-    let summary = parseCalibrationSummary(rows[0]?.recent_observed_summary);
+    let summary = parseCalibrationSummary(this._estimateRow(key)?.recent_observed_summary);
     if (summary.r.length < CALIBRATION_FULL_SAMPLES) {
-      const legacy = [...sql.exec(
-        "SELECT recent_observed_summary FROM estimates WHERE key = ?",
-        `${route.route_id}:${model}:${promptFamily}`
-      )];
-      const older = parseCalibrationSummary(legacy[0]?.recent_observed_summary);
+      const legacy = this._estimateRow(`${route.route_id}:${model}:${promptFamily}`);
+      const older = parseCalibrationSummary(legacy?.recent_observed_summary);
       if (older.r.length > summary.r.length) summary = older;
     }
     const result = calibrationFor(route, summary);
@@ -4819,10 +5593,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const family = String(promptFamily || "");
     const routes = [];
     const feedback = String(canonical).startsWith("google/gemma-4-")
-      ? gemmaPackingStatus([...sql.exec(
-        "SELECT recent_observed_summary FROM estimates WHERE key = ?",
-        `gemma-size:${canonical}:${family}`
-      )][0]?.recent_observed_summary) : null;
+      ? gemmaPackingStatus(this._estimateRow(`gemma-size:${canonical}:${family}`)?.recent_observed_summary)
+      : null;
     let ceiling = null;
     for (const routeId of routeIds) {
       const stored = limits.routes_by_id?.[routeId];
@@ -4854,10 +5626,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _packingRouteLimit(routeId, model, family, now) {
     const stored = this._dispatchLimits().routes_by_id[routeId];
-    const row = [...this._getSql().exec(
-      `SELECT input_accepted_max, input_accepted_at, input_rejected_min, input_rejected_at,
-              prompt_cap_estimate FROM routes WHERE route_id = ?`, routeId
-    )][0] || {};
+    const full = this._routeRow(routeId) || {};
+    const row = {
+      input_accepted_max: full.input_accepted_max, input_accepted_at: full.input_accepted_at,
+      input_rejected_min: full.input_rejected_min, input_rejected_at: full.input_rejected_at,
+      prompt_cap_estimate: full.prompt_cap_estimate,
+    };
     const route = { ...stored, ...row, route_id: routeId, model };
     const calibration = this._calibration(route, family);
     let limit = packingInputLimit(route, calibration.packRatio, now);
@@ -4926,9 +5700,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
          FROM scheduler WHERE id = 1`
     )][0] || {};
     const pending = this._pendingEmptyClaimsFor(row.utc_day);
-    // An idle repeat changes nothing an operator acts on, so it skips the write. Anything that
-    // moves a counter (a reaped lease, a claim) or changes the reason is persisted at once.
+    // Coalesce only if this transaction does not already need a scheduler write for recovery.
+    // Otherwise persist the claim count on that same row and avoid losing it on eviction.
     if (
+      !this._txRecoveryStaged &&
       result === "empty" &&
       queuedDelta === 0 &&
       row.last_claim_result === "empty" &&
@@ -5070,9 +5845,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
       const rowsToday = this._rowsWrittenToday(sched);
       const activeBundleCount = this._activeBundles().size;
-      const activeLeasedJobs = Number([...sql.exec(
-        "SELECT COUNT(*) AS n FROM jobs WHERE state='leased'"
-      )][0]?.n) || 0;
+      const activeLeasedJobs = this._leaseCount();
       const leasesRemaining = Math.max(
         0,
         this._maxLeasesPerUtcDay() - (Number(sched.lease_count_today) || 0)
@@ -5150,60 +5923,85 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // be reported.
       // An expired bundle is dropped outright: nothing reads it, and a late completeBatch for it
       // fails the execution-token check exactly as it did against an 'expired' row.
-      for (const [bundleId, bundle] of this._activeBundles()) {
-        if (bundle.lease_expires_at < now) this._deleteActiveBundle(bundleId);
-      }
-      const expiredJobs = [...sql.exec(
-        "SELECT * FROM jobs WHERE state='leased' AND lease_expires_at < ?",
-        now
-      )];
-      reapedToQueued = expiredJobs.length;
-      if (expiredJobs.length > 0) {
-        // Give the route back what these dead leases were holding. completeBatch is the only
-        // other place provisional_reservation is ever decremented, and by definition it never
-        // ran for these -- so without this every crashed or evicted bundle permanently consumed
-        // a slice of its route's token capacity. That leak is silent and cumulative: the route
-        // stays unblocked and simply scores lower every time, until it stops being ranked at all.
-        for (const job of expiredJobs) {
-          if (!job.lease_route_id || !(Number(job.token_reservation) > 0)) continue;
-          sql.exec(
-            `UPDATE routes SET provisional_reservation = MAX(0, provisional_reservation - ?)
-             WHERE route_id = ?`,
-            job.token_reservation,
-            job.lease_route_id
-          );
+      const recovery = parseJsonObject(sched.recovery_stats_json);
+      const configuredRecoveryMinutes = Number(this.env.RECOVERY_INTERVAL_MINUTES ?? 0);
+      // Invalid direct DO configuration fails safe to the existing immediate-recovery behavior.
+      const recoveryInterval = Number.isInteger(configuredRecoveryMinutes) &&
+        configuredRecoveryMinutes >= 0 && configuredRecoveryMinutes <= 1440
+        ? configuredRecoveryMinutes * 60_000 : 0;
+      const lastRecovery = Number(recovery.last_check_at);
+      const recoveryDue = recoveryInterval === 0 || recovery.last_check_at == null ||
+        !Number.isFinite(lastRecovery) || now < lastRecovery || now - lastRecovery >= recoveryInterval;
+      if (recoveryDue) {
+        let expiredBundleCount = 0;
+        for (const [bundleId, bundle] of this._activeBundles()) {
+          if (bundle.lease_expires_at < now) {
+            this._deleteActiveBundle(bundleId);
+            expiredBundleCount += 1;
+          }
         }
-        // One UPDATE per job (the same billed rows as one multi-row UPDATE): each records the
-        // queue key it is re-indexed under. Selected above in this transaction, so by id is
-        // exactly the set the old `state='leased' AND lease_expires_at < ?` UPDATE matched.
-        for (const job of expiredJobs) {
-          const queueModels = this._modelsToIndex(job);
-          sql.exec(
-            `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
-                              lease_expires_at=NULL, bundle_id=NULL, token_reservation=0,
-                              queue_models=?, updated_at=?
-             WHERE id = ?`,
-            JSON.stringify(queueModels),
-            now,
-            job.id
-          );
-          this._indexQueuedJobModels(job, queueModels);
+        const expiredJobs = this._expiredLeasedJobs(now);
+        reapedToQueued = expiredJobs.length;
+        if (expiredJobs.length > 0) {
+          // Give the route back what these dead leases were holding. completeBatch is the only
+          // other place provisional_reservation is ever decremented, and by definition it never
+          // ran for these -- so without this every crashed or evicted bundle permanently consumed
+          // a slice of its route's token capacity. That leak is silent and cumulative: the route
+          // stays unblocked and simply scores lower every time, until it stops being ranked at all.
+          const reservationsByRoute = new Map();
+          for (const job of expiredJobs) {
+            if (!job.lease_route_id || !(Number(job.token_reservation) > 0)) continue;
+            reservationsByRoute.set(job.lease_route_id,
+              (reservationsByRoute.get(job.lease_route_id) || 0) + Number(job.token_reservation));
+          }
+          for (const [routeId, reservation] of reservationsByRoute) {
+            this._updateRoute(routeId, { releaseReservation: reservation });
+          }
+          // One UPDATE per job (the same billed rows as one multi-row UPDATE): each records the
+          // queue key it is re-indexed under. Selected above in this transaction, so by id is
+          // exactly the set the old `state='leased' AND lease_expires_at < ?` UPDATE matched.
+          for (const job of expiredJobs) {
+            const queueModels = this._modelsToIndex(job);
+            sql.exec(
+              `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
+                                lease_expires_at=NULL, bundle_id=NULL, token_reservation=0,
+                                queue_models=?, updated_at=?
+               WHERE id = ?`,
+              JSON.stringify(queueModels),
+              now,
+              job.id
+            );
+            this._indexQueuedJobModels(job, queueModels);
+            this._leaseDelete(job.id);
+          }
         }
-      }
 
-      // A completed/requeued bundle is normally deleted by completeBatch. If the executor
-      // stopped after settling its last job but before that final delete, its active row would
-      // consume a bundle slot until lease expiry. The transaction makes this check atomic with
-      // claims and completions; only bundles with no leased jobs are safe to remove.
-      const leasedBundleIds = new Set(
-        [...sql.exec(
-          "SELECT DISTINCT bundle_id FROM jobs WHERE state='leased' AND bundle_id IS NOT NULL"
-        )].map((row) => row.bundle_id)
-      );
-      for (const bundleId of [...this._activeBundles().keys()]) {
-        if (leasedBundleIds.has(bundleId)) continue;
-        this._deleteActiveBundle(bundleId);
-        diagnostics.orphan_bundles_reaped += 1;
+        // A completed/requeued bundle is normally deleted by completeBatch. If the executor
+        // stopped after settling its last job but before that final delete, its active row would
+        // consume a bundle slot until lease expiry. The transaction makes this check atomic with
+        // claims and completions; only bundles with no leased jobs are safe to remove.
+        const leasedBundleIds = this._leasedBundleIds();
+        for (const bundleId of [...this._activeBundles().keys()]) {
+          if (leasedBundleIds.has(bundleId)) continue;
+          this._deleteActiveBundle(bundleId);
+          diagnostics.orphan_bundles_reaped += 1;
+        }
+        const recoveryCount = (key) => Math.max(0, Number(recovery[key]) || 0);
+        const recovered = expiredJobs.length;
+        const orphaned = diagnostics.orphan_bundles_reaped;
+        const useful = recovered > 0 || expiredBundleCount > 0 || orphaned > 0;
+        this._stageSchedulerSet("recovery_stats_json = ?", JSON.stringify({
+          checks: recoveryCount("checks") + 1,
+          checks_with_work: recoveryCount("checks_with_work") + Number(useful),
+          checks_without_work: recoveryCount("checks_without_work") + Number(!useful),
+          jobs_requeued: recoveryCount("jobs_requeued") + recovered,
+          expired_bundles: recoveryCount("expired_bundles") + expiredBundleCount,
+          orphan_bundles: recoveryCount("orphan_bundles") + orphaned,
+          last_check_at: now,
+          last_jobs_requeued: recovered,
+          last_work_at: useful ? now : recovery.last_work_at ?? null,
+        }));
+        this._txRecoveryStaged = true;
       }
 
       // Retention runs right after the expire-sweep, so a bundle this tick just marked
@@ -5249,9 +6047,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       const inFlightByRoute = new Map();
       const inFlightByProvider = new Map();
-      const leasedRows = [...sql.exec(
-        "SELECT lease_route_id, COUNT(*) as cnt FROM jobs WHERE state='leased' GROUP BY lease_route_id"
-      )];
+      const leasedRows = this._leaseCountsByRoute();
       for (const row of leasedRows) {
         if (!row.lease_route_id) continue;
         inFlightByRoute.set(row.lease_route_id, row.cnt);
@@ -5333,10 +6129,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const model = dispatchLimits.routes_by_id?.[targetId]?.model;
           if (!model) continue;
           if (!queuedByModel.has(model)) {
-            queuedByModel.set(
-              model,
-              [...sql.exec("SELECT 1 AS queued FROM job_models WHERE model = ? LIMIT 1", model)].length > 0
-            );
+            let queued;
+            if (this._compactQueueEnabled()) {
+              queued = false;
+              for (const group of sql.exec("SELECT model_set FROM compact_groups WHERE model = ?", model)) {
+                if ([...sql.exec("SELECT 1 FROM compact_queue WHERE model_set = ? LIMIT 1", group.model_set)].length) {
+                  queued = true;
+                  break;
+                }
+              }
+            } else {
+              queued = [...sql.exec("SELECT 1 AS queued FROM job_models WHERE model = ? LIMIT 1", model)].length > 0;
+            }
+            queuedByModel.set(model, queued);
           }
           if (queuedByModel.get(model)) return true;
         }
@@ -5357,7 +6162,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const headLimit = ceilingBound ? candidateLookahead : maxJobsPerModelClaim;
         let candidateKeys = [];
         const readCandidates = (after, limit) => {
-          const rows = [...sql.exec(
+          const rows = this._compactQueueEnabled() ? readCompactCandidates(
+            sql, modelPlan.model, limit, after ? [after.priority, after.created_at, after.job_id] : null
+          ) : [...sql.exec(
             `SELECT jobs.*, job_models.priority AS jm_priority, job_models.created_at AS jm_created_at
                FROM job_models
                JOIN jobs ON jobs.id = job_models.job_id
@@ -5730,6 +6537,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ledgerCache.set(route.route_id, workingRoute);
           dirtyRoutes.add(route.route_id);
 
+          this._leaseSet(job, leaseExpiresAt, route.route_id, bundleId);
           sql.exec(
             `UPDATE jobs SET state='leased', lease_token=?, lease_route_id=?, lease_expires_at=?,
                               bundle_id=?, token_reservation=?, attempts = attempts + 1,
@@ -5894,12 +6702,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const remaining = limit > 0 && Number.isFinite(used) && used >= 0
             ? Math.max(0, limit - used) : 0;
           const retryMs = Math.max(0, Number(retryAfterSeconds) || 0) * 1000;
-          sql.exec(
-            `UPDATE routes SET tpd_used=?, tpd_updated_at=?, last_provider_status=429,
-              last_failure_class=?, blocked_until=MAX(COALESCE(blocked_until, 0), ?)
-              WHERE route_id=?`,
-            Math.max(0, tpd - remaining), now, failureClass, now + retryMs, routeId
-          );
+          this._updateRoute(routeId, {
+            tpd_used: Math.max(0, tpd - remaining), tpd_updated_at: now, last_provider_status: 429,
+            last_failure_class: failureClass, maxBlockedUntil: now + retryMs,
+          });
           return { authorized: false, retry_not_before: null };
         }
         case "own_rpd": {
@@ -5907,16 +6713,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const tz = routeResetTimezone(route);
           const dayKey = zonedDateKey(now, tz);
           const midnightMs = nextZonedMidnightMs(now, tz);
-          sql.exec(
-            `UPDATE routes SET rpd_count = ?, rpd_day_key = ?, last_provider_status = 429,
-                               last_failure_class = ?, blocked_until = MAX(COALESCE(blocked_until, 0), ?)
-             WHERE route_id = ?`,
-            rpd,
-            dayKey,
-            failureClass,
-            midnightMs,
-            routeId
-          );
+          this._updateRoute(routeId, {
+            rpd_count: rpd, rpd_day_key: dayKey, last_provider_status: 429,
+            last_failure_class: failureClass, maxBlockedUntil: midnightMs,
+          });
           // Daily quota exhausted: do not retry in-window; requeue immediately so siblings can serve.
           return { authorized: false, retry_not_before: null };
         }
@@ -5951,19 +6751,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const providerDelay = Number.isFinite(retrySeconds) && retrySeconds > 0
             ? Math.ceil(retrySeconds * 1000) + 1000 : 0;
           const blockedUntil = now + Math.max(tpmWindowSpanMs(route), providerDelay);
-          sql.exec(
-            `UPDATE routes SET full_token_budget = 0, token_budget_updated_at = ?,
-                               tpm_reserved = ?, tpm_window_start = ?,
-                               last_provider_status = 429, last_failure_class = ?,
-                               blocked_until = MAX(COALESCE(blocked_until, 0), ?)
-             WHERE route_id = ?`,
-            now,
-            tpm,
-            now,
-            failureClass,
-            blockedUntil,
-            routeId
-          );
+          this._updateRoute(routeId, {
+            full_token_budget: 0, token_budget_updated_at: now, tpm_reserved: tpm, tpm_window_start: now,
+            last_provider_status: 429, last_failure_class: failureClass, maxBlockedUntil: blockedUntil,
+          });
           // Token budget exhausted: do not retry in-window.
           return { authorized: false, retry_not_before: null };
         }
@@ -5980,17 +6771,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // buffer_seconds=60 while every one of that day's 19 failures classified
           // upstream_capacity. (That route then succeeded on the 3rd attempt of an endurance
           // probe, confirming it was merely busy, never rate-limited by us.)
-          sql.exec(
-            `UPDATE routes SET upstream_capacity_streak = ?, last_provider_status = 429,
-                               last_failure_class = ?, throttle_streak = 0,
-                               buffer_seconds = 0, buffer_updated_at = 0,
-                               blocked_until = MAX(COALESCE(blocked_until, 0), ?)
-             WHERE route_id = ?`,
-            streak,
-            failureClass,
-            blockedUntil,
-            routeId
-          );
+          this._updateRoute(routeId, {
+            upstream_capacity_streak: streak, last_provider_status: 429, last_failure_class: failureClass,
+            throttle_streak: 0, buffer_seconds: 0, buffer_updated_at: 0, maxBlockedUntil: blockedUntil,
+          });
           return { authorized: false, retry_not_before: null };
         }
         case "gateway_limit": {
@@ -6001,27 +6785,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
             for (const [otherRouteId, otherRoute] of Object.entries(dispatchLimits?.routes_by_id || {})) {
               if (otherRoute.provider === provider) {
                 this._getOrCreateRouteLedger(otherRouteId, now, {});
-                sql.exec(
-                  `UPDATE routes SET upstream_capacity_streak = ?, last_provider_status = 429,
-                                     last_failure_class = ?, blocked_until = MAX(COALESCE(blocked_until, 0), ?)
-                   WHERE route_id = ?`,
-                  streak,
-                  failureClass,
-                  blockedUntil,
-                  otherRouteId
-                );
+                this._updateRoute(otherRouteId, {
+                  upstream_capacity_streak: streak, last_provider_status: 429,
+                  last_failure_class: failureClass, maxBlockedUntil: blockedUntil,
+                });
               }
             }
           } else {
-            sql.exec(
-              `UPDATE routes SET upstream_capacity_streak = ?, last_provider_status = 429,
-                                 last_failure_class = ?, blocked_until = MAX(COALESCE(blocked_until, 0), ?)
-               WHERE route_id = ?`,
-              streak,
-              failureClass,
-              blockedUntil,
-              routeId
-            );
+            this._updateRoute(routeId, {
+              upstream_capacity_streak: streak, last_provider_status: 429,
+              last_failure_class: failureClass, maxBlockedUntil: blockedUntil,
+            });
           }
           return { authorized: false, retry_not_before: null };
         }
@@ -6032,27 +6806,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // default branch below would otherwise give it (CodeRabbit, 2026-09-13: these two
           // classification rules can both fire on a 429, and this switch had no case for them).
           const newStreak = (ledger.payment_required_streak || 0) + 1;
-          sql.exec(
-            `UPDATE routes SET payment_required_streak = ?, blocked_until = ?,
-                               last_provider_status = 429, last_failure_class = ?
-             WHERE route_id = ?`,
-            newStreak,
-            paymentRequiredBackoffUntil(newStreak, now),
-            failureClass,
-            routeId
-          );
+          this._updateRoute(routeId, {
+            payment_required_streak: newStreak, blocked_until: paymentRequiredBackoffUntil(newStreak, now),
+            last_provider_status: 429, last_failure_class: failureClass,
+          });
           return { authorized: false, retry_not_before: null };
         }
         case "free_prompt_cap":
         case "request_defect": {
           // A request defect (e.g. OrcaRouter free-tier prompt cap exceeded with no Retry-After)
           // cannot succeed by retrying unchanged. Refuse in-batch retry immediately.
-          sql.exec(
-            `UPDATE routes SET last_provider_status = 429, last_failure_class = ?
-             WHERE route_id = ?`,
-            failureClass,
-            routeId
-          );
+          this._updateRoute(routeId, { last_provider_status: 429, last_failure_class: failureClass });
           return { authorized: false, retry_not_before: null };
         }
         case "own_rpm":
@@ -6080,18 +6844,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
             maxBufferSeconds,
             effectiveBufferSeconds(ledger, now) + addedBufferSeconds
           );
-          sql.exec(
-            `UPDATE routes SET throttle_streak = ?, last_provider_status = 429,
-                               last_failure_class = ?, buffer_seconds = ?, buffer_updated_at = ?,
-                               blocked_until = MAX(COALESCE(blocked_until, 0), ?)
-             WHERE route_id = ?`,
-            newStreak,
-            failureClass,
-            newBufferSeconds,
-            now,
-            retryAfterSec !== null ? now + Math.ceil(retryAfterSec * 1000) : 0,
-            routeId
-          );
+          this._updateRoute(routeId, {
+            throttle_streak: newStreak, last_provider_status: 429, last_failure_class: failureClass,
+            buffer_seconds: newBufferSeconds, buffer_updated_at: now,
+            maxBlockedUntil: retryAfterSec !== null ? now + Math.ceil(retryAfterSec * 1000) : 0,
+          });
 
           const baseBackoffMs = retryAfterSec !== null
             ? retryAfterSec * 1000
@@ -6134,6 +6891,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       let requeuedCount = 0;
       let completedCount = 0;
       let failedCount = 0;
+      const failureCells = new Map();
 
       // Success settlements, folded per route and written once (P1): a bundle whose jobs share a
       // route used to rewrite that routes row once per success. Any non-success write to a route
@@ -6147,10 +6905,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         pendingSuccess.delete(routeId);
         // tpm_reserved is adjusted only by settlements whose claim-time window is still the
         // route's current one; each settlement recorded its window, so pick that window's sum.
-        const current = [...sql.exec(
-          "SELECT tpm_window_start, rpd_day_key, input_window_json FROM routes WHERE route_id = ?",
-          routeId
-        )][0];
+        const current = this._routeRow(routeId);
         const windowDelta = current ? (pending.windowDeltas.get(current.tpm_window_start) ?? 0) : 0;
         const dayDelta = pending.dailyDelta;
         const catalogRoute = this._dispatchLimits()?.routes_by_id?.[routeId];
@@ -6160,7 +6915,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
             { ...catalogRoute, input_window_json: inputWindowJson }, job, result, now
           );
         }
-        sql.exec(
+        const packedRoutes = this._packed();
+        if (packedRoutes) {
+          const row = packedRoutes.routes[routeId];
+          if (row) {
+            const gemini = catalogRoute?.provider === "gemini";
+            const keepOwnTpm = gemini && row.last_failure_class === "own_tpm" &&
+              row.blocked_until != null && row.blocked_until > now;
+            const raiseAccepted = pending.maxObservedInput > 0 &&
+              (pending.maxObservedInput > row.input_accepted_max ||
+                now - row.input_accepted_at > LEARNED_CEILING_TTL_MS / 2);
+            Object.assign(row, {
+              provisional_reservation: Math.max(0, row.provisional_reservation - pending.reservation),
+              settled_usage: row.settled_usage + pending.settledUsage,
+              tpd_used: Math.max(0, row.tpd_used - dayDelta),
+              tpm_reserved: Math.max(0, row.tpm_reserved - windowDelta),
+              full_token_budget: row.full_token_budget + pending.budgetDelta,
+              throttle_streak: 0, buffer_seconds: 0, buffer_updated_at: 0,
+              payment_required_streak: 0, upstream_capacity_streak: 0,
+              last_failure_class: keepOwnTpm ? row.last_failure_class : "",
+              blocked_until: keepOwnTpm ? row.blocked_until : null,
+              last_provider_status: pending.lastStatus,
+              input_window_json: gemini ? inputWindowJson : row.input_window_json,
+              input_accepted_at: raiseAccepted ? now : row.input_accepted_at,
+              input_accepted_max: raiseAccepted ? pending.maxObservedInput : row.input_accepted_max,
+            });
+            packedRoutes.markDirty("routes");
+          }
+        } else sql.exec(
           `UPDATE routes SET
              provisional_reservation = MAX(0, provisional_reservation - ?),
              settled_usage = settled_usage + ?,
@@ -6372,7 +7154,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           { ...job, response_timeout_routes: nextResponseTimeoutRoutes }, catalog, catalog,
           this._sizingResolver(now, route => ({
             ...route,
-            ...[...sql.exec("SELECT * FROM routes WHERE route_id=?", route.route_id)][0],
+            ...this._routeRow(route.route_id),
           }), new Map())
         ).length : 0;
         // Routes of the job's model pool that have not yet rejected it. None left: it fails to its
@@ -6456,19 +7238,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
                        result.provider_status_code < 500)
                       ? "request_defect"
                       : "server_error");
-            this._recordRouteFailure(
-              sql,
-              now,
-              job.lease_route_id || attemptRouteId,
-              failureClass,
-              result.provider_status_code,
-              isOutputBudgetExhausted
-                ? {
-                    sentMaxTokens: result.requested_max_tokens,
-                    outputTokens: result.observed_output_tokens,
-                  }
-                : null
-            );
+            const routeId = job.lease_route_id || attemptRouteId;
+            if (routeId && failureClass) {
+              const detail = isOutputBudgetExhausted ? {
+                sentMaxTokens: result.requested_max_tokens,
+                outputTokens: result.observed_output_tokens,
+              } : null;
+              const key = JSON.stringify([routeId, failureClass]);
+              failureCells.set(key, foldFailureCell(failureCells.get(key), {
+                now, routeId, failureClass, status: result.provider_status_code, detail,
+              }));
+            }
           }
         }
 
@@ -6570,6 +7350,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.job_id
           );
         }
+        this._leaseDelete(result.job_id);
         settledCount += 1;
         if (newState === "completed") completedCount += 1;
         if (newState === "failed") failedCount += 1;
@@ -6617,15 +7398,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 ? reservation - (servedRoute.provider === "gemini"
                     ? result.observed_input_tokens : observedTotal)
                 : 0;
-            const inputLedger = servedRoute?.provider === "gemini"
-              ? [...sql.exec("SELECT input_window_json FROM routes WHERE route_id = ?",
-                  job.lease_route_id)][0] : null;
+            const servedRow = servedRoute?.provider === "gemini" ? this._routeRow(job.lease_route_id) : null;
+            const inputLedger = servedRow ? { input_window_json: servedRow.input_window_json } : null;
             const inputWindowJson = inputLedger
               ? settleInputWindow(
                   { ...servedRoute, ...inputLedger }, job, result, now, nonConsuming
                 )
               : "[]";
-            sql.exec(
+            const tpdRelease = nonConsuming ? reservation : observedTotal != null ? reservation - observedTotal : 0;
+            this._mutateRoute(job.lease_route_id, row => {
+              row.provisional_reservation = Math.max(0, row.provisional_reservation - reservation);
+              row.settled_usage += settledUsage;
+              row.tpd_used = Math.max(0, row.tpd_used - tpdRelease);
+              row.full_token_budget += servedDelta;
+              if (inputLedger) row.input_window_json = inputWindowJson;
+            }, () => sql.exec(
               `UPDATE routes SET
                  provisional_reservation = MAX(0, provisional_reservation - ?),
                  settled_usage = settled_usage + ?,
@@ -6635,11 +7422,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
                WHERE route_id = ?`,
               reservation,
               settledUsage,
-              nonConsuming ? reservation : observedTotal != null ? reservation - observedTotal : 0,
+              tpdRelease,
               servedDelta,
               inputLedger ? 1 : 0, inputWindowJson,
               job.lease_route_id
-            );
+            ));
           }
           if (nonConsuming && result.outcome !== "success") {
             const catalogRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
@@ -6656,7 +7443,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
               // risk for full_token_budget: it is a continuously-refilling bucket, not a
               // discrete window-keyed counter, so giving tokens back is always correct regardless
               // of how much time has passed.
-              sql.exec(
+              this._mutateRoute(job.lease_route_id, row => {
+                if (row.rpm_window_start === job.reservation_rpm_window_start) {
+                  row.rpm_count = Math.max(0, row.rpm_count - 1);
+                }
+                if (row.rpd_day_key === job.reservation_rpd_day_key) {
+                  row.rpd_count = Math.max(0, row.rpd_count - 1);
+                }
+                if (row.tpm_window_start === job.reservation_tpm_window_start) {
+                  row.tpm_reserved = Math.max(0, row.tpm_reserved - reservation);
+                }
+                row.full_token_budget += reservation;
+              }, () => sql.exec(
                 `UPDATE routes SET
                    rpm_count = CASE WHEN rpm_window_start = ? THEN MAX(0, rpm_count - 1) ELSE rpm_count END,
                    rpd_count = CASE WHEN rpd_day_key = ? THEN MAX(0, rpd_count - 1) ELSE rpd_count END,
@@ -6669,15 +7467,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 reservation,
                 reservation,
                 job.lease_route_id
-              );
+              ));
             } else {
-              sql.exec(
+              this._mutateRoute(job.lease_route_id, row => {
+                row.rpm_count = Math.max(0, row.rpm_count - 1);
+                row.rpd_count = Math.max(0, row.rpd_count - 1);
+              }, () => sql.exec(
                 `UPDATE routes SET
                    rpm_count = MAX(0, rpm_count - 1),
                    rpd_count = MAX(0, rpd_count - 1)
                  WHERE route_id = ?`,
                 job.lease_route_id
-              );
+              ));
             }
           }
 
@@ -6733,14 +7534,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // 2026-09-13).
             const ledger = this._getOrCreateRouteLedger(job.lease_route_id, now, {});
             const newStreak = (ledger.payment_required_streak || 0) + 1;
-            sql.exec(
-              `UPDATE routes SET payment_required_streak = ?, blocked_until = ?,
-                                  last_provider_status = ? WHERE route_id = ?`,
-              newStreak,
-              paymentRequiredBackoffUntil(newStreak, now),
-              result.provider_status_code ?? 429,
-              job.lease_route_id
-            );
+            this._updateRoute(job.lease_route_id, {
+              payment_required_streak: newStreak, blocked_until: paymentRequiredBackoffUntil(newStreak, now),
+              last_provider_status: result.provider_status_code ?? 429,
+            });
           } else if (isRouteUnavailable) {
             // A retired model or invalid credential does not come back on a 5xx minute scale.
             // Block the route for ROUTE_UNAVAILABLE_BLOCK_SECONDS so sibling jobs stop being
@@ -6763,36 +7560,32 @@ export class LLMSchedulerDO extends DurableObjectBase {
                   (!accountId || otherRoute.account_id === accountId)
                 ) {
                   this._getOrCreateRouteLedger(otherRouteId, now, {});
-                  sql.exec(
-                    "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
-                      "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
-                    blockedUntil,
-                    result.provider_status_code ?? null,
-                    result.failure_class,
-                    otherRouteId
-                  );
+                  this._updateRoute(otherRouteId, {
+                    maxBlockedUntil: blockedUntil, last_provider_status: result.provider_status_code ?? null,
+                    last_failure_class: result.failure_class,
+                  });
                 }
               }
             } else {
-              sql.exec(
-                "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
-                  "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
-                blockedUntil,
-                result.provider_status_code ?? null,
-                result.failure_class,
-                job.lease_route_id
-              );
+              this._updateRoute(job.lease_route_id, {
+                maxBlockedUntil: blockedUntil, last_provider_status: result.provider_status_code ?? null,
+                last_failure_class: result.failure_class,
+              });
             }
           } else if (isPromptCap) {
             // A rejected size is an upper bound, not an exact published limit. Keep short
             // traffic alive and stop admitting this size or larger on the affected route.
             const cap = Math.max(1, Number(job.input_token_estimate) - 1);
-            sql.exec(
+            this._mutateRoute(job.lease_route_id, row => {
+              row.prompt_cap_estimate = row.prompt_cap_estimate > 0 ? Math.min(row.prompt_cap_estimate, cap) : cap;
+              row.last_provider_status = result.provider_status_code;
+              row.last_failure_class = result.failure_class;
+            }, () => sql.exec(
               `UPDATE routes SET prompt_cap_estimate = CASE WHEN prompt_cap_estimate > 0
                  THEN MIN(prompt_cap_estimate, ?) ELSE ? END,
                  last_provider_status = ?, last_failure_class = ? WHERE route_id = ?`,
               cap, cap, result.provider_status_code, result.failure_class, job.lease_route_id
-            );
+            ));
           } else if (isRouteInputLimit) {
             // The route stays selectable for every other job: this job carries its own exclusion
             // (jobs.size_excluded_routes), so a rejection of one large packet no longer stands the
@@ -6807,7 +7600,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
                   ).inputRatio
                 )
               : Number(job.input_token_estimate) || 0;
-            sql.exec(
+            this._mutateRoute(job.lease_route_id, row => {
+              row.last_provider_status = result.provider_status_code ?? null;
+              row.last_failure_class = result.failure_class;
+              row.input_rejected_min = row.input_rejected_min > 0 && now - row.input_rejected_at <= LEARNED_CEILING_TTL_MS
+                ? Math.min(row.input_rejected_min, rejectedInput) : rejectedInput;
+              row.input_rejected_at = now;
+            }, () => sql.exec(
               `UPDATE routes SET last_provider_status = ?, last_failure_class = ?,
                  input_rejected_min = CASE
                    WHEN input_rejected_min > 0 AND ? - input_rejected_at <= ?
@@ -6818,17 +7617,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
               result.failure_class,
               now, LEARNED_CEILING_TTL_MS, rejectedInput, rejectedInput, now,
               job.lease_route_id
-            );
+            ));
           } else if (isTransientRouteFailure && !isUpstreamClass) {
             // A final HTTP failure or our confirmed response deadline: temporarily remove only
             // this route from capacity ranking so other accounts can drain while it recovers.
-            sql.exec(
-              `UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?),
-                                 last_provider_status = ? WHERE route_id = ?`,
-              blockedUntil,
-              result.provider_status_code ?? null,
-              job.lease_route_id
-            );
+            this._updateRoute(job.lease_route_id, {
+              maxBlockedUntil: blockedUntil, last_provider_status: result.provider_status_code ?? null,
+            });
           } else if (isUpstreamClass) {
             // The 404 function-not-found shape is upstream capacity too, but uses this branch so
             // it gets the upstream-capacity retry budget/cooldown rather than the shorter 5xx
@@ -6853,24 +7648,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
               : this._upstreamCapacityBlockedUntil(
                   streak, now, result.failure_class === "upstream_capacity"
                 );
-            sql.exec(
-              `UPDATE routes SET upstream_capacity_streak = ?,
-                                 blocked_until = MAX(COALESCE(blocked_until, 0), ?),
-                                 last_provider_status = ? WHERE route_id = ?`,
-              streak,
-              alreadyCooling
+            this._updateRoute(job.lease_route_id, {
+              upstream_capacity_streak: streak,
+              maxBlockedUntil: alreadyCooling
                 ? (googleAvailability && Number.isFinite(result.retry_after_seconds) &&
                     result.retry_after_seconds > 0 ? now + result.retry_after_seconds * 1000 : 0)
                 : nextBlock,
-              result.provider_status_code ?? null,
-              job.lease_route_id
-            );
+              last_provider_status: result.provider_status_code ?? null,
+            });
           } else if (result.provider_status_code != null) {
-            sql.exec(
-              "UPDATE routes SET last_provider_status = ? WHERE route_id = ?",
-              result.provider_status_code,
-              job.lease_route_id
-            );
+            this._updateRoute(job.lease_route_id, { last_provider_status: result.provider_status_code });
           }
 
           // Unit 7 calibration, now a bounded recent window of input ratios and output sizes
@@ -6888,6 +7675,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       for (const routeId of [...pendingSuccess.keys()]) flushSuccess(routeId);
+      for (const cell of failureCells.values()) {
+        this._recordRouteFailure(sql, now, cell.route_id, cell.failure_class, cell.last_status,
+          { sentMaxTokens: cell.last_max_tokens_sent, outputTokens: cell.last_output_tokens },
+          { count: cell.count, maxOutput: cell.max_output_tokens });
+      }
       this._writeAttemptUsage(usageCells, now);
 
       if (requeuedCount > 0 || completedCount > 0 || failedCount > 0) {
@@ -6905,11 +7697,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       if (settledCount > 0) {
-        const remainingLeased = [...sql.exec(
-          "SELECT COUNT(*) as n FROM jobs WHERE bundle_id = ? AND state = 'leased'",
-          bundleId
-        )];
-        if ((remainingLeased[0]?.n || 0) === 0) {
+        if (this._leasedInBundle(bundleId) === 0) {
           // Removed, not marked 'completed' (P3): nothing reads a finished bundle. A late
           // duplicate completeBatch for it fails the execution-token check and no-ops -- every
           // job's lease was already settled. Written by this transaction's accounting UPDATE.
@@ -6941,10 +7729,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const recovered = route?.provider === "nvidia" && googleRoutes.length > 0;
     if (route?.provider !== "gemini" && !recovered) return;
     const key = `gemma-size:${model}:${job.prompt_family}`;
-    const sql = this._getSql();
-    const prior = [...sql.exec(
-      "SELECT recent_observed_summary FROM estimates WHERE key = ?", key
-    )][0]?.recent_observed_summary;
+    const prior = this._estimateRow(key)?.recent_observed_summary;
     let baseline = null;
     if (recovered && input + output > GEMMA_COMBINED_TARGET &&
         gemmaPackingStatus(prior).input_estimate_target == null) {
@@ -6962,13 +7747,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       input, output,
       overflow: recovered && input + output > GEMMA_COMBINED_TARGET,
     }, baseline);
-    sql.exec(
-      `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-       VALUES (?, 0, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET
-       sample_count=excluded.sample_count, recent_observed_summary=excluded.recent_observed_summary,
-       updated_at=excluded.updated_at`,
-      key, state.samples.length, JSON.stringify(state), now
-    );
+    if (this._estimateRow(key)) {
+      this._updateEstimate(key, { sampleCount: state.samples.length, summary: JSON.stringify(state), now });
+    } else {
+      this._insertEstimate(key, 0, state.samples.length, JSON.stringify(state), now);
+    }
     if (recovered) console.info(JSON.stringify({
       event: "gemma_correlated_size_outcome", job_id: job.id, request_digest: job.request_digest,
       model, prompt_family: job.prompt_family, google_route_ids: googleRoutes,
@@ -6992,17 +7775,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       model,
       promptFamily
     );
-    const existing = [...sql.exec(
-      "SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?",
-      key
-    )];
-    const parsed = parseCalibrationSummary(existing[0]?.recent_observed_summary);
+    const existing = this._estimateRow(key);
+    const parsed = parseCalibrationSummary(existing?.recent_observed_summary);
     // Once the window is full, persist only a deterministic 1-in-CALIBRATION_SAMPLE_EVERY sample
     // (by job id): each estimates UPDATE is a billed row per completion, and a full 32-sample
     // p95 window stays representative when refreshed at a quarter of the rate. The window is
     // filled at full rate first, so new routes/prompt families still converge quickly.
     if (
-      existing.length > 0 &&
+      existing &&
       parsed.r.length >= CALIBRATION_WINDOW &&
       parsed.o.length >= CALIBRATION_WINDOW &&
       sampleBucket(sample.jobId, CALIBRATION_SAMPLE_EVERY) !== 0
@@ -7011,25 +7791,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     const summary = JSON.stringify(recordCalibrationSample(parsed, sample));
     // margin_tokens stays a high-water mark for diagnostics only; admission no longer reads it.
-    if (existing.length === 0) {
-      sql.exec(
-        `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
-         VALUES (?, ?, 1, ?, ?)`,
-        key,
-        Math.max(observedTotal, this._estimateFloor()),
-        summary,
-        now
-      );
+    if (!existing) {
+      this._insertEstimate(key, Math.max(observedTotal, this._estimateFloor()), 1, summary, now);
       return;
     }
-    sql.exec(
-      `UPDATE estimates SET margin_tokens = MAX(margin_tokens, ?), sample_count = sample_count + 1,
-                            recent_observed_summary = ?, updated_at = ? WHERE key = ?`,
-      observedTotal,
-      summary,
-      now,
-      key
-    );
+    this._updateEstimate(key, { marginFloor: observedTotal, addSample: true, summary, now });
   }
 
   _modelForRoute(routeId) {
@@ -7071,7 +7837,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const actual = [...sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")][0]?.n || 0;
       const scheduler = [...sql.exec(
         `SELECT queued_job_count, jobs_ingested_today, completed_today, failed_today,
-                retried_today, hourly_burndown_json
+                retried_today, hourly_burndown_json, compact_group_cursor_json, recovery_stats_json
            FROM scheduler WHERE id = 1`
       )][0] || {};
       const hour = Math.floor(Date.now() / 3_600_000) * 3_600_000;
@@ -7105,7 +7871,35 @@ export class LLMSchedulerDO extends DurableObjectBase {
         actual,
         historyJson
       );
-      return { queued: actual, burndown_sampled: nextHistory !== history };
+      let compactGroups = null;
+      if (this._compactQueueEnabled()) {
+        let after = null;
+        try {
+          const cursor = JSON.parse(scheduler.compact_group_cursor_json || "null");
+          const valid = key => Array.isArray(key) && key.length === 2 &&
+            key.every(value => typeof value === "string");
+          if (cursor && typeof cursor === "object" && valid(cursor.after) && valid(cursor.through)) {
+            after = cursor;
+          }
+        } catch { /* Treat malformed operator-edited cursor as a fresh pass. */ }
+        // Extra indexes add billed writes; unknown triggers could add unbounded side effects.
+        const triggers = [...sql.exec(
+          "SELECT 1 FROM sqlite_master WHERE type='trigger' AND tbl_name='compact_groups' LIMIT 1"
+        )];
+        const multiplier = 1 + [...sql.exec("PRAGMA index_list(compact_groups)")]
+          .filter(index => index.origin !== "pk").length;
+        this._drainRowCount();
+        const remaining = Math.floor(this._enqueueRowStop() - this._readRowsWrittenToday() - 1);
+        const limit = Math.min(64, Math.floor(remaining / multiplier));
+        if (!triggers.length && limit > 0) {
+          compactGroups = pruneEmptyCompactGroups(sql, limit, after);
+          const next = compactGroups.next === null ? null : JSON.stringify(compactGroups.next);
+          if (next !== (scheduler.compact_group_cursor_json || null)) {
+            this._stageSchedulerSet("compact_group_cursor_json = ?", next);
+          }
+        }
+      }
+      return { queued: actual, burndown_sampled: nextHistory !== history, compact_groups: compactGroups };
     });
   }
 

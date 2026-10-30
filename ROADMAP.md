@@ -291,6 +291,14 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > mirroring H14d's provider-cycle dollar model, and prompt-management conventions all need deciding.
 > Everything from the old R2 onward shifts down by two (R2→R4, R3→R5, R4→R6, R5→R7, R6→R8, R7→R9).
 
+> **R10 row-efficiency follow-up (2026-10-30):** [review/57](review/57-llm-dispatch-row-efficiency.md)
+> implements compact model-set discovery, packed route/provider/estimate/lease ledgers and
+> route-sharded usage and failure telemetry in the v2 coordinator, dormant until a guarded operator
+> cutover under a drained global pause. Real-coordinator replay of a production-shaped capture
+> averaged about 31 writes per cron against about 70 for the legacy layout, with identical
+> selections and audited state, at 12–22% more reads. Production cutover is a separate, supervised
+> step; this changes neither provider limits, production configuration nor Phase R's order.
+
 > **R10 catalog follow-up (2026-10-08):** review/48 schema verification shipped in #2169.
 > Remaining contracts were initially proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
 > initially additions/ignore, paid/shadow follow-up, bounded rescue before removal, then bounded rate
