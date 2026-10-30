@@ -33,7 +33,10 @@ About one tick in five exceeds 40 writes (maximum 68); the average, not the maxi
 guarantee. Every run selected the same jobs and routes tick for tick and finished with identical
 audited job, route, estimate, usage, failure and provider state (SHA-256 of normalized rows).
 A fourth run rolled back to legacy authority at tick 40 and matched the legacy control through
-tick 80. See the [evidence record](evidence/2026-10-30-llm-dispatch-packed-state-replays.md).
+tick 80. Each run seeded four synthetic failure cells (the capture has none) so cutover and
+rollback migrate failure counters too. Abandoned bundles were genuinely reaped (38 jobs requeued
+from nine expired bundles in seed 1). At the end of that run the packed sections measured routes
+68 KB, estimates 92 KB, leases 0.5 KB, providers 2 KB (caps 512, 512, 128 KB and 128 KB). See the [evidence record](evidence/2026-10-30-llm-dispatch-packed-state-replays.md).
 
 The idle queue now writes one scheduler row per tick (recovery statistics ride the accounting write;
 about 1,440 rows a day instead of about 144), a cost the maintainer accepted.
@@ -97,11 +100,11 @@ only through `POST /v2/packed-state` with `{"action": "cutover"|"rollback", "con
 Any throw rolls everything back (tested with failpoints at each stage). After the transaction the
 old representation's rows are gone: cutover deletes the migrated legacy rows so a stale table can
 never be mistaken for authority, and rollback rebuilds them from the packed rows after checking
-that the lease registry still matches the leased jobs. Compact queue tables stay behind after a
-rollback; clear them before attempting another cutover.
+that the lease registry still matches the leased jobs. Rollback also drops the compact queue and
+telemetry tables (DROP bills no rows), so the move is repeatable.
 
-Measured on the capture (4,015 queued jobs, 12 leases): cutover 16,144 reads / 4,514 writes
-(plan 4,691); rollback after 40 ticks 19,499 reads / 22,486 writes (plan 22,503). Plans are
+Measured on the capture (4,015 queued jobs, 12 leases): cutover 16,173 reads / 4,516 writes
+(plan 4,695); rollback after 40 ticks 19,558 reads / 22,488 writes (plan 22,505). Plans are
 conservative upper bounds, so a refusal for insufficient write headroom means the move would not fit.
 
 ### Runbook

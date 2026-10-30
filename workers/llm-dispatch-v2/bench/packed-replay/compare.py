@@ -9,6 +9,10 @@ from pathlib import Path
 def main():
     control, candidate = (json.loads(Path(path).read_text()) for path in sys.argv[1:3])
     errors = []
+    if len(control["ticks"]) != len(candidate["ticks"]):
+        errors.append("tick count differs")
+    if len(control["audits"]) != len(candidate["audits"]):
+        errors.append("audit count differs")
     for left, right in zip(control["ticks"], candidate["ticks"], strict=False):
         if left["selection"] != right["selection"]:
             errors.append(f"tick {left['tick']}: selection differs")

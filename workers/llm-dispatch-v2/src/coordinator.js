@@ -1025,9 +1025,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ? ", packed_state_active" : ""} FROM scheduler WHERE id = 1`)][0]
       : null;
     const compactActive = scheduler?.compact_queue_active === 1;
-    const packedActive = schedulerColumns?.has("packed_state_active") &&
-      scheduler?.packed_state_active !== 0;
-    if (packedActive && scheduler?.packed_state_active !== 1) {
+    const packedActive = schedulerColumns?.has("packed_state_active") && scheduler != null &&
+      scheduler.packed_state_active !== 0;
+    if (packedActive && scheduler.packed_state_active !== 1) {
       missing.push("invalid:packed_state_active");
     }
     if (packedActive && !objects.has("table:packed_telemetry")) missing.push("table:packed_telemetry");
@@ -4885,6 +4885,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         row.tpm_reserved, row.full_token_budget, row.token_budget_updated_at);
     }
     sql.exec("DROP TRIGGER trg_compact_priority_sync");
+    sql.exec("DROP TABLE compact_queue");
+    sql.exec("DROP TABLE compact_groups");
     sql.exec(JOB_PRIORITY_SYNC_TRIGGER);
     this._assertMigrationPauseMargin(pause);
     this._stageSchedulerSet("compact_queue_active = 0, compact_group_cursor_json = NULL, " +

@@ -6,6 +6,7 @@ Local only: talks to a loopback `wrangler dev` of replay.js. Never commit captur
 
 import argparse
 import csv
+import datetime
 import hashlib
 import json
 import sqlite3
@@ -26,6 +27,7 @@ TABLES = (
     "dispatch_pause",
     "ingress_purpose",
     "attempt_usage",
+    "route_failures",
     "scheduler",
 )
 TICK_MS = 60_000
@@ -127,6 +129,11 @@ def main():
     p.add_argument("--restart-after", type=int)
     p.add_argument("--rollback-after", type=int)
     p.add_argument("--audit-every", type=int, default=10)
+    p.add_argument(
+        "--seed-failures",
+        action="store_true",
+        help="Seed four synthetic failure cells (the capture has none) so cutover migrates them",
+    )
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args()
     endpoint = urllib.parse.urlsplit(args.url)
@@ -167,6 +174,26 @@ def main():
                     "rows": groups[table][start : start + 200],
                 }
             )
+
+    if args.seed_failures:
+        columns = [row[1] for row in schema.execute('PRAGMA table_info("route_failures")')]
+        rows = []
+        for age, kind in ((0, "own_rpm"), (6, "own_tpm"), (8, "unknown_429"), (12, "own_rpm")):
+            at = args.now - age * 86_400_000
+            day = datetime.datetime.fromtimestamp(at / 1000, datetime.UTC).date().isoformat()
+            cell = {
+                "utc_day": day,
+                "route_id": "gemini_3_1_flash_lite_primary",
+                "failure_class": kind,
+                "count": age + 1,
+                "last_status": 429,
+                "last_seen_at": at,
+                "last_max_tokens_sent": 100,
+                "last_output_tokens": 50,
+                "max_output_tokens": 100,
+            }
+            rows.append([cell.get(column) for column in columns])
+        post({"action": "seed", "table": "route_failures", "columns": columns, "rows": rows})
 
     pending, ticks, audits, events = [], [], [], []
     bundle_ordinal = 0
@@ -283,6 +310,9 @@ def main():
     for entry in sorted(pending, key=lambda e: e["due"]):
         settle(entry, max(end, entry["due"]), entry["record"])
     final = post({"action": "audit"})
+    final_stats = post({"action": "stats", "now": end + TICK_MS})
+    final["recovery"] = final_stats.get("recovery")
+    final["authority_stats"] = final_stats.get("authority")
     measured = [t for t in ticks if t["measured"]]
 
     def cost(tick):

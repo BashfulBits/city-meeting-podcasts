@@ -161,6 +161,16 @@ export function parseShard(text) {
       typeof data.usage !== "object" || typeof data.failures !== "object") {
     throw new Error("invalid packed telemetry shard");
   }
+  for (const [kind, cells] of [["usage", data.usage], ["failures", data.failures]]) {
+    for (const cell of Object.values(cells)) {
+      if (!cell || typeof cell !== "object" || typeof cell.utc_day !== "string" ||
+          typeof cell.route_id !== "string" ||
+          (kind === "failures" ? typeof cell.failure_class !== "string" || !Number.isFinite(cell.count)
+            : typeof cell.purpose !== "string" || !Number.isFinite(cell.calls))) {
+        throw new Error("invalid packed telemetry shard");
+      }
+    }
+  }
   return { usage: Object.assign(nullProto(), data.usage), failures: Object.assign(nullProto(), data.failures) };
 }
 
@@ -311,6 +321,10 @@ export class PackedTx {
         // back to its prior) rather than failing the completion that happened to cross it.
         if (name === "estimates") this.evictEstimates();
         const text = serializeBounded(this.parsed[name], name, LIMITS[name]);
+        // The text that would be committed must pass the reader's own validation, so a bad value
+        // (NaN, a string where a number belongs, a dropped key) aborts only the transaction that
+        // produced it instead of persisting state every later transaction would reject.
+        PARSERS[name](text);
         this.raw[name] = text;
         sets.push({ assignment: `packed_${name}_json = ?`, params: [text] });
       }
@@ -325,6 +339,7 @@ export class PackedTx {
     let evicted = 0;
     const writes = [...this.shardDirty].sort((a, b) => a - b).map(index => {
       const out = serializeShard(this.shards.get(index), today);
+      parseShard(out.text);
       evicted += out.evicted;
       return [index, out.text];
     });

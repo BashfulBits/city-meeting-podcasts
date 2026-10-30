@@ -6,7 +6,7 @@ real `LLMSchedulerDO` unmodified except for statement metering in the replay sub
 private (job metadata, lease tokens) and is not in the repository; only aggregates appear here.
 
 Setup: 4,027 jobs, 87 routes, 15 providers, 94 estimates, 282 usage cells, no preexisting failure
-rows; `MAX_ACTIVE_BUNDLES=15`, `MAX_IN_FLIGHT_LLM_CALLS=90`; two priming ticks in legacy mode, then 80
+rows (four synthetic cells are seeded with `--seed-failures`); `MAX_ACTIVE_BUNDLES=15`, `MAX_IN_FLIGHT_LLM_CALLS=90`; two priming ticks in legacy mode, then 80
 measured ticks of 60 s; completions delayed 5–720 s; every ninth claimed bundle abandoned (its
 leases expire and are reaped); results drawn per job from success 70%, request defect 8%, own_rpm
 429 (authorized first) 5%, upstream capacity 5%, route input limit 3%, deferred late 3%, route
@@ -28,9 +28,13 @@ owning job), estimates, usage cells, failure cells and providers. Seeds 1–3 re
 (`ctx.abort`) at tick 40 on both sides. The final lease-registry count equalled the leased-job count.
 
 Migration (seed-1 shape, 4,015 queued jobs, 12 active leases, 87 route / 94 estimate / 282 usage
-rows): cutover 16,144 reads / 4,514 writes against a plan of 4,691; rollback of 3,829 jobs 19,499
-reads / 22,486 writes against a plan of 22,503. Failed attempts, ingress and account-wide traffic
-are excluded.
+and 2 failure rows): cutover 16,173 reads / 4,516 writes against a plan of 4,695; rollback of
+3,829 jobs 19,558 reads / 22,488 writes against a plan of 22,505 (dropping the compact and
+telemetry tables billed no rows). Failed attempts, ingress and account-wide traffic are excluded.
+
+Recovery and sizes (seed 1, end of run): 82 recovery checks, 8 with work, 38 jobs requeued from 9
+expired bundles. Packed sections: routes 68,149 chars, estimates 91,965, leases 525, providers
+2,043; the limits are 512 KB, 512 KB, 128 KB and 128 KB.
 
 Caveats: the replay client retries a whole run when the local proxy drops a connection; one such
 transport error was seen on `complete` and none on `claim`. Results are one capture on one day.

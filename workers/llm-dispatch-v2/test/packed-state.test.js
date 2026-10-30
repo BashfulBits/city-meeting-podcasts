@@ -232,11 +232,18 @@ test("rollback rebuilds every legacy table from the packed rows", async t => {
   assert.deepEqual(materialize(packed).estimates, before.estimates);
   // The rebuilt legacy coordinator keeps running and a second cutover works from there.
   const restarted = make({}, packed).coordinator;
-  const plan = await restarted.claimDispatchWindow(clock.value + 60_000, 30);
-  assert.ok(plan.jobs.length >= 0);
-  // Compact tables stay behind after rollback, so a second cutover needs their budgeted cleanup first.
-  assert.throws(() => restarted._transactionSync(() => restarted._stagePackedCutover(clock.value + 60_000, LIMITS)),
-    /unsupported compact cutover schema/);
+  assert.equal(packed.sql.exec("SELECT COUNT(*) AS n FROM sqlite_schema WHERE name LIKE 'compact_%'")[0].n, 0);
+  await packed.coordinator.resumeDispatch({ scope: "global" }, clock.value);
+  const [legacyPlan, rebuiltPlan] = [await legacy.coordinator.claimDispatchWindow(clock.value + 60_000, 30),
+    await restarted.claimDispatchWindow(clock.value + 60_000, 30)];
+  assert.deepEqual(rebuiltPlan.jobs.map(j => [j.id, j.route_id]), legacyPlan.jobs.map(j => [j.id, j.route_id]),
+    "the rebuilt legacy queue dispatches exactly what the never-packed twin does");
+  // The move is repeatable: a second cutover from the rebuilt legacy tables succeeds and matches.
+  clock.value += 60_000;
+  await restarted.pauseDispatch({ scope: "global", seconds: 3600 }, clock.value - 960_000);
+  const beforeSecond = materialize(packed);
+  restarted._transactionSync(() => restarted._stagePackedCutover(clock.value, LIMITS));
+  assert.deepEqual(materialize(packed), beforeSecond);
 });
 
 test("cutover refuses unsafe state and every refusal leaves the legacy tables untouched", async t => {
@@ -367,8 +374,8 @@ test("telemetry shards stay under their cap by evicting old days, never today's 
   for (let day = 1; day <= 29; day++) {
     for (let i = 0; i < 12; i++) {
       const utc_day = `2026-10-${String(day).padStart(2, "0")}`;
-      shard.failures[`f${day}-${i}`] = { utc_day, route_id: "r", count: 1, blob: big };
-      shard.usage[`u${day}-${i}`] = { utc_day, purpose: "p", route_id: "r", blob: big };
+      shard.failures[`f${day}-${i}`] = { utc_day, route_id: "r", failure_class: "c", count: 1, blob: big };
+      shard.usage[`u${day}-${i}`] = { utc_day, purpose: "p", route_id: "r", calls: 1, blob: big };
     }
   }
   const today = "2026-10-29";
@@ -377,7 +384,16 @@ test("telemetry shards stay under their cap by evicting old days, never today's 
   assert.ok(new TextEncoder().encode(text).length <= TELEMETRY_SHARD_MAX_BYTES);
   const kept = parseShard(text);
   assert.equal(Object.values(kept.usage).filter(c => c.utc_day === today).length, 12);
-  assert.ok(Object.values(kept.failures).every(c => c.utc_day > "2026-10-01" || false) || true);
+  // Eviction runs oldest day first, failure cells before usage cells within a day, so what
+  // survives is a suffix of that order: every day newer than the oldest survivor is complete.
+  const cells = [...Object.values(kept.failures), ...Object.values(kept.usage)];
+  const oldest = cells.map(cell => cell.utc_day).sort()[0];
+  assert.ok(oldest > "2026-10-01", "the oldest days were evicted");
+  for (const cell of new Set(cells.map(c => c.utc_day))) {
+    if (cell > oldest) {
+      assert.equal(cells.filter(c => c.utc_day === cell).length, 24, `${cell} is intact`);
+    }
+  }
   const pruned = pruneShard(kept, "2026-10-25", 5);
   assert.equal(pruned.usage + pruned.failures, 5);
   assert.equal(shardFor("route-a"), shardFor("route-a"));
@@ -486,4 +502,36 @@ test("stats reports the size of each packed section for the canary", async t => 
   const { authority } = await f.coordinator.stats(clock.value);
   assert.equal(authority.packed_state, true);
   for (const key of ["routes", "estimates", "leases", "providers"]) assert.ok(authority.packed_chars[key] >= 2, key);
+});
+
+test("a bad mutation aborts only its own transaction and never persists unreadable state", async t => {
+  const clock = { value: Date.UTC(2026, 9, 30, 12) };
+  freeze(t, clock);
+  const f = make();
+  await f.coordinator.enqueueBatch(["v-1"].map(job));
+  await cutover(f, clock.value);
+  const before = materialize(f);
+  for (const set of [{ last_failure_class: null }, { settled_usage: Number.NaN }, { throttle_streak: "3" },
+    { blocked_until: undefined }]) {
+    assert.throws(() => f.coordinator._transactionSync(() => {
+      f.coordinator._getOrCreateRouteLedger(ROUTE, clock.value, {});
+      f.coordinator._updateRoute(ROUTE, set);
+    }), /invalid packed route ledger/, JSON.stringify(set));
+  }
+  assert.deepEqual(materialize(f), before);
+  clock.value += 60_000;
+  const plan = await f.coordinator.claimDispatchWindow(clock.value, 30);
+  assert.ok(plan.jobs.length > 0, "later transactions are unaffected");
+  assert.throws(() => f.coordinator._transactionSync(() => {
+    f.coordinator._recordRouteFailure(f.coordinator._getSql(), clock.value, ROUTE, "own_rpm", 429);
+    f.coordinator._packed().shard(shardFor(ROUTE)).failures["bad"] = { utc_day: 5 };
+    f.coordinator._packed().markShardDirty(shardFor(ROUTE));
+  }), /invalid packed telemetry shard/);
+});
+
+test("a missing scheduler row neither starts as packed authority nor blocks construction", () => {
+  const shared = createMockSqlStorage();
+  make({}, shared);
+  shared.sql.exec("DELETE FROM scheduler");
+  assert.doesNotThrow(() => make({}, shared));
 });
