@@ -38,6 +38,8 @@ def is_catalog_issue(body: str) -> bool:
 _STATE_RE = re.compile(r"<!-- citypods:provider-catalog-state ([A-Za-z0-9+/=]+) -->")
 # Leave room for the state marker after the bounded human-readable part.
 _HUMAN_BODY_LIMIT = 52_000
+# Smallest human-readable share worth keeping before the display-only state is trimmed.
+_MIN_HUMAN_BODY = 12_000
 
 Runner = Callable[[Sequence[str]], str]
 
@@ -746,6 +748,15 @@ def render_body(
             asdict(c) for c in (*report.rate_changes, *pending_rates)
         ]
     state_marker = _encode_state(state)
+    if 65_000 - len(state_marker.encode("utf-8")) < _MIN_HUMAN_BODY:
+        # The machine state alone filled the issue body, leaving no room for the report, and the
+        # truncation then dropped the leading MARKER (2026-10-30: #2554 grew to 61 KB of state and
+        # every marker-gated workflow skipped). Observations are carried only to be displayed, so
+        # shed them before anything a decision depends on.
+        last_full = dict(state.get("last_full") or {})
+        if last_full.pop("observations", None) is not None:
+            state["last_full"] = last_full
+            state_marker = _encode_state(state)
     room = min(_HUMAN_BODY_LIMIT, 65_000 - len(state_marker.encode("utf-8")))
     room -= len(decisions.encode("utf-8"))
     if len(observations.encode("utf-8")) > room // 2:
@@ -753,6 +764,9 @@ def render_body(
     report_text, _ = bounded_body(
         "\n".join(lines) + "\n", limit=max(0, room - len(observations.encode("utf-8")))
     )
+    if MARKER not in report_text:
+        # Truncation must never take the marker: `find_issue` and the /apply workflow key on it.
+        report_text = f"{MARKER}\n{report_text}"
     human = report_text.rstrip("\n") + "\n" + decisions + "\n" + observations
     return f"{human}\n{state_marker}\n"
 

@@ -919,6 +919,29 @@ def test_the_decision_block_survives_a_truncated_body(monkeypatch):
     assert decode_state(body) == json.loads(json.dumps(report.state))
 
 
+def test_a_state_that_fills_the_body_cannot_drop_the_marker(monkeypatch):
+    import hashlib
+
+    import citypods.provider_catalog.issue as issue
+
+    report, _, _ = _run(monkeypatch)
+    # Incompressible filler stands in for the catalog/canary history that reached 61 KB.
+    report.state["catalogs"] = {
+        str(i): hashlib.sha256(str(i).encode()).hexdigest() * 4 for i in range(900)
+    }
+    report.observations.extend(f"observation {i} " + "x" * 200 for i in range(300))
+    body = render_body(report, run_date="2026-10-30")
+    assert issue.MARKER in body
+    assert issue.is_catalog_issue(body)
+    assert len(body.encode()) < 65_536
+    # The state is still decodable and keeps what decisions need.
+    state = decode_state(body)
+    assert state["catalogs"] == report.state["catalogs"]
+    assert set(decision_choices(report)) <= {
+        line.split("] ", 1)[1] for line in body.splitlines() if line.startswith("- [")
+    }
+
+
 def test_beatapi_spacing_covers_health_and_every_schema_attempt(monkeypatch):
     from citypods.provider_catalog.probe import STRUCTURED_METHODS
 
