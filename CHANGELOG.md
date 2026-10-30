@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **LLM dispatch packed scheduler state (dormant).** The v2 coordinator can keep its compact
+  queue, provider, route and estimate ledgers, active-lease registry and route-sharded usage and
+  failure telemetry in packed form, cutting measured writes per cron tick by about 56% in replay.
+  Legacy tables stay authoritative until an operator runs the guarded `POST /v2/packed-state`
+  cutover under a drained global pause (rollback rebuilds the legacy tables). The coordinator also
+  records recovery sweep statistics (and `RECOVERY_INTERVAL_MINUTES`, 0-1440, to space out
+  expired-lease cleanup), at the cost of one scheduler-row write per idle tick. See review/57.
+
 - **Human-reviewed remedy publication.** Select GLM Flash + DeepSeek as the two initial proposers.
   Validated exact agreements may create bounded PRs; disagreements and completed contract failures
   create human-review issue candidates. No automated adjudicators or remedy merging are enabled.
