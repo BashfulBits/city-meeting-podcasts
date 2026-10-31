@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from citypods.audit_remedy import (
+    P3_ROLE_PLANS,
     BodyDecision,
     BodyDecisions,
     P3ReviewDecision,
@@ -29,7 +30,7 @@ def validated_p3_plan(
     evidence: dict[str, Any],
     *,
     repo_root: str | Path,
-    admitted_routes: set[str] | frozenset[str],
+    admitted_models: set[str] | frozenset[str],
     role_plan: str = "legacy-sol-v1",
 ) -> tuple[RemedyPlan, dict[str, Path]]:
     """Revalidate one report-ready consensus against the current local feed catalog.
@@ -56,10 +57,13 @@ def validated_p3_plan(
         evidence_hash=parsed_decision.evidence_hash,
         policy_hash=parsed_decision.policy_hash,
         initial_votes=parsed_decision.initial_votes,
-        initial_validators={vote.route_id: True for vote in parsed_decision.initial_votes},
+        initial_validators={
+            P3_ROLE_PLANS[role_plan].model_for_route(vote.route_id): True
+            for vote in parsed_decision.initial_votes
+        },
         adjudication=parsed_decision.adjudication,
         adjudication_validator_passed=True,
-        admitted_routes=admitted_routes,
+        admitted_models=admitted_models,
         role_plan=role_plan,
     )
     if recomputed != parsed_decision:

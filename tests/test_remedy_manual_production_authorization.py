@@ -72,3 +72,34 @@ def test_publisher_uses_repository_trust_root_before_processing_live_evidence(tm
     # Real authorized config must reach evidence validation, without storage or GitHub calls.
     with pytest.raises(ValueError, match="missing its collection timestamp"):
         publish(report, evidence, ROOT)
+
+
+def test_authorization_survives_route_and_provider_changes_inside_a_model_pool(monkeypatch):
+    """The authorization binds models, so catalog churn inside a pool must not invalidate it."""
+    from dataclasses import replace
+
+    from citypods.compute import llm_policy
+
+    selected = config()
+    assert p3_enabled(selected, repo_root=ROOT)
+    reference = "orcarouter_zai_glm_5_3_flash_free"
+    # The exact change that invalidated the route-bound authorization: a provider concurrency edit.
+    monkeypatch.setitem(
+        ROUTE_REGISTRY, reference, replace(ROUTE_REGISTRY[reference], provider_concurrency=3)
+    )
+    pool = llm_policy.ROUTE_CANDIDATES["zai/glm-5.3-flash"]
+    extra = replace(ROUTE_REGISTRY[reference], route_id="extra_glm_leg", provider="other")
+    monkeypatch.setitem(llm_policy.ROUTE_CANDIDATES, "zai/glm-5.3-flash", (*pool, extra))
+    assert p3_enabled(selected, repo_root=ROOT)
+
+
+def test_authorization_requires_a_free_direct_route_in_each_model_pool(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.compute import llm_policy
+
+    selected = config()
+    pool = llm_policy.ROUTE_CANDIDATES["deepseek/deepseek-v4.1-flash"]
+    paid = tuple(replace(route, free=False) for route in pool)
+    monkeypatch.setitem(llm_policy.ROUTE_CANDIDATES, "deepseek/deepseek-v4.1-flash", paid)
+    assert not p3_enabled(selected, repo_root=ROOT)

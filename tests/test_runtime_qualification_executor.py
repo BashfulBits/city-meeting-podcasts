@@ -36,7 +36,7 @@ def controller(executor, tmp_path, monkeypatch):
         "status",
         lambda p: {
             "in_flight": 0,
-            "routes": {executor.PLAN.routes["glm_flash"]: {"provider": p}},
+            "routes": {executor.PLAN.reference_routes["glm_flash"]: {"provider": p}},
         },
     )
     monkeypatch.setattr(executor, "validate_source_url", lambda _: None)

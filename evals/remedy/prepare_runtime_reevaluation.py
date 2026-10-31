@@ -115,7 +115,7 @@ def audit_packets(inputs, approval):
             old = rows[(cid, role)]
             votes.append(
                 P3Vote(
-                    route_id=PLAN.routes[role],
+                    route_id=PLAN.reference_routes[role],
                     upstream_model=old["returned_model"],
                     reasoning_level=None,
                     evidence_hash=canonical_hash(evidence),

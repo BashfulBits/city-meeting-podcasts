@@ -184,7 +184,7 @@ def test_v2_stage_binding_and_v1_payload_shape_are_distinct():
         evidence_hash="c" * 64,
         config_hash="d" * 64,
         policy_hash="e" * 64,
-        route_id=plan.routes["deepseek"],
+        route_id=plan.reference_routes["deepseek"],
         logical_model=plan.models["deepseek"],
         upstream_model="deepseek-v4.1-flash-free",
         reasoning_level=None,

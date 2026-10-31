@@ -52,10 +52,7 @@ def record(**updates) -> P3ReportInput:
             vote("beatapi_gpt_6_1_sol_free"),
             vote("orcarouter_zai_glm_5_3_flash_free"),
         ],
-        "initial_validators": {
-            "beatapi_gpt_6_1_sol_free": True,
-            "orcarouter_zai_glm_5_3_flash_free": True,
-        },
+        "initial_validators": {"openai/gpt-6.1-sol": True, "zai/glm-5.3-flash": True},
     }
     values.update(updates)
     return P3ReportInput.model_validate(values).validate_contract()
@@ -72,10 +69,7 @@ def test_report_cli_context_fails_closed_without_trusted_admissions():
 def test_trusted_runtime_admission_replays_consensus_without_issue_write():
     report = build_p3_report(
         record(),
-        admitted_routes={
-            "beatapi_gpt_6_1_sol_free",
-            "orcarouter_zai_glm_5_3_flash_free",
-        },
+        admitted_models={"openai/gpt-6.1-sol", "zai/glm-5.3-flash"},
     )
 
     assert report["decision"]["disposition"] == "pr_candidate"
@@ -89,13 +83,13 @@ def test_report_renders_manual_issue_only_for_failed_consensus():
         vote("orcarouter_zai_glm_5_3_flash_free", feed="test-city-library-board", digest="b"),
     ]
     item = record(initial_votes=votes)
-    routes = {
-        "beatapi_gpt_6_1_sol_free",
-        "orcarouter_zai_glm_5_3_flash_free",
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_jev_1_13_free",
+    models = {
+        "openai/gpt-6.1-sol",
+        "zai/glm-5.3-flash",
+        "deepseek/deepseek-v4.1-flash",
+        "typesafe/jev-1.13",
     }
-    held = build_p3_report(item, admitted_routes=routes)
+    held = build_p3_report(item, admitted_models=models)
     assert held["decision"]["disposition"] == "policy_hold"
     assert "manual_issue_candidate" not in held
 
@@ -115,7 +109,7 @@ def test_report_renders_manual_issue_only_for_failed_consensus():
     item = record(initial_votes=votes, adjudication=adjudication)
     report = build_p3_report(
         item,
-        admitted_routes=routes,
+        admitted_models=models,
     )
     assert report["decision"]["disposition"] == "issue_candidate"
     assert "Include `test-city-council`" in report["manual_issue_candidate"]
@@ -129,8 +123,8 @@ def test_input_rejects_unknown_admission_claim_and_duplicate_feed():
         P3ReportInput.model_validate({**data, "admitted_routes": ["fake"]})
     with pytest.raises(ValueError, match="unique"):
         record(feeds=[{"slug": "test-city-council", "title": "A"}] * 2)
-    with pytest.raises(ValueError, match="exactly the two initial routes"):
-        record(initial_validators={"untrusted-route": True})
+    with pytest.raises(ValueError, match="exactly the two initial models"):
+        record(initial_validators={"untrusted/model": True})
     with pytest.raises(ValueError, match="exactly the configured"):
         record(initial_votes=record().initial_votes + [vote("beatapi_gpt_6_1_sol_free")])
     with pytest.raises(ValueError, match="valid slugs"):

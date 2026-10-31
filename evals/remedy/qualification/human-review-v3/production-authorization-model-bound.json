@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "kind": "maintainer-approved-manual-remedy-publication",
+  "authority": "Explicit human maintainer approval in chat (2026-10-31), amending the 2026-10-24 approval to bind models instead of routes",
+  "maintainer_instruction": "I don't want them to care which provider served a call; I just want them to follow the model pattern rather than stipulate a route. I approve the remedy P3 route-agnostic design change.",
+  "scope": "Production bounded PR/issue creation by the two-model human-review plan only; no automatic remedy merge or feed mutation",
+  "human_approval_required": true,
+  "automatic_merge_allowed": false,
+  "automatic_feed_publication_allowed": false,
+  "model_qualification_claimed": false,
+  "acknowledged_limitations": [
+    "No comparable AA score asserted for these routes.",
+    "Historical challenge is not independent verified-holdout qualification.",
+    "Shared wrong agreements remain possible; RQ05 was wrong in the policy replay.",
+    "PR creation is authorized; each proposed feed change still requires human review and merge.",
+    "The earlier qualification evidence was gathered on the reference routes (OrcaRouter GLM 5.3 Flash, BeatAPI DeepSeek V4.1 Flash). A request now names only the logical model and may be answered by any free direct route in its pool, including providers never evaluated; which route answered is recorded but not checked.",
+    "Returned-model identity is no longer verified per route."
+  ],
+  "bindings": {
+    "glm_flash": {
+      "role_plan_hash": "b72bb32d2152176f77bacdfb7bd7682e0ad0169d0f436b8b639b567cc83f4328",
+      "role": "glm_flash",
+      "logical_model": "zai/glm-5.3-flash",
+      "prompt_hash": "e10ce10d4052717ac1741c89413926be6588aee5d795198ec05995817fdc2071",
+      "schema_hash": "e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89",
+      "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
+      "output_tokens": 16384,
+      "response_timeout_seconds": 720
+    },
+    "deepseek": {
+      "role_plan_hash": "b72bb32d2152176f77bacdfb7bd7682e0ad0169d0f436b8b639b567cc83f4328",
+      "role": "deepseek",
+      "logical_model": "deepseek/deepseek-v4.1-flash",
+      "prompt_hash": "e10ce10d4052717ac1741c89413926be6588aee5d795198ec05995817fdc2071",
+      "schema_hash": "e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89",
+      "policy_hash": "ec5dc8acd27d5803bdc3a07b1c3bcf16fad2520cb3ae39989cb02ee1b8d5f40e",
+      "output_tokens": 16384,
+      "response_timeout_seconds": 720
+    }
+  },
+  "source_artifacts": [
+    {
+      "path": "evals/remedy/qualification/human-review-v3/decision.json",
+      "sha256": "0874bdbf07358937838860249a8d80a32561b5dc19062147628ca37ac3058d58"
+    },
+    {
+      "path": "evals/remedy/qualification/runtime-v2/answers.json",
+      "sha256": "5686ff771bf2bf65968f9297edf98fc94fe44cd5ecbbd4e1758e097fdae17747"
+    },
+    {
+      "path": "evals/remedy/qualification/runtime-v2/conclusions.json",
+      "sha256": "05f090f190c71fd070f2c61985fa84026b323cf9eb9621aebd9a30d658ab58cb"
+    },
+    {
+      "path": "evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json",
+      "sha256": "d5b5415987fbe037c710b339e2f79b73de9a87c92899c6bb18dc55938f1e0bc4"
+    }
+  ],
+  "retention_note": "Equivalent normalized answers and compact outcome facts replace generated views; scope, model outputs and runtime bindings are unchanged."
+}

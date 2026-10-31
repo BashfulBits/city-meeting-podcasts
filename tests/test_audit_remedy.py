@@ -56,8 +56,15 @@ from citypods.compute.llm_policy import estimate_tokens
 from citypods.compute.structured import register_response_model
 from citypods.models import City, Episode
 from citypods.remedy_p3_publication import validated_p3_plan
-from citypods.remedy_p3_runner import P3_ROUTES
+from citypods.remedy_p3_runner import P3_MODELS
 from citypods.remedy_policy import canonical_hash
+
+
+def _m(route_id):
+    """The logical model a route serves (P3 votes and validators are keyed by model)."""
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    return P3_ROLE_PLANS["legacy-sol-v1"].model_for_route(route_id)
 
 
 def make_city(slug, body, **source_extra):
@@ -220,15 +227,15 @@ def test_p3_publication_resolves_and_revalidates_consensus(evidence, repo):
             {"slug": row["slug"], "title": row["podcast_title"]} for row in source["existing_feeds"]
         ],
         initial_votes=votes,
-        initial_validators={route: True for route in P3_INITIAL_ROUTES},
+        initial_validators={_m(route): True for route in P3_INITIAL_ROUTES},
     )
-    report = build_p3_report(record, admitted_routes=set(P3_ROUTES.values()))
+    report = build_p3_report(record, admitted_models=set(P3_MODELS.values()))
 
     plan, paths = validated_p3_plan(
         report,
         source,
         repo_root=repo,
-        admitted_routes=set(P3_ROUTES.values()),
+        admitted_models=set(P3_MODELS.values()),
     )
 
     assert report["decision"]["disposition"] == "pr_candidate"
@@ -244,7 +251,7 @@ def test_p3_publication_resolves_and_revalidates_consensus(evidence, repo):
             report,
             source,
             repo_root=repo,
-            admitted_routes=set(P3_ROUTES.values()),
+            admitted_models=set(P3_MODELS.values()),
         )
 
     forged = {**report, "proposal_candidate": dict(report["proposal_candidate"])}
@@ -257,7 +264,7 @@ def test_p3_publication_resolves_and_revalidates_consensus(evidence, repo):
             forged,
             source,
             repo_root=repo,
-            admitted_routes=set(P3_ROUTES.values()),
+            admitted_models=set(P3_MODELS.values()),
         )
 
 
@@ -1374,8 +1381,8 @@ def test_p3_initial_agreement_yields_pr_candidate_only_after_validation():
         evidence_hash="e" * 64,
         policy_hash="f" * 64,
         initial_votes=votes,
-        initial_validators={vote.route_id: True for vote in votes},
-        admitted_routes={vote.route_id for vote in votes},
+        initial_validators={_m(vote.route_id): True for vote in votes},
+        admitted_models={_m(vote.route_id) for vote in votes},
     )
     result = build_p3_review_decision(**common)
     assert result.disposition == "pr_candidate"
@@ -1383,7 +1390,10 @@ def test_p3_initial_agreement_yields_pr_candidate_only_after_validation():
     assert result.adjudication is None
 
     failed = build_p3_review_decision(
-        **{**common, "initial_validators": {votes[0].route_id: True, votes[1].route_id: False}}
+        **{
+            **common,
+            "initial_validators": {_m(votes[0].route_id): True, _m(votes[1].route_id): False},
+        }
     )
     assert failed.disposition == "issue_candidate"
     assert failed.validator_passed is False
@@ -1391,18 +1401,18 @@ def test_p3_initial_agreement_yields_pr_candidate_only_after_validation():
 
 def test_p3_initial_disagreement_holds_without_adjudication_then_uses_exact_agreement():
     votes = p3_votes(glm_feeds=["test-city-library-board"])
-    admitted = {vote.route_id for vote in votes} | {
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_jev_1_13_free",
+    admitted = {_m(vote.route_id) for vote in votes} | {
+        "deepseek/deepseek-v4.1-flash",
+        "typesafe/jev-1.13",
     }
-    validators = {vote.route_id: True for vote in votes}
+    validators = {_m(vote.route_id): True for vote in votes}
     common = dict(
         finding_id="finding-1",
         evidence_hash="e" * 64,
         policy_hash="f" * 64,
         initial_votes=votes,
         initial_validators=validators,
-        admitted_routes=admitted,
+        admitted_models=admitted,
     )
     held = build_p3_review_decision(**common)
     assert held.disposition == "policy_hold"
@@ -1431,17 +1441,17 @@ def test_p3_initial_disagreement_holds_without_adjudication_then_uses_exact_agre
 
 def test_p3_adjudication_mismatch_or_abstention_becomes_manual_issue():
     votes = p3_votes(glm_feeds=["test-city-library-board"])
-    admitted = {vote.route_id for vote in votes} | {
-        "beatapi_deepseek_v4_1_flash_free",
-        "beatapi_jev_1_13_free",
+    admitted = {_m(vote.route_id) for vote in votes} | {
+        "deepseek/deepseek-v4.1-flash",
+        "typesafe/jev-1.13",
     }
     common = dict(
         finding_id="finding-1",
         evidence_hash="e" * 64,
         policy_hash="f" * 64,
         initial_votes=votes,
-        initial_validators={vote.route_id: True for vote in votes},
-        admitted_routes=admitted,
+        initial_validators={_m(vote.route_id): True for vote in votes},
+        admitted_models=admitted,
     )
     abstain = P3Adjudication(
         deepseek=None,
@@ -1479,7 +1489,7 @@ def test_p3_route_admission_and_hash_mismatches_fail_closed():
         evidence_hash="e" * 64,
         policy_hash="f" * 64,
         initial_votes=votes,
-        initial_validators={vote.route_id: True for vote in votes},
+        initial_validators={_m(vote.route_id): True for vote in votes},
     )
     assert result.disposition == "policy_hold"
     assert result.validator_passed is False
@@ -1491,8 +1501,8 @@ def test_p3_route_admission_and_hash_mismatches_fail_closed():
             evidence_hash="e" * 64,
             policy_hash="f" * 64,
             initial_votes=votes,
-            initial_validators={vote.route_id: True for vote in votes},
-            admitted_routes={vote.route_id for vote in votes},
+            initial_validators={_m(vote.route_id): True for vote in votes},
+            admitted_models={_m(vote.route_id) for vote in votes},
         )
 
 

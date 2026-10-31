@@ -45,7 +45,6 @@ from citypods.compute.llm_policy import (
     ROUTE_CANDIDATES,
     ROUTE_REGISTRY,
     LLMRequestPolicy,
-    route_request_params,
 )
 from citypods.compute.structured import register_response_model
 from citypods.judging.backends import Evidence, Item, JevBackend, Packet
@@ -73,6 +72,8 @@ P3_MODELS = {
     "deepseek": "deepseek/deepseek-v4.1-flash",
     "jev": "typesafe/jev-1.13",
 }
+# Reference routes the plans were qualified on. Informational: requests name only the logical
+# model, and any route in its pool may serve them (maintainer decision 2026-10-31).
 P3_ROUTES = {
     "sol": "beatapi_gpt_6_1_sol_free",
     "glm_flash": "orcarouter_zai_glm_5_3_flash_free",
@@ -87,8 +88,8 @@ P3_CONCISE_PROMPT_VERSION = "p3-unexpected-body-concise-v2"
 # truncated them. Sol and DeepSeek allow exactly 16,384 on their routes.
 P3_CHAT_MAX_OUTPUT_TOKENS = 16_384
 
-# Maintainer-approved identity equivalence for this exact requested ID and physical route.
-# Applies to report-only and live P3 checks; it does not admit a route or attest its weights.
+# Route-level (project-evidence) admissions only: the returned-model IDs that exact requested ID
+# and physical route may report. Model-bound admissions do not check returned model identity.
 P3_RETURNED_MODEL_ALIASES = {
     ("orcarouter_zai_glm_5_3_flash_free", "z-ai/glm-5.3-flash-free"): ("zai-org/glm-5.3-flash",),
 }
@@ -115,35 +116,42 @@ class P3RunCounts:
     failures: int = 0
 
 
-def admitted_p3_routes(config: RemedyConfig) -> frozenset[str]:
+def admitted_p3_models(config: RemedyConfig) -> frozenset[str]:
+    """Logical models this run may use. A model-bound admission names its model; a route-level
+    admission (project-evidence flows) admits the model of its plan reference route."""
     plan = P3_ROLE_PLANS[config.p3_role_plan]
-    return frozenset(
-        route
-        for entry in config.admissions
-        if entry.status == "admitted"
-        for route in entry.physical_route_ids
-        if route in plan.routes.values()
-    )
+    planned = set(plan.models.values())
+    admitted = set()
+    for entry in config.admissions:
+        if entry.status != "admitted":
+            continue
+        if entry.logical_model is not None:
+            if entry.logical_model in planned:
+                admitted.add(entry.logical_model)
+            continue
+        for route in entry.physical_route_ids:
+            if route in plan.reference_routes.values():
+                admitted.add(plan.model_for_route(route))
+    return frozenset(admitted)
 
 
 def p3_runtime_bindings(config: RemedyConfig, entry) -> dict[str, Any]:
     """Expected runtime contract computed from code, never from its evaluation report."""
     plan = P3_ROLE_PLANS[config.p3_role_plan]
-    route_id = entry.physical_route_ids[0]
-    role = next(r for r, rid in plan.routes.items() if rid == route_id)
+    if entry.logical_model is not None:
+        role = next(r for r, model in plan.models.items() if model == entry.logical_model)
+        route_id = None
+    else:
+        route_id = entry.physical_route_ids[0]
+        role = next(r for r, rid in plan.reference_routes.items() if rid == route_id)
     function = _jev_job if role == "jev" else _chat_job
     schema = {"protocol": "systemone-choice", "criteria": ["A", "B", "C", "D"]}
     if role != "jev":
         schema = P3ChatResponse.model_json_schema()
-    return {
+    bindings = {
         "role_plan_hash": plan.fingerprint,
         "role": role,
-        "route_id": route_id,
         "logical_model": plan.models[role],
-        "upstream_model": entry.upstream_model,
-        "accepted_returned_model_ids": list(
-            _accepted_returned_models(route_id, entry.upstream_model)
-        ),
         "prompt_hash": canonical_hash(
             inspect.getsource(function)
             if plan.name == "legacy-sol-v1"
@@ -162,11 +170,21 @@ def p3_runtime_bindings(config: RemedyConfig, entry) -> dict[str, Any]:
                 "onboarding_exceptions": config.onboarding_exceptions,
             }
         ),
-        "catalog_hash": canonical_hash(asdict(ROUTE_REGISTRY[route_id])),
         "output_tokens": None if role == "jev" else P3_CHAT_MAX_OUTPUT_TOKENS,
         "response_timeout_seconds": 720,
-        "request_params_hash": entry.request_params_hash,
     }
+    if route_id is not None:
+        # Route-level admissions (project-evidence flows) still bind the exact route record.
+        bindings.update(
+            route_id=route_id,
+            upstream_model=entry.upstream_model,
+            accepted_returned_model_ids=list(
+                _accepted_returned_models(route_id, entry.upstream_model)
+            ),
+            catalog_hash=canonical_hash(asdict(ROUTE_REGISTRY[route_id])),
+            request_params_hash=entry.request_params_hash,
+        )
+    return bindings
 
 
 def p3_enabled(config: RemedyConfig, *, repo_root=None, for_report_only=False) -> bool:
@@ -176,52 +194,57 @@ def p3_enabled(config: RemedyConfig, *, repo_root=None, for_report_only=False) -
     if for_report_only and config.publication_mode != "report_only":
         return False
     plan = P3_ROLE_PLANS[config.p3_role_plan]
-    admissions = {
-        rid: entry
-        for entry in config.admissions
-        if entry.status == "admitted"
-        for rid in entry.physical_route_ids
-    }
-    if not set(plan.routes.values()) <= set(admissions):
-        return False
     if config.manual_review_authorization is not None:
+        # Model-bound: each role is a logical model, served by any free direct route of its pool.
         try:
             if plan.name != "flash-deepseek-human-v3" or len(config.admissions) != 2:
                 return False
             bindings = {}
             families = {row[0]: row[3] for row in plan.bindings}
-            for role, rid in plan.routes.items():
-                entry = admissions[rid]
-                route = ROUTE_REGISTRY[rid]
-                expected_params = canonical_hash(route_request_params(route))
+            for role, model in plan.models.items():
+                matches = [
+                    e
+                    for e in config.admissions
+                    if e.status == "admitted" and e.logical_model == model
+                ]
+                if len(matches) != 1:
+                    return False
+                entry = matches[0]
+                pool = ROUTE_CANDIDATES.get(model, ())
                 if (
                     entry.role != "proposer"
                     or entry.aa is not None
                     or entry.project_evidence is not None
                     or entry.reviewed_admission_ref != config.manual_review_authorization.path
-                    or entry.physical_route_ids != [rid]
-                    or route.model != plan.models[role]
-                    or not route.free
-                    or route.experimental
-                    or "direct" not in route.transports
-                    or route.account_id != "primary"
-                    or entry.upstream_model != route.upstream_model
+                    or entry.physical_route_ids
+                    or entry.upstream_model is not None
+                    or entry.request_params_hash is not None
                     or entry.model_family != families[role]
                     or entry.reasoning_level != "provider-default"
-                    or entry.request_params_hash != expected_params
+                    or not any(
+                        r.free and not r.experimental and "direct" in r.transports for r in pool
+                    )
                 ):
                     return False
                 bindings[role] = p3_runtime_bindings(config, entry)
                 if any(
                     getattr(entry, key) != bindings[role][key]
-                    for key in ("prompt_hash", "schema_hash", "catalog_hash")
+                    for key in ("prompt_hash", "schema_hash")
                 ):
                     return False
             load_manual_review_authorization(config, repo_root, expected=bindings)
             return True
         except (ValueError, OSError, KeyError, TypeError):
             return False
-    for role, rid in plan.routes.items():
+    admissions = {
+        rid: entry
+        for entry in config.admissions
+        if entry.status == "admitted"
+        for rid in entry.physical_route_ids
+    }
+    if not set(plan.reference_routes.values()) <= set(admissions):
+        return False
+    for role, rid in plan.reference_routes.items():
         entry = admissions[rid]
         if rid not in ROUTE_REGISTRY or ROUTE_REGISTRY[rid].model != plan.models[role]:
             return False
@@ -366,7 +389,6 @@ def _chat_job(
         )
     messages = [{"role": "user", "content": prompt}]
     model = plan.models[role]
-    route = plan.routes[role]
     schema_hash = canonical_hash(P3ChatResponse.model_json_schema())
     request_hash = _request_hash(messages, P3_CHAT_CONTRACT, schema_hash)
     # The output cap is part of the job's identity: a handle or observation made under another cap
@@ -376,7 +398,6 @@ def _chat_job(
             P3_PROMPT_VERSION if role_plan == "legacy-sol-v1" else plan.fingerprint,
             role,
             model,
-            route,
             request_hash,
             evidence_hash,
             policy_hash,
@@ -386,7 +407,6 @@ def _chat_job(
     purpose = P3_PURPOSE
     policy = LLMRequestPolicy(
         allowed_models=(model,),
-        allowed_route_ids=(route,),
         allow_paid=False,
         purpose=purpose,
         queue_only=True,
@@ -507,14 +527,14 @@ def _jev_job(
 
     policy = replace(
         old_policy,
-        allowed_route_ids=(plan.routes["jev"],),
+        allowed_route_ids=None,
         allowed_models=(plan.models["jev"],),
         purpose=P3_PURPOSE,
     )
     job = replace(
         job,
         recipe_hash=canonical_hash(
-            [packet.recipe_hash, evidence_hash, policy_hash, plan.routes["jev"]]
+            [packet.recipe_hash, evidence_hash, policy_hash, plan.models["jev"]]
         ),
         inputs={**job.inputs, "llm_policy": policy, "num_retries": 0},
     )
@@ -523,7 +543,7 @@ def _jev_job(
 
 def _upstream_for(role: str, role_plan: str = "legacy-sol-v1") -> str:
     plan = P3_ROLE_PLANS[role_plan]
-    route_id = plan.routes[role]
+    route_id = plan.reference_routes[role]
     for candidates in ROUTE_CANDIDATES.values():
         for route in candidates:
             if route.route_id == route_id:
@@ -536,18 +556,10 @@ def _response_from_result(
 ) -> dict[str, Any]:
     plan = P3_ROLE_PLANS[role_plan]
     expected_model = plan.models[role]
-    if result.model != expected_model or result.route_id != plan.routes[role]:
-        raise ValueError("completed Worker result does not match the pinned P3 route/model")
-    if role_plan != "legacy-sol-v1":
-        requested = _upstream_for(role, role_plan)
-        accepted = _accepted_returned_models(result.route_id, requested)
-        if result.upstream_model not in accepted:
-            raise ValueError("Worker upstream identity mismatch")
-        # JobResult.upstream_model may be catalog metadata, not the provider's returned ID.
-        # Check the actual response too, and retain that ID in the observation below.
-        if (result.route_id, requested) in P3_RETURNED_MODEL_ALIASES:
-            if result.output.get("model") not in accepted:
-                raise ValueError("Worker returned-model identity mismatch")
+    if result.model != expected_model:
+        raise ValueError("completed Worker result does not match the P3 logical model")
+    if plan.model_for_route(result.route_id) != expected_model:
+        raise ValueError("completed Worker result came from a route outside the model's pool")
     if role == "jev":
         response = result.output
         if not isinstance(response, dict) or not isinstance(response.get("answers"), dict):
@@ -588,7 +600,7 @@ def _validator_outcomes(
                 decision=decision,
             )
         )
-        validators[record.route_id] = _validator_passed(decision, evidence, repo_root)
+        validators[plan.models[role]] = _validator_passed(decision, evidence, repo_root)
     return votes, validators
 
 
@@ -603,7 +615,9 @@ def _adjudication_context(
         context = {
             "initial_proposals": [
                 {
-                    "letter": "A" if vote.route_id == plan.routes[plan.initial[0]] else "B",
+                    "letter": "A"
+                    if plan.model_for_route(vote.route_id) == plan.models[plan.initial[0]]
+                    else "B",
                     "assignment": vote.decision.model_dump(mode="json"),
                 }
                 for vote in votes
@@ -615,7 +629,9 @@ def _adjudication_context(
     return {
         "initial_proposals": [
             {
-                "letter": "A" if vote.route_id == plan.routes[plan.initial[0]] else "B",
+                "letter": "A"
+                if plan.model_for_route(vote.route_id) == plan.models[plan.initial[0]]
+                else "B",
                 "route_id": vote.route_id,
                 "assignment": vote.decision.model_dump(mode="json"),
             }
@@ -763,11 +779,6 @@ class P3DailyRunner:
                 if self.plan.chat is None:
                     if result.task != job.task or result.recipe_hash != job.recipe_hash:
                         raise ValueError("completed result does not bind this request")
-                    requested = _upstream_for(role, self.plan.name)
-                    if result.output.get("model") not in _accepted_returned_models(
-                        result.route_id, requested
-                    ):
-                        raise ValueError("actual returned model does not match this request")
                 response = _response_from_result(
                     result, role=role, finding_id=finding_id, role_plan=self.plan.name
                 )
@@ -781,15 +792,12 @@ class P3DailyRunner:
             # Only completed contract failures or explicit structural refusals are terminal.
             # Capacity, transport, bookkeeping and unknown-request errors propagate unchanged.
             response = {"failure": {"kind": failure_kind}}
+        # Which route of the model's pool answered is provenance, never an admission input.
         upstream = "unverified"
+        route_id = self.plan.reference_routes[role]
         if not failure_kind:
-            upstream = (
-                result.output["model"]
-                if self.plan.name != "legacy-sol-v1"
-                and (result.route_id, _upstream_for(role, self.plan.name))
-                in P3_RETURNED_MODEL_ALIASES
-                else result.upstream_model or _upstream_for(role, self.plan.name)
-            )
+            upstream = result.upstream_model or "unverified"
+            route_id = result.route_id
         record = make_observation(
             finding_id=finding_id,
             source_key=source_key,
@@ -800,7 +808,7 @@ class P3DailyRunner:
             evidence_hash=evidence_hash,
             config_hash=self.config_hash,
             policy_hash=policy_hash,
-            route_id=self.plan.routes[role],
+            route_id=route_id,
             logical_model=self.plan.models[role],
             upstream_model=upstream,
             reasoning_level=None if failure_kind else result.reasoning_level,
@@ -866,7 +874,7 @@ class P3DailyRunner:
                 policy_hash=policy_hash,
                 evidence=evidence,
                 observations=observations,
-                admitted_routes=admitted_p3_routes(self.config),
+                admitted_models=admitted_p3_models(self.config),
                 repo_root=self.repo_root,
                 role_plan=self.plan.name,
             )
@@ -893,7 +901,7 @@ class P3DailyRunner:
                 policy_hash=policy_hash,
                 evidence=evidence,
                 observations=observations,
-                admitted_routes=admitted_p3_routes(self.config),
+                admitted_models=admitted_p3_models(self.config),
                 repo_root=self.repo_root,
                 role_plan=self.plan.name,
             )
@@ -926,7 +934,7 @@ class P3DailyRunner:
             policy_hash=policy_hash,
             evidence=evidence,
             observations=observations,
-            admitted_routes=admitted_p3_routes(self.config),
+            admitted_models=admitted_p3_models(self.config),
             repo_root=self.repo_root,
             role_plan=self.plan.name,
         )
@@ -1055,7 +1063,7 @@ def build_runtime_report(
     policy_hash: str,
     evidence: dict[str, Any],
     observations: tuple[P3Observation, ...],
-    admitted_routes: frozenset[str],
+    admitted_models: frozenset[str],
     repo_root: str,
     role_plan: str = "legacy-sol-v1",
 ) -> dict[str, Any] | None:
@@ -1064,7 +1072,7 @@ def build_runtime_report(
     plan = P3_ROLE_PLANS[role_plan]
     by_role = {item.role: item for item in observations}
     failures = {
-        record.route_id: record.response["failure"]["kind"]
+        plan.models[record.role]: record.response["failure"]["kind"]
         for record in observations
         if plan.chat is None and "failure" in record.response
     }
@@ -1073,7 +1081,7 @@ def build_runtime_report(
     initial = []
     validators = {}
     for role in plan.initial:
-        if role not in by_role or by_role[role].route_id in failures:
+        if role not in by_role or plan.models[role] in failures:
             continue
         record = by_role[role]
         decision = _decision_from_chat(record.response, finding_id)
@@ -1088,7 +1096,7 @@ def build_runtime_report(
                 decision=decision,
             )
         )
-        validators[record.route_id] = _validator_passed(decision, evidence, repo_root)
+        validators[plan.models[role]] = _validator_passed(decision, evidence, repo_root)
     adjudication = None
     adjudication_valid = False
     if plan.chat in by_role and "jev" in by_role:
@@ -1135,14 +1143,14 @@ def build_runtime_report(
         summary["call_failure_refs"] = [
             {
                 "route_id": r.route_id,
-                "kind": failures[r.route_id],
+                "kind": failures[plan.models[r.role]],
                 "recipe_hash": r.recipe_hash,
                 "request_hash": r.request_hash,
                 "observation_id": r.observation_id,
                 "upstream_model": "unverified",
             }
             for r in observations
-            if r.route_id in failures
+            if plan.models[r.role] in failures
         ]
     summary.update(source=source, body=body, finding=evidence["unexpected_findings"][0])
     report_input = P3ReportInput(
@@ -1159,7 +1167,7 @@ def build_runtime_report(
         adjudication=adjudication,
         adjudication_validator_passed=adjudication_valid,
     )
-    return build_p3_report(report_input, admitted_routes=admitted_routes)
+    return build_p3_report(report_input, admitted_models=admitted_models)
 
 
 def _jev_decision_values(answer: Any) -> tuple[str | None, float | None, float | None]:

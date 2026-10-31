@@ -15,6 +15,13 @@ from tests.test_remedy_actions import inputs
 from tests.test_remedy_ledger import FakeEventStorage, FakeRemedyLease
 
 
+def _m(route_id):
+    """The logical model a route serves (P3 votes and validators are keyed by model)."""
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    return P3_ROLE_PLANS["legacy-sol-v1"].model_for_route(route_id)
+
+
 def binding_for(action):
     return {
         "city": action["city"],
@@ -290,7 +297,7 @@ def test_binding_uses_source_feeds_if_report_feed_list_is_absent():
             evidence_summary="Unresolved ownership evidence.",
             feeds=[{"slug": "source-council", "title": "City Council"}],
             initial_votes=votes,
-            initial_validators={route: False for route in routes},
+            initial_validators={_m(route): False for route in routes},
         )
     )
     source = {
