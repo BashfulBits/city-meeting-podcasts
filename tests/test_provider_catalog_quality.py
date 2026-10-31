@@ -46,8 +46,10 @@ class Session:
 
 def test_all_pages_and_v2_creator_names(monkeypatch):
     monkeypatch.setenv("ARTIFICIAL_ANALYSIS_API_KEY", "test-key")
+    # The documented endpoint is tried first; a 404 there sends the run to the paginated path.
     session = Session(
         [
+            404,
             page(1, [row("OpenAI", "gpt-oss-120b", 30)], True),
             page(2, [row("NVIDIA", "nvidia-nemotron-3-super-120b-a12b", 35)]),
         ]
@@ -56,11 +58,51 @@ def test_all_pages_and_v2_creator_names(monkeypatch):
     assert quality.error is None
     assert quality.floor == 30
     assert quality.score("nvidia/nemotron-3-super-120b-a12b") == 35
-    assert AA_URL == "https://artificialanalysis.ai/api/v2/language/models/free"
+    assert AA_URL == "https://artificialanalysis.ai/api/v2/data/llms/models"
+    legacy = "https://artificialanalysis.ai/api/v2/language/models/free"
+    headers = {"x-api-key": "test-key"}
     assert session.calls == [
-        (AA_URL, {"headers": {"x-api-key": "test-key"}, "params": {"page": n}, "timeout": 30})
-        for n in (1, 2)
+        (AA_URL, {"headers": headers, "params": {}, "timeout": 30}),
+        (legacy, {"headers": headers, "params": {"page": 1}, "timeout": 30}),
+        (legacy, {"headers": headers, "params": {"page": 2}, "timeout": 30}),
     ]
+
+
+def test_the_documented_endpoint_is_one_unparameterised_unpaginated_request(monkeypatch):
+    monkeypatch.setenv("ARTIFICIAL_ANALYSIS_API_KEY", "test-key")
+    payload = {
+        "status": 200,
+        "prompt_options": {"parallel_queries": 1, "prompt_length": "medium"},
+        "data": [
+            {
+                "id": "m1",
+                "slug": "minimax-m3-1-flash",
+                "model_creator": {"id": "c1", "name": "MiniMax", "slug": "minimax"},
+                "evaluations": {AA_METRIC: 29},
+            },
+            {  # A model AA has not indexed yet reports null, not a score.
+                "id": "m2",
+                "slug": "brand-new",
+                "model_creator": {"id": "c2", "name": "Acme Labs", "slug": "acme"},
+                "evaluations": {AA_METRIC: None},
+            },
+            {  # The creator slug is the stable identifier even when the display name differs.
+                "id": "m3",
+                "slug": "gpt-oss-120b",
+                "model_creator": {"id": "c3", "name": "Open AI", "slug": "openai"},
+                "evaluations": {AA_METRIC: 33},
+            },
+        ],
+    }
+    session = Session([payload])
+    quality = fetch_quality_index(session)
+    assert quality.error is None
+    assert session.calls == [
+        (AA_URL, {"headers": {"x-api-key": "test-key"}, "params": {}, "timeout": 30})
+    ]
+    assert quality.score("minimaxai/minimax-m3.1-flash") == 29
+    assert quality.score("acme/brand-new") is None
+    assert quality.score("openai/gpt-oss-120b") == 33
 
 
 @pytest.mark.parametrize("failure", [401, 403, 429, requests.Timeout(), {}, page(1, [])])

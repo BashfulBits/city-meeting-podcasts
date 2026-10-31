@@ -3581,11 +3581,16 @@ machine state.
   waits for a weekly snapshot). A forged issue edit cannot inject bulk memory: the digest binds it.
   Alternative considered: everything in the artifact. Rejected, because the tick-validation and
   `/apply` snapshot must stay readable from the issue alone and the issue is the audit trail.
-- **Scoring.** `fetch_quality_index` tries the paginated `/language/models/free` endpoint, then
-  AA's documented `/data/llms/models` (no pagination) on an HTTP error or empty result; malformed
-  data is not retried. Failures are reported in `Report.quality_error` and shown in the issue
-  header. Matching gains the `minimaxai` publisher alias and strips `-<N>b-a<M>b` MoE size tags
-  from both sides (still exact-or-single-match only).
+- **Scoring.** AA's API reference (read directly 2026-11-01) documents one free language-model
+  endpoint, `GET /api/v2/data/llms/models`: `x-api-key`, no parameters, no pagination, 1,000
+  requests/day, attribution required, `model_creator.slug` and `slug` as stable identifiers and
+  `evaluations.artificial_analysis_intelligence_index` that may be null. `fetch_quality_index` now
+  calls that endpoint first (one parameterless request per run) and falls back to the earlier
+  paginated `/language/models/free` path only on an HTTP error or empty result; malformed data is
+  not retried. Scores are keyed by AA's creator slug (and the slugified display name as an alias).
+  Failures are reported in `Report.quality_error` and shown in the issue header. Matching gains the
+  `minimaxai` publisher alias and strips `-<N>b-a<M>b` MoE size tags from both sides (still
+  exact-or-single-match only).
 - **Model facts.** `model_facts.py`: provider catalog record (description, created, expiry,
   modalities), NVIDIA Build markdown card, and a single unambiguous Hugging Face match (parameters,
   license, card). Best effort and display only; all text is reduced to inert one-line text.

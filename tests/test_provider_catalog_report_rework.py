@@ -151,9 +151,9 @@ def test_a_moved_endpoint_falls_back_and_a_total_failure_is_reported(monkeypatch
     monkeypatch.setenv("ARTIFICIAL_ANALYSIS_API_KEY", "k")
     old = "https://artificialanalysis.ai/api/v2/language/models/free"
     new = "https://artificialanalysis.ai/api/v2/data/llms/models"
-    session = _Session({new: (200, {"data": [_row("MiniMax", "minimax-m3-1-flash", 29)]})})
+    session = _Session({old: (200, {"data": [_row("MiniMax", "minimax-m3-1-flash", 29)]})})
     index = fetch_quality_index(session)
-    assert index.error is None and session.urls == [old, new]
+    assert index.error is None and session.urls == [new, old]
     assert index.score("minimaxai/minimax-m3.1-flash") == 29
     failed = fetch_quality_index(_Session({}))
     assert "HTTP 404" in failed.error and failed.error.count("Artificial Analysis") == 2

@@ -3,7 +3,8 @@
   filled GitHub's body limit and pushed the report out): it is written to a
   `provider-catalog-state-<run id>` artifact and the issue keeps only decision state plus the run
   ID and SHA-256; a missing or mismatching artifact only costs the next run its memory. The
-  Artificial Analysis fetch tries its documented endpoint if the paginated one fails, reports why
+  Artificial Analysis fetch now uses its documented endpoint (`/api/v2/data/llms/models`, no
+  pagination), keeps the paginated one as a fallback, reports why
   at the top of the issue when every model is unscored, and matches `minimaxai` and MoE size tags
   (`-1t-a52b`). Candidates get short model-card facts (catalog description, size, release date,
   free-tier expiry, Hugging Face parameters and license, NVIDIA card summary). Decisions are laid

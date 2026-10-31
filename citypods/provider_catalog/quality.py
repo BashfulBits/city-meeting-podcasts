@@ -20,16 +20,21 @@ from typing import Any
 
 import requests
 
-# The paginated "free" endpoint is the contract the tests pin; AA's reference now documents
-# `/data/llms/models` instead, so it is the fallback when the first answers with an HTTP error or
-# no scores (an endpoint that moved). Malformed data is never retried elsewhere. The first that
-# returns scored models wins; otherwise every failure is reported (the issue header shows it)
-# instead of silently leaving every model unscored.
+# AA's API reference (checked 2026-11-01) documents one free endpoint for language models:
+# `GET /api/v2/data/llms/models`, `x-api-key` header, 1,000 requests/day, no parameters and no
+# pagination, response `{status, prompt_options, data: [{id, name, slug, model_creator: {id, name,
+# slug}, evaluations: {artificial_analysis_intelligence_index: number|null, ...}, pricing, ...}]}`.
+# Attribution is required (the issue header links AA) and responses should be cached (one fetch per
+# run). The earlier paginated `/language/models/free` path is kept as the fallback for an HTTP
+# error or empty result in case a key still serves only that; malformed data is never retried
+# elsewhere. Failures are reported (the issue header shows them) instead of silently leaving every
+# model unscored.
 AA_URLS = (
-    "https://artificialanalysis.ai/api/v2/language/models/free",
     "https://artificialanalysis.ai/api/v2/data/llms/models",
+    "https://artificialanalysis.ai/api/v2/language/models/free",
 )
 AA_URL = AA_URLS[0]
+_PAGINATED_URL = AA_URLS[1]
 AA_KEY_ENV = "ARTIFICIAL_ANALYSIS_API_KEY"
 AA_METRIC = "artificial_analysis_intelligence_index"
 FLOOR_MODELS = (("openai", "gpt-oss-120b"), ("nvidia", "nvidia-nemotron-3-super-120b-a12b"))
@@ -141,9 +146,9 @@ def _fetch_one(session: requests.Session, url: str, api_key: str) -> tuple[Quali
     page = 1
     try:
         while True:
-            response = session.get(
-                url, headers={"x-api-key": api_key}, params={"page": page}, timeout=30
-            )
+            # Only the legacy endpoint takes a page; the documented one takes no parameters.
+            params = {"page": page} if url == _PAGINATED_URL else {}
+            response = session.get(url, headers={"x-api-key": api_key}, params=params, timeout=30)
             if not response.ok:
                 error = f"Artificial Analysis {path} HTTP {response.status_code}"
                 return QualityIndex(error=error), page == 1
@@ -196,9 +201,12 @@ def _scores(rows: list[Mapping[str, Any]]) -> dict[tuple[str, str], float]:
             value = float((row.get("evaluations") or {})[AA_METRIC])
         except (KeyError, TypeError, ValueError):
             continue
-        if creator and isinstance(slug, str) and value >= 0:
-            scores[(creator.lower(), slug.lower())] = value
-            if isinstance(creator_slug, str) and _slug(creator_slug) not in {"", creator}:
-                # AA's own creator slug can differ from the slugified display name.
-                scores.setdefault((_slug(creator_slug), slug.lower()), value)
+        if isinstance(creator_slug, str) and _slug(creator_slug):
+            # AA documents the creator slug as the stable identifier; the display name is an alias.
+            keys = {_slug(creator_slug), creator} - {""}
+        else:
+            keys = {creator} - {""}
+        if keys and isinstance(slug, str) and value >= 0:
+            for key in keys:
+                scores[(key.lower(), slug.lower())] = value
     return scores
