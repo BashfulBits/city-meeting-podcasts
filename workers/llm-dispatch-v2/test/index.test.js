@@ -657,6 +657,11 @@ test("counter-only stats is authenticated, mutually exclusive and never calls hi
   assert.equal((await handleRequest(request("rate_failures=1"), env)).status, 200);
   coordinator.rateFailureStats = async () => { throw new Error("storage unavailable"); };
   assert.equal((await handleRequest(request("rate_failures=1"), env)).status, 500);
+  coordinator.availabilityFailureStats = async () => ({ kind: "availability_failures",
+    route_failures: [], truncated: false });
+  assert.equal((await handleRequest(request("availability_failures=1", false), env)).status, 401);
+  assert.equal((await handleRequest(request("availability_failures=1&rate_failures=1"), env)).status, 400);
+  assert.equal((await handleRequest(request("availability_failures=1"), env)).status, 200);
 });
 
 test("routes-only stats is authenticated, exclusive and never touches the detailed snapshot", async () => {

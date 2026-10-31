@@ -2177,3 +2177,95 @@ def test_input_characterization_keeps_rejection_estimates_out_of_verified_bounds
         )["admitted_input"]
         == 10000
     )
+
+
+def _daily(monkeypatch, state, catalogs, **kw):
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+
+    def canary_fn(rules, cfg, model, key, session):
+        sent.append(model)
+        return OK
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(catalogs),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary_fn,
+        due_only=True,
+        **kw,
+    )
+    return report, sent
+
+
+def test_a_daily_incremental_run_canaries_only_newly_listed_models(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    # Nothing new and no deferred work: no canary at all, even with new-model watching on.
+    _, sent = _daily(monkeypatch, full.state, CATALOGS, new_models=True)
+    assert sent == []
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [*CATALOGS["https://groq.test"]["data"], {"id": "meta-llama/llama-brand-new"}]
+        },
+    }
+    report, sent = _daily(monkeypatch, full.state, grown, new_models=True)
+    assert sent == ["meta-llama/llama-brand-new"]
+    assert "groq/meta-llama/llama-brand-new" in {c.key for c in report.candidates}
+    # The previous full report's candidates are kept alongside the new one.
+    assert "groq/meta-llama/llama-new" in {c.key for c in report.candidates}
+    # The same catalog without --incremental behaviour canaries nothing.
+    _, sent = _daily(monkeypatch, full.state, grown)
+    assert sent == []
+
+
+def test_daily_new_model_watching_needs_a_prior_snapshot_and_respects_the_limit(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [
+                *CATALOGS["https://groq.test"]["data"],
+                *({"id": f"meta-llama/new-{i}"} for i in range(5)),
+            ]
+        },
+    }
+    _, sent = _daily(monkeypatch, {}, grown, new_models=True)
+    assert sent == []  # first sight of a provider is the weekly run's job
+    _, sent = _daily(monkeypatch, full.state, grown, new_models=True, new_model_limit=2)
+    assert len(sent) == 2
+
+
+def test_models_the_budget_could_not_cover_stay_new_for_the_next_daily_run(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [
+                *CATALOGS["https://groq.test"]["data"],
+                *({"id": f"meta-llama/new-{i}"} for i in range(3)),
+            ]
+        },
+    }
+    first, sent = _daily(monkeypatch, full.state, grown, new_models=True, new_model_limit=1)
+    assert len(sent) == 1
+    second, sent2 = _daily(monkeypatch, first.state, grown, new_models=True, new_model_limit=1)
+    assert len(sent2) == 1 and sent2 != sent
+    listed = {m[0] for m in second.state["catalogs"]["groq"]["models"]}
+    assert listed >= {sent[0], sent2[0]}
+
+
+def test_an_existing_empty_complete_snapshot_still_watches_for_new_models(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["catalogs"]["groq"]["models"] = []
+    state["catalogs"]["groq"]["complete"] = True
+    state["canaries"] = {}
+    _, sent = _daily(monkeypatch, state, CATALOGS, new_models=True)
+    assert sent

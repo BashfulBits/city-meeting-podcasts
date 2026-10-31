@@ -411,8 +411,9 @@ export async function handleRequest(request, env) {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
     const detailed = url.searchParams.get("detail") === "1";
     const counterOnly = url.searchParams.get("rate_failures") === "1";
+    const availabilityOnly = url.searchParams.get("availability_failures") === "1";
     const routesOnly = url.searchParams.get("routes") === "1";
-    if (Number(counterOnly) + Number(detailed) + Number(routesOnly) > 1) {
+    if (Number(counterOnly) + Number(availabilityOnly) + Number(detailed) + Number(routesOnly) > 1) {
       return errorResponse(400, "invalid_request", "stats modes conflict");
     }
     // `failure_class=a,b` restricts route_failures to those classes (at most 10 names).
@@ -424,6 +425,8 @@ export async function handleRequest(request, env) {
     try {
       const snapshot = counterOnly
         ? await coordinator.rateFailureStats(Date.now())
+        : availabilityOnly
+        ? await coordinator.availabilityFailureStats(Date.now())
         : routesOnly
         ? await coordinator.routeInventoryStats(Date.now(), limit)
         : detailed

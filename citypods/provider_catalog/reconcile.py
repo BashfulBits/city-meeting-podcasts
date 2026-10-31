@@ -62,6 +62,8 @@ CANARY_MEMORY_DAYS = 28
 # when the Worker reports quota left (review/48 R3).
 SCARCE_RPD = 50
 SCARCE_CHECK_DAYS = 28
+# Most newly listed models a daily incremental run will canary, across all providers.
+DAILY_NEW_MODEL_LIMIT = 6
 # New-route discovery runs on the weekly full scan after the existing route gates pass.
 DISCOVERY_ACTIVATION_ENABLED = True
 DISCOVERY_SCHEDULED_ENABLED = True
@@ -365,8 +367,11 @@ def reconcile(
     discovery_receipt_ids: Mapping[str, str] | None = None,
     discovery_run_id: str = "",
     retry_candidate_keys: set[str] | None = None,
+    new_models: bool = False,
+    new_model_limit: int = DAILY_NEW_MODEL_LIMIT,
 ) -> Report:
     report = Report(floor=quality.floor)
+    new_model_budget = new_model_limit
     if not isinstance(discovery_axis, str) or discovery_axis not in {"all", "input", "output"}:
         raise ValueError("invalid discovery axis")
     if type(discovery_automatic) is not bool:
@@ -444,25 +449,40 @@ def reconcile(
             report.observations.append(f"{provider}: no plugin or no config; skipped")
             continue
         provider_routes = [r for r in routes if r.get("provider") == provider]
-        # A daily run calls only providers with deferred routes or bounded early-check triggers.
-        if (
+        # A daily run calls only providers with deferred routes, bounded early-check triggers or,
+        # when `new_models` is set, a catalog that lists a model absent from the last snapshot.
+        prior = (previous_state.get("catalogs") or {}).get(provider) or {}
+        # An empty snapshot only counts when it was a complete listing, not a failed fetch.
+        prior_models = prior.get("models")
+        if not prior_models and prior.get("complete") is not True:
+            prior_models = None
+        has_work = any(
+            str(r.get("route_id")) in deferred
+            or str(r.get("route_id")) in (early_rate_checks or set())
+            for r in provider_routes
+        ) or any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
+        watch_new = bool(
             due_only
-            and not any(
-                str(r.get("route_id")) in deferred
-                or str(r.get("route_id")) in (early_rate_checks or set())
-                for r in provider_routes
-            )
-            and not any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
-        ):
+            and new_models
+            and new_model_budget > 0
+            and isinstance(prior_models, (list, tuple))
+        )
+        if due_only and not has_work and not watch_new:
             continue
         catalog = fetch_catalog(rules, cfg, session)
+        fresh_names: set[str] | None = None
+        if watch_new:
+            known = {r[0] for r in prior_models if isinstance(r, (list, tuple)) and r}
+            fresh_names = set() if catalog.error else set(catalog.models) - known
+            if not has_work and not fresh_names:
+                continue
         if catalog.error:
             report.anomalies.append(
                 Anomaly(provider, f"{provider}:catalog", "-", "inconclusive", catalog.error, False)
             )
         else:
             report.observations.append(f"{provider}: catalog lists {len(catalog.models)} models")
-        ctx = rules.prepare(session) if rules.prepare and not due_only else {}
+        ctx = rules.prepare(session) if rules.prepare and (not due_only or fresh_names) else {}
         if ctx and ctx.get("error"):
             report.observations.append(
                 f"{provider}: free-evidence source unavailable: {ctx['error']}"
@@ -624,7 +644,7 @@ def reconcile(
         configured_models = {str(r.get("upstream_model") or "") for r in provider_routes}
         configured_identities = {_identity(m, rules.free_suffix): m for m in configured_models if m}
         if (
-            (not due_only or retry_candidate_keys)
+            (not due_only or retry_candidate_keys or fresh_names)
             and not rules.observation_only
             and not catalog.error
         ):
@@ -673,7 +693,14 @@ def reconcile(
                     retry_models_seen.add(key)
                 if candidate_keys is not None and key not in candidate_keys:
                     continue
-                if retry_candidate_keys is not None and key not in retry_candidate_keys:
+                is_fresh = fresh_names is not None and model in fresh_names
+                if (
+                    retry_candidate_keys is not None
+                    and key not in retry_candidate_keys
+                    and not is_fresh
+                ):
+                    continue
+                if fresh_names is not None and retry_candidate_keys is None and not is_fresh:
                     continue
                 if model in configured_models:
                     terminal_retry(model, record, "route_already_configured")
@@ -755,7 +782,20 @@ def reconcile(
                     f"{provider}: {len(candidates) - CANARY_BUDGET_PER_PROVIDER} more free "
                     f"candidate(s) wait for later runs (budget {CANARY_BUDGET_PER_PROVIDER}/run)"
                 )
+            ordered = candidates
             candidates = candidates[:CANARY_BUDGET_PER_PROVIDER]
+            if fresh_names is not None:
+                retries = [c for c in candidates if c[0] not in fresh_names]
+                fresh = [c for c in candidates if c[0] in fresh_names]
+                fresh = fresh[: max(0, new_model_budget)]
+                new_model_budget -= len(fresh)
+                candidates = retries + fresh
+                # A new model this run could not afford to canary stays "new" for the next run.
+                unserved = {c[0] for c in ordered if c[0] in fresh_names} - {c[0] for c in fresh}
+                if unserved:
+                    catalogs[provider]["models"] = tuple(
+                        m for m in catalogs[provider]["models"] if m[0] not in unserved
+                    )
 
         context_ready = bool(context_run) and not due_only and not context_run.get("abandoned")
         if context_ready:

@@ -3417,25 +3417,43 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   /** Bounded current-day rate counters; deliberately no scheduler transaction or job reads. */
   async rateFailureStats(now) {
+    return this._failureCounters(now, "rate_failures", ["own_rpm", "own_tpm", "unknown_429"], false);
+  }
+
+  /**
+   * Bounded current-day availability counters, one class per HTTP status so counts are exact: a
+   * retired (410 `route_gone`), forbidden or unentitled (403 `route_forbidden`) or missing (404
+   * `route_not_found`) route. A reconcile run uses them to pick routes for an immediate
+   * independent health check.
+   */
+  async availabilityFailureStats(now) {
+    return this._failureCounters(
+      now, "availability_failures", ["route_gone", "route_forbidden", "route_not_found"], false
+    );
+  }
+
+  _failureCounters(now, kind, classes, withStatus) {
     const utcDay = new Date(now).toISOString().slice(0, 10);
     const routes = Object.keys(this._dispatchLimits()?.routes_by_id || {}).sort();
-    const snapshot = { kind: "rate_failures", utc_day: utcDay, route_failures: [], truncated: false };
+    const snapshot = { kind, utc_day: utcDay, route_failures: [], truncated: false };
     if (routes.length > 128) return { ...snapshot, truncated: true };
     const sql = this._getSql();
     const packed = this._packed();
     for (const route of routes) {
-      for (const failureClass of ["own_rpm", "own_tpm", "unknown_429"]) {
+      for (const failureClass of classes) {
         if (packed) {
           const cell = packed.shard(shardFor(route)).failures[failureKey(utcDay, route, failureClass)];
           if (cell) {
-            snapshot.route_failures.push({ utc_day: cell.utc_day, route_id: cell.route_id,
-              failure_class: cell.failure_class, count: cell.count });
+            const row = { utc_day: cell.utc_day, route_id: cell.route_id,
+              failure_class: cell.failure_class, count: cell.count };
+            if (withStatus) row.last_status = cell.last_status ?? null;
+            snapshot.route_failures.push(row);
           }
           continue;
         }
         const rows = [...sql.exec(
-          `SELECT utc_day, route_id, failure_class, count FROM route_failures
-           WHERE utc_day = ? AND route_id = ? AND failure_class = ?`,
+          `SELECT utc_day, route_id, failure_class, count${withStatus ? ", last_status" : ""}
+           FROM route_failures WHERE utc_day = ? AND route_id = ? AND failure_class = ?`,
           utcDay, route, failureClass
         )];
         snapshot.route_failures.push(...rows);
@@ -7248,6 +7266,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
               failureCells.set(key, foldFailureCell(failureCells.get(key), {
                 now, routeId, failureClass, status: result.provider_status_code, detail,
               }));
+              // Telemetry only: these statuses are classed upstream_capacity (404) or
+              // route_unavailable (401/403/410), which cannot say how many of the day's failures
+              // were which status. A per-status cell lets the daily reconcile count them.
+              const statusClass = { 404: "route_not_found", 410: "route_gone", 403: "route_forbidden" }[
+                result.provider_status_code
+              ];
+              if (statusClass) {
+                const extra = JSON.stringify([routeId, statusClass]);
+                failureCells.set(extra, foldFailureCell(failureCells.get(extra), {
+                  now, routeId, failureClass: statusClass, status: result.provider_status_code,
+                  detail: null,
+                }));
+              }
             }
           }
         }
