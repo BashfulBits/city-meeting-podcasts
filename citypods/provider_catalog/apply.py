@@ -637,7 +637,7 @@ def proposal_body(plan: EditPlan) -> str:
             )
         lines.append("")
     if plan.route_notes:
-        lines += ["Authenticated input-cap evidence for proposed routes:"]
+        lines += ["Input-cap evidence for proposed routes (measured, or marked provisional):"]
         for route_id, notes in plan.route_notes:
             lines.append(f"- `{route_id}`")
             lines.extend(f"  - {note}" for note in notes)
