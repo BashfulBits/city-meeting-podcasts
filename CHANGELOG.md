@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Declared model aliases.** `config/provider_limits.yml` accepts a `model_aliases` section
+  (`old/id: {to, reason, decided_on}`) that keeps a retired model ID resolving to a newer model
+  with at least one route, so queued and future jobs naming it are served instead of failing as
+  `route_retired` when its last route is removed. The compiler rejects an alias whose source still
+  has routes or whose target has none. The Worker needed no change: it already canonicalizes
+  allowed models through `model_aliases`.
+
 - **Provider catalog route updates (2026-10-31).** Adds BeatAPI GLM 5.3 Flash and MiniMax M3.1
   Flash, a secondary-account BeatAPI Gemini 3.8 Flash, Kilo Nemotron 3.5 Super VL, and NVIDIA
   GLM 5.3 Flash and DiffusionGemma routes, each pooled by model key and not yet assigned to any
