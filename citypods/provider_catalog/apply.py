@@ -11,7 +11,7 @@ from typing import Any
 
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.provider_catalog.evidence import RouteEvidence, candidate_digest, digest
-from citypods.provider_catalog.issue import decision_choices
+from citypods.provider_catalog.issue import decision_choices, method_choice
 from citypods.provider_catalog.reconcile import Report
 from citypods.review_issues import DECISION_BLOCK_END, DECISION_BLOCK_START, checked_decisions
 
@@ -73,6 +73,8 @@ class EditPlan:
     route_notes: tuple[tuple[str, tuple[str, ...]], ...] = ()
     # Model losing its last route, the lanes that list it, and ready-to-review alias targets.
     last_routes: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = ()
+    # Route ID, verified replacement method, and the date it was verified.
+    method_changes: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -158,6 +160,19 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
                     route_digest=anomaly.config_digest,
                 )
             )
+    for anomaly in snapshot.anomalies:
+        if anomaly.verdict != "structured_output_invalid" or not anomaly.alternative_method:
+            continue
+        if method_choice(anomaly.route_id, anomaly.alternative_method) in checked:
+            result.append(
+                Decision(
+                    anomaly.provider,
+                    anomaly.alternative_method,
+                    "set_method",
+                    route_id=anomaly.route_id,
+                    route_digest=anomaly.config_digest,
+                )
+            )
     for change in snapshot.rate_changes:
         if change.action == "offer_increase" and change.choice in checked:
             result.append(Decision(change.provider, change.choice, "increase_rate"))
@@ -198,7 +213,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
     routes, backups, ignored, applied, deferred, rejected = [], [], [], [], [], []
     route_notes = []
     existing = list(config.limits.get("routes") or [])
-    paid_routes, acknowledged, removals = [], [], []
+    paid_routes, acknowledged, removals, method_changes = [], [], [], []
     anomalies = {a.route_id: a for a in report.anomalies}
     providers = config.limits.get("providers") or {}
     for decision in decisions:
@@ -229,6 +244,38 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 )
                 continue
             removals.append(decision.route_id)
+            continue
+        if decision.action == "set_method":
+            route = next((r for r in existing if r.get("route_id") == decision.route_id), None)
+            proof = anomalies.get(decision.route_id)
+            if route is None:
+                rejected.append(f"{decision.route_id}: route missing")
+            elif (
+                route.get("provider") != decision.provider
+                or not proof
+                or proof.verdict != "structured_output_invalid"
+                or proof.alternative_method != decision.model
+                or proof.contended
+                or proof.observed_on != config.today.isoformat()
+                or proof.config_digest != digest(route)
+                or decision.route_digest != digest(route)
+            ):
+                deferred.append(
+                    f"{decision.route_id}: fresh paused unchanged structured-output proof required"
+                )
+            elif decision.model not in config.limits.get("structured_output_methods", {}):
+                rejected.append(f"{decision.route_id}: unknown method {decision.model}")
+            elif not route.get("structured_output_method"):
+                deferred.append(
+                    f"{decision.route_id}: the route inherits its method from the provider; "
+                    "edit the provider default manually"
+                )
+            else:
+                method_changes.append((decision.route_id, decision.model, config.today.isoformat()))
+                applied.append(
+                    f"{decision.route_id}: structured-output method "
+                    f"{route['structured_output_method']} → {decision.model}"
+                )
             continue
         if decision.action == "keep_paid":
             matches = [r for r in existing if r.get("route_id") == decision.route_id]
@@ -438,10 +485,10 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                     cap["admitted_input"] + cap["generated_output"],
                 )
                 if cap
-                else provider_context_claim,
+                else (provider_context_claim or PROVISIONAL_INPUT_CEILING),
                 "hard_input_ceiling": cap["admitted_input"]
                 if cap
-                else min(PROVISIONAL_INPUT_CEILING, provider_context_claim),
+                else min(PROVISIONAL_INPUT_CEILING, provider_context_claim or 10**9),
                 "structured_output_method": proof.structured_output_method,
                 "structured_output_verified_on": proof.structured_output_verified_on,
                 "rpm": 1,
@@ -536,6 +583,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         primary_changes=primaries,
         route_notes=tuple(route_notes),
         last_routes=last_routes,
+        method_changes=tuple(method_changes),
     )
 
 
@@ -605,19 +653,20 @@ PROVISIONAL_INPUT_CEILING = 16_000
 
 
 def _provisional_input_claim(proof, decision) -> bool:
-    """A route-only add may use the provider's published context while it awaits discovery.
+    """A route-only add may start at a provisional cap while it awaits discovery.
 
     Lane placement still needs measured input evidence: a lane can send any prompt, a route with
-    no lane is only eligible for work that already names its model.
+    no lane is only eligible for work that already names its model. A provider that publishes no
+    context size (NVIDIA lists none) gets the same conservative ceiling.
     """
-    claim = proof.input_context_limit
-    return not decision.lanes and type(claim) is int and claim > 0
+    return not decision.lanes
 
 
 def _provisional_notes(claim):
+    held = min(PROVISIONAL_INPUT_CEILING, claim or PROVISIONAL_INPUT_CEILING)
     return (
         f"Provisional input cap: no provider-counted evidence yet; hard_input_ceiling is held at "
-        f"{min(PROVISIONAL_INPUT_CEILING, claim)} (provider claim {claim}).",
+        f"{held} (provider claim {claim or 'not published'}).",
         "Route only, no lane placement; a discovery run must measure the cap before any lane add.",
     )
 
@@ -719,6 +768,12 @@ def proposal_body(plan: EditPlan) -> str:
         lines.extend(
             f"- `{route_id}` on account `{account_id}`: {verdict} (HTTP {status}) at `{checked_at}`"
             for route_id, account_id, verdict, status, checked_at in plan.removal_confirmations
+        )
+        lines.append("")
+    if plan.method_changes:
+        lines += ["Structured-output method changes (re-verified on the route today):"]
+        lines.extend(
+            f"- `{rid}` → `{method}` (verified {on})" for rid, method, on in plan.method_changes
         )
         lines.append("")
     if plan.routes:

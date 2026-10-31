@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import datetime
 import re
 import textwrap
 
@@ -151,6 +152,27 @@ def _set_route_free(text, route_id):
     if not isinstance(node, ScalarNode) or not node.tag.endswith(":bool"):
         raise ValueError("paid route requires an explicit boolean free field")
     return text[: node.start_mark.index] + "false" + text[node.end_mark.index :]
+
+
+def _set_route_scalar(text, route_id, field, value):
+    """Replace an existing explicit scalar on one block route; never insert a new key."""
+    routes = _node(text, ("routes",))
+    if not isinstance(routes, SequenceNode) or routes.flow_style:
+        raise ValueError("route edits require a block route sequence")
+    matches = [
+        n
+        for n in routes.value
+        if isinstance(n, MappingNode)
+        and any(k.value == "route_id" and v.value == route_id for k, v in n.value)
+    ]
+    if len(matches) != 1 or matches[0].flow_style:
+        raise ValueError("route missing or unsupported")
+    node = next((v for k, v in matches[0].value if k.value == field), None)
+    if not isinstance(node, ScalarNode):
+        raise ValueError(f"route has no explicit {field}")
+    # Keep the scalar's own quoting: a tool-written route quotes a date-like string.
+    quote = node.style if node.style in {"'", '"'} else ""
+    return text[: node.start_mark.index] + f"{quote}{value}{quote}" + text[node.end_mark.index :]
 
 
 def _remove_routes(text, route_ids):
@@ -444,6 +466,25 @@ def apply_config_edits(texts, plan: EditPlan):
             raise ValueError("paid route missing or unsupported")
         matches[0]["free"] = False
         output[SOURCE_PATHS[0]] = _set_route_free(output[SOURCE_PATHS[0]], rid)
+    for rid, method, verified_on in plan.method_changes:
+        matches = [r for r in limits["routes"] if r.get("route_id") == rid]
+        if len(matches) != 1 or not matches[0].get("structured_output_method"):
+            raise ValueError("method change route missing or unsupported")
+        if rid in plan.removed_routes:
+            raise ValueError("method change conflicts with removal")
+        matches[0]["structured_output_method"] = method
+        output[SOURCE_PATHS[0]] = _set_route_scalar(
+            output[SOURCE_PATHS[0]], rid, "structured_output_method", method
+        )
+        if "structured_output_verified_on" in matches[0]:
+            # YAML parses an unquoted date as a date; keep the in-memory view equal to the text.
+            was_date = isinstance(matches[0]["structured_output_verified_on"], datetime.date)
+            matches[0]["structured_output_verified_on"] = (
+                datetime.date.fromisoformat(verified_on) if was_date else verified_on
+            )
+            output[SOURCE_PATHS[0]] = _set_route_scalar(
+                output[SOURCE_PATHS[0]], rid, "structured_output_verified_on", verified_on
+            )
     additions = []
     for pairs in plan.routes:
         route = dict(pairs)

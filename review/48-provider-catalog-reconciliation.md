@@ -3565,3 +3565,42 @@ Still to build: nothing in phase 1; see the phase 3 note below for the increment
   advances when a provider is processed, except for new models the budget could not cover, which
   stay new for the next run. Results merge into the rolling issue's last full report.
 
+#### Phase 5: report rework and state in an artifact — 2026-10-31
+
+Run #81 produced an issue that showed every model unscored, only 3 of 5 anomalies and a stale
+"removal requires deployed Slice 3 rescue", because 58 KB of the 64 KB body was the embedded
+machine state.
+
+- **State storage (decision).** `state_store.py` splits the state: `catalogs`, `canaries` and
+  `structured_checks` (about 315 KB uncompressed) go to the run's `provider-catalog-state-<run
+  id>` artifact (90 days, refreshed by every daily run); the issue keeps `last_full` (candidates,
+  anomalies, rate and context changes), rate evidence references, route-check dates and
+  `bulk_ref {run_id, sha256}`. The next run restores the artifact by that run ID and digest.
+  Decisions never read the bulk (parse/plan/retire use `last_full` only), so a missing, expired or
+  tampered artifact only means the next run re-canaries and re-snapshots (daily new-model watching
+  waits for a weekly snapshot). A forged issue edit cannot inject bulk memory: the digest binds it.
+  Alternative considered: everything in the artifact. Rejected, because the tick-validation and
+  `/apply` snapshot must stay readable from the issue alone and the issue is the audit trail.
+- **Scoring.** AA's API reference (read directly 2026-11-01) documents one free language-model
+  endpoint, `GET /api/v2/data/llms/models`: `x-api-key`, no parameters, no pagination, 1,000
+  requests/day, attribution required, `model_creator.slug` and `slug` as stable identifiers and
+  `evaluations.artificial_analysis_intelligence_index` that may be null. `fetch_quality_index` now
+  calls that endpoint first (one parameterless request per run) and falls back to the earlier
+  paginated `/language/models/free` path only on an HTTP error or empty result; malformed data is
+  not retried. Scores are keyed by AA's creator slug (and the slugified display name as an alias).
+  Failures are reported in `Report.quality_error` and shown in the issue header. Matching gains the
+  `minimaxai` publisher alias and strips `-<N>b-a<M>b` MoE size tags from both sides (still
+  exact-or-single-match only).
+- **Model facts.** `model_facts.py`: provider catalog record (description, created, expiry,
+  modalities), NVIDIA Build markdown card, and a single unambiguous Hugging Face match (parameters,
+  license, card). Best effort and display only; all text is reduced to inert one-line text.
+- **Layout.** Decisions are one `###` section per model (providers grouped), with a description,
+  a facts line (size, context, release, inputs, license, AA, free-tier expiry), per-provider rows
+  and research links. Only the `- [ ]` lines are machine-read, so the prose is inert.
+- **Anomalies.** All are listed, each with a **Next** line (retired: automatic removal PR from the
+  next daily run, or why it cannot; paid: decide; structured-output invalid: switch method).
+- **Method switch.** `Anomaly.alternative_method` offers `switch structured-output method to X`;
+  `/apply` re-verifies on the route (fresh, uncontended, unchanged digest, known method, explicit
+  route-level value) and edits `structured_output_method` and `structured_output_verified_on` in
+  place. A route that inherits its method from the provider is deferred.
+

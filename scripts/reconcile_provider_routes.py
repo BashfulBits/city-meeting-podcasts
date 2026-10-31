@@ -428,6 +428,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sync-issues", action="store_true")
     parser.add_argument("--due-only", action="store_true")
     parser.add_argument(
+        "--state-artifact",
+        type=Path,
+        help="write bulk reconcile memory here (uploaded as an artifact) instead of the issue",
+    )
+    parser.add_argument(
         "--incremental",
         action="store_true",
         help="with --due-only: also health-check the least recently checked share of routes",
@@ -535,6 +540,17 @@ def main(argv: list[str] | None = None) -> int:
     today = datetime.now(UTC).date()
     existing = find_issue() if args.sync_issues else None
     previous_state = decode_state((existing or {}).get("body") or "")
+    if previous_state.get("bulk_ref") and os.environ.get("GITHUB_REPOSITORY"):
+        from citypods.provider_catalog.evidence import _gh_download, _gh_json
+        from citypods.provider_catalog.state_store import restore_bulk
+
+        previous_state, note = restore_bulk(
+            previous_state,
+            repository=os.environ["GITHUB_REPOSITORY"],
+            api=_gh_json,
+            download=_gh_download,
+        )
+        print(f"state: {note}")
     rate_run_id = ""
     early = set()
     if args.rate_evidence:
@@ -866,6 +882,12 @@ def main(argv: list[str] | None = None) -> int:
             backtest_summary(backtest_discovery(limits, load_lanes(), quality, session=session))
         )
         report.state["last_full"]["observations"] = list(report.observations)
+    if args.state_artifact and os.environ.get("GITHUB_RUN_ID"):
+        from citypods.provider_catalog.state_store import bulk_ref, encode_bulk, split_bulk
+
+        bulk = split_bulk(report.state)[1]
+        args.state_artifact.write_bytes(encode_bulk(bulk))
+        report.state["bulk_ref"] = bulk_ref(bulk, os.environ["GITHUB_RUN_ID"])
     print(
         f"reconciliation: {len(report.candidates)} candidate(s), "
         f"{len(report.anomalies)} anomaly(ies), {len(report.observations)} observation(s)"
