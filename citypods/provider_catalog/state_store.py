@@ -4,9 +4,12 @@ The rolling issue used to carry everything the next run remembers (provider cata
 canary memory, structured-output evidence) as a base64 blob. That was 340 KB of JSON and, even
 compressed, filled GitHub's 64 KB body limit, squeezing the human report out (2026-10-30/31).
 The bulk now goes to the run's `provider-catalog-state-<run id>` artifact; the issue holds the
-run ID and the SHA-256 of the file. Everything `/apply` and the decision block need stays in the
-issue. A missing, expired or mismatching artifact only costs the next run its memory (it
-re-canaries and re-snapshots); it can never change a decision, because decisions never read it.
+run ID and the SHA-256 of the file. Because the issue is editable, the run itself is checked (our
+reconcile workflow, on main, scheduled or manually dispatched) before its artifact is read.
+
+Everything `/apply` and the decision block need stays in the issue. A missing, expired or
+mismatching artifact only costs the next run its memory (it re-canaries and re-snapshots); it can
+never change a decision, because decisions never read it.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from typing import Any
 BULK_KEYS = ("catalogs", "canaries", "structured_checks")
 ARTIFACT_PREFIX = "provider-catalog-state-"
 STATE_FILE = "provider-catalog-state.json"
+RECONCILE_WORKFLOW = ".github/workflows/provider-catalog-reconcile.yml"
 MAX_BYTES = 20_000_000
 
 
@@ -53,6 +57,16 @@ def restore_bulk(state: dict[str, Any], *, repository: str, api, download) -> tu
     ):
         return state, "state artifact reference is malformed; starting without bulk memory"
     try:
+        # The reference comes from an editable issue, so trust only a run of our own workflow on
+        # main; that is what makes the artifact something only this repository's CI could write.
+        run = api(f"repos/{repository}/actions/runs/{run_id}")
+        if (
+            run.get("path") != RECONCILE_WORKFLOW
+            or run.get("head_branch") != "main"
+            or run.get("event") not in {"schedule", "workflow_dispatch"}
+            or (run.get("head_repository") or {}).get("full_name") != repository
+        ):
+            return state, f"run {run_id} is not a reconcile run on main; no bulk memory"
         listing = api(f"repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100")
         found = [
             a

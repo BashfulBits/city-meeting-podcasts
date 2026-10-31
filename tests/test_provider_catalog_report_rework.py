@@ -57,6 +57,17 @@ def _artifact(bulk, run_id="42", **meta):
     return listing, buffer.getvalue()
 
 
+def _api(listing, **run):
+    ours = {
+        "path": ".github/workflows/provider-catalog-reconcile.yml",
+        "head_branch": "main",
+        "event": "schedule",
+        "head_repository": {"full_name": "o/r"},
+        **run,
+    }
+    return lambda path: listing if path.endswith("/artifacts?per_page=100") else ours
+
+
 def test_bulk_state_leaves_the_issue_and_comes_back_by_run_and_digest():
     state = {"catalogs": {"a": {}}, "canaries": {"k": 1}, "structured_checks": {}, "last_full": {}}
     compact, bulk = split_bulk(state)
@@ -68,7 +79,7 @@ def test_bulk_state_leaves_the_issue_and_comes_back_by_run_and_digest():
     listing, archive = _artifact(bulk)
     issue_state = {**compact, "bulk_ref": bulk_ref(bulk, "42")}
     restored, note = restore_bulk(
-        issue_state, repository="o/r", api=lambda _p: listing, download=lambda _p: archive
+        issue_state, repository="o/r", api=_api(listing), download=lambda _p: archive
     )
     assert restored["catalogs"] == {"a": {}} and restored["canaries"] == {"k": 1}
     assert "restored" in note
@@ -85,9 +96,18 @@ def test_a_missing_expired_or_tampered_artifact_costs_memory_only():
     ]
     for lst, data, word in cases:
         state, note = restore_bulk(
-            dict(ref), repository="o/r", api=lambda _p, lst=lst: lst, download=lambda _p, d=data: d
+            dict(ref), repository="o/r", api=_api(lst), download=lambda _p, d=data: d
         )
         assert "catalogs" not in state and word in note
+    for foreign in (
+        {"head_branch": "evil"},
+        {"path": ".github/workflows/x.yml"},
+        {"event": "pull_request"},
+    ):
+        state, note = restore_bulk(
+            dict(ref), repository="o/r", api=_api(listing, **foreign), download=lambda _p: archive
+        )
+        assert "catalogs" not in state and "not a reconcile run" in note
     bad = {"bulk_ref": {"run_id": "../x", "sha256": "z"}}
     assert "malformed" in restore_bulk(bad, repository="o/r", api=None, download=None)[1]
     # No reference: an inline (older) state is already complete.
@@ -337,3 +357,29 @@ def test_a_route_only_add_with_no_published_context_gets_the_provisional_cap():
     assert route["hard_input_ceiling"] == route["input_context_limit"] == 16_000
     assert "not published" in plan.route_notes[0][1][0]
     assert hashlib.sha256(b"").hexdigest() and json.dumps({})
+
+
+def test_a_method_switch_keeps_the_quoting_of_tool_written_routes():
+    config, anomaly, route = _method_fixture()
+    quoted = ROUTES_YAML.replace(
+        "structured_output_verified_on: 2026-10-01", "structured_output_verified_on: '2026-10-01'"
+    )
+    config.texts[SOURCE_PATHS[0]] = quoted
+    config.limits["routes"][0]["structured_output_verified_on"] = "2026-10-01"
+    report = Report(anomalies=[anomaly])
+    decision = Decision(
+        "host", "json_object", "set_method", route_id="r1", route_digest=digest(route)
+    )
+    plan = plan_apply(report, (decision,), config)
+    out = apply_config_edits(config.texts, plan)[SOURCE_PATHS[0]]
+    assert "structured_output_verified_on: '2026-10-31'" in out
+
+
+def test_the_nvidia_card_fetch_refuses_foreign_hosts_and_never_follows_redirects():
+    from citypods.provider_catalog.model_facts import nvidia_card_summary
+
+    class Boom:
+        def get(self, *a, **k):
+            raise AssertionError("must not fetch")
+
+    assert nvidia_card_summary(Boom(), (("NVIDIA Build", "https://evil.test/x"),)) == ""

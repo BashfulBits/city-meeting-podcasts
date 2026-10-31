@@ -109,6 +109,10 @@ def _group_key(candidate) -> str:
 def _anomaly_next(anomaly) -> str:
     """What happens to this anomaly, or what the maintainer can do about it."""
     if anomaly.verdict in {"retired", "not_served"}:
+        from citypods.provider_catalog.retire import RETIREMENTS_ENABLED
+
+        if not RETIREMENTS_ENABLED:
+            return "automatic removal PRs are not enabled; remove the route by hand"
         stalls = any(not alternates for _lane, alternates in anomaly.lane_usage)
         if stalls:
             return (

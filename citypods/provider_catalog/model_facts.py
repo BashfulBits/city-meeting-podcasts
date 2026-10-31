@@ -16,6 +16,8 @@ from typing import Any
 
 import requests
 
+from citypods.security import SecurityError, validate_source_url
+
 MAX_TEXT = 220
 _SIZE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)([bt])(?:-a(\d+(?:\.\d+)?)b)?(?![a-z0-9])", re.I)
 HF_SEARCH = "https://huggingface.co/api/models"
@@ -124,12 +126,15 @@ def hugging_face_facts(session: requests.Session, model: str) -> dict[str, str]:
 def nvidia_card_summary(session: requests.Session, links) -> str:
     """First descriptive paragraph of an NVIDIA Build model card (markdown), if there is one."""
     url = next((u for label, u in links if label == "NVIDIA Build"), None)
-    if not url or not url.startswith("https://build.nvidia.com/"):
+    if not url:
         return ""
+    card = url.rstrip("/") + ".md"
     try:
-        response = session.get(url.rstrip("/") + ".md", timeout=10)
+        # The URL carries a provider-supplied model ID: fixed host, public address, no redirects.
+        validate_source_url(card, allowed_hosts=["build.nvidia.com"])
+        response = session.get(card, timeout=10, allow_redirects=False)
         text = response.text[:20_000] if response.ok else ""
-    except (requests.RequestException, ValueError, AttributeError):
+    except (SecurityError, requests.RequestException, ValueError, AttributeError, TypeError):
         return ""
     for block in re.split(r"\n\s*\n", text):
         stripped = block.strip()

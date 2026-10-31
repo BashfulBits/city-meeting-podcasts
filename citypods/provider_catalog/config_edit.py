@@ -170,7 +170,9 @@ def _set_route_scalar(text, route_id, field, value):
     node = next((v for k, v in matches[0].value if k.value == field), None)
     if not isinstance(node, ScalarNode):
         raise ValueError(f"route has no explicit {field}")
-    return text[: node.start_mark.index] + value + text[node.end_mark.index :]
+    # Keep the scalar's own quoting: a tool-written route quotes a date-like string.
+    quote = node.style if node.style in {"'", '"'} else ""
+    return text[: node.start_mark.index] + f"{quote}{value}{quote}" + text[node.end_mark.index :]
 
 
 def _remove_routes(text, route_ids):
