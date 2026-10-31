@@ -140,7 +140,7 @@ jobs:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: |
-          args=(--sync-issues)
+          args=(--sync-issues --state-artifact provider-catalog-state.json)
           if [ "$DUE_ONLY" = "true" ]; then
             args+=(--due-only)
           fi
@@ -181,6 +181,15 @@ jobs:
         with:
           name: provider-catalog-discovery-evidence-${{ github.run_id }}
           path: provider-catalog-discovery-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore
+      - name: Retain reconcile memory
+        # The next run restores this by run ID and digest (state_store.py); the issue holds neither.
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: provider-catalog-state-${{ github.run_id }}
+          path: provider-catalog-state.json
           retention-days: 90
           if-no-files-found: ignore
       - name: Retain scoped rate evidence

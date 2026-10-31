@@ -129,6 +129,7 @@ def prepare(body, base_commit, proposal_kind=None):
         for d in decisions
         if (d.action == "keep_paid" and not paid_fulfilled(d, config))
         or (d.action == "remove" and d.route_id in {r["route_id"] for r in limits["routes"]})
+        or d.action == "set_method"
     }
     report = Report()
     if selected or paid:

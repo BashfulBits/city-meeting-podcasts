@@ -41,6 +41,7 @@ from citypods.provider_catalog.evidence import (
     model_catalog_digest,
     positive_bound,
 )
+from citypods.provider_catalog.model_facts import gather_facts
 from citypods.provider_catalog.probe import (
     CANARY_TIMEOUT_SECONDS,
     STRUCTURED_METHODS,
@@ -145,6 +146,8 @@ class Candidate:
     evidence_digest: str | None = None
     # Request-cap search is advisory and belongs only to newly discovered candidates.
     discovery: dict[str, Any] | None = None
+    # Display-only model-card facts (summary, size, release, expiry); see model_facts.py.
+    facts: dict[str, str] | None = None
 
     @property
     def key(self) -> str:
@@ -167,6 +170,8 @@ class Anomaly:
     config_digest: str | None = None
     contended: bool = True
     retirement_confirmation: dict[str, Any] | None = None
+    # For structured_output_invalid: the method that did verify, offered as a one-click switch.
+    alternative_method: str | None = None
 
     @property
     def key(self) -> str:
@@ -188,6 +193,8 @@ class Report:
     context_changes: list = field(default_factory=list)
     context_attempted_routes: set[str] = field(default_factory=set)
     discovery_sessions: list[dict[str, Any]] = field(default_factory=list)
+    # Why every model is unscored (the quality fetch failed); shown at the top of the issue.
+    quality_error: str | None = None
 
     @property
     def actionable(self) -> bool:
@@ -399,6 +406,7 @@ def reconcile(
     route_checks: dict[str, str] = dict(previous_state.get("route_checks") or {})
     deferred: dict[str, str] = dict(previous_state.get("deferred") or {})
     known_anomalies = set(previous_state.get("anomalies") or [])
+    report.quality_error = quality.error
     if quality.error:
         report.observations.append(f"quality: {quality.error}; every candidate is unscored")
 
@@ -541,6 +549,9 @@ def reconcile(
                 incumbents,
                 proven_on,
                 method=method,
+            )
+            candidate.facts = (
+                gather_facts(session, provider, model, record, candidate.links) or None
             )
             accounts = cfg.get("accounts") or []
             account_id = str(accounts[0].get("id") or "") if accounts else ""
@@ -982,6 +993,10 @@ def reconcile(
                             f"verified alternative: {method}",
                             False,
                             lane_usage=lane_usage(route, lanes, routes),
+                            observed_on=today.isoformat(),
+                            config_digest=digest(route),
+                            contended=pause.contended,
+                            alternative_method=method if method and method != configured else None,
                         )
                         anomaly.new = anomaly.key not in known_anomalies
                         acknowledged = decisions.acknowledgement(provider, model, anomaly.verdict)
