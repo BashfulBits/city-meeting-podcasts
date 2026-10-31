@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/48 daily incremental reconcile.** The daily run (08:20 UTC) now also health-checks the
+  least recently checked seventh of the configured routes (`--incremental`, in addition to
+  quota-deferred checks), so every route is checked within a week and a dead or unentitled one is
+  found within days instead of at the weekly full run. Automatic route-removal PRs now follow the
+  daily run as well as the weekly one, and re-probe only the routes the rolling issue flags as
+  `retired`/`not_served` rather than every route. The weekly full run remains the backstop for new
+  candidates, canaries and discovery. The daily run is renamed `daily-incremental`.
+
 - **Review/48 `/apply` removals and last-route alias proposals.** A ticked `remove route` on a
   route that became paid is no longer deferred as "requires Slice 3 rescue": with a fresh,
   uncontended, unchanged `not_entitled` proof it removes the route and repairs the affected lanes,
