@@ -16,5 +16,9 @@ ignored:
     model: openai/gpt-oss-20b
     reason: Maintainer /apply selection
     decided_on: '2026-10-30'
+  - provider: nvidia
+    model: meta/llama-3.2-90b-vision-instruct
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
 
 acknowledged: []

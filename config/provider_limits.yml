@@ -815,27 +815,6 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
-  - route_id: zai_glm_4_5_flash_primary
-    model: zai/glm-4.5-flash
-    provider: zai
-    upstream_model: glm-4.5-flash
-    input_context_limit: 200000
-    output_context_limit: 98304
-    account_id: primary
-    hard_input_ceiling: 147140
-    rpm: 15
-    rpd: 500
-    concurrency: 2
-    free: true
-    observed_on: "2026-09-12"
-    observed_input_ceiling: 147140
-    input_per_token: 0.0
-    output_per_token: 0.0
-
-  # ==========================================
-  # OPENROUTER CURATED ROUTES (Gemma 4 & Up)
-  # ==========================================
-  # Free Endpoints (Guarded with 10 RPM / 200 RPD / Concurrency 1)
   - route_id: openrouter_google_gemma_4_31b_it_free
     model: google/gemma-4-31b-it
     provider: openrouter
@@ -935,6 +914,22 @@ routes:
   # ==========================================
   # KILO CODE ROUTES (Kilo Gateway)
   # ==========================================
+  - route_id: openrouter_nemotron_3_5_lightning_free
+    model: openrouter/nvidia/nemotron-3.5-lightning:free
+    model_key: nvidia/nemotron-3.5-lightning
+    provider: openrouter
+    upstream_model: nvidia/nemotron-3.5-lightning:free
+    input_context_limit: 1000000
+    output_context_limit: 65536
+    account_id: primary
+    concurrency: 1
+    rpm: 10
+    rpd: 200
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+
   - route_id: kilo_stepfun_step_3_7_flash_free
     model: kilo/stepfun/step-3.7-flash:free
     provider: kilo
@@ -1009,6 +1004,42 @@ routes:
   # NVIDIA becomes an additional, independent free capacity source for that same logical model
   # rather than a new one, exactly like the existing SambaNova+SiliconFlow / OpenRouter+Kilo+
   # OpenCode poolings above.
+  - route_id: kilo_nemotron_3_5_super_vl_free
+    model: kilo/nvidia/nemotron-3.5-super-vl:free
+    # Pools with the OpenRouter and NVIDIA legs of the same model.
+    model_key: openrouter/nvidia/nemotron-3.5-super-vl:free
+    provider: kilo
+    upstream_model: nvidia/nemotron-3.5-super-vl:free
+    # Kilo lists 1,000,000; the sibling legs measured 249,027 input tokens, so stay at their window.
+    input_context_limit: 262144
+    output_context_limit: 131072
+    account_id: primary
+    concurrency: 1
+    rpm: 20
+    rpd: 200
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+
+  - route_id: kilo_nemotron_3_5_lightning_free
+    model: kilo/nvidia/nemotron-3.5-lightning:free
+    model_key: nvidia/nemotron-3.5-lightning
+    provider: kilo
+    upstream_model: nvidia/nemotron-3.5-lightning:free
+    input_context_limit: 1000000
+    output_context_limit: 65536
+    account_id: primary
+    concurrency: 1
+    rpm: 20
+    rpd: 200
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+
   - route_id: nvidia_kimi_k3_free
     model: moonshotai/kimi-k3
     provider: nvidia
@@ -1307,6 +1338,41 @@ routes:
   # ==========================================
   # ORCAROUTER ROUTES (api.orcarouter.ai)
   # ==========================================
+  - route_id: nvidia_glm_5_3_flash_free
+    model: nvidia/glm-5.3-flash
+    # Pools with OrcaRouter's and BeatAPI's GLM 5.3 Flash (same normalized key; NVIDIA lists it as z-ai/).
+    model_key: zai/glm-5.3-flash
+    provider: nvidia
+    upstream_model: z-ai/glm-5.3-flash
+    # NVIDIA's /models lists no context sizes; conservative until measured.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    # Unmeasured: 2 rpm keeps the provider-wide 35 above the sum of its routes (NVIDIA quotas are per model).
+    rpm: 2
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+
+  - route_id: nvidia_diffusiongemma_26b_a4b_it_free
+    model: nvidia/diffusiongemma-26b-a4b-it
+    model_key: google/diffusiongemma-26b-a4b-it
+    provider: nvidia
+    upstream_model: google/diffusiongemma-26b-a4b-it
+    # json_object was rejected in the catalog check; the default json_schema was verified.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    # Unmeasured: 2 rpm keeps the provider-wide 35 above the sum of its routes (NVIDIA quotas are per model).
+    rpm: 2
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+
   - route_id: orcarouter_deepseek_v4_flash_free
     model: orcarouter/deepseek-v4-flash
     model_key: deepseek/deepseek-v4-flash
@@ -1538,25 +1604,6 @@ routes:
   # Second-account copies of the five BeatAPI chat routes above: same models, limits and `backup`
   # tier, on their own account window. No `yields_to`: JEV runs on the primary account, so these
   # never compete with it (moving chat load here also frees the primary window for JEV).
-  - route_id: beatapi_secondary_deepseek_v4_flash_free
-    model: beatapi/deepseek-v4-flash
-    model_key: deepseek/deepseek-v4-flash
-    provider: beatapi_secondary
-    tier: backup
-    upstream_model: deepseek-v4-flash-0731-free
-    # The 0731 revision of V4 Flash; pools with OrcaRouter's `deepseek-v4-flash-free`. Reasoning model: spends output tokens on reasoning_content.
-    input_context_limit: 128000
-    output_context_limit: 16384
-    account_id: primary
-    rpm: 1
-    rpd: 1000
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-07"
-    upstream_429_default: upstream_capacity
-
   - route_id: beatapi_secondary_deepseek_v4_1_flash_free
     model: beatapi/deepseek-v4.1-flash
     model_key: deepseek/deepseek-v4.1-flash
@@ -1564,44 +1611,6 @@ routes:
     tier: backup
     upstream_model: deepseek-v4.1-flash-free
     # Pools with NVIDIA's deepseek-v4.1-flash. Reasoning model.
-    input_context_limit: 128000
-    output_context_limit: 16384
-    account_id: primary
-    rpm: 1
-    rpd: 1000
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-07"
-    upstream_429_default: upstream_capacity
-
-  - route_id: beatapi_secondary_deepseek_v4_pro_free
-    model: beatapi/deepseek-v4-pro
-    model_key: deepseek/deepseek-v4-pro
-    provider: beatapi_secondary
-    tier: backup
-    upstream_model: deepseek-v4-pro-free
-    # No other route serves V4 Pro today (NVIDIA retired v4-pro-0813). Reasoning model.
-    input_context_limit: 128000
-    output_context_limit: 16384
-    account_id: primary
-    rpm: 1
-    rpd: 1000
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-07"
-    upstream_429_default: upstream_capacity
-
-  - route_id: beatapi_secondary_gpt_6_astra_free
-    model: beatapi/gpt-6-astra
-    model_key: openai/gpt-6-astra
-    provider: beatapi_secondary
-    tier: backup
-    upstream_model: gpt-6-astra-free
-    # Response metadata says usage_source=anthropic / billing source claude_messages, so the serving family is unverified; do not treat it as an independent OpenAI family for judge selection.
     input_context_limit: 128000
     output_context_limit: 16384
     account_id: primary
@@ -1640,6 +1649,63 @@ routes:
   # Shares the account's one successful call/minute with the five chat routes above, which yield.
   # Output is a few hundred tokens and the endpoint takes no max_tokens; output_context_limit is
   # only the scheduling reservation. Worker-only: the Python catalog gives it no direct transport.
+  - route_id: beatapi_secondary_gemini_3_8_flash_free
+    model: beatapi/gemini-3.8-flash-free
+    model_key: gemini/gemini-3.8-flash-free
+    provider: beatapi_secondary
+    tier: backup
+    upstream_model: gemini-3.8-flash-free
+    # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
+    # values every BeatAPI route here uses until a measurement replaces them.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+    upstream_429_default: upstream_capacity
+
+  - route_id: beatapi_secondary_glm_5_3_flash_free
+    model: beatapi/glm-5.3-flash
+    model_key: zai/glm-5.3-flash
+    provider: beatapi_secondary
+    tier: backup
+    upstream_model: glm-5.3-flash-free
+    # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
+    # values every BeatAPI route here uses until a measurement replaces them.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+    upstream_429_default: upstream_capacity
+
+  - route_id: beatapi_secondary_minimax_m3_1_flash_free
+    model: beatapi/minimax-m3.1-flash
+    model_key: minimax/minimax-m3.1-flash
+    provider: beatapi_secondary
+    tier: backup
+    upstream_model: minimax-m3.1-flash-free
+    # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
+    # values every BeatAPI route here uses until a measurement replaces them.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+    upstream_429_default: upstream_capacity
+
   - route_id: beatapi_jev_1_13_free
     model: beatapi/jev-1.13
     model_key: typesafe/jev-1.13
@@ -1660,3 +1726,43 @@ routes:
     observed_on: "2026-09-30"
     upstream_429_default: own_rpm
     retry_after_trustworthy: true
+  - route_id: beatapi_glm_5_3_flash_free
+    model: beatapi/glm-5.3-flash
+    model_key: zai/glm-5.3-flash
+    provider: beatapi
+    tier: backup
+    yields_to: [beatapi_jev_1_13_free]
+    upstream_model: glm-5.3-flash-free
+    # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
+    # values every BeatAPI route here uses until a measurement replaces them.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+    upstream_429_default: upstream_capacity
+
+  - route_id: beatapi_minimax_m3_1_flash_free
+    model: beatapi/minimax-m3.1-flash
+    model_key: minimax/minimax-m3.1-flash
+    provider: beatapi
+    tier: backup
+    yields_to: [beatapi_jev_1_13_free]
+    upstream_model: minimax-m3.1-flash-free
+    # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
+    # values every BeatAPI route here uses until a measurement replaces them.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+    upstream_429_default: upstream_capacity
+

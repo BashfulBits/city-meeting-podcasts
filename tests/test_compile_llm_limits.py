@@ -59,9 +59,10 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     # NVIDIA's v4.1 stays retired. `deepseek/deepseek-v4-pro` is now a real pool holding only a
     # genuine V4 Pro route (BeatAPI, 2026-10-07), never NVIDIA's v4.1.
     assert "deepseek/deepseek-v4-pro" not in worker["model_aliases"]
+    # The secondary account's V4 Pro route was removed 2026-10-31: the account is no longer
+    # entitled to it on free credit (review/48 decision).
     assert worker["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
         "beatapi_deepseek_v4_pro_free",
-        "beatapi_secondary_deepseek_v4_pro_free",
     ]
     assert worker["routes_by_id"]["nvidia_deepseek_v4_1_flash_free"]["model"] == (
         "deepseek/deepseek-v4.1-flash"
@@ -105,10 +106,11 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     # v4.1 is NVIDIA + BeatAPI, and V4 Pro is BeatAPI alone. A lane or tournament contestant
     # always knows which version answers. Lanes that want several list the names.
     deepseek_key = "deepseek/deepseek-v4-flash"
+    # The secondary account lost its free V4 Flash and V4 Pro routes 2026-10-31 (403 "not available
+    # on free credit"); both pools keep their primary-account routes.
     assert compiled["model_routes_map"][deepseek_key] == [
         "orcarouter_deepseek_v4_flash_free",
         "beatapi_deepseek_v4_flash_free",
-        "beatapi_secondary_deepseek_v4_flash_free",
     ]
     assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
         "nvidia_deepseek_v4_1_flash_free",
@@ -117,7 +119,6 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     ]
     assert compiled["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
         "beatapi_deepseek_v4_pro_free",
-        "beatapi_secondary_deepseek_v4_pro_free",
     ]
     assert "deepseek/deepseek-v4-pro" not in compiled["model_aliases"]
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
@@ -133,8 +134,9 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     nemotron_35_super_key = "openrouter/nvidia/nemotron-3.5-super-vl:free"
     # OpenRouter's canonical name for the 3.5 Super VL family, reachable via both direct NVIDIA
-    # and OpenRouter broker legs. Legacy 3 Super selectors coalesce as aliases to this pool.
-    assert len(compiled["model_routes_map"][nemotron_35_super_key]) == 2
+    # and OpenRouter broker legs, plus Kilo's broker leg (added 2026-10-31). Legacy 3 Super
+    # selectors coalesce as aliases to this pool.
+    assert len(compiled["model_routes_map"][nemotron_35_super_key]) == 3
     assert (
         compiled["model_aliases"]["openrouter/nvidia/nemotron-3-super-120b-a12b:free"]
         == nemotron_35_super_key
@@ -1041,11 +1043,18 @@ def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
     secondary = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi_secondary"]
     chat = [r for r in beatapi if r["api_shape"] != "systemone"]
     assert chat and all(r["tier"] == "backup" for r in chat)
-    # Keep the five historical secondary rows unchanged. The new review/51 Gemini route
-    # is primary-only; do not mirror it onto the banned secondary account.
-    old_primary = [r for r in chat if r["route_id"] != "beatapi_gemini_3_8_flash_free"]
-    assert len(secondary) == len(old_primary) == 5
-    assert {r["upstream_model"] for r in secondary} == {r["upstream_model"] for r in old_primary}
+    # The secondary account's free entitlement shrank 2026-10-31 (V4 Flash, V4 Pro and GPT-6
+    # Astra now answer 403 "not available on free credit"); it keeps these five routes, each of
+    # whose upstream model also exists on the primary account.
+    assert {r["route_id"] for r in secondary} == {
+        "beatapi_secondary_deepseek_v4_1_flash_free",
+        "beatapi_secondary_gpt_6_1_sol_free",
+        "beatapi_secondary_gemini_3_8_flash_free",
+        "beatapi_secondary_glm_5_3_flash_free",
+        "beatapi_secondary_minimax_m3_1_flash_free",
+    }
+    primary_models = {r["upstream_model"] for r in chat}
+    assert {r["upstream_model"] for r in secondary} <= primary_models
     assert all(r["tier"] == "backup" and not r["yields_to"] for r in secondary)
     # JEV is the account's primary (review/53 PR2); the chat backups yield to it.
     jev = worker["routes_by_id"]["beatapi_jev_1_13_free"]
