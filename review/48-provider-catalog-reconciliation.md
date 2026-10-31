@@ -2004,6 +2004,83 @@ the original measurement error. Manual dispatch uploads diagnostic artifacts eve
 records contain only error stage/type, attempted routes, available observations and accounting.
 Failed runs/artifacts remain excluded from accepted measurement and scheduled cap history.
 
+### Model-first routing, retired-model aliases and automatic route upkeep — 2026-10-31
+
+**Status: aliases implemented (declared `model_aliases`); the rest is proposed.** Prompted by the
+2026-10-30/31 `/apply` rounds, in which most ticked changes were deferred (stale comparisons,
+`identity_required`, missing input evidence, hard-coded removal deferral), each `/apply` took
+about 75 minutes, and four retired or unentitled routes were still in the catalog days after the
+reconcile had reported them.
+
+**Principle (maintainer, 2026-10-31).** Callers name a model; routes are interchangeable legs of
+that model's pool, chosen by capacity. No lane, judge or remedy path should depend on which
+provider served a call, and none should stipulate a route. The v2 dispatcher already works this
+way (`model_key` pools, `allowed_models`, capacity ranking). Remedy P3 is the exception: its
+reviewed admissions pin physical route ids and a per-route `catalog_hash`, and it checks returned
+model ids per route. Moving it to model pools is a separate change to its authorization design,
+because the reviewed binding must then name a model (and the evidence it was reviewed on) instead
+of a route record; until then, changing any pinned route's record (including its provider's
+`concurrency`) invalidates the authorization and fails the `test_remedy_*` suites.
+
+**Declared aliases (implemented).** A route's own `model` selector is already an alias of its
+`model_key`, but that alias vanishes with the route. `provider_limits.yml` now accepts
+
+```yaml
+model_aliases:
+  old/id:
+    to: new/model          # a pool with at least one route
+    reason: "AA 31.0 vs 29.4; context >=; JSON verified on every lane that used old/id"
+    decided_on: "2026-10-31"
+```
+
+The compiler rejects a source that still has routes or is already a route-derived alias, a target
+with no routes, and entries missing `reason` or `decided_on`; accepted entries join the compiled
+`model_aliases`, which the Worker and the Python scheduler already apply when they canonicalize
+allowed models, queue-model indexes and `model_routing`. A queued job that names the retired ID is
+therefore routed to the newer pool instead of failing as `route_retired`.
+
+**Last-route flagging (proposed).** When a removal (the retirement path or a `remove` decision)
+would leave a model with no routes, the reconcile run must not just remove it:
+1. Flag it in the removal PR and the rolling issue: the lanes that list the model, the count of
+   queued jobs indexed under it (the Worker's `route_retired` pass would fail them), and that no
+   other route serves it.
+2. Propose alias targets from the live catalog and the quality index, in this order: same vendor
+   and family at a higher version (`glm-4.5-flash` to `glm-5.3-flash`); otherwise the best-scoring
+   pool in the same lanes. A candidate qualifies when its Artificial Analysis index is at least
+   the retired model's, its input and output windows are at least as large, it is free, has a
+   verified structured-output method on every lane that used the old ID, and has a route with
+   headroom. Each candidate shows that evidence.
+3. Offer each qualifying candidate as a decision checkbox (`alias old/id -> new/model`).
+   `/apply` writes the `model_aliases` entry (with the evidence as `reason`) into the same PR as
+   the removal and rewrites the lane lists to the canonical ID, so the alias is a safety net and
+   not the long-term spelling.
+4. With no qualifying candidate, keep today's behavior (lane repair or escalate) but state the
+   number of jobs that will fail so the maintainer sees the cost before merging.
+A single strictly-better same-family candidate may be pre-ticked; a person still merges.
+
+**Faster, more automatic upkeep (proposed).**
+- Identity suggestions: derive a suggested `model_key` by normalizing vendor prefixes (`z-ai/` to
+  `zai/`), stripping `-free` and `:free`, and matching existing pools, and show it beside the
+  checkbox. This turns `identity_required` into a confirmation instead of a hand edit.
+- `/apply` handles `remove`: replace the hard-coded "removal requires deployed Slice 3 rescue"
+  deferral (Slice 3 is deployed) by routing it through the retirement path with fresh
+  confirmation. Propose `retired` and `not_entitled` removals automatically every week.
+- Targeted triggers: the Worker already records `route_unavailable`, 404, 410 and 403
+  "not available on free credit". Feed those to the reconcile so a single route gets an
+  independent confirmation and a removal PR within a day instead of waiting for the weekly run.
+- Route-only additions where the provider lists no context sizes may use the provider template's
+  conservative values and queue a `test again` discovery that amends the limits, instead of being
+  deferred for missing provider-counted input evidence.
+- Run time: do the no-probe rejections (`identity_required`, already configured, lane mismatch)
+  before any provider call; reuse a stored proof for an unchanged model instead of re-proving it
+  on every `/apply`; stop at the first verified structured-output method; probe separate
+  rate-limit domains (the two BeatAPI accounts, other providers) concurrently; skip health checks
+  on routes verified within N days; and log each probe with elapsed time so long steps are not
+  silent.
+- Issue size: keep the marker and decisions independent of the machine state (fixed in #2560), and
+  cap or externalize the state (catalog listings, canary history) so the body cannot fill again.
+- Show each deferral reason beside its checkbox with the next action, not only in a later comment.
+
 ### 8.12 Scope correction — 2026-10-11
 
 The maintainer narrowed review/48 to discovery/addition/removal of physical routes and bounded
