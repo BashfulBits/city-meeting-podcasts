@@ -31,7 +31,7 @@ opencv-python-headless==5.0.0.93
     # via -r constraints/chapter-research.in
 pillow==13.0.0
     # via -r constraints/chapter-research.in
-pypdf==6.21.2
+pypdf==6.21.4
     # via -r constraints/chapter-research.in
 pyyaml==6.0.3
     # via -r constraints/chapter-research.in
