@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Provider catalog `/apply` no longer defers on unrelated catalog changes.** Selections were
+  compared against a digest of the provider's entire model listing, so any other model appearing or
+  disappearing on a busy provider (Kilo, OpenRouter, NVIDIA, BeatAPI) turned every ticked candidate
+  into "candidate changed". New evidence carries a digest of the model's own entries instead, and
+  the whole-listing digest is no longer compared.
+
 - **Provider catalog issue keeps its marker.** When the machine state filled the issue body, the
   report truncation dropped the leading marker, so `/apply` and the issue lookup silently skipped.
   The marker is now always kept and display-only observations are shed from the state first.
