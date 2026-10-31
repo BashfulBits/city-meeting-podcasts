@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from glob import escape
 from typing import Any
@@ -505,14 +505,20 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         applied.append(f"{decision.key}: add ({', '.join(decision.lanes) or 'route only'})")
     removed, repairs, primaries, last_routes = [], (), (), ()
     if removals:
-        if backups:
+        if backups or paid_routes:
             deferred.extend(
-                f"{rid}: remove in a separate /apply; lane repair cannot share a PR with additions"
+                f"{rid}: remove in a separate /apply; lane repair cannot share a PR with "
+                "lane additions or paid-route decisions"
                 for rid in removals
             )
         else:
+            # Routes added by this same plan count as replacement capacity.
+            planned = replace(
+                config,
+                limits={**config.limits, "routes": [*existing, *(dict(r) for r in routes)]},
+            )
             removed, repairs, primaries, last_routes = _plan_removals(
-                removals, config, applied, rejected
+                removals, planned, applied, rejected
             )
     return EditPlan(
         config.base_commit,
@@ -772,7 +778,7 @@ def proposal_body(plan: EditPlan) -> str:
         "Validated with both compilers and catalog/lane/limit tests in the workflow.",
         "No automatic merge/deployment, pipeline bump or completed-artifact invalidation.",
         "Lane repairs apply to newly created jobs; stored queued-job policies are unchanged."
-        if plan.proposal_kind == "removals"
+        if plan.proposal_kind == "removals" or plan.removed_routes
         else "No primary changes or catalog backfill.",
     ]
     return "\n".join(lines) + "\n"

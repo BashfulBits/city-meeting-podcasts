@@ -528,6 +528,32 @@ def test_removing_a_models_last_route_flags_it_with_alias_targets():
     assert "Last route for `old` removed" in body and "`old` → `old-2`" in body
 
 
+def test_removal_is_rejected_deferred_or_counts_routes_added_in_the_same_plan():
+    from citypods.provider_catalog.evidence import digest
+
+    conf, proof, _ = paid_fixture()
+    paid = {**conf.limits["routes"][0], "route_id": "paid"}
+    proof = replace(proof, config_digest=digest(paid))
+    decision = Decision("host", "creator/old", "remove", route_id="paid", route_digest=digest(paid))
+    only = replace(conf, limits={**conf.limits, "routes": [paid]})
+    result = plan_apply(Report(anomalies=[proof]), (decision,), only)
+    assert not result.removed_routes and "no safe replacement" in result.rejected[0]
+    # A lane addition or paid decision in the same /apply defers the removal to its own PR.
+    keep = Decision("host", "creator/old", "keep_paid", route_id="paid", route_digest=digest(paid))
+    mixed = plan_apply(Report(anomalies=[proof]), (keep, decision), conf)
+    assert not mixed.removed_routes and "separate /apply" in mixed.deferred[0]
+    # A route-only addition for the same pool is replacement capacity, so it is not a last route.
+    added = replace(PROOF, model_key="old")
+    add = Decision("host", "creator/new", "add", (), added)
+    report = Report(
+        anomalies=[proof], candidates=[replace(CANDIDATE, discovery=None, lanes=("lane",))]
+    )
+    report.candidates[0] = replace(report.candidates[0], evidence=added.to_dict())
+    result = plan_apply(report, (add, decision), only)
+    assert result.removed_routes == ("paid",) and not result.last_routes
+    assert "No primary changes" not in proposal_body(result)
+
+
 def test_alias_candidates_prefer_same_family_then_shared_lanes():
     from citypods.provider_catalog.apply import alias_candidates
 
