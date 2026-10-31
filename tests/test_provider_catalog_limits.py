@@ -469,3 +469,15 @@ def test_stale_health_routes_cover_every_route_within_a_week():
     assert again and again <= seen
     checked_today = stale_health_routes(limits, state, today=day + timedelta(days=4))
     assert not checked_today & {k for k, v in state["route_checks"].items() if v == "2026-11-05"}
+
+
+def test_stale_health_routes_rotate_without_stored_state():
+    from datetime import date, timedelta
+
+    from citypods.provider_catalog.limits import stale_health_routes
+
+    routes = [{"route_id": f"r{i}", "provider": "p", "rpm": 1} for i in range(7)]
+    limits = {"routes": routes}
+    first = stale_health_routes(limits, {}, today=date(2026, 11, 1))
+    second = stale_health_routes(limits, {}, today=date(2026, 11, 1) + timedelta(days=1))
+    assert len(first) == len(second) == 1 and first != second

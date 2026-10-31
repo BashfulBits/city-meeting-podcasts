@@ -340,16 +340,26 @@ def stale_health_routes(limits, state, *, today, days=7):
     today are left alone, as are paused (`rpd` 0) and non-chat routes (the health loop skips those).
     """
     checks = state.get("route_checks") or {}
-    eligible = [
-        r
-        for r in limits.get("routes") or []
-        if r.get("rpd") != 0
-        and route_speaks_chat(r)
-        and checks.get(str(r["route_id"])) != today.isoformat()
-    ]
-    eligible.sort(key=lambda r: (str(checks.get(str(r["route_id"])) or ""), str(r["route_id"])))
-    total = len([r for r in limits.get("routes") or [] if r.get("rpd") != 0])
-    return {str(r["route_id"]) for r in eligible[: max(1, -(-total // days))]}
+    active = sorted(
+        (r for r in limits.get("routes") or [] if r.get("rpd") != 0 and route_speaks_chat(r)),
+        key=lambda r: str(r["route_id"]),
+    )
+    batch = max(1, -(-len(active) // days))
+    # Ties (no stored check dates, e.g. before any rolling issue exists) rotate with the date, so
+    # a run that persists nothing still walks through every route instead of repeating the first.
+    start = (today.toordinal() * batch) % max(1, len(active))
+    ranked = sorted(
+        (
+            (
+                str(checks.get(str(r["route_id"])) or ""),
+                (i - start) % len(active),
+                str(r["route_id"]),
+            )
+            for i, r in enumerate(active)
+            if checks.get(str(r["route_id"])) != today.isoformat()
+        )
+    )
+    return {rid for _, _, rid in ranked[:batch]}
 
 
 def early_rate_routes(failures, limits, state, *, today):
