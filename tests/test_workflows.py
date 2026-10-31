@@ -1815,11 +1815,12 @@ def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock()
     producer, _ = _job("provider-catalog-reconcile.yml", "reconcile")
     workflow, job = _job("provider-catalog-commands.yml", "retirements")
     assert "weekly-full" in producer["run-name"]
-    assert "daily-due-only" in producer["run-name"]
+    assert "daily-incremental" in producer["run-name"]
     assert job["needs"] == "limits"
     assert "always()" in job["if"]
     assert "workflow_run.path == '.github/workflows/provider-catalog-reconcile.yml'" in job["if"]
     assert "display_title == 'Provider catalog reconciliation (weekly-full)'" in job["if"]
+    assert "display_title == 'Provider catalog reconciliation (daily-incremental)'" in job["if"]
     assert "head_repository.full_name == github.repository" in job["if"]
     assert "conclusion == 'success'" in job["if"] and "event == 'schedule'" in job["if"]
     assert job["permissions"] == {"contents": "write", "pull-requests": "write", "actions": "read"}

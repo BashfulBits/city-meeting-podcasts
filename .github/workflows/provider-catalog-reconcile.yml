@@ -1,7 +1,7 @@
 name: Provider catalog reconciliation
 run-name: >-
   ${{ github.event.schedule == '17 10 * * 1' && 'Provider catalog reconciliation (weekly-full)' ||
-      github.event.schedule == '20 8 * * *' && 'Provider catalog reconciliation (daily-due-only)' ||
+      github.event.schedule == '20 8 * * *' && 'Provider catalog reconciliation (daily-incremental)' ||
       'Provider catalog reconciliation (manual)' }}
 
 # review/48 Slice 1: observe and propose only. Lists every provider's catalog, health-checks the
@@ -11,9 +11,10 @@ run-name: >-
 on:
   schedule:
     - cron: "17 10 * * 1" # weekly full run
-    # Daily: only health checks deferred because a scarce daily quota (e.g. Gemini's 20/day) was
-    # spent. 08:20 UTC is just after Pacific midnight in both PDT (07:00) and PST (08:00), when
-    # Google's quotas reset. A run with nothing deferred makes no provider calls.
+    # Daily incremental: health checks deferred because a scarce daily quota (e.g. Gemini's
+    # 20/day) was spent, plus the least recently checked seventh of the routes, so every route is
+    # checked within a week and a dead one is found within days. 08:20 UTC is just after Pacific
+    # midnight in both PDT (07:00) and PST (08:00), when Google's quotas reset.
     - cron: "20 8 * * *"
   workflow_dispatch:
     inputs:
@@ -142,6 +143,9 @@ jobs:
           args=(--sync-issues)
           if [ "$DUE_ONLY" = "true" ]; then
             args+=(--due-only)
+          fi
+          if [ "$GITHUB_EVENT_SCHEDULE" = "20 8 * * *" ]; then
+            args+=(--incremental)
           fi
           if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
             args+=(--rate-evidence provider-catalog-rate-evidence.json)
