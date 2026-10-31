@@ -15,6 +15,7 @@ from citypods.provider_catalog.apply import (
     EditPlan,
     parse_decisions,
     plan_apply,
+    proposal_body,
 )
 from citypods.provider_catalog.evidence import RouteEvidence, candidate_digest
 from citypods.provider_catalog.issue import MARKER, _discovery_attempt_diagnostics, render_body
@@ -1336,3 +1337,22 @@ def test_input_priority_supporting_counts_do_not_claim_full_requested_output():
     assert "reported input 130,463, generated output 609, requested output 2,444" in body
     assert "input plus generated output 131,072" in body
     assert "Consumed totals are separate from requested-output capacity proof" in body
+
+
+def test_route_only_addition_without_measured_input_is_provisional_and_listed():
+    report = Report(candidates=[replace(CANDIDATE, discovery=None)])
+    decision = Decision("host", "creator/new", "add", (), PROOF)
+    result = plan_apply(report, (decision,), config())
+    route = dict(result.routes[0])
+    assert not result.deferred
+    assert route["hard_input_ceiling"] == 10000 and route["input_context_limit"] == 10000
+    assert "Provisional input cap" in result.route_notes[0][1][0]
+    body = proposal_body(result)
+    assert "| `host_creator_new` | `creator/new` | `primary` | `creator/new` | none |" in body
+
+
+def test_lane_addition_still_requires_measured_input():
+    report = Report(candidates=[replace(CANDIDATE, discovery=None)])
+    decision = Decision("host", "creator/new", "add", ("lane",), PROOF)
+    result = plan_apply(report, (decision,), config())
+    assert not result.routes and "input evidence" in result.deferred[0]

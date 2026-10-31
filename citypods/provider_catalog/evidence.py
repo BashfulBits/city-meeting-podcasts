@@ -514,7 +514,33 @@ def logical_identity(provider, upstream_model, rules, record, routes) -> str | N
     canonical = rules.model_identity(upstream_model, record)
     if len(exact) > 1 or (exact and canonical and canonical not in exact):
         return None
-    return next(iter(exact)) if exact else canonical
+    if exact or canonical:
+        return next(iter(exact)) if exact else canonical
+    return _matching_pool(upstream_model, routes)
+
+
+def _pool_form(name: str) -> str:
+    """Spelling-insensitive form of a model name: case, vendor aliases and free decorations."""
+    value = name.lower().removeprefix("openrouter/").removeprefix("kilo/")
+    value = re.sub(r"(:free|-free)$", "", value)
+    return re.sub(r"^z-ai/", "zai/", value)
+
+
+def _matching_pool(upstream_model: str, routes) -> str | None:
+    """Return the one existing pool this upstream name is only a respelling of, else None.
+
+    Only a pool that already exists qualifies, so a suggestion can never invent a new model
+    identity; a name that matches zero or several pools stays unknown for human review.
+    """
+    form = _pool_form(upstream_model)
+    pools = {str(r.get("model_key") or r["model"]) for r in routes}
+    full = {p for p in pools if _pool_form(p) == form}
+    if len(full) == 1:
+        return next(iter(full))
+    if full or "/" in form:
+        return None
+    bare = {p for p in pools if _pool_form(p).rsplit("/", 1)[-1] == form}
+    return next(iter(bare)) if len(bare) == 1 else None
 
 
 @dataclass(frozen=True)

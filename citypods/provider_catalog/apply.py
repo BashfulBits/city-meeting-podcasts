@@ -363,11 +363,11 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 continue
             discovery = current.discovery if current else None
             cap = _verified_input_cap(discovery)
-            if (
-                not cap
-                or not decision.discovery_digest
-                or cap["evidence_digest"] != decision.discovery_digest
+            if cap and not (
+                decision.discovery_digest and cap["evidence_digest"] == decision.discovery_digest
             ):
+                cap = None
+            if not cap and not _provisional_input_claim(proof, decision):
                 deferred.append(
                     f"{decision.key}: fresh authenticated provider-counted input evidence "
                     "required; refresh the issue"
@@ -413,8 +413,12 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 "input_context_limit": max(
                     provider_context_claim or 0,
                     cap["admitted_input"] + cap["generated_output"],
-                ),
-                "hard_input_ceiling": cap["admitted_input"],
+                )
+                if cap
+                else provider_context_claim,
+                "hard_input_ceiling": cap["admitted_input"]
+                if cap
+                else min(PROVISIONAL_INPUT_CEILING, provider_context_claim),
                 "structured_output_method": proof.structured_output_method,
                 "structured_output_verified_on": proof.structured_output_verified_on,
                 "rpm": 1,
@@ -429,7 +433,9 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             route_notes.append(
                 (
                     rid,
-                    (
+                    _provisional_notes(provider_context_claim)
+                    if not cap
+                    else (
                         f"Input cap evidence: {cap['admitted_input']} provider-counted input "
                         f"tokens admitted; {cap['generated_output']} output tokens generated "
                         f"in the same request (control {cap['control']}).",
@@ -486,6 +492,29 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         tuple(paid_routes),
         tuple(acknowledged),
         route_notes=tuple(route_notes),
+    )
+
+
+# A route added without provider-counted input evidence is held to this input size until a later
+# discovery run measures it, so a mis-sized prompt can never reach a model the catalog only claims.
+PROVISIONAL_INPUT_CEILING = 16_000
+
+
+def _provisional_input_claim(proof, decision) -> bool:
+    """A route-only add may use the provider's published context while it awaits discovery.
+
+    Lane placement still needs measured input evidence: a lane can send any prompt, a route with
+    no lane is only eligible for work that already names its model.
+    """
+    claim = proof.input_context_limit
+    return not decision.lanes and type(claim) is int and claim > 0
+
+
+def _provisional_notes(claim):
+    return (
+        f"Provisional input cap: no provider-counted evidence yet; hard_input_ceiling is held at "
+        f"{min(PROVISIONAL_INPUT_CEILING, claim)} (provider claim {claim}).",
+        "Route only, no lane placement; a discovery run must measure the cap before any lane add.",
     )
 
 
@@ -587,6 +616,25 @@ def proposal_body(plan: EditPlan) -> str:
             f"- `{route_id}` on account `{account_id}`: {verdict} (HTTP {status}) at `{checked_at}`"
             for route_id, account_id, verdict, status, checked_at in plan.removal_confirmations
         )
+        lines.append("")
+    if plan.routes:
+        lanes_by_pool: dict[str, list[str]] = {}
+        for lane, key in plan.backups:
+            lanes_by_pool.setdefault(key, []).append(lane)
+        lines += [
+            "Route assignments (each route joins an existing or new model pool):",
+            "",
+            "| Route | Provider model | Account | Pool (`model_key`) | Lane backups |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for items in plan.routes:
+            route = dict(items)
+            lines.append(
+                f"| `{route['route_id']}` | `{route['upstream_model']}` | `{route['account_id']}` "
+                f"| `{route['model']}` | "
+                + (", ".join(f"`{x}`" for x in lanes_by_pool.get(route["model"], [])) or "none")
+                + " |"
+            )
         lines.append("")
     if plan.route_notes:
         lines += ["Authenticated input-cap evidence for proposed routes:"]
