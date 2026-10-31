@@ -71,6 +71,8 @@ class EditPlan:
     removal_confirmations: tuple[tuple[str, str, str, int, str], ...] = ()
     # Route ID and safe, review-visible input-cap evidence notes for YAML and PR text.
     route_notes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # Model losing its last route, the lanes that list it, and ready-to-review alias targets.
+    last_routes: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -196,7 +198,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
     routes, backups, ignored, applied, deferred, rejected = [], [], [], [], [], []
     route_notes = []
     existing = list(config.limits.get("routes") or [])
-    paid_routes, acknowledged = [], []
+    paid_routes, acknowledged, removals = [], [], []
     anomalies = {a.route_id: a for a in report.anomalies}
     providers = config.limits.get("providers") or {}
     for decision in decisions:
@@ -205,7 +207,28 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             rejected.append(f"{decision.key}: provider/account no longer configured")
             continue
         if decision.action == "remove":
-            deferred.append(f"{decision.route_id}: removal requires deployed Slice 3 rescue")
+            route = next((r for r in existing if r.get("route_id") == decision.route_id), None)
+            if route is None:
+                applied.append(f"{decision.route_id}: remove already fulfilled")
+                continue
+            proof = anomalies.get(decision.route_id)
+            if (
+                route.get("provider") != decision.provider
+                or route.get("upstream_model") != decision.model
+                or not proof
+                or proof.verdict != "not_entitled"
+                or proof.contended
+                or proof.observed_on != config.today.isoformat()
+                or proof.config_digest != digest(route)
+                or decision.route_digest != digest(route)
+                or proof.provider != decision.provider
+                or proof.model != decision.model
+            ):
+                deferred.append(
+                    f"{decision.route_id}: fresh paused unchanged not_entitled proof required"
+                )
+                continue
+            removals.append(decision.route_id)
             continue
         if decision.action == "keep_paid":
             matches = [r for r in existing if r.get("route_id") == decision.route_id]
@@ -480,6 +503,17 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             routes.append(tuple(route.items()))
         backups.extend(missing_backups)
         applied.append(f"{decision.key}: add ({', '.join(decision.lanes) or 'route only'})")
+    removed, repairs, primaries, last_routes = [], (), (), ()
+    if removals:
+        if backups:
+            deferred.extend(
+                f"{rid}: remove in a separate /apply; lane repair cannot share a PR with additions"
+                for rid in removals
+            )
+        else:
+            removed, repairs, primaries, last_routes = _plan_removals(
+                removals, config, applied, rejected
+            )
     return EditPlan(
         config.base_commit,
         tuple((p, digest(config.texts[p])) for p in SOURCE_PATHS),
@@ -491,8 +525,72 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         tuple(rejected),
         tuple(paid_routes),
         tuple(acknowledged),
+        removed_routes=tuple(removed),
+        lane_repairs=repairs,
+        primary_changes=primaries,
         route_notes=tuple(route_notes),
+        last_routes=last_routes,
     )
+
+
+def _plan_removals(removals, config, applied, rejected):
+    """Remove each proven route whose lanes can be repaired; flag models losing their last route."""
+    from citypods.provider_catalog.retire import _repair_lanes
+
+    routes = list(config.limits.get("routes") or [])
+    by_id = {r["route_id"]: r for r in routes}
+    removed = []
+    for rid in sorted(removals):
+        _, _, blocked = _repair_lanes(config, (*removed, rid))
+        if blocked or len(removed) + 1 == len(routes):
+            rejected.append(
+                f"{rid}: no safe replacement; review pool alternatives for "
+                + (", ".join(blocked) or "the route catalog")
+            )
+            continue
+        removed.append(rid)
+        applied.append(f"{rid}: remove route that became paid")
+    repairs, primaries, _ = _repair_lanes(config, removed)
+    left = [r for r in routes if r["route_id"] not in removed]
+    last = []
+    for key in sorted({str(by_id[rid].get("model_key") or by_id[rid]["model"]) for rid in removed}):
+        if any(str(r.get("model_key") or r["model"]) == key for r in left):
+            continue
+        lanes = tuple(
+            sorted(
+                p for p, lane in config.lanes.items() if key in (*lane.models, *lane.backup_models)
+            )
+        )
+        last.append((key, lanes, alias_candidates(key, left, config.lanes)))
+    return removed, repairs, primaries, tuple(last)
+
+
+def _family(name: str) -> str:
+    tail = name.lower().rsplit("/", 1)[-1].removesuffix(":free")
+    return re.sub(r"[-_.]+", "-", re.sub(r"\d+(\.\d+)*", "", tail)).strip("-")
+
+
+def alias_candidates(retired: str, routes, lanes) -> tuple[str, ...]:
+    """Pools that could stand in for a model that lost its last route, best first.
+
+    Same family at another version comes first, then pools sharing the retired model's lanes.
+    This is advisory: quality, context and structured-output equivalence are a reviewer's call.
+    """
+    pools = {
+        str(r.get("model_key") or r["model"])
+        for r in routes
+        if r.get("free") is True and r.get("rpd") != 0
+    } - {retired}
+    used = {p for p, lane in lanes.items() if retired in (*lane.models, *lane.backup_models)}
+
+    def shared(pool):
+        return len(
+            used & {p for p, lane in lanes.items() if pool in (*lane.models, *lane.backup_models)}
+        )
+
+    family = _family(retired)
+    ranked = sorted(pools, key=lambda p: (_family(p) != family, -shared(p), p))
+    return tuple(p for p in ranked if _family(p) == family or shared(p))[:3]
 
 
 # A route added without provider-counted input evidence is held to this input size until a later
@@ -641,6 +739,26 @@ def proposal_body(plan: EditPlan) -> str:
         for route_id, notes in plan.route_notes:
             lines.append(f"- `{route_id}`")
             lines.extend(f"  - {note}" for note in notes)
+        lines.append("")
+    for model, model_lanes, targets in plan.last_routes:
+        lines += [
+            f"Last route for `{model}` removed. Lanes listing it: "
+            f"{', '.join(f'`{x}`' for x in model_lanes) or 'none'}. Queued jobs naming it fail as "
+            "`route_retired` unless it is aliased to a pool that serves them.",
+        ]
+        if targets:
+            lines += [
+                "Possible alias targets (verify score, context and JSON method first):",
+                *[f"- `{model}` → `{t}`" for t in targets],
+                "",
+                "```yaml",
+                "model_aliases:",
+                f"  {model}:",
+                f"    to: {targets[0]}",
+                '    reason: "<evidence>"',
+                '    decided_on: "<date>"',
+                "```",
+            ]
         lines.append("")
     for label, values in (
         ("Selected", plan.applied),
