@@ -29,4 +29,36 @@ ignored:
     reason: Maintainer decision; Artificial Analysis index about 6
     decided_on: '2026-10-31'
 
+  - provider: kilo
+    model: cohere/north-mini-code:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: kilo
+    model: dots-studio/dots-3-note-preview:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: kilo
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: nvidia
+    model: nvidia/nemotron-3.5-lightning-30b-a3b
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: nvidia
+    model: nvidia/ising-calibration-1.5-31b
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: nvidia
+    model: nvidia/nemotron-3.5-bolt-e4b
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: openrouter
+    model: cohere/north-mini-code:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: openrouter
+    model: dots-studio/dots-3-note-preview:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
 acknowledged: []
