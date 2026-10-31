@@ -67,6 +67,7 @@ from citypods.provider_catalog.limits import (  # noqa: E402
     early_rate_routes,
     merge_observations,
     scope_recent_runs,
+    stale_health_routes,
 )
 from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
@@ -425,6 +426,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider", action="append", default=[])
     parser.add_argument("--sync-issues", action="store_true")
     parser.add_argument("--due-only", action="store_true")
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="with --due-only: also health-check the least recently checked share of routes",
+    )
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--rate-evidence", type=Path)
     parser.add_argument("--discovery-enabled", action="store_true")
@@ -542,6 +548,15 @@ def main(argv: list[str] | None = None) -> int:
                 )
             except DispatchPauseError:
                 print("early rate checks deferred: Worker telemetry unavailable")
+    if args.incremental:
+        if not args.due_only:
+            parser.error("--incremental requires --due-only")
+        # Each daily run checks the stalest seventh of the routes, so all are seen within a week
+        # without the full run's cost, and a dead route is found within days instead of at the
+        # next weekly run.
+        stale = stale_health_routes(limits, previous_state, today=today)
+        print(f"incremental: health-checking {len(stale)} least recently checked route(s)")
+        early = early | stale
     context_run = None
     context_status = None
     discovery_history = ()

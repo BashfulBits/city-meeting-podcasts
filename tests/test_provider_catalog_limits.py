@@ -444,3 +444,28 @@ def test_manual_report_carries_unchecked_rate_offers_and_advisory_history():
     del state["rate_changes"]
     _carry_rate_state(report, state)
     assert report.rate_changes == [change]
+
+
+def test_stale_health_routes_cover_every_route_within_a_week():
+    from datetime import date, timedelta
+
+    from citypods.provider_catalog.limits import stale_health_routes
+
+    routes = [{"route_id": f"r{i:02d}", "provider": "p", "rpm": 1} for i in range(15)]
+    routes.append({"route_id": "paused", "provider": "p", "rpm": 1, "rpd": 0})
+    limits = {"routes": routes}
+    state: dict = {"route_checks": {}}
+    day = date(2026, 11, 1)
+    seen: set[str] = set()
+    for offset in range(5):
+        today = day + timedelta(days=offset)
+        picked = stale_health_routes(limits, state, today=today)
+        assert picked and "paused" not in picked and not picked & seen
+        seen |= picked
+        state["route_checks"].update(dict.fromkeys(picked, today.isoformat()))
+    assert seen == {f"r{i:02d}" for i in range(15)}
+    # Past the first pass the stalest routes come round again, and a route checked today is skipped.
+    again = stale_health_routes(limits, state, today=day + timedelta(days=5))
+    assert again and again <= seen
+    checked_today = stale_health_routes(limits, state, today=day + timedelta(days=4))
+    assert not checked_today & {k for k, v in state["route_checks"].items() if v == "2026-11-05"}

@@ -332,6 +332,26 @@ def rate_edit_plan(changes, config, *, selected=(), automatic=False, deferred=()
     )
 
 
+def stale_health_routes(limits, state, *, today, days=7):
+    """The least recently health-checked routes, enough that every route is seen within `days`.
+
+    Deterministic and self-correcting: a route never checked, or checked longest ago, goes first,
+    so a missed day or a newly added route is covered by the next run. Routes already checked
+    today are left alone, as are paused (`rpd` 0) and non-chat routes (the health loop skips those).
+    """
+    checks = state.get("route_checks") or {}
+    eligible = [
+        r
+        for r in limits.get("routes") or []
+        if r.get("rpd") != 0
+        and route_speaks_chat(r)
+        and checks.get(str(r["route_id"])) != today.isoformat()
+    ]
+    eligible.sort(key=lambda r: (str(checks.get(str(r["route_id"])) or ""), str(r["route_id"])))
+    total = len([r for r in limits.get("routes") or [] if r.get("rpd") != 0])
+    return {str(r["route_id"]) for r in eligible[: max(1, -(-total // days))]}
+
+
 def early_rate_routes(failures, limits, state, *, today):
     """Today's existing UTC counters schedule observations only, at most once per route/day."""
     configured = {r["route_id"] for r in limits.get("routes") or []}

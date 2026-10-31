@@ -56,6 +56,7 @@ from citypods.provider_catalog.limits import (  # noqa: E402
 )
 from citypods.provider_catalog.quality import QualityIndex, fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
+    RETIREMENT_VERDICTS,
     NoDispatchControl,
     Report,
     _merge_into_last_full,
@@ -263,6 +264,22 @@ def prepare_retirements(base_commit):
     if isinstance(control, NoDispatchControl):
         raise ValueError("removals require a configured exclusive dispatch pause")
     route_ids = {r["route_id"] for r in limits.get("routes") or []}
+    # Re-probe only the routes the rolling issue already reports as retired or not served; a
+    # daily run then confirms and proposes a removal in minutes instead of re-checking the catalog.
+    issue = find_issue()
+    flagged = None
+    if issue and is_catalog_issue(issue.get("body") or ""):
+        flagged = (decode_state(issue["body"]).get("last_full") or {}).get("anomalies")
+    if isinstance(flagged, list):
+        route_ids &= {
+            str(a.get("route_id")) for a in flagged if a.get("verdict") in RETIREMENT_VERDICTS
+        }
+    if not route_ids:
+        plan = plan_retirements(Report(), config)
+        output = apply_config_edits(texts, plan)
+        for path in SOURCE_PATHS:
+            (ROOT / path).write_text(output[path])
+        return plan
     session = requests.Session()
     try:
         report = reconcile(
@@ -488,14 +505,17 @@ def main(argv=None):
                 and source.get("conclusion") == "success"
                 and source.get("event") == "schedule"
                 and source.get("head_branch") == "main"
-                # `name` is the run-name (e.g. "... (daily-due-only)"), so match the workflow file.
+                # `name` is the run-name ("... (daily-incremental)"), so match the workflow file.
                 and source.get("path") == RECONCILE_WORKFLOW_PATH
                 and (source.get("head_repository") or {}).get("full_name")
                 == os.environ.get("GITHUB_REPOSITORY", "")
                 and (
                     not args.automatic_retirements
                     or source.get("display_title")
-                    == "Provider catalog reconciliation (weekly-full)"
+                    in {
+                        "Provider catalog reconciliation (weekly-full)",
+                        "Provider catalog reconciliation (daily-incremental)",
+                    }
                 )
             ),
             "comment": (

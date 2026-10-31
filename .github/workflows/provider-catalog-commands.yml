@@ -132,7 +132,8 @@ jobs:
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'schedule' &&
         github.event.workflow_run.path == '.github/workflows/provider-catalog-reconcile.yml' &&
-        github.event.workflow_run.display_title == 'Provider catalog reconciliation (weekly-full)' &&
+        (github.event.workflow_run.display_title == 'Provider catalog reconciliation (weekly-full)' ||
+          github.event.workflow_run.display_title == 'Provider catalog reconciliation (daily-incremental)') &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.head_repository.full_name == github.repository }}
     runs-on: ubuntu-latest

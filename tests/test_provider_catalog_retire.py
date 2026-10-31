@@ -384,7 +384,7 @@ def test_automatic_removal_requires_successful_weekly_full_main_run(monkeypatch,
         {"event": "workflow_dispatch"},
         {"head_branch": "feature"},
         {"head_repository": {"full_name": "other/repo"}},
-        {"display_title": "Provider catalog reconciliation (daily-due-only)"},
+        {"display_title": "Provider catalog reconciliation (manual)"},
     ):
         changed = {**workflow_run, **change}
         event.write_text(json.dumps({"action": "completed", "workflow_run": changed}))
@@ -413,8 +413,8 @@ def test_automatic_limits_accept_scheduled_run_whose_name_is_the_run_name(monkey
         "event": "schedule",
         "head_branch": "main",
         "head_repository": {"full_name": "owner/repo"},
-        "name": "Provider catalog reconciliation (daily-due-only)",
-        "display_title": "Provider catalog reconciliation (daily-due-only)",
+        "name": "Provider catalog reconciliation (daily-incremental)",
+        "display_title": "Provider catalog reconciliation (daily-incremental)",
         "path": commands.RECONCILE_WORKFLOW_PATH,
     }
     event = tmp_path / "event.json"
@@ -562,6 +562,7 @@ def test_retirement_preparation_reads_fresh_lanes_after_main_changes(tmp_path, m
     )
     monkeypatch.setattr(commands, "_control", lambda _: object())
     monkeypatch.setattr(commands, "load_decisions", lambda: Decisions())
+    monkeypatch.setattr(commands, "find_issue", lambda: None)
     seen = []
 
     def reconcile(limits, lanes, *args, **kwargs):
@@ -581,3 +582,35 @@ def test_retirement_preparation_reads_fresh_lanes_after_main_changes(tmp_path, m
     assert seen == [("old",), ("new",)]
     assert plan.base_commit == "second-main"
     assert dict(plan.config_hashes)[SOURCE_PATHS[1]] == digest(path.read_text())
+
+
+def test_retirement_probes_only_routes_the_issue_flags_as_retired(tmp_path, monkeypatch):
+    from citypods.provider_catalog import retire
+    from citypods.provider_catalog.decisions import Decisions
+    from scripts import provider_catalog_commands as commands
+
+    config = retirement_config([ROUTE, live_route()])
+    for p, text in config.texts.items():
+        path = tmp_path / p
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    monkeypatch.setattr(retire, "RETIREMENTS_ENABLED", True)
+    monkeypatch.setattr(commands, "ROOT", tmp_path)
+    monkeypatch.setattr(commands, "_control", lambda _: object())
+    monkeypatch.setattr(commands, "load_decisions", lambda: Decisions())
+    monkeypatch.setattr(commands, "is_catalog_issue", lambda _body: True)
+    state = {"last_full": {"anomalies": [{"route_id": "old", "verdict": "retired"}]}}
+    monkeypatch.setattr(commands, "find_issue", lambda: {"body": "x"})
+    monkeypatch.setattr(commands, "decode_state", lambda _body: state)
+    seen = []
+
+    def reconcile(limits, lanes, *args, **kwargs):
+        seen.append(kwargs["route_ids"])
+        return Report()
+
+    monkeypatch.setattr(commands, "reconcile", reconcile)
+    commands.prepare_retirements("main")
+    assert seen == [{"old"}]
+    state["last_full"]["anomalies"] = []
+    plan = commands.prepare_retirements("main")
+    assert seen == [{"old"}] and not plan.removed_routes

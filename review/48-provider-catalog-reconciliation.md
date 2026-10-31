@@ -3516,7 +3516,7 @@ newly discovered routes; the configured-route sweep is a separate request.
 - No-op suppression already existed in `publish()` (nothing staged → no PR); run #615's PR #2566
   was a race with #2565, not a gap.
 
-Still to build: incremental daily mode.
+Still to build: nothing in phase 1; see the phase 3 note below for the incremental daily run.
 
 #### Phase 2: removals and last-route aliases — 2026-10-31
 
@@ -3532,4 +3532,21 @@ Still to build: incremental daily mode.
   reviewed edit: score, context and JSON-method equivalence are not checked by code.
 - Not done: the weekly automatic `retired` PR still comes only from the retirement path; an
   alias checkbox that writes `model_aliases` automatically.
+
+#### Phase 3: daily incremental run — 2026-10-31
+
+- The existing daily cron (`20 8 * * *`, run-name `daily-incremental`) passes `--incremental`: on top
+  of quota-deferred checks it health-checks `stale_health_routes` — the least recently checked
+  `ceil(n/7)` routes (never checked first), skipping paused and non-chat routes and routes already
+  checked today. Every route is therefore seen within about a week, deterministically, and a missed
+  day or new route self-corrects. No new provider calls are made when nothing is stale.
+- `retirements` now runs after the daily run too. `prepare_retirements` re-probes only routes the
+  rolling issue's `last_full` flags `retired`/`not_served` (all routes when there is no issue state),
+  then applies the existing fresh-absence, two-probe, all-account proof; with no suspects it makes
+  no provider call. A dead route normally gets a removal PR the day after it is first flagged.
+- The weekly full run is unchanged and is still the only run that canaries new catalog models,
+  runs discovery and context evidence.
+- Not done: catalog-diff driven canarying of new models on the daily run, and Worker failure
+  signals (404/410/403 classes) as an immediate trigger; the Worker's rate-failure counters expose
+  only rate-limit classes today.
 
