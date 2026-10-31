@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/48 cleaner `/apply` route assignment.** A candidate whose provider name is only a
+  respelling of an existing pool (`z-ai/` vs `zai/`, `:free`/`-free` suffixes, a bare name under a
+  namespaced pool) now resolves to that pool instead of deferring as `identity_required`; no new
+  identity is ever invented. A route-only addition with a provider-published context size no longer
+  needs provider-counted input evidence: it is added with a provisional 16k `hard_input_ceiling`
+  and flagged for a later discovery run, and lane placement still requires measured evidence. Every
+  addition PR body now carries a route to pool table with lane backups.
+
 - **Remedy P3 is model-bound.** The manual two-model plan now requests a logical model and accepts
   any free direct route of its pool, instead of pinning one physical route. Votes, validators and
   admissions are keyed by model, the serving route and its reported upstream model are recorded as
