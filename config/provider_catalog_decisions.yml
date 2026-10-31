@@ -20,5 +20,13 @@ ignored:
     model: meta/llama-3.2-90b-vision-instruct
     reason: Maintainer /apply selection
     decided_on: '2026-10-31'
+  - provider: kilo
+    model: nvidia/nemotron-3.5-lightning:free
+    reason: Maintainer decision; Artificial Analysis index about 6
+    decided_on: '2026-10-31'
+  - provider: openrouter
+    model: nvidia/nemotron-3.5-lightning:free
+    reason: Maintainer decision; Artificial Analysis index about 6
+    decided_on: '2026-10-31'
 
 acknowledged: []

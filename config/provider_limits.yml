@@ -914,22 +914,6 @@ routes:
   # ==========================================
   # KILO CODE ROUTES (Kilo Gateway)
   # ==========================================
-  - route_id: openrouter_nemotron_3_5_lightning_free
-    model: openrouter/nvidia/nemotron-3.5-lightning:free
-    model_key: nvidia/nemotron-3.5-lightning
-    provider: openrouter
-    upstream_model: nvidia/nemotron-3.5-lightning:free
-    input_context_limit: 1000000
-    output_context_limit: 65536
-    account_id: primary
-    concurrency: 1
-    rpm: 10
-    rpd: 200
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-31"
-
   - route_id: kilo_stepfun_step_3_7_flash_free
     model: kilo/stepfun/step-3.7-flash:free
     provider: kilo
@@ -1013,23 +997,6 @@ routes:
     # Kilo lists 1,000,000; the sibling legs measured 249,027 input tokens, so stay at their window.
     input_context_limit: 262144
     output_context_limit: 131072
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    rpd: 200
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-31"
-
-  - route_id: kilo_nemotron_3_5_lightning_free
-    model: kilo/nvidia/nemotron-3.5-lightning:free
-    model_key: nvidia/nemotron-3.5-lightning
-    provider: kilo
-    upstream_model: nvidia/nemotron-3.5-lightning:free
-    input_context_limit: 1000000
-    output_context_limit: 65536
     account_id: primary
     concurrency: 1
     rpm: 20

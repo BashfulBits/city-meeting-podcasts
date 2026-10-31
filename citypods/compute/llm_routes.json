@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 58,
+    "routes_count": 56,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -9,10 +9,8 @@
   "model_aliases": {
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
-    "openrouter/nvidia/nemotron-3.5-lightning:free": "nvidia/nemotron-3.5-lightning",
     "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "kilo/nvidia/nemotron-3.5-super-vl:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
-    "kilo/nvidia/nemotron-3.5-lightning:free": "nvidia/nemotron-3.5-lightning",
     "nvidia/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3.5-super-vl-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
@@ -1117,38 +1115,6 @@
       "reset_timezone": "UTC"
     },
     {
-      "route_id": "openrouter_nemotron_3_5_lightning_free",
-      "model": "nvidia/nemotron-3.5-lightning",
-      "provider": "openrouter",
-      "upstream_model": "nvidia/nemotron-3.5-lightning:free",
-      "input_context_limit": 1000000,
-      "output_context_limit": 65536,
-      "account_id": "primary",
-      "concurrency": 1,
-      "rpm": 10,
-      "rpd": 200,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "observed_on": "2026-10-31",
-      "structured_output_method": "json_schema",
-      "structured_output_method_source": "provider",
-      "structured_output_verified_on": null,
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct"
-      ],
-      "direct_model": "openrouter/nvidia/nemotron-3.5-lightning:free",
-      "api_base": "https://openrouter.ai/api/v1",
-      "ai_gateway_slug": "openrouter",
-      "ai_gateway_chat_path": "/chat/completions",
-      "chat_path": "/chat/completions",
-      "api_key_env": "OPENROUTER_API_KEY",
-      "reset_timezone": "UTC"
-    },
-    {
       "route_id": "kilo_stepfun_step_3_7_flash_free",
       "model": "kilo/stepfun/step-3.7-flash:free",
       "provider": "kilo",
@@ -1245,39 +1211,6 @@
         "direct"
       ],
       "direct_model": "openai/nvidia/nemotron-3.5-super-vl:free",
-      "api_base": "https://api.kilo.ai/api/gateway",
-      "ai_gateway_slug": "custom-kilo",
-      "ai_gateway_chat_path": "/chat/completions",
-      "chat_path": "/chat/completions",
-      "api_key_env": "KILO_API_KEY",
-      "reset_timezone": "UTC"
-    },
-    {
-      "route_id": "kilo_nemotron_3_5_lightning_free",
-      "model": "nvidia/nemotron-3.5-lightning",
-      "provider": "kilo",
-      "upstream_model": "nvidia/nemotron-3.5-lightning:free",
-      "input_context_limit": 1000000,
-      "output_context_limit": 65536,
-      "account_id": "primary",
-      "concurrency": 1,
-      "rpm": 20,
-      "rpd": 200,
-      "tpm": 90000,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "observed_on": "2026-10-31",
-      "structured_output_method": "json_schema",
-      "structured_output_method_source": "provider",
-      "structured_output_verified_on": null,
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct"
-      ],
-      "direct_model": "openai/nvidia/nemotron-3.5-lightning:free",
       "api_base": "https://api.kilo.ai/api/gateway",
       "ai_gateway_slug": "custom-kilo",
       "ai_gateway_chat_path": "/chat/completions",
