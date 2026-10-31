@@ -115,6 +115,8 @@ def parse_observation(payload: Any) -> P3Observation:
         if payload["role"] not in expected_roles:
             raise ValueError("P3 observation: role is not valid for the stage")
         expected = _ROLE_BINDINGS[(payload["stage"], payload["role"])]
+        if (payload["route_id"], payload["logical_model"]) != expected:
+            raise ValueError("P3 observation: route or logical model does not match its role")
     else:
         plan = P3_ROLE_PLANS.get(payload["role_plan"])
         if (
@@ -132,9 +134,10 @@ def parse_observation(payload: Any) -> P3Observation:
         )
         if payload["role"] not in roles:
             raise ValueError("P3 observation: role is not valid for the stage")
-        expected = (plan.routes[payload["role"]], plan.models[payload["role"]])
-    if (payload["route_id"], payload["logical_model"]) != expected:
-        raise ValueError("P3 observation: route or logical model does not match its role")
+        # The role is its logical model; route_id records which route of that model's pool answered.
+        model = plan.models[payload["role"]]
+        if payload["logical_model"] != model or plan.model_for_route(payload["route_id"]) != model:
+            raise ValueError("P3 observation: route or logical model does not match its role")
     _source_segment(payload["source_key"])
     for name in (
         "recipe_hash",

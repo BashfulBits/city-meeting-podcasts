@@ -170,8 +170,8 @@ class P3RolePlan:
         if self.chat is None:
             if len(set(self.initial)) != 2 or len(roles) != 2 or set(roles) != set(self.initial):
                 raise ValueError("human-review plan requires two distinct initial roles")
-            if len({r[1] for r in self.bindings}) != 2:
-                raise ValueError("P3 role plan cannot reuse physical routes")
+            if len({r[2] for r in self.bindings}) != 2:
+                raise ValueError("P3 role plan cannot reuse a logical model")
             return
         if (
             len(roles) != 4
@@ -179,15 +179,30 @@ class P3RolePlan:
             or set(roles) != {*self.initial, self.chat, "jev"}
         ):
             raise ValueError("P3 role plan requires four distinct roles")
-        if len({r[1] for r in self.bindings}) != 4:
-            raise ValueError("P3 role plan cannot reuse physical routes")
+        if len({r[2] for r in self.bindings}) != 4:
+            raise ValueError("P3 role plan cannot reuse a logical model")
         families = {r[0]: r[3] for r in self.bindings}
         if families[self.chat] in {families[r] for r in self.initial}:
             raise ValueError("P3 chat adjudicator must be independent of initial families")
 
     @property
-    def routes(self):
+    def reference_routes(self):
+        """The route each role was qualified on. Informational: nothing pins or checks it.
+
+        A role is its logical model; any route in that model's pool may serve it
+        (maintainer decision 2026-10-31).
+        """
         return {row[0]: row[1] for row in self.bindings}
+
+    def model_for_route(self, route_id: str) -> str | None:
+        """The logical model a route serves: this plan's reference route, else the catalog."""
+        for _, reference, model, _ in self.bindings:
+            if route_id == reference:
+                return model
+        from citypods.compute.llm_policy import ROUTE_REGISTRY
+
+        route = ROUTE_REGISTRY.get(route_id)
+        return route.model if route is not None else None
 
     @property
     def models(self):
@@ -290,6 +305,8 @@ class P3ReviewDecision(BaseModel):
     reason: str
 
 
+# Reference routes the plans were qualified on (see P3RolePlan.reference_routes): fixtures and
+# audit context only, never enforced.
 P3_INITIAL_ROUTES = frozenset({"beatapi_gpt_6_1_sol_free", "orcarouter_zai_glm_5_3_flash_free"})
 P3_DEEPSEEK_ROUTE = "beatapi_deepseek_v4_1_flash_free"
 P3_JEV_ROUTE = "beatapi_jev_1_13_free"
@@ -329,29 +346,30 @@ def build_p3_review_decision(
     initial_validators: dict[str, bool],
     adjudication: P3Adjudication | None = None,
     adjudication_validator_passed: bool = False,
-    admitted_routes: set[str] | frozenset[str] = frozenset(),
+    admitted_models: set[str] | frozenset[str] = frozenset(),
     role_plan: str = "legacy-sol-v1",
 ) -> P3ReviewDecision:
-    """Resolve one bounded consensus cascade from route-bound, already parsed votes.
+    """Resolve one bounded consensus cascade from already parsed votes.
 
     This pure function performs no provider calls, retries, GitHub writes, or feed mutations.
-    Callers must supply deterministic validator results and the exact routes admitted for this
-    run. Missing gates return a policy hold; semantic non-agreement becomes a manual issue
-    candidate.
+    A vote belongs to the logical model its route serves (any route in that model's pool);
+    `initial_validators` is keyed by that model. Callers must supply deterministic validator
+    results and the logical models admitted for this run. Missing gates return a policy hold;
+    semantic non-agreement becomes a manual issue candidate.
     """
     plan = P3_ROLE_PLANS[role_plan]
-    initial_routes = frozenset(plan.routes[r] for r in plan.initial)
-    chat_route = plan.routes[plan.chat] if plan.chat else None
+    initial_models = frozenset(plan.models[r] for r in plan.initial)
+    chat_model = plan.models[plan.chat] if plan.chat else None
     if not re.fullmatch(r"[0-9a-f]{64}", evidence_hash) or not re.fullmatch(
         r"[0-9a-f]{64}", policy_hash
     ):
         raise ValueError("P3 evidence and policy bindings must be SHA-256")
     if len(initial_votes) != 2:
         raise ValueError("P3 requires exactly two initial votes")
-    routes = {vote.route_id for vote in initial_votes}
-    if routes != initial_routes:
-        raise ValueError("P3 initial votes must use the exact Sol and GLM Flash routes")
-    if not initial_routes <= set(admitted_routes):
+    vote_models = {plan.model_for_route(vote.route_id) for vote in initial_votes}
+    if vote_models != initial_models:
+        raise ValueError("P3 initial votes must come from the two initial logical models")
+    if not initial_models <= set(admitted_models):
         return P3ReviewDecision(
             finding_id=finding_id,
             evidence_hash=evidence_hash,
@@ -366,14 +384,14 @@ def build_p3_review_decision(
         _validate_p3_vote(vote, evidence_hash=evidence_hash, policy_hash=policy_hash)
         if vote.decision.finding_id != finding_id:
             raise ValueError("P3 vote finding ID mismatch")
-    by_route = {vote.route_id: vote for vote in initial_votes}
-    # The packet contract labels A=Sol and B=GLM Flash, independent of set order.
+    by_model = {plan.model_for_route(vote.route_id): vote for vote in initial_votes}
+    # The packet contract labels A=first initial role and B=second, independent of set order.
     ordered = [
-        by_route[plan.routes[plan.initial[0]]],
-        by_route[plan.routes[plan.initial[1]]],
+        by_model[plan.models[plan.initial[0]]],
+        by_model[plan.models[plan.initial[1]]],
     ]
     agreed = _p3_assignment_key(ordered[0].decision) == _p3_assignment_key(ordered[1].decision)
-    initial_valid = all(initial_validators.get(route) is True for route in initial_routes)
+    initial_valid = all(initial_validators.get(model) is True for model in initial_models)
     if agreed:
         if adjudication is not None:
             raise ValueError("P3 agreement must not trigger adjudication")
@@ -408,7 +426,7 @@ def build_p3_review_decision(
             disposition="policy_hold",
             reason="initial routes disagree; adjudication is required",
         )
-    if chat_route not in admitted_routes or P3_JEV_ROUTE not in admitted_routes:
+    if chat_model not in admitted_models or plan.models["jev"] not in admitted_models:
         return P3ReviewDecision(
             finding_id=finding_id,
             evidence_hash=evidence_hash,
@@ -419,8 +437,8 @@ def build_p3_review_decision(
             disposition="policy_hold",
             reason="adjudication routes are not admitted for this run",
         )
-    if adjudication.jev_route_id != P3_JEV_ROUTE:
-        raise ValueError("P3 adjudication must use the exact JEV route")
+    if plan.model_for_route(adjudication.jev_route_id) != plan.models["jev"]:
+        raise ValueError("P3 adjudication must use the JEV logical model")
     if not adjudication.jev_upstream_model.strip():
         raise ValueError("P3 JEV result must record its upstream model")
     if adjudication.evidence_hash != evidence_hash or adjudication.policy_hash != policy_hash:
@@ -447,8 +465,8 @@ def build_p3_review_decision(
             reason="adjudication abstained or did not return a complete result",
         )
     _validate_p3_vote(chat_vote, evidence_hash=evidence_hash, policy_hash=policy_hash)
-    if chat_vote.route_id != chat_route:
-        raise ValueError("P3 adjudication must use the exact DeepSeek route")
+    if plan.model_for_route(chat_vote.route_id) != chat_model:
+        raise ValueError("P3 adjudication must use the plan's chat logical model")
     if not chat_vote.upstream_model.strip():
         raise ValueError("P3 DeepSeek result must record its upstream model")
     if chat_vote.decision.finding_id != finding_id:

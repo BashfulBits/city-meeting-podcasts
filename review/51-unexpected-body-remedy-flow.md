@@ -4606,6 +4606,41 @@ tests passed,16deselected. Whole Ruff/format555 files, fragments and diff checks
 Read-only Worker and shared-quota preflight confirms all three routes available;
 launch uses normal coordination. No provider requests occurred during preflight.
 
+### Model-bound routing amendment — 2026-10-31
+
+**Supersedes** the exact-route pinning in the 2026-10-15 route-selection record and the earlier
+"constrain that physical route and defer rather than fall back" rule for the manual two-model plan.
+
+The maintainer decided that no remedy path should care which provider answered a call: P3 names a
+logical model and the dispatcher routes it, by capacity, to any free direct route of that model's
+pool (review/48 "Model-first routing"). What changed for `flash-deepseek-human-v3`:
+
+- **Requests** carry `allowed_models=(model,)` and no `allowed_route_ids`; the recipe hash no
+  longer includes a route.
+- **Results** are accepted when the Worker reports the requested logical model and a route that
+  belongs to that model's pool. Returned-model identity (and the GLM alias table) is no longer
+  checked for this plan; the route that answered and the upstream model it reported are recorded in
+  the observation as provenance. Observations recorded against a plan's reference route stay valid.
+- **Votes, validators and failures** are keyed by logical model; consensus requires one vote from
+  each initial model, the report builder and publication recompute use the same key, and
+  `admitted_p3_models` replaces `admitted_p3_routes`.
+- **Admissions** are model-bound: `logical_model` replaces `physical_route_ids`, `upstream_model`,
+  `request_params_hash` and `catalog_hash` for the two manual entries. A route-level admission
+  remains for the project-evidence and evaluation flows and is rejected by `validate_admission`
+  for model-bound entries.
+- **Authorization:** `production-authorization-model-bound.json` records the maintainer's
+  2026-10-31 approval and binds the plan hash, role, logical model, prompt, schema and policy
+  hashes, output cap and timeout, not a route record. Adding or removing a route of a pool, or
+  changing a provider's concurrency, no longer invalidates it. Editing the prompt factories or
+  policy still does, and requires regenerating the file.
+- **Reference routes** (`P3RolePlan.reference_routes`) remain as the routes the earlier
+  qualification evidence was gathered on. They are informational and never enforced.
+
+Accepted consequence: the qualification evidence (`runtime-v2`, `human-review-v3`) covers the
+reference routes only, so a call may now be answered by a provider that was never evaluated. Each
+published proposal still needs human review and merge, and the observation records which route
+answered.
+
 ## Current adoption and evidence
 
 The maintainer selected `flash-deepseek-human-v3` and explicitly approved production PR/issue

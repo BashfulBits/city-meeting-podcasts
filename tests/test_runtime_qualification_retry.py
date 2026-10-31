@@ -66,7 +66,9 @@ def test_approved_retry_preserves_failure_and_cannot_repeat(retry_module, tmp_pa
     monkeypatch.setattr(ctl, "wait", waits.append)
     monkeypatch.setattr(ctl, "renew", lambda: None)
     monkeypatch.setattr(
-        ctl, "status", lambda _: {"in_flight": 0, "routes": {native.PLAN.routes["glm_flash"]: {}}}
+        ctl,
+        "status",
+        lambda _: {"in_flight": 0, "routes": {native.PLAN.reference_routes["glm_flash"]: {}}},
     )
     monkeypatch.setattr(native, "validate_source_url", lambda _: None)
     monkeypatch.setenv("ORCAROUTER_API_KEY", "DUMMY")

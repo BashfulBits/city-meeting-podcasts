@@ -105,7 +105,7 @@ def test_daily_policy_hold_writes_report_without_storage_or_worker_access(monkey
 
 
 @pytest.mark.parametrize("role", ["sol", "glm_flash", "deepseek"])
-def test_chat_jobs_pin_one_exact_free_route(role):
+def test_chat_jobs_name_a_model_and_pin_no_route(role):
     job = _chat_job(
         role=role,
         finding_id="finding-1",
@@ -117,7 +117,8 @@ def test_chat_jobs_pin_one_exact_free_route(role):
 
     assert isinstance(policy, LLMRequestPolicy)
     assert policy.allowed_models == (P3_MODELS[role],)
-    assert policy.allowed_route_ids == (P3_ROUTES[role],)
+    # Any free route of the model's pool may serve it (maintainer decision 2026-10-31).
+    assert policy.allowed_route_ids is None
     assert policy.allow_paid is False
     assert policy.queue_only is True
     assert job.inputs["num_retries"] == 0
@@ -125,7 +126,7 @@ def test_chat_jobs_pin_one_exact_free_route(role):
     assert job.inputs["max_tokens"] == 16_384
 
 
-def test_jev_job_uses_review49_adapter_and_pins_its_route():
+def test_jev_job_uses_review49_adapter_and_names_its_model():
     job, packet, item = _jev_job(
         finding_id="finding-1",
         initial_votes=(_vote("sol"), _vote("glm_flash")),
@@ -146,21 +147,54 @@ def test_jev_job_uses_review49_adapter_and_pins_its_route():
         "D",
     }
     assert policy.allowed_models == (P3_MODELS["jev"],)
-    assert policy.allowed_route_ids == (P3_ROUTES["jev"],)
+    assert policy.allowed_route_ids is None
     assert policy.allow_paid is False
     assert policy.queue_only is True
 
 
-def test_completed_chat_result_must_report_pinned_physical_route():
-    result = JobResult(
+def _chat_result(**updates):
+    values = dict(
         task="judge",
         recipe_hash="d" * 64,
         model=P3_MODELS["sol"],
-        route_id="another-route",
-        output={"choices": [{"message": {"content": "{}"}}]},
+        route_id=P3_ROUTES["sol"],
+        output={
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "decision": {
+                                    "finding_id": "f0",
+                                    "action": "manual_review",
+                                    "rationale": "x",
+                                }
+                            }
+                        )
+                    }
+                }
+            ]
+        },
     )
-    with pytest.raises(ValueError, match="pinned P3 route/model"):
-        _response_from_result(result, role="sol", finding_id="finding-1")
+    values.update(updates)
+    return JobResult(**values)
+
+
+def test_completed_chat_result_must_come_from_a_route_of_the_requested_model():
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES
+
+    other = next(
+        r.route_id for r in ROUTE_CANDIDATES[P3_MODELS["sol"]] if r.route_id != P3_ROUTES["sol"]
+    )
+    # Any route in the pool is acceptable, not only the reference route.
+    for route in (P3_ROUTES["sol"], other):
+        _response_from_result(_chat_result(route_id=route), role="sol", finding_id="finding-1")
+    with pytest.raises(ValueError, match="outside the model's pool"):
+        _response_from_result(
+            _chat_result(route_id="another-route"), role="sol", finding_id="finding-1"
+        )
+    with pytest.raises(ValueError, match="logical model"):
+        _response_from_result(_chat_result(model="other/model"), role="sol", finding_id="finding-1")
 
 
 def test_jev_result_requires_expected_item_and_bounded_probabilities():
@@ -244,7 +278,7 @@ def test_manual_report_lists_all_source_feeds_not_only_model_suggestions():
         policy_hash="b" * 64,
         evidence=evidence,
         observations=observations,
-        admitted_routes=frozenset(P3_ROUTES[role] for role in ("sol", "glm_flash")),
+        admitted_models=frozenset(P3_MODELS[role] for role in ("sol", "glm_flash")),
         repo_root=".",
     )
 
@@ -326,8 +360,9 @@ def test_selected_plan_pins_new_initial_and_independent_chat_roles():
         policy_hash="b" * 64,
         evidence=_evidence(),
     )
-    assert job.inputs["llm_policy"].allowed_route_ids == (plan.routes["gemini"],)
-    assert "sol" not in plan.routes
+    assert job.inputs["llm_policy"].allowed_route_ids is None
+    assert job.inputs["llm_policy"].allowed_models == (plan.models["gemini"],)
+    assert "sol" not in plan.models
 
 
 def test_role_plan_rejects_self_adjudication():
@@ -402,6 +437,7 @@ def test_selected_plan_evidence_hash_uses_runtime_schema_and_nonrecursive_policy
         update={"p3_role_plan": "flash-deepseek-v2", "publication_mode": "report_only"}
     )
     entry = SimpleNamespace(
+        logical_model=None,
         physical_route_ids=[P3_ROUTES["glm_flash"]],
         upstream_model="z-ai/glm-5.3-flash-free",
         request_params_hash="a" * 64,
@@ -416,18 +452,28 @@ def test_selected_plan_evidence_hash_uses_runtime_schema_and_nonrecursive_policy
     ]
 
 
-@pytest.mark.parametrize("returned", ["z-ai/glm-5.3-flash-free", "zai-org/glm-5.3-flash"])
+@pytest.mark.parametrize(
+    "returned", ["z-ai/glm-5.3-flash-free", "zai-org/glm-5.3-flash", "some-other-provider/glm"]
+)
 @pytest.mark.parametrize("publication_mode", ["report_only", "live"])
-def test_approved_glm_alias_preserves_actual_returned_id(returned, publication_mode, monkeypatch):
+def test_any_pool_route_and_returned_id_are_recorded_not_checked(
+    returned, publication_mode, monkeypatch
+):
     from citypods.audit_remedy import P3_ROLE_PLANS
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES
 
     plan = P3_ROLE_PLANS["flash-deepseek-v2"]
+    served = next(
+        r
+        for r in ROUTE_CANDIDATES[plan.models["glm_flash"]]
+        if r.route_id != plan.reference_routes["glm_flash"]
+    )
     result = JobResult(
         task="judge",
         recipe_hash="d" * 64,
         model=plan.models["glm_flash"],
-        route_id=plan.routes["glm_flash"],
-        upstream_model="z-ai/glm-5.3-flash-free",  # Catalog identity supplied by Worker backend.
+        route_id=served.route_id,  # A different route of the same model's pool.
+        upstream_model=served.upstream_model,
         output={
             "model": returned,
             "choices": [
@@ -475,25 +521,10 @@ def test_approved_glm_alias_preserves_actual_returned_id(returned, publication_m
         policy_hash="b" * 64,
         evidence=_evidence(),
     ) == (True, False)
-    assert recorded[0].upstream_model == returned
-    assert result.upstream_model == "z-ai/glm-5.3-flash-free"
-
-
-@pytest.mark.parametrize("returned", [None, "z-ai/glm-5.3", "ZAI-ORG/GLM-5.3-FLASH", "other"])
-def test_glm_catalog_metadata_does_not_mask_unapproved_returned_model(returned):
-    from citypods.audit_remedy import P3_ROLE_PLANS
-
-    plan = P3_ROLE_PLANS["flash-deepseek-v2"]
-    result = JobResult(
-        task="judge",
-        recipe_hash="d" * 64,
-        model=plan.models["glm_flash"],
-        route_id=plan.routes["glm_flash"],
-        upstream_model="z-ai/glm-5.3-flash-free",
-        output={"model": returned},
-    )
-    with pytest.raises(ValueError, match="returned-model identity mismatch"):
-        _response_from_result(result, role="glm_flash", finding_id="f0", role_plan=plan.name)
+    # Which route answered and what it reports are provenance; neither is an admission input.
+    assert recorded[0].route_id == served.route_id
+    assert recorded[0].upstream_model == served.upstream_model
+    assert recorded[0].logical_model == plan.models["glm_flash"]
 
 
 def test_glm_alias_is_exact_route_and_requested_id_only():
@@ -520,10 +551,10 @@ def test_selected_consensus_orders_judge_choice_by_plan_not_vote_input_order():
             "decision": deepseek.decision.model_copy(update={"target_feeds": []}),
         }
     )
-    chat = flash.model_copy(update={"route_id": plan.routes["gemini"]})
+    chat = flash.model_copy(update={"route_id": plan.reference_routes["gemini"]})
     judge = P3Adjudication(
         chat=chat,
-        jev_route_id=plan.routes["jev"],
+        jev_route_id=plan.reference_routes["jev"],
         jev_upstream_model="jev-1.13-free",
         evidence_hash="a" * 64,
         policy_hash="b" * 64,
@@ -538,10 +569,10 @@ def test_selected_consensus_orders_judge_choice_by_plan_not_vote_input_order():
         evidence_hash="a" * 64,
         policy_hash="b" * 64,
         initial_votes=[deepseek, flash],
-        initial_validators={plan.routes[r]: True for r in plan.initial},
+        initial_validators={plan.models[r]: True for r in plan.initial},
         adjudication=judge,
         adjudication_validator_passed=True,
-        admitted_routes=frozenset(plan.routes.values()),
+        admitted_models=frozenset(plan.models.values()),
     )
     assert result.disposition == "pr_candidate"
     with pytest.raises(ValueError, match="legacy DeepSeek field"):
@@ -551,9 +582,9 @@ def test_selected_consensus_orders_judge_choice_by_plan_not_vote_input_order():
             evidence_hash="a" * 64,
             policy_hash="b" * 64,
             initial_votes=[deepseek, flash],
-            initial_validators={plan.routes[r]: True for r in plan.initial},
+            initial_validators={plan.models[r]: True for r in plan.initial},
             adjudication=judge.model_copy(update={"deepseek": chat}),
-            admitted_routes=frozenset(plan.routes.values()),
+            admitted_models=frozenset(plan.models.values()),
         )
 
 

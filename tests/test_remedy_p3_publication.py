@@ -3,8 +3,15 @@ from __future__ import annotations
 import pytest
 
 from citypods.remedy_p3_publication import validated_p3_plan
-from citypods.remedy_p3_runner import P3_ROUTES
+from citypods.remedy_p3_runner import P3_MODELS
 from citypods.remedy_policy import canonical_hash
+
+
+def _m(route_id):
+    """The logical model a route serves (P3 votes and validators are keyed by model)."""
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    return P3_ROLE_PLANS["legacy-sol-v1"].model_for_route(route_id)
 
 
 @pytest.mark.parametrize(
@@ -31,7 +38,7 @@ def test_p3_publication_rejects_non_consensus_reports(decision, candidate, messa
             {"decision": decision, "proposal_candidate": candidate},
             evidence,
             repo_root=tmp_path,
-            admitted_routes=set(P3_ROUTES.values()),
+            admitted_models=set(P3_MODELS.values()),
         )
 
 
@@ -51,7 +58,7 @@ def test_p3_publication_binds_report_to_exact_evidence(tmp_path):
             report,
             evidence,
             repo_root=tmp_path,
-            admitted_routes=set(P3_ROUTES.values()),
+            admitted_models=set(P3_MODELS.values()),
         )
 
 
@@ -82,7 +89,7 @@ def test_human_plan_agreement_revalidates_for_publication_and_rejects_wrong_plan
     eh, ph = canonical_hash(evidence), "b" * 64
     votes = [
         P3Vote(
-            route_id=plan.routes[role],
+            route_id=plan.reference_routes[role],
             upstream_model="observed-model",
             reasoning_level=None,
             evidence_hash=eh,
@@ -107,15 +114,15 @@ def test_human_plan_agreement_revalidates_for_publication_and_rejects_wrong_plan
         evidence_summary="Library meetings",
         feeds=[{"slug": feed, "title": feed}],
         initial_votes=votes,
-        initial_validators={v.route_id: True for v in votes},
+        initial_validators={_m(v.route_id): True for v in votes},
     )
-    report = build_p3_report(record, admitted_routes=set(plan.routes.values()))
+    report = build_p3_report(record, admitted_models=set(plan.models.values()))
     assert report["role_plan"] == plan.name
     result, _ = validated_p3_plan(
         report,
         evidence,
         repo_root=tmp_path,
-        admitted_routes=set(plan.routes.values()),
+        admitted_models=set(plan.models.values()),
         role_plan=plan.name,
     )
     assert len(result.accepted) == 1
@@ -124,6 +131,6 @@ def test_human_plan_agreement_revalidates_for_publication_and_rejects_wrong_plan
             report,
             evidence,
             repo_root=tmp_path,
-            admitted_routes=set(plan.routes.values()),
+            admitted_models=set(plan.models.values()),
             role_plan="legacy-sol-v1",
         )

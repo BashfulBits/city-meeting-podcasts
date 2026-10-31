@@ -52,7 +52,11 @@ class P3ReportInput(BaseModel):
 
     def validate_contract(self) -> P3ReportInput:
         plan = P3_ROLE_PLANS[self.role_plan]
-        initial_routes = frozenset(plan.routes[r] for r in plan.initial)
+        initial_models = frozenset(plan.models[r] for r in plan.initial)
+
+        def model_of(vote):
+            return plan.model_for_route(vote.route_id)
+
         if self.schema_version != 1 or isinstance(self.schema_version, bool):
             raise ValueError("schema_version must be integer 1")
         if len({feed.slug for feed in self.feeds}) != len(self.feeds):
@@ -61,15 +65,15 @@ class P3ReportInput(BaseModel):
             raise ValueError("feed labels require valid slugs and nonblank titles")
         if plan.chat is None and self.adjudication is not None:
             raise ValueError("human-review plan cannot carry automated adjudication")
-        if len({vote.route_id for vote in self.initial_votes}) != len(self.initial_votes):
+        if len({model_of(vote) for vote in self.initial_votes}) != len(self.initial_votes):
             raise ValueError(
                 "input must contain exactly the configured initial votes; duplicate vote"
             )
         failed = set(self.initial_failures)
-        votes = {vote.route_id for vote in self.initial_votes}
+        votes = {model_of(vote) for vote in self.initial_votes}
         if failed and (
             plan.chat is not None
-            or not (failed | votes) <= initial_routes
+            or not (failed | votes) <= initial_models
             or failed & votes
             or any(
                 not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", k)
@@ -79,11 +83,11 @@ class P3ReportInput(BaseModel):
             raise ValueError("invalid initial failure evidence")
         if not failed and (
             len(self.initial_votes) != 2
-            or {vote.route_id for vote in self.initial_votes} != initial_routes
+            or {model_of(vote) for vote in self.initial_votes} != initial_models
         ):
-            raise ValueError("input must contain exactly the configured Sol and GLM Flash votes")
-        if set(self.initial_validators) != (votes if failed else initial_routes):
-            raise ValueError("validator results must bind exactly the two initial routes")
+            raise ValueError("input must contain exactly the configured initial-model votes")
+        if set(self.initial_validators) != (votes if failed else initial_models):
+            raise ValueError("validator results must bind exactly the two initial models")
         if any(vote.decision.finding_id != self.finding_id for vote in self.initial_votes):
             raise ValueError("initial vote finding IDs must match the report input")
         if any(
@@ -112,13 +116,13 @@ def _canonical_json(value: Any) -> bytes:
 def build_p3_report(
     record: P3ReportInput,
     *,
-    admitted_routes: set[str] | frozenset[str] = frozenset(),
+    admitted_models: set[str] | frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
-    """Return one replay report; route admission is trusted caller context, never file input."""
+    """Return one replay report; model admission is trusted caller context, never file input."""
     record.validate_contract()
     if record.initial_failures:
         plan = P3_ROLE_PLANS[record.role_plan]
-        admitted = set(plan.routes.values()) <= set(admitted_routes)
+        admitted = set(plan.models.values()) <= set(admitted_models)
         decision = P3ReviewDecision(
             finding_id=record.finding_id,
             evidence_hash=record.evidence_hash,
@@ -129,7 +133,7 @@ def build_p3_report(
             reason=(
                 "initial route failed; human review required: "
                 + ", ".join(
-                    f"{route} ({kind})" for route, kind in sorted(record.initial_failures.items())
+                    f"{model} ({kind})" for model, kind in sorted(record.initial_failures.items())
                 )
             )
             if admitted
@@ -144,7 +148,7 @@ def build_p3_report(
             initial_validators=record.initial_validators,
             adjudication=record.adjudication,
             adjudication_validator_passed=record.adjudication_validator_passed,
-            admitted_routes=admitted_routes,
+            admitted_models=admitted_models,
             role_plan=record.role_plan,
         )
     report: dict[str, Any] = {
@@ -185,18 +189,24 @@ def _selected_proposal(
     plan = P3_ROLE_PLANS[role_plan]
     if decision.reason == "initial routes agree":
         vote = next(
-            vote for vote in decision.initial_votes if vote.route_id == plan.routes[plan.initial[0]]
+            vote
+            for vote in decision.initial_votes
+            if plan.model_for_route(vote.route_id) == plan.models[plan.initial[0]]
         )
     else:
         adjudication = decision.adjudication
         if adjudication is None or (adjudication.deepseek or adjudication.chat) is None:
             raise ValueError("proposal candidate lacks a recorded selected vote")
-        selected_route = (
-            plan.routes[plan.initial[0]]
+        selected_model = (
+            plan.models[plan.initial[0]]
             if adjudication.choice == "A"
-            else plan.routes[plan.initial[1]]
+            else plan.models[plan.initial[1]]
         )
-        vote = next(vote for vote in decision.initial_votes if vote.route_id == selected_route)
+        vote = next(
+            vote
+            for vote in decision.initial_votes
+            if plan.model_for_route(vote.route_id) == selected_model
+        )
     return {
         "route_id": vote.route_id,
         "upstream_model": vote.upstream_model,

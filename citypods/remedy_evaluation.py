@@ -255,11 +255,15 @@ def load_project_evaluation(entry, repo_root, *, expected: dict[str, Any]) -> di
 class AdmissionEntry(StrictModel):
     status: Literal["candidate", "admitted"]
     role: Literal["proposer", "reviewer", "adjudicator"]
-    physical_route_ids: list[str]
-    upstream_model: str
+    # A model-bound admission (the manual two-model flow) names `logical_model` and no route: any
+    # route in that model's pool may serve it. Route-level admissions (evaluation, qualified
+    # alias) keep `physical_route_ids`, `upstream_model` and `request_params_hash`.
+    logical_model: str | None = None
+    physical_route_ids: list[str] = Field(default_factory=list)
+    upstream_model: str | None = None
     model_family: str
     reasoning_level: Literal["provider-default", "minimal", "low", "medium", "high", "max"]
-    request_params_hash: str
+    request_params_hash: str | None = None
     aa: AA | None
     project_evidence: TrustedProjectEvidence | None = None
     manifest_hash: str | None = None
@@ -619,6 +623,9 @@ def validate_admission(
 ) -> AdmissionCheck:
     entry = AdmissionEntry.model_validate(entry) if isinstance(entry, dict) else entry
     reasons = []
+    if entry.logical_model is not None:
+        # Route-level evaluation and the qualified-alias flow need exact routes.
+        reasons.append("model-bound admission cannot be qualified at route level")
     if not entry.physical_route_ids:
         reasons.append("empty physical route allowlist")
     choice_evidence = False

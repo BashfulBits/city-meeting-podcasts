@@ -38,7 +38,7 @@ def replay(observed_path, inputs_path):
             row = rows[(cid, role)]
             requested = _upstream_for(role, plan.name)
             if (
-                row["route_id"] != plan.routes[role]
+                row["route_id"] != plan.reference_routes[role]
                 or row["requested_model"] != requested
                 or row["returned_model"]
                 not in _accepted_returned_models(row["route_id"], requested)
@@ -59,7 +59,7 @@ def replay(observed_path, inputs_path):
                     decision=decision,
                 )
             )
-            validators[plan.routes[role]] = _validator_passed(decision, evidence, str(ROOT))
+            validators[plan.models[role]] = _validator_passed(decision, evidence, str(ROOT))
         result = build_p3_review_decision(
             finding_id=finding,
             evidence_hash=votes[0].evidence_hash,
@@ -67,7 +67,7 @@ def replay(observed_path, inputs_path):
             initial_votes=votes,
             initial_validators=validators,
             role_plan=plan.name,
-            admitted_routes=frozenset(plan.routes.values()),
+            admitted_models=frozenset(plan.models.values()),
         )
         outcomes.append(dict(case_id=cid, disposition=result.disposition, reason=result.reason))
     return dict(

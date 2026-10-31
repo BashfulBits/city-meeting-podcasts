@@ -118,7 +118,7 @@ def preflight(plan_path, authority_path, output):
         r.api_key_env not in {"BEATAPI_API_KEY", "ORCAROUTER_API_KEY"}
         or r.account_id != "primary"
         or not r.free
-        for r in (ROUTE_REGISTRY[rid] for rid in PLAN.routes.values())
+        for r in (ROUTE_REGISTRY[rid] for rid in PLAN.reference_routes.values())
     ):
         raise ValueError("only the approved free primary routes may be measured")
     output.mkdir(parents=True, exist_ok=True)
@@ -158,7 +158,7 @@ class Controller:
             if pause["scope"] in {
                 "global",
                 own_scope,
-                *["route:" + r for r in PLAN.routes.values()],
+                *["route:" + r for r in PLAN.reference_routes.values()],
             }:
                 if pause.get("reason") != self.reason:
                     raise RuntimeError("foreign pause; preserve it and make no request")
@@ -228,7 +228,7 @@ class Controller:
             raise RuntimeError("unknown provider request; do not resubmit")
         if len(list(self.output.glob("*-intent.json"))) >= 48:
             raise RuntimeError("approved attempt budget exhausted")
-        route = ROUTE_REGISTRY[PLAN.routes[role]]
+        route = ROUTE_REGISTRY[PLAN.reference_routes[role]]
         ceiling = JevBackend().max_total_tokens if role == "jev" else route.input_context_limit
         if estimate_tokens([{"role": "user", "content": json.dumps(payload)}]) > ceiling:
             row = dict(
@@ -384,7 +384,7 @@ def timeout_handler(_signum, _frame):
 
 
 def chat_payload(job, role):
-    route = ROUTE_REGISTRY[PLAN.routes[role]]
+    route = ROUTE_REGISTRY[PLAN.reference_routes[role]]
     messages, fmt = shape_for_route(
         job.inputs["messages"],
         name=P3_CHAT_CONTRACT,
@@ -405,7 +405,7 @@ def chat_payload(job, role):
 
 def vote(role, result, fid, eh, ph):
     return P3Vote(
-        route_id=PLAN.routes[role],
+        route_id=PLAN.reference_routes[role],
         upstream_model=result["returned_model"],
         reasoning_level=None,
         evidence_hash=eh,
@@ -517,7 +517,7 @@ def run_cases(controller, cases, expectations):
                 policy_hash=ph,
                 extra_context=extra,
             )
-            route = ROUTE_REGISTRY[PLAN.routes["jev"]]
+            route = ROUTE_REGISTRY[PLAN.reference_routes["jev"]]
             results["jev"] = controller.call(
                 cid,
                 "jev",
@@ -552,7 +552,7 @@ def run_cases(controller, cases, expectations):
             initial_validators=validators,
             adjudication=adjudication,
             adjudication_validator_passed=adjudication_valid,
-            admitted_routes=frozenset(PLAN.routes.values()),
+            admitted_routes=frozenset(PLAN.reference_routes.values()),
             role_plan=PLAN.name,
         )
         verdicts = {
