@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/48 `/apply` removals and last-route alias proposals.** A ticked `remove route` on a
+  route that became paid is no longer deferred as "requires Slice 3 rescue": with a fresh,
+  uncontended, unchanged `not_entitled` proof it removes the route and repairs the affected lanes,
+  or is rejected when no free replacement would remain. When the removal leaves a model with no
+  route, the PR body lists the lanes that name it, warns that queued jobs naming it fail as
+  `route_retired`, and proposes same-family or lane-sharing alias targets with a `model_aliases`
+  snippet. The alias itself is still a reviewed edit.
+
 - **Review/48 cleaner `/apply` route assignment.** A candidate whose provider name is only a
   respelling of an existing pool (`z-ai/` vs `zai/`, `:free`/`-free` suffixes, a bare name under a
   namespaced pool) now resolves to that pool instead of deferring as `identity_required`; no new
