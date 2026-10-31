@@ -132,7 +132,6 @@ def test_selected_addition_preserves_primary_and_records_route_method():
         {"structured_output_verified_on": "2026-10-07"},
         {"structured_output_method": None},
         {"verdict": "inconclusive"},
-        {"catalog_digest": "changed"},
         {"input_context_limit": 20000},
         {"model_key": "other"},
         {"account_id": "other"},
@@ -141,6 +140,75 @@ def test_selected_addition_preserves_primary_and_records_route_method():
 def test_incomplete_stale_changed_or_deferred_proof_cannot_write(changes):
     result = plan(replace(PROOF, **changes))
     assert not result.routes and result.deferred
+
+
+def test_an_unrelated_catalog_change_does_not_defer_a_selection():
+    # Stored evidence predates a listing change elsewhere; this model itself is unchanged.
+    stored = replace(PROOF, catalog_digest="older-listing")
+    result = plan(
+        PROOF,
+        Decision(
+            "host",
+            "creator/new",
+            "add",
+            ("lane",),
+            stored,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        ),
+    )
+    assert len(result.routes) == 1 and not result.deferred
+
+
+def test_a_changed_entry_for_the_model_itself_still_defers():
+    stored = replace(PROOF, model_digest="a" * 64)
+    fresh = replace(PROOF, model_digest="b" * 64)
+    result = plan(
+        fresh,
+        Decision(
+            "host",
+            "creator/new",
+            "add",
+            ("lane",),
+            stored,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        ),
+    )
+    assert not result.routes and "candidate changed" in result.deferred[0]
+    # Evidence recorded before the per-model digest existed is compared on its other fields only.
+    legacy = replace(PROOF, model_digest="")
+    ok = plan(
+        fresh,
+        Decision(
+            "host",
+            "creator/new",
+            "add",
+            ("lane",),
+            legacy,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        ),
+    )
+    assert len(ok.routes) == 1
+
+
+def test_model_digest_ignores_other_models_and_old_evidence_keeps_its_candidate_digest():
+    from citypods.provider_catalog.evidence import (
+        CatalogEvidence,
+        candidate_digest,
+        digest,
+        model_catalog_digest,
+    )
+
+    def entry(name, free=True):
+        return (name, True, free, 1000, 100, None)
+
+    one = CatalogEvidence("host", "t", True, (entry("a"), entry("b")))
+    two = CatalogEvidence("host", "t", True, (entry("a"), entry("c"), entry("b")))
+    assert model_catalog_digest(one, "a") == model_catalog_digest(two, "a")
+    changed = CatalogEvidence("host", "t", True, (entry("a", free=False), entry("b")))
+    assert model_catalog_digest(one, "a") != model_catalog_digest(changed, "a")
+    # Without a model digest the hash is byte-for-byte what it was before the field existed.
+    legacy = {k: v for k, v in PROOF.to_dict().items() if k != "model_digest"}
+    assert candidate_digest(PROOF, ("lane",)) == digest({"evidence": legacy, "lanes": ["lane"]})
 
 
 def test_unknown_identity_is_deferred_and_legacy_state_is_advisory():

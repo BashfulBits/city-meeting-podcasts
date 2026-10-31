@@ -333,13 +333,17 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 "provider",
                 "upstream_model",
                 "account_id",
-                "catalog_digest",
                 "free",
                 "input_context_limit",
                 "output_context_limit",
                 "model_key",
             )
-            if any(getattr(proof, k) != getattr(old, k) for k in comparison):
+            # The whole-provider `catalog_digest` is deliberately not compared: an unrelated model
+            # appearing or disappearing in a busy catalog (Kilo, OpenRouter, NVIDIA, BeatAPI) used
+            # to defer every selection. Evidence that carries a per-model digest is held to it.
+            if any(getattr(proof, k) != getattr(old, k) for k in comparison) or (
+                old.model_digest and proof.model_digest != old.model_digest
+            ):
                 deferred.append(f"{decision.key}: candidate changed; refresh and choose again")
                 continue
             if (

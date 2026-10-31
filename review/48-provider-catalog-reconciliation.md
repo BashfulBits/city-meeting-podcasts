@@ -1025,6 +1025,17 @@ JEV stays outside chat addition.
 There are no runtime config changes, live probes, pipeline/recipe bumps or episode artifact backfill
 in this implementation. Paid/shadow, retirement, recovery and limit changes remain later slices.
 
+### `/apply` staleness check — 2026-10-30
+
+`plan_apply` compared a candidate's stored evidence with fresh evidence including
+`catalog_digest`, a hash of the provider's whole listing. On providers whose listings churn, a
+selection ticked days earlier almost never matched, so `/apply` deferred it as "candidate changed"
+even though the model and its own entry were unchanged. Evidence now also records
+`model_digest` (that model's own catalog entries); `/apply` compares it when the stored evidence has
+one and no longer compares `catalog_digest`. Older stored evidence is compared on its remaining
+fields (provider, upstream model, account, free flag, context limits, model key), and its
+`candidate_digest` is unchanged. Fresh paused JSON proof dated the same day is still required.
+
 ### Maintainer-directed route reopening — 2026-10-09
 
 The maintainer explicitly approved setting `rpd: 20` on these three previously paused free routes:

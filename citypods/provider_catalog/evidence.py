@@ -123,6 +123,21 @@ def catalog_digest(evidence: CatalogEvidence) -> str:
     )
 
 
+def model_catalog_digest(evidence: CatalogEvidence, model_id: str) -> str:
+    """Digest of this model's own catalog entries only.
+
+    `catalog_digest` covers the whole provider listing, so any unrelated model that appears or
+    disappears changes it; a decision about one model must not go stale because of that.
+    """
+    return digest(
+        {
+            "provider": evidence.provider,
+            "model": model_id,
+            "entries": sorted(entry for entry in evidence.models if entry[0] == model_id),
+        }
+    )
+
+
 @dataclass(frozen=True)
 class RouteEvidence:
     provider: str
@@ -142,6 +157,8 @@ class RouteEvidence:
     # Method, outcome, first-byte and completion latency; no untrusted response body.
     methods: tuple[tuple[str, str, float | None, float | None], ...] = ()
     contended: bool = False
+    # Digest of this model's own catalog entries; empty on evidence recorded before it existed.
+    model_digest: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -155,7 +172,11 @@ class RouteEvidence:
 
 
 def candidate_digest(evidence: RouteEvidence, lanes: tuple[str, ...]) -> str:
-    return digest({"evidence": evidence.to_dict(), "lanes": sorted(lanes)})
+    payload = evidence.to_dict()
+    if not payload.get("model_digest"):
+        # Evidence recorded before the field existed must keep hashing exactly as it did.
+        payload.pop("model_digest", None)
+    return digest({"evidence": payload, "lanes": sorted(lanes)})
 
 
 def positive_bound(record, keys) -> int | None:
