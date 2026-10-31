@@ -3544,16 +3544,16 @@ Still to build: nothing in phase 1; see the phase 3 note below for the increment
   rolling issue's `last_full` flags `retired`/`not_served` (all routes when there is no issue state),
   then applies the existing fresh-absence, two-probe, all-account proof; with no suspects it makes
   no provider call. A dead route normally gets a removal PR the day after it is first flagged.
-- The weekly full run is unchanged and is still the only run that canaries new catalog models,
-  runs discovery and context evidence.
+- The weekly full run still runs discovery and context evidence and canaries every untried
+  candidate; phase 4 adds a bounded daily canary of newly listed models.
 
 #### Phase 4: daily new-model canaries and availability signals — 2026-11-01
 
 - **Availability signals.** `completeBatch` still classes a 404 as `upstream_capacity` (usually a
-  transient upstream fault), but now also counts it in `route_failures` under `route_not_found`.
-  `GET /v2/stats?availability_failures=1` returns the day's `route_unavailable` and
-  `route_not_found` cells with `last_status` (bounded to 128 routes, same shape and mutual
-  exclusion as `rate_failures=1`). `availability_suspect_routes` turns two 410/403 or three 404
+  transient upstream fault), but now also counts each 404, 410 and 403 in `route_failures` under a per-status class
+  (`route_not_found`, `route_gone`, `route_forbidden`) so counts are exact.
+  `GET /v2/stats?availability_failures=1` returns those cells (bounded to 128 routes, same shape
+  and mutual exclusion as `rate_failures=1`). `availability_suspect_routes` turns two 410/403 or three 404
   failures today into an immediate independent health check in the daily run; 401 is excluded as an
   account credential problem. The counter only schedules a probe; the probe and the existing
   two-probe retirement proof decide removal. An older Worker returns no counters and the run
@@ -3561,6 +3561,7 @@ Still to build: nothing in phase 1; see the phase 3 note below for the increment
 - **New models.** With `--incremental`, a provider whose catalog lists a model absent from its last
   stored snapshot gets only those models canaried (the usual free-evidence, chat, floor, ignore and
   alias filters apply), at most `DAILY_NEW_MODEL_LIMIT` (6) per run across providers. A provider
-  with no stored snapshot is skipped (first sight is the weekly run's job), and the snapshot
-  advances when a provider is processed. Results merge into the rolling issue's last full report.
+  with no complete stored snapshot is skipped (first sight is the weekly run's job). The snapshot
+  advances when a provider is processed, except for new models the budget could not cover, which
+  stay new for the next run. Results merge into the rolling issue's last full report.
 

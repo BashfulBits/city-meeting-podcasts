@@ -3421,13 +3421,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
-   * Bounded current-day availability counters: a retired (410), forbidden or unentitled (401/403,
-   * `route_unavailable`) or missing (404, `route_not_found`) route. Each row carries `last_status`
-   * so a reconcile run can pick which routes deserve an immediate independent health check.
+   * Bounded current-day availability counters, one class per HTTP status so counts are exact: a
+   * retired (410 `route_gone`), forbidden or unentitled (403 `route_forbidden`) or missing (404
+   * `route_not_found`) route. A reconcile run uses them to pick routes for an immediate
+   * independent health check.
    */
   async availabilityFailureStats(now) {
     return this._failureCounters(
-      now, "availability_failures", ["route_unavailable", "route_not_found"], true
+      now, "availability_failures", ["route_gone", "route_forbidden", "route_not_found"], false
     );
   }
 
@@ -7265,12 +7266,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
               failureCells.set(key, foldFailureCell(failureCells.get(key), {
                 now, routeId, failureClass, status: result.provider_status_code, detail,
               }));
-              // Telemetry only: a 404 is classed upstream_capacity (it is usually transient), so
-              // it also counts under its own class for the daily reconcile to follow up on.
-              if (result.provider_status_code === 404) {
-                const missing = JSON.stringify([routeId, "route_not_found"]);
-                failureCells.set(missing, foldFailureCell(failureCells.get(missing), {
-                  now, routeId, failureClass: "route_not_found", status: 404, detail: null,
+              // Telemetry only: these statuses are classed upstream_capacity (404) or
+              // route_unavailable (401/403/410), which cannot say how many of the day's failures
+              // were which status. A per-status cell lets the daily reconcile count them.
+              const statusClass = { 404: "route_not_found", 410: "route_gone", 403: "route_forbidden" }[
+                result.provider_status_code
+              ];
+              if (statusClass) {
+                const extra = JSON.stringify([routeId, statusClass]);
+                failureCells.set(extra, foldFailureCell(failureCells.get(extra), {
+                  now, routeId, failureClass: statusClass, status: result.provider_status_code,
+                  detail: null,
                 }));
               }
             }

@@ -335,28 +335,23 @@ def rate_edit_plan(changes, config, *, selected=(), automatic=False, deferred=()
 def availability_suspect_routes(failures, limits, state, *, today):
     """Routes the Worker saw retired, forbidden or missing today, for an immediate health check.
 
-    A 410 or 403 (`route_unavailable`) is one demonstration of a retired or unentitled route and
-    two are enough; a 404 is usually a transient upstream fault, so it needs three. A 401 is an
-    account credential problem, not a route one. This only schedules an independent probe; the
-    probe, not the counter, decides whether the route is dead.
+    Counters are per status. A 410 or 403 is one demonstration of a retired or unentitled route,
+    so two are enough; a 404 is usually a transient upstream fault, so it needs three. A 401 is an
+    account credential problem, not a route one, and is not exposed. This only schedules an
+    independent probe; the probe, not the counter, decides whether the route is dead.
     """
+    thresholds = {"route_gone": 2, "route_forbidden": 2, "route_not_found": 3}
     configured = {r["route_id"] for r in limits.get("routes") or []}
-    suspects = set()
-    for row in failures:
-        if not isinstance(row, dict) or row.get("route_id") not in configured:
-            continue
-        kind, count, status = row.get("failure_class"), row.get("count"), row.get("last_status")
-        if (
-            row.get("utc_day") == today.isoformat()
-            and type(count) is int
-            and (
-                (kind == "route_unavailable" and status in {403, 410} and count >= 2)
-                or (kind == "route_not_found" and count >= 3)
-            )
-        ):
-            suspects.add(row["route_id"])
+    checked = state.get("route_checks") or {}
     return {
-        rid for rid in suspects if (state.get("route_checks") or {}).get(rid) != today.isoformat()
+        row["route_id"]
+        for row in failures
+        if isinstance(row, dict)
+        and row.get("route_id") in configured
+        and checked.get(row["route_id"]) != today.isoformat()
+        and row.get("utc_day") == today.isoformat()
+        and type(row.get("count")) is int
+        and row["count"] >= thresholds.get(row.get("failure_class"), 10**9)
     }
 
 

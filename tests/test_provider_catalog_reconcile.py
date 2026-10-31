@@ -2240,3 +2240,32 @@ def test_daily_new_model_watching_needs_a_prior_snapshot_and_respects_the_limit(
     assert sent == []  # first sight of a provider is the weekly run's job
     _, sent = _daily(monkeypatch, full.state, grown, new_models=True, new_model_limit=2)
     assert len(sent) == 2
+
+
+def test_models_the_budget_could_not_cover_stay_new_for_the_next_daily_run(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [
+                *CATALOGS["https://groq.test"]["data"],
+                *({"id": f"meta-llama/new-{i}"} for i in range(3)),
+            ]
+        },
+    }
+    first, sent = _daily(monkeypatch, full.state, grown, new_models=True, new_model_limit=1)
+    assert len(sent) == 1
+    second, sent2 = _daily(monkeypatch, first.state, grown, new_models=True, new_model_limit=1)
+    assert len(sent2) == 1 and sent2 != sent
+    listed = {m[0] for m in second.state["catalogs"]["groq"]["models"]}
+    assert listed >= {sent[0], sent2[0]}
+
+
+def test_an_existing_empty_complete_snapshot_still_watches_for_new_models(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["catalogs"]["groq"]["models"] = []
+    state["catalogs"]["groq"]["complete"] = True
+    state["canaries"] = {}
+    _, sent = _daily(monkeypatch, state, CATALOGS, new_models=True)
+    assert sent

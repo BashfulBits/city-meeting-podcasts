@@ -451,13 +451,22 @@ def reconcile(
         provider_routes = [r for r in routes if r.get("provider") == provider]
         # A daily run calls only providers with deferred routes, bounded early-check triggers or,
         # when `new_models` is set, a catalog that lists a model absent from the last snapshot.
-        prior_models = ((previous_state.get("catalogs") or {}).get(provider) or {}).get("models")
+        prior = (previous_state.get("catalogs") or {}).get(provider) or {}
+        # An empty snapshot only counts when it was a complete listing, not a failed fetch.
+        prior_models = prior.get("models")
+        if not prior_models and prior.get("complete") is not True:
+            prior_models = None
         has_work = any(
             str(r.get("route_id")) in deferred
             or str(r.get("route_id")) in (early_rate_checks or set())
             for r in provider_routes
         ) or any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
-        watch_new = bool(due_only and new_models and new_model_budget > 0 and prior_models)
+        watch_new = bool(
+            due_only
+            and new_models
+            and new_model_budget > 0
+            and isinstance(prior_models, (list, tuple))
+        )
         if due_only and not has_work and not watch_new:
             continue
         catalog = fetch_catalog(rules, cfg, session)
@@ -684,13 +693,14 @@ def reconcile(
                     retry_models_seen.add(key)
                 if candidate_keys is not None and key not in candidate_keys:
                     continue
-                if retry_candidate_keys is not None and key not in retry_candidate_keys:
-                    continue
+                is_fresh = fresh_names is not None and model in fresh_names
                 if (
-                    fresh_names is not None
-                    and retry_candidate_keys is None
-                    and (model not in fresh_names)
+                    retry_candidate_keys is not None
+                    and key not in retry_candidate_keys
+                    and not is_fresh
                 ):
+                    continue
+                if fresh_names is not None and retry_candidate_keys is None and not is_fresh:
                     continue
                 if model in configured_models:
                     terminal_retry(model, record, "route_already_configured")
@@ -772,10 +782,20 @@ def reconcile(
                     f"{provider}: {len(candidates) - CANARY_BUDGET_PER_PROVIDER} more free "
                     f"candidate(s) wait for later runs (budget {CANARY_BUDGET_PER_PROVIDER}/run)"
                 )
+            ordered = candidates
             candidates = candidates[:CANARY_BUDGET_PER_PROVIDER]
             if fresh_names is not None:
-                candidates = candidates[: max(0, new_model_budget)]
-                new_model_budget -= len(candidates)
+                retries = [c for c in candidates if c[0] not in fresh_names]
+                fresh = [c for c in candidates if c[0] in fresh_names]
+                fresh = fresh[: max(0, new_model_budget)]
+                new_model_budget -= len(fresh)
+                candidates = retries + fresh
+                # A new model this run could not afford to canary stays "new" for the next run.
+                unserved = {c[0] for c in ordered if c[0] in fresh_names} - {c[0] for c in fresh}
+                if unserved:
+                    catalogs[provider]["models"] = tuple(
+                        m for m in catalogs[provider]["models"] if m[0] not in unserved
+                    )
 
         context_ready = bool(context_run) and not due_only and not context_run.get("abandoned")
         if context_ready:

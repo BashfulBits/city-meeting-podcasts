@@ -223,7 +223,7 @@ def test_rate_failures_requires_complete_typed_counter_snapshot(monkeypatch, fau
     assert calls == [("GET", "v2/stats?rate_failures=1")]
 
 
-@pytest.mark.parametrize("fault", [None, "legacy", "truncated", "bad_class", "bad_status"])
+@pytest.mark.parametrize("fault", [None, "legacy", "truncated", "bad_class"])
 def test_availability_failures_requires_complete_typed_counter_snapshot(monkeypatch, fault):
     client = _client(FakeSession([0]))
     data = {
@@ -234,9 +234,8 @@ def test_availability_failures_requires_complete_typed_counter_snapshot(monkeypa
             {
                 "utc_day": "2026-10-09",
                 "route_id": "route",
-                "failure_class": "route_unavailable",
+                "failure_class": "route_gone",
                 "count": 2,
-                "last_status": 410,
             }
         ],
     }
@@ -246,8 +245,6 @@ def test_availability_failures_requires_complete_typed_counter_snapshot(monkeypa
         data["truncated"] = True
     elif fault == "bad_class":
         data["route_failures"][0]["failure_class"] = "own_rpm"
-    elif fault == "bad_status":
-        data["route_failures"][0]["last_status"] = "410"
     calls = []
     monkeypatch.setattr(client, "_request", lambda *args: calls.append(args) or data)
     if fault:

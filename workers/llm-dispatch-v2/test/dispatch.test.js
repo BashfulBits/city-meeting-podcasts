@@ -1300,8 +1300,7 @@ test("a 404 requeues the job with a short escalating cooldown, not the retiremen
   assert.equal(snapshot.kind, "availability_failures");
   assert.deepEqual(
     snapshot.route_failures.map((row) => ({ ...row, utc_day: undefined })),
-    [{ utc_day: undefined, route_id: job.route_id, failure_class: "route_not_found",
-       count: 1, last_status: 404 }]
+    [{ utc_day: undefined, route_id: job.route_id, failure_class: "route_not_found", count: 1 }]
   );
   assert.equal((await coordinator.rateFailureStats(now)).route_failures.length, 0);
 });
@@ -1335,8 +1334,7 @@ test("a 410 requeues the job and stands the whole route down", async () => {
   assert.ok(route.blocked_until >= now + 3_600_000 - 1000);
   assert.equal(route.last_failure_class, "route_unavailable");
   const gone = (await coordinator.availabilityFailureStats(now)).route_failures;
-  assert.deepEqual(gone.map((row) => [row.failure_class, row.count, row.last_status]),
-    [["route_unavailable", 1, 410]]);
+  assert.deepEqual(gone.map((row) => [row.failure_class, row.count]), [["route_gone", 1]]);
   const indexed = [...sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'j1'")][0];
   assert.ok(indexed.n > 0, "a requeued job must be re-indexed so a sibling route can take it");
 });

@@ -638,7 +638,13 @@ def main(argv: list[str] | None = None) -> int:
             discovery_history_gaps = (
                 f"request-cap history or retry receipts unavailable ({type(exc).__name__})",
             )
-    if args.due_only and not previous_state.get("deferred") and not early and not retry_receipts:
+    if (
+        args.due_only
+        and not args.incremental
+        and not previous_state.get("deferred")
+        and not early
+        and not retry_receipts
+    ):
         print("due-only: no deferred checks or request-cap retries; nothing to do")
         return 0
     if args.context_evidence:

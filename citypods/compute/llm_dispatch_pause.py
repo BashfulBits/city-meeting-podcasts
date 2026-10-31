@@ -129,7 +129,7 @@ class DispatchPauseClient:
         return data
 
     def availability_failures(self) -> dict[str, Any]:
-        """Fetch bounded current-day availability counters (retired, forbidden or missing routes).
+        """Fetch bounded current-day counters of 410, 403 and 404 answers, one class per status.
 
         Older Workers answer without these counters; callers treat that as "no signal".
         """
@@ -151,10 +151,10 @@ class DispatchPauseClient:
                     row["utc_day"] != day
                     or not isinstance(row["route_id"], str)
                     or not row["route_id"]
-                    or row["failure_class"] not in {"route_unavailable", "route_not_found"}
+                    or row["failure_class"]
+                    not in {"route_gone", "route_forbidden", "route_not_found"}
                     or type(row["count"]) is not int
                     or row["count"] < 0
-                    or not (row["last_status"] is None or type(row["last_status"]) is int)
                 ):
                     raise ValueError("invalid failure cell")
         except (ValueError, TypeError, KeyError) as exc:
