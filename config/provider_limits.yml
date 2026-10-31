@@ -59,6 +59,20 @@ structured_output_methods:
     include_schema_in_prompt: true
     strip_schema_keys: []
 
+# Declared model aliases: a retired model ID that stays callable and resolves to a newer model
+# that is legitimately as good or better, so jobs and lanes still naming it are served instead of
+# failing as `route_retired` once its last route is gone. (A route's own `model` selector is
+# already an alias of its `model_key`, but only for as long as that route exists.) Each entry needs
+# `to` (a model with at least one route), `reason` (why the target is as good or better, with the
+# evidence) and `decided_on`. The source must not still have routes. Example:
+#
+#   model_aliases:
+#     old-vendor/model-1:
+#       to: new-vendor/model-2
+#       reason: "AA index 31.0 vs 29.4; same context window; verified JSON on all lanes"
+#       decided_on: "2026-10-31"
+model_aliases: {}
+
 # Optional cross-model overflow routing. A key names a model whose callers may also be satisfied
 # by any of its listed target models once its own routes are exhausted/unavailable -- extra daily
 # capacity for a job pinned to one model (`allowed_models=(source,)`), without editing the job or
