@@ -67,16 +67,12 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     # (BeatAPI joined 2026-10-07): v4 is OrcaRouter + BeatAPI, v4.1 NVIDIA + BeatAPI. The old
     # `v4-pro` alias that pointed at NVIDIA's v4.1 stays retired; the pool is now BeatAPI's own.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-    assert {candidate.provider for candidate in deepseek} == {
-        "orcarouter",
-        "beatapi",
-        "beatapi_secondary",
-    }
+    # The secondary BeatAPI account lost its free V4 Flash and V4 Pro routes 2026-10-31.
+    assert {candidate.provider for candidate in deepseek} == {"orcarouter", "beatapi"}
     assert canonical_model("orcarouter/deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
     assert MODEL_ALIASES["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
     assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4-pro"]] == [
         "beatapi_deepseek_v4_pro_free",
-        "beatapi_secondary_deepseek_v4_pro_free",
     ]
     assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4.1-flash"]] == [
         "nvidia_deepseek_v4_1_flash_free",
