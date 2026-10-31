@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Modal budget estimates now price the whole bill.** `estimated_dollars_per_runtime_second` for
+  Modal was the bare L4 GPU rate (`0.000222`), omitting CPU and memory (~11% of the Oct 2026
+  cycle). Raised to an all-in `0.000265` (GPU + CPU/RAM + ~7.5% pad), so reservations and the
+  runtime-fallback settlement run conservative. The $30 Modal credit hit its spend limit on
+  Oct 30 and failed the Modal deploy.
+
 - **Declared model aliases.** `config/provider_limits.yml` accepts a `model_aliases` section
   (`old/id: {to, reason, decided_on}`) that keeps a retired model ID resolving to a newer model
   with at least one route, so queued and future jobs naming it are served instead of failing as
