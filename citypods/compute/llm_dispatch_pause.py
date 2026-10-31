@@ -128,6 +128,39 @@ class DispatchPauseClient:
             raise DispatchPauseError("rate failure telemetry unavailable") from exc
         return data
 
+    def availability_failures(self) -> dict[str, Any]:
+        """Fetch bounded current-day availability counters (retired, forbidden or missing routes).
+
+        Older Workers answer without these counters; callers treat that as "no signal".
+        """
+        data = self._request("GET", "v2/stats?availability_failures=1")
+        try:
+            day = data["utc_day"]
+            if date.fromisoformat(day).isoformat() != day:
+                raise ValueError("invalid UTC day")
+            rows = data["route_failures"]
+            if (
+                data.get("kind") != "availability_failures"
+                or data.get("truncated") is not False
+                or not isinstance(rows, list)
+                or len(rows) > 256
+            ):
+                raise ValueError("unavailable bounded counters")
+            for row in rows:
+                if (
+                    row["utc_day"] != day
+                    or not isinstance(row["route_id"], str)
+                    or not row["route_id"]
+                    or row["failure_class"] not in {"route_unavailable", "route_not_found"}
+                    or type(row["count"]) is not int
+                    or row["count"] < 0
+                    or not (row["last_status"] is None or type(row["last_status"]) is int)
+                ):
+                    raise ValueError("invalid failure cell")
+        except (ValueError, TypeError, KeyError) as exc:
+            raise DispatchPauseError("availability failure telemetry unavailable") from exc
+        return data
+
     def __init__(
         self,
         url: str | None = None,

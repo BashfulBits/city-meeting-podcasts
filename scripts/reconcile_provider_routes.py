@@ -63,6 +63,7 @@ from citypods.provider_catalog.issue import (  # noqa: E402
 )
 from citypods.provider_catalog.limits import (  # noqa: E402
     RateChange,
+    availability_suspect_routes,
     configured_limit_changes,
     early_rate_routes,
     merge_observations,
@@ -557,6 +558,14 @@ def main(argv: list[str] | None = None) -> int:
         stale = stale_health_routes(limits, previous_state, today=today)
         print(f"incremental: health-checking {len(stale)} least recently checked route(s)")
         early = early | stale
+        if isinstance(control, WorkerDispatchControl):
+            try:
+                rows = control.client.availability_failures().get("route_failures") or []
+                suspects = availability_suspect_routes(rows, limits, previous_state, today=today)
+                print(f"incremental: {len(suspects)} route(s) failing as unavailable today")
+                early = early | suspects
+            except DispatchPauseError:
+                print("availability signals unavailable: Worker telemetry unavailable")
     context_run = None
     context_status = None
     discovery_history = ()
@@ -741,6 +750,7 @@ def main(argv: list[str] | None = None) -> int:
         due_only=args.due_only,
         rate_run_id=rate_run_id,
         early_rate_checks=early,
+        new_models=args.incremental,
         context_run=context_run,
         discovery_enabled=discovery_enabled,
         discovery_automatic=discovery_automatic,

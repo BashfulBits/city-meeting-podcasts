@@ -332,6 +332,34 @@ def rate_edit_plan(changes, config, *, selected=(), automatic=False, deferred=()
     )
 
 
+def availability_suspect_routes(failures, limits, state, *, today):
+    """Routes the Worker saw retired, forbidden or missing today, for an immediate health check.
+
+    A 410 or 403 (`route_unavailable`) is one demonstration of a retired or unentitled route and
+    two are enough; a 404 is usually a transient upstream fault, so it needs three. A 401 is an
+    account credential problem, not a route one. This only schedules an independent probe; the
+    probe, not the counter, decides whether the route is dead.
+    """
+    configured = {r["route_id"] for r in limits.get("routes") or []}
+    suspects = set()
+    for row in failures:
+        if not isinstance(row, dict) or row.get("route_id") not in configured:
+            continue
+        kind, count, status = row.get("failure_class"), row.get("count"), row.get("last_status")
+        if (
+            row.get("utc_day") == today.isoformat()
+            and type(count) is int
+            and (
+                (kind == "route_unavailable" and status in {403, 410} and count >= 2)
+                or (kind == "route_not_found" and count >= 3)
+            )
+        ):
+            suspects.add(row["route_id"])
+    return {
+        rid for rid in suspects if (state.get("route_checks") or {}).get(rid) != today.isoformat()
+    }
+
+
 def stale_health_routes(limits, state, *, today, days=7):
     """The least recently health-checked routes, enough that every route is seen within `days`.
 

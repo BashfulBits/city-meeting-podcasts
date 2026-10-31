@@ -3546,7 +3546,21 @@ Still to build: nothing in phase 1; see the phase 3 note below for the increment
   no provider call. A dead route normally gets a removal PR the day after it is first flagged.
 - The weekly full run is unchanged and is still the only run that canaries new catalog models,
   runs discovery and context evidence.
-- Not done: catalog-diff driven canarying of new models on the daily run, and Worker failure
-  signals (404/410/403 classes) as an immediate trigger; the Worker's rate-failure counters expose
-  only rate-limit classes today.
+
+#### Phase 4: daily new-model canaries and availability signals — 2026-11-01
+
+- **Availability signals.** `completeBatch` still classes a 404 as `upstream_capacity` (usually a
+  transient upstream fault), but now also counts it in `route_failures` under `route_not_found`.
+  `GET /v2/stats?availability_failures=1` returns the day's `route_unavailable` and
+  `route_not_found` cells with `last_status` (bounded to 128 routes, same shape and mutual
+  exclusion as `rate_failures=1`). `availability_suspect_routes` turns two 410/403 or three 404
+  failures today into an immediate independent health check in the daily run; 401 is excluded as an
+  account credential problem. The counter only schedules a probe; the probe and the existing
+  two-probe retirement proof decide removal. An older Worker returns no counters and the run
+  proceeds without the signal.
+- **New models.** With `--incremental`, a provider whose catalog lists a model absent from its last
+  stored snapshot gets only those models canaried (the usual free-evidence, chat, floor, ignore and
+  alias filters apply), at most `DAILY_NEW_MODEL_LIMIT` (6) per run across providers. A provider
+  with no stored snapshot is skipped (first sight is the weekly run's job), and the snapshot
+  advances when a provider is processed. Results merge into the rolling issue's last full report.
 

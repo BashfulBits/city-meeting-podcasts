@@ -223,6 +223,41 @@ def test_rate_failures_requires_complete_typed_counter_snapshot(monkeypatch, fau
     assert calls == [("GET", "v2/stats?rate_failures=1")]
 
 
+@pytest.mark.parametrize("fault", [None, "legacy", "truncated", "bad_class", "bad_status"])
+def test_availability_failures_requires_complete_typed_counter_snapshot(monkeypatch, fault):
+    client = _client(FakeSession([0]))
+    data = {
+        "kind": "availability_failures",
+        "utc_day": "2026-10-09",
+        "truncated": False,
+        "route_failures": [
+            {
+                "utc_day": "2026-10-09",
+                "route_id": "route",
+                "failure_class": "route_unavailable",
+                "count": 2,
+                "last_status": 410,
+            }
+        ],
+    }
+    if fault == "legacy":
+        data = {"utc_day": "2026-10-09"}
+    elif fault == "truncated":
+        data["truncated"] = True
+    elif fault == "bad_class":
+        data["route_failures"][0]["failure_class"] = "own_rpm"
+    elif fault == "bad_status":
+        data["route_failures"][0]["last_status"] = "410"
+    calls = []
+    monkeypatch.setattr(client, "_request", lambda *args: calls.append(args) or data)
+    if fault:
+        with pytest.raises(DispatchPauseError):
+            client.availability_failures()
+    else:
+        assert client.availability_failures() == data
+    assert calls == [("GET", "v2/stats?availability_failures=1")]
+
+
 class ContextResponseSession:
     def __init__(self, body, status=200):
         self.body = body

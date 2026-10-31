@@ -481,3 +481,35 @@ def test_stale_health_routes_rotate_without_stored_state():
     first = stale_health_routes(limits, {}, today=date(2026, 11, 1))
     second = stale_health_routes(limits, {}, today=date(2026, 11, 1) + timedelta(days=1))
     assert len(first) == len(second) == 1 and first != second
+
+
+def test_availability_suspects_need_repeated_demonstrations_and_skip_checked_routes():
+    from datetime import date
+
+    from citypods.provider_catalog.limits import availability_suspect_routes
+
+    today = date(2026, 11, 1)
+    limits = {"routes": [{"route_id": r} for r in ("gone", "forbidden", "flaky", "auth", "done")]}
+    day = today.isoformat()
+
+    def row(route, kind, count, status):
+        return {
+            "utc_day": day,
+            "route_id": route,
+            "failure_class": kind,
+            "count": count,
+            "last_status": status,
+        }
+
+    rows = [
+        row("gone", "route_unavailable", 2, 410),
+        row("forbidden", "route_unavailable", 2, 403),
+        row("flaky", "route_not_found", 2, 404),
+        row("auth", "route_unavailable", 9, 401),
+        row("done", "route_not_found", 5, 404),
+        row("unknown", "route_unavailable", 9, 410),
+    ]
+    state = {"route_checks": {"done": day}}
+    assert availability_suspect_routes(rows, limits, state, today=today) == {"gone", "forbidden"}
+    rows[2] = row("flaky", "route_not_found", 3, 404)
+    assert "flaky" in availability_suspect_routes(rows, limits, state, today=today)
