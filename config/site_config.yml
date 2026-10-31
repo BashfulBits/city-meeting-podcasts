@@ -655,7 +655,11 @@ defaults:
         monthly_dollars: 24.0           # conservatively below free credit to absorb CPU/RAM billing
         reserve_dollars: 0.8
         rollover_day_of_month: 1
-        estimated_dollars_per_runtime_second: 0.000222
+        # All-in rate, like Beam's: L4 GPU $0.000222 + CPU/RAM (billed ~11.2% on top of GPU in the
+        # Oct 2026 cycle: L4 $26.98 vs CPU $1.92 + memory $1.11) + ~7.5% safety pad. Was the bare
+        # GPU rate, which undercounted the fallback settlement and reservations; the $30 free credit
+        # (calendar-month cycle) was exhausted on Oct 30 while the ledger still showed headroom.
+        estimated_dollars_per_runtime_second: 0.000265
         unit_label: dollar
       dispatch:
         max_inflight: 100
