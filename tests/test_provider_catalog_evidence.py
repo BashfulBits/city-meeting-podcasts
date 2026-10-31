@@ -70,6 +70,27 @@ def test_identity_does_not_guess_bare_names_or_aa_aliases():
     assert logical_identity("host", "gpt-brand:free", rules, {}, routes) is None
 
 
+def test_identity_suggests_only_an_existing_pool_for_a_respelled_name():
+    rules = ProviderRules("host")
+    routes = [
+        {"upstream_model": "glm-5.3-flash", "model": "zai/glm-5.3-flash"},
+        {"upstream_model": "other", "model": "deepseek/deepseek-v4.1-flash"},
+        {"upstream_model": "x", "model": "openrouter/nvidia/nemotron-x:free"},
+    ]
+    assert logical_identity("host", "z-ai/glm-5.3-flash:free", rules, {}, routes) == (
+        "zai/glm-5.3-flash"
+    )
+    assert logical_identity("host", "deepseek-v4.1-flash-free", rules, {}, routes) == (
+        "deepseek/deepseek-v4.1-flash"
+    )
+    assert logical_identity("host", "nvidia/nemotron-x", rules, {}, routes) == (
+        "openrouter/nvidia/nemotron-x:free"
+    )
+    assert logical_identity("host", "brand-new-model", rules, {}, routes) is None
+    ambiguous = [*routes, {"upstream_model": "y", "model": "other/glm-5.3-flash"}]
+    assert logical_identity("host", "glm-5.3-flash-free", rules, {}, ambiguous) is None
+
+
 @pytest.mark.parametrize(
     "value,want", [(True, None), (0, None), (-1, None), (100, 100), ("100", 100), ("nan", None)]
 )

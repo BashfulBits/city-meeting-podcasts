@@ -3502,3 +3502,18 @@ timeouts. Tests cover generic parser compatibility, strict AA cutoff, input-only
 reviewed retry-axis preservation, pending deferral/recheck and budget enforcement. Lifecycle docs
 and a changelog fragment record this approved scope. Scheduled discovery remains limited to
 newly discovered routes; the configured-route sweep is a separate request.
+
+#### Phase 1 of the clean-PR work — 2026-10-31
+
+`/apply` no longer dead-ends on naming or missing input evidence for route-only additions:
+
+- `logical_identity` falls back to the single existing pool the upstream name respells (case,
+  `z-ai/`→`zai/`, `:free`/`-free`, bare-name-under-namespace); zero or several matches stay unknown.
+- A route-only add (no lane backups) with a provider-published context size is written with
+  `hard_input_ceiling = min(16000, claim)` and a "Provisional input cap" PR note. Lane placement
+  still requires fresh provider-counted evidence.
+- Addition PR bodies list each route with its provider model, account, pool and lane backups.
+- No-op suppression already existed in `publish()` (nothing staged → no PR); run #615's PR #2566
+  was a race with #2565, not a gap.
+
+Still to build: `remove` via the retire path, last-route alias proposals, incremental daily mode.
