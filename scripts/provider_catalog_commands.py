@@ -124,7 +124,10 @@ def prepare(body, base_commit, proposal_kind=None):
     configured = {f"{r['provider']}/{r['upstream_model']}" for r in limits.get("routes") or []}
     selected -= configured
     paid = {
-        d.route_id for d in decisions if d.action == "keep_paid" and not paid_fulfilled(d, config)
+        d.route_id
+        for d in decisions
+        if (d.action == "keep_paid" and not paid_fulfilled(d, config))
+        or (d.action == "remove" and d.route_id in {r["route_id"] for r in limits["routes"]})
     }
     report = Report()
     if selected or paid:

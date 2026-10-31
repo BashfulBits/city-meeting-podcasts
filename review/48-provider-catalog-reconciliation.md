@@ -3516,4 +3516,20 @@ newly discovered routes; the configured-route sweep is a separate request.
 - No-op suppression already existed in `publish()` (nothing staged → no PR); run #615's PR #2566
   was a race with #2565, not a gap.
 
-Still to build: `remove` via the retire path, last-route alias proposals, incremental daily mode.
+Still to build: incremental daily mode.
+
+#### Phase 2: removals and last-route aliases — 2026-10-31
+
+- A ticked `remove route` (a route that became paid) is planned in `plan_apply`: it needs the same
+  fresh proof as keep-paid (uncontended `not_entitled`, observed today, unchanged route digest),
+  then removes the route and repairs lanes through `retire._repair_lanes`. It is rejected when a
+  lane would lose its free capacity or the catalog would lose its last route, and deferred when the
+  same `/apply` adds lane backups (lane repair cannot share a PR with additions).
+- If the removal leaves a model with no route, `EditPlan.last_routes` carries the model, the lanes
+  that list it and `alias_candidates` (same family at another version first, then pools sharing its
+  lanes, free and unpaused only). The PR body states that queued jobs naming it fail as
+  `route_retired` unless aliased and shows a `model_aliases` snippet. Writing the alias stays a
+  reviewed edit: score, context and JSON-method equivalence are not checked by code.
+- Not done: the weekly automatic `retired` PR still comes only from the retirement path; an
+  alias checkbox that writes `model_aliases` automatically.
+

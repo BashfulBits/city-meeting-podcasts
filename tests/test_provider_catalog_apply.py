@@ -487,16 +487,86 @@ def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():
         parse_decisions(body, report)
 
 
-def test_explicit_removal_is_parsed_but_deferred_until_rescue():
+def test_explicit_removal_is_parsed_and_needs_a_fresh_proof():
     report = Report(anomalies=[Anomaly("host", "route", "model", "not_entitled", "paid", False)])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
         "- [ ] `route`: remove route", "- [x] `route`: remove route"
     )
     [decision] = parse_decisions(body, report)
     assert decision.action == "remove" and decision.route_id == "route"
-    result = plan_apply(Report(), (decision,), config())
-    assert result.deferred and "Slice 3 rescue" in result.deferred[0]
-    assert not result.routes and not result.paid_routes
+    configured = [{"route_id": "route", "provider": "host", "upstream_model": "model"}]
+    result = plan_apply(Report(), (decision,), config(configured))
+    assert result.deferred and "not_entitled proof" in result.deferred[0]
+    assert not result.removed_routes and not result.routes and not result.paid_routes
+
+
+def test_remove_decision_drops_a_route_that_has_a_sibling_and_repairs_nothing():
+    conf, proof, _ = paid_fixture()
+    decision = Decision(
+        "host", "creator/old", "remove", route_id="paid", route_digest=proof.config_digest
+    )
+    result = plan_apply(Report(anomalies=[proof]), (decision,), conf)
+    assert result.removed_routes == ("paid",) and not result.last_routes
+
+
+def test_removing_a_models_last_route_flags_it_with_alias_targets():
+    from citypods.provider_catalog.evidence import digest
+
+    conf, proof, _ = paid_fixture()
+    newer = {**conf.limits["routes"][0], "route_id": "newer", "model": "old-2", "provider": "host"}
+    paid = {**conf.limits["routes"][0], "route_id": "paid"}
+    limits = {**conf.limits, "routes": [paid, newer]}
+    lanes = {"lane": LaneConfig("lane", ("old",), 1, 1, 1, backup_models=("old-2",))}
+    proof = replace(proof, config_digest=digest(paid))
+    decision = Decision("host", "creator/old", "remove", route_id="paid", route_digest=digest(paid))
+    result = plan_apply(
+        Report(anomalies=[proof]), (decision,), replace(conf, limits=limits, lanes=lanes)
+    )
+    assert result.removed_routes == ("paid",)
+    assert result.last_routes == (("old", ("lane",), ("old-2",)),)
+    body = proposal_body(result)
+    assert "Last route for `old` removed" in body and "`old` → `old-2`" in body
+
+
+def test_removal_is_rejected_deferred_or_counts_routes_added_in_the_same_plan():
+    from citypods.provider_catalog.evidence import digest
+
+    conf, proof, _ = paid_fixture()
+    paid = {**conf.limits["routes"][0], "route_id": "paid"}
+    proof = replace(proof, config_digest=digest(paid))
+    decision = Decision("host", "creator/old", "remove", route_id="paid", route_digest=digest(paid))
+    only = replace(conf, limits={**conf.limits, "routes": [paid]})
+    result = plan_apply(Report(anomalies=[proof]), (decision,), only)
+    assert not result.removed_routes and "no safe replacement" in result.rejected[0]
+    # A lane addition or paid decision in the same /apply defers the removal to its own PR.
+    keep = Decision("host", "creator/old", "keep_paid", route_id="paid", route_digest=digest(paid))
+    mixed = plan_apply(Report(anomalies=[proof]), (keep, decision), conf)
+    assert not mixed.removed_routes and "separate /apply" in mixed.deferred[0]
+    # A route-only addition for the same pool is replacement capacity, so it is not a last route.
+    added = replace(PROOF, model_key="old")
+    add = Decision("host", "creator/new", "add", (), added)
+    report = Report(
+        anomalies=[proof], candidates=[replace(CANDIDATE, discovery=None, lanes=("lane",))]
+    )
+    report.candidates[0] = replace(report.candidates[0], evidence=added.to_dict())
+    result = plan_apply(report, (add, decision), only)
+    assert result.removed_routes == ("paid",) and not result.last_routes
+    assert "No primary changes" not in proposal_body(result)
+
+
+def test_alias_candidates_prefer_same_family_then_shared_lanes():
+    from citypods.provider_catalog.apply import alias_candidates
+
+    routes = [
+        {"model": "zai/glm-5.3-flash", "free": True},
+        {"model": "deepseek/v4", "free": True},
+        {"model": "zai/glm-4.5-flash", "free": True, "rpd": 0},
+    ]
+    lanes = {"a": LaneConfig("a", ("zai/glm-4.5-flash", "deepseek/v4"), 1, 1, 1)}
+    assert alias_candidates("zai/glm-4.5-flash", routes, lanes) == (
+        "zai/glm-5.3-flash",
+        "deepseek/v4",
+    )
 
 
 def event(**changes):
