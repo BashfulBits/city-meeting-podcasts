@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Provider catalog route updates (2026-10-31).** Adds BeatAPI GLM 5.3 Flash and MiniMax M3.1
+  Flash, a secondary-account BeatAPI Gemini 3.8 Flash, Kilo Nemotron 3.5 Super VL, and NVIDIA
+  GLM 5.3 Flash and DiffusionGemma routes, each pooled by model key and not yet assigned to any
+  lane. Removes four routes the providers no longer serve on free credit: secondary-account
+  BeatAPI DeepSeek V4 Flash, V4 Pro and GPT-6 Astra, and Z.ai GLM 4.5 Flash. Records NVIDIA
+  Llama 3.2 90B Vision and the Kilo and OpenRouter Nemotron 3.5 Lightning models as ignored.
+
 - **Provider catalog `/apply` no longer defers on unrelated catalog changes.** Selections were
   compared against a digest of the provider's entire model listing, so any other model appearing or
   disappearing on a busy provider (Kilo, OpenRouter, NVIDIA, BeatAPI) turned every ticked candidate
