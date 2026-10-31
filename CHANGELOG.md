@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Remedy P3 is model-bound.** The manual two-model plan now requests a logical model and accepts
+  any free direct route of its pool, instead of pinning one physical route. Votes, validators and
+  admissions are keyed by model, the serving route and its reported upstream model are recorded as
+  provenance, and the production authorization binds the model and its prompt/schema/policy hashes
+  rather than a route record. Route changes in a pool no longer invalidate it. See review/51.
+
 - **Modal budget estimates now price the whole bill.** `estimated_dollars_per_runtime_second` for
   Modal was the bare L4 GPU rate (`0.000222`), omitting CPU and memory (~11% of the Oct 2026
   cycle). Raised to an all-in `0.000265` (GPU + CPU/RAM + ~7.5% pad), so reservations and the
