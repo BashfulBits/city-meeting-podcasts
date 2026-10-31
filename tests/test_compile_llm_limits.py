@@ -394,6 +394,78 @@ def test_validated_model_routing_resolves_legacy_aliases_and_dedups():
     assert routing == {"canonical/source": ["canonical/target"]}
 
 
+def _declared(**entry):
+    return {
+        "old/model": {"to": "new/model", "reason": "better", "decided_on": "2026-10-31", **entry}
+    }
+
+
+def test_declared_alias_keeps_a_retired_id_resolving_to_a_newer_model():
+    declared = compile_llm_limits._validated_declared_aliases(
+        _declared(), route_aliases={"legacy/new": "new/model"}, canonical_models={"new/model"}
+    )
+    assert declared == {"old/model": "new/model"}
+    # The target may itself be a route-derived alias; it resolves one hop to the canonical pool.
+    declared = compile_llm_limits._validated_declared_aliases(
+        _declared(to="legacy/new"),
+        route_aliases={"legacy/new": "new/model"},
+        canonical_models={"new/model"},
+    )
+    assert declared == {"old/model": "new/model"}
+    assert (
+        compile_llm_limits._validated_declared_aliases(
+            None, route_aliases={}, canonical_models=set()
+        )
+        == {}
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "route_aliases", "canonical", "message"),
+    [
+        (_declared(), {}, set(), "has no routes"),
+        (_declared(), {}, {"new/model", "old/model"}, "still has routes"),
+        (_declared(), {"old/model": "other/model"}, {"new/model"}, "already an alias"),
+        (_declared(reason=" "), {}, {"new/model"}, "needs a reason"),
+        (_declared(decided_on=None), {}, {"new/model"}, "needs decided_on"),
+        (_declared(extra=1), {}, {"new/model"}, "unknown keys"),
+        ({"old/model": "new/model"}, {}, {"new/model"}, "must be a mapping"),
+        (["old/model"], {}, {"new/model"}, "must be a mapping of old IDs"),
+    ],
+)
+def test_declared_alias_rejects_unsafe_entries(raw, route_aliases, canonical, message):
+    with pytest.raises(ValueError, match=message):
+        compile_llm_limits._validated_declared_aliases(
+            raw, route_aliases=route_aliases, canonical_models=canonical
+        )
+
+
+def test_declared_alias_flows_into_the_worker_and_python_catalogs(monkeypatch, tmp_path):
+    raw = _raw_provider_limits()
+    raw["model_aliases"] = {
+        "retired/model": {
+            "to": "gemini/gemini-3.8-flash",
+            "reason": "test",
+            "decided_on": "2026-10-31",
+        }
+    }
+    source = tmp_path / "provider_limits.yml"
+    source.write_text(pyyaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    monkeypatch.setattr(compile_llm_limits, "INPUT_YAML", source)
+    monkeypatch.setattr(compile_llm_limits, "REPO_ROOT", tmp_path)
+    compiled = compile_llm_limits.compile_limits()
+    assert compiled["model_aliases"]["retired/model"] == "gemini/gemini-3.8-flash"
+    worker = compile_llm_limits._worker_catalog(compiled)
+    assert worker["model_aliases"]["retired/model"] == "gemini/gemini-3.8-flash"
+    assert "retired/model" not in worker["model_routes_map"]
+    # A declared alias also resolves inside model_routing, like a route-derived one.
+    raw["model_routing"] = {"retired/model": ["gemini/gemini-3.6-flash"]}
+    source.write_text(pyyaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    assert compile_llm_limits.compile_limits()["model_routing"]["gemini/gemini-3.8-flash"] == [
+        "gemini/gemini-3.6-flash"
+    ]
+
+
 def test_validated_model_routing_rejects_an_unknown_model():
     with pytest.raises(ValueError, match="unknown model"):
         compile_llm_limits._validated_model_routing(
