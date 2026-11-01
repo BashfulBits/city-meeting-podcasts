@@ -148,14 +148,14 @@ propcache==0.5.2
     # via
     #   aiohttp
     #   yarl
-pydantic==2.14.1
+pydantic==2.14.2
     # via
     #   -r constraints/prod.in
     #   instructor
     #   litellm
     #   openai
     #   pydantic-settings
-pydantic-core==2.50.1
+pydantic-core==2.50.2
     # via
     #   instructor
     #   pydantic
