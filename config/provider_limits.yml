@@ -71,7 +71,15 @@ structured_output_methods:
 #       to: new-vendor/model-2
 #       reason: "AA index 31.0 vs 29.4; same context window; verified JSON on all lanes"
 #       decided_on: "2026-10-31"
-model_aliases: {}
+model_aliases:
+  openrouter/nvidia/nemotron-3-super-120b-a12b:free:
+    to: openrouter/nvidia/nemotron-3.5-super-vl:free
+    reason: "Upgraded to Nemotron 3.5 Super VL; legacy selector kept for compatibility"
+    decided_on: "2026-10-17"
+  nvidia/nemotron-3-super-120b-a12b:
+    to: openrouter/nvidia/nemotron-3.5-super-vl:free
+    reason: "Upgraded to Nemotron 3.5 Super VL; legacy selector kept for compatibility"
+    decided_on: "2026-10-17"
 
 # Optional cross-model overflow routing. A key names a model whose callers may also be satisfied
 # by any of its listed target models once its own routes are exhausted/unavailable -- extra daily
@@ -905,26 +913,6 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
-  # Legacy model alias: coalesces with 3.5 Super VL so requests for the 3.0 model
-  # are satisfied by the 3.5 route.
-  - route_id: openrouter_nvidia_nemotron_3_super_120b_a12b_free
-    model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
-    model_key: openrouter/nvidia/nemotron-3.5-super-vl:free
-    provider: openrouter
-    upstream_model: nvidia/nemotron-3.5-super-vl:free
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    hard_input_ceiling: 249027
-    rpm: 10
-    rpd: 200
-    concurrency: 1
-    free: true
-    observed_on: "2026-10-17"
-    observed_input_ceiling: 249027
-    input_per_token: 0.0
-    output_per_token: 0.0
-
   # ==========================================
   # KILO CODE ROUTES (Kilo Gateway)
   # ==========================================
@@ -1228,27 +1216,6 @@ routes:
   - route_id: nvidia_nemotron_3_5_super_vl_120b_a12b_free
     model: nvidia/nemotron-3.5-super-vl-120b-a12b
     # Pools with OpenRouter's canonical 3.5 Super key; direct NVIDIA leg bypasses broker.
-    model_key: openrouter/nvidia/nemotron-3.5-super-vl:free
-    provider: nvidia
-    upstream_model: nvidia/nemotron-3.5-super-vl-120b-a12b
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 4
-    tpm: 40000
-    concurrency: 4
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-17"
-    observed_burst: 5
-    hard_input_ceiling: 249027
-    observed_input_ceiling: 249027
-
-  # Legacy model alias: coalesces with 3.5 Super VL so requests for the 3.0 model
-  # are satisfied by the 3.5 route.
-  - route_id: nvidia_nemotron_3_super_120b_a12b_free
-    model: nvidia/nemotron-3-super-120b-a12b
     model_key: openrouter/nvidia/nemotron-3.5-super-vl:free
     provider: nvidia
     upstream_model: nvidia/nemotron-3.5-super-vl-120b-a12b

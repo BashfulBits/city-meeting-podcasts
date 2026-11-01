@@ -623,12 +623,18 @@ def reconcile(
         # --- configured-route health: one live route per upstream model -------------------------
         health: list[dict[str, Any]] = []
         seen_models: set[str] = set()
+        seen_physical: set[tuple[str, str, str]] = set()
         health_routes = provider_routes if candidate_keys is None or route_ids else []
         for route in health_routes:
             rid = str(route["route_id"])
             if route_ids is not None and rid not in route_ids:
                 continue
             model = str(route.get("upstream_model") or "")
+            phys = (str(route.get("provider") or ""), str(route.get("account_id") or ""), model)
+            if all(phys):
+                if phys in seen_physical:
+                    continue
+                seen_physical.add(phys)
             # The health canary is a chat completion; a non-chat route (JEV, review/53 PR2) cannot
             # answer one, and on BeatAPI it would spend the account's single request window.
             if not route_speaks_chat(route):
