@@ -2269,3 +2269,56 @@ def test_an_existing_empty_complete_snapshot_still_watches_for_new_models(monkey
     state["canaries"] = {}
     _, sent = _daily(monkeypatch, state, CATALOGS, new_models=True)
     assert sent
+
+
+def test_duplicate_physical_routes_are_not_health_checked_twice(monkeypatch):
+    class RecordingControl(FakeControl):
+        def __init__(self):
+            super().__init__()
+            self.reserved = []
+
+        def reserve(self, route_id):
+            self.reserved.append(route_id)
+
+    control = RecordingControl()
+    limits = {
+        "providers": {
+            "groq": {
+                "api_base": "https://groq.test/v1",
+                "accounts": [{"id": "primary", "api_key_env": "KEY"}],
+            }
+        },
+        "routes": [
+            {
+                "route_id": "r1",
+                "provider": "groq",
+                "model": "meta/llama-keep",
+                "account_id": "primary",
+                "upstream_model": "meta-llama/llama-keep",
+                "rpm": 1,
+            },
+            {
+                "route_id": "r2_alias",
+                "provider": "groq",
+                "model": "meta/llama-keep",
+                "account_id": "primary",
+                "upstream_model": "meta-llama/llama-keep",
+                "rpm": 1,
+            },
+        ],
+    }
+    monkeypatch.setenv("KEY", "fake")
+    reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=lambda *args, **kwargs: {},
+        early_rate_checks={"r2_alias"},
+    )
+    assert control.reserved == ["r1"]

@@ -363,8 +363,19 @@ def stale_health_routes(limits, state, *, today, days=7):
     today are left alone, as are paused (`rpd` 0) and non-chat routes (the health loop skips those).
     """
     checks = state.get("route_checks") or {}
+    seen_physical = set()
+    deduped = []
+    for r in limits.get("routes") or []:
+        if not isinstance(r, (dict, Mapping)):
+            continue
+        phys = (r.get("provider"), r.get("account_id"), r.get("upstream_model"))
+        if all(phys):
+            if phys in seen_physical:
+                continue
+            seen_physical.add(phys)
+        deduped.append(r)
     active = sorted(
-        (r for r in limits.get("routes") or [] if r.get("rpd") != 0 and route_speaks_chat(r)),
+        (r for r in deduped if r.get("rpd") != 0 and route_speaks_chat(r)),
         key=lambda r: str(r["route_id"]),
     )
     batch = max(1, -(-len(active) // days))

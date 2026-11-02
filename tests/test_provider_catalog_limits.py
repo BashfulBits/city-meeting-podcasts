@@ -483,6 +483,41 @@ def test_stale_health_routes_rotate_without_stored_state():
     assert len(first) == len(second) == 1 and first != second
 
 
+def test_stale_health_routes_skips_duplicate_physical_routes():
+    from datetime import date
+
+    from citypods.provider_catalog.limits import stale_health_routes
+
+    routes = [
+        {
+            "route_id": "primary",
+            "provider": "nvidia",
+            "account_id": "primary",
+            "upstream_model": "model-a",
+            "rpm": 1,
+        },
+        {
+            "route_id": "duplicate_alias",
+            "provider": "nvidia",
+            "account_id": "primary",
+            "upstream_model": "model-a",
+            "rpm": 1,
+        },
+        {
+            "route_id": "secondary",
+            "provider": "nvidia",
+            "account_id": "primary",
+            "upstream_model": "model-b",
+            "rpm": 1,
+        },
+    ]
+    limits = {"routes": routes}
+    state = {"route_checks": {}}
+    picked = stale_health_routes(limits, state, today=date(2026, 11, 1), days=1)
+    assert "duplicate_alias" not in picked
+    assert picked == {"primary", "secondary"}
+
+
 def test_availability_suspects_need_repeated_demonstrations_and_skip_checked_routes():
     from datetime import date
 
