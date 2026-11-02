@@ -1811,6 +1811,17 @@ def test_rate_consumer_uses_trusted_main_and_read_only_artifacts_without_provide
     assert upload["with"]["name"] == "provider-catalog-rate-evidence-${{ github.run_id }}"
 
 
+def test_manual_dispatch_can_repeat_the_daily_incremental_run():
+    producer, job = _job("provider-catalog-reconcile.yml", "reconcile")
+    inputs = producer[True]["workflow_dispatch"]["inputs"]
+    assert inputs["incremental"]["type"] == "boolean" and inputs["incremental"]["default"] is False
+    step = next(s for s in job["steps"] if s.get("name") == "Reconcile provider catalogs")
+    assert "inputs.incremental == true" in step["env"]["DUE_ONLY"]
+    assert "inputs.incremental == true" in step["env"]["INCREMENTAL"]
+    assert "'20 8 * * *'" in step["env"]["INCREMENTAL"]
+    assert 'if [ "$INCREMENTAL" = "true" ]' in step["run"] and "--incremental" in step["run"]
+
+
 def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock():
     producer, _ = _job("provider-catalog-reconcile.yml", "reconcile")
     workflow, job = _job("provider-catalog-commands.yml", "retirements")
