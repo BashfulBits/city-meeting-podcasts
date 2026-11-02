@@ -2418,3 +2418,48 @@ def test_a_found_candidate_with_a_measured_input_gets_its_output_search_next(mon
         discovery_history_calls={identity: 12},
     )
     assert calls == [("output",)]
+
+
+def test_a_contended_provider_spends_no_session_and_the_next_provider_is_measured(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    class GroqNeverDrains(FakeControl):
+        @contextmanager
+        def paused(self, provider):
+            self.paused_providers.append(provider)
+            yield FakeOutcome(contended=provider == "groq")
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = [
+        {"provider": "groq", "model": "meta-llama/llama-new", "score": 55.0, "discovery": None},
+        {"provider": "openrouter", "model": "kimi/k9:free", "score": None, "discovery": None},
+    ]
+    calls = []
+    monkeypatch.setattr(
+        rec,
+        "_discover_candidate_caps",
+        lambda candidate, record, **kw: calls.append(candidate.key) or _measured([]),
+    )
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QualityIndex(scores={**QUALITY.scores, ("kimi", "k9"): 50.0}),
+        state,
+        session=FakeSession(CATALOGS),
+        control=GroqNeverDrains(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args: OK,
+        due_only=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_session_limit=1,
+    )
+    assert calls == ["openrouter/kimi/k9:free"]
+    groq = next(c for c in report.candidates if c.provider == "groq")
+    assert groq.discovery["reason"] == "automatic_discovery_deferred_pause_contended"
+    assert "in flight" in groq.discovery["detail"]

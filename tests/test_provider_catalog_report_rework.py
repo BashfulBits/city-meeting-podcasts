@@ -392,8 +392,13 @@ def test_the_bar_is_the_weakest_scored_model_our_lanes_run():
 def test_measurement_plan_orders_input_before_output_and_skips_weak_or_claimed_models():
     from citypods.provider_catalog.reconcile import measurement_plan
 
-    def cand(model, score, discovery=None, provider="p"):
-        return {"provider": provider, "model": model, "score": score, "discovery": discovery}
+    def cand(model, score, discovery=None, provider=None):
+        return {
+            "provider": provider or f"p-{model}",
+            "model": model,
+            "score": score,
+            "discovery": discovery,
+        }
 
     measured_input = {
         "axes": [{"axis": "input", "admitted": 9000}, {"axis": "output", "admitted": None}]
@@ -421,14 +426,40 @@ def test_measurement_plan_orders_input_before_output_and_skips_weak_or_claimed_m
             ]
         }
     }
-    assert measurement_plan(state, 30.0, 2) == {"p/needs-output": "output", "p/good": "input"}
+    assert measurement_plan(state, 30.0, 2) == {
+        "p-needs-output/needs-output": "output",
+        "p-good/good": "input",
+        "p-deferred/deferred": "input",
+        "p-unscored/unscored": "input",
+    }
     assert list(measurement_plan(state, 30.0, 9)) == [
-        "p/needs-output",
-        "p/good",
-        "p/deferred",
-        "p/unscored",
+        "p-needs-output/needs-output",
+        "p-good/good",
+        "p-deferred/deferred",
+        "p-unscored/unscored",
     ]
-    assert measurement_plan(state, 30.0, 0) == {}
+    assert measurement_plan(state, 30.0, 0) == {
+        "p-needs-output/needs-output": "output",
+        "p-good/good": "input",
+    }
+    contended = {"reason": "automatic_discovery_deferred_pause_contended"}
+    retry = {"last_full": {"candidates": [cand("again", 31.0, contended)]}}
+    assert measurement_plan(retry, 30.0, 1) == {"p-again/again": "input"}
+
+
+def test_measurement_plan_names_one_candidate_per_provider_with_fallback_providers():
+    from citypods.provider_catalog.reconcile import measurement_plan
+
+    rows = [
+        {"provider": "nvidia", "model": "a", "score": 50.0},
+        {"provider": "nvidia", "model": "b", "score": 49.0},
+        {"provider": "kilo", "model": "c", "score": None},
+        {"provider": "groq", "model": "d", "score": None},
+        {"provider": "zai", "model": "e", "score": None},
+    ]
+    plan = measurement_plan({"last_full": {"candidates": rows}}, 10.0, 1)
+    # NVIDIA's second model waits; the slot limit (1) plus two fallback providers.
+    assert list(plan) == ["nvidia/a", "groq/d", "kilo/c"]
 
 
 def test_a_method_switch_keeps_the_quoting_of_tool_written_routes():
