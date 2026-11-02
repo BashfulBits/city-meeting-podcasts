@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **A provider that cannot drain no longer wastes the daily measurement.** The 2026-11-02 manual
+  run chose MiniMax on NVIDIA, but NVIDIA's dispatch pause never drained: its judge calls hang
+  until the Worker's 720 s timeout, longer than the 600 s drain wait, so the run recorded a
+  misleading "bounded slot unavailable, rechecked next week" and measured nothing. The drain
+  wait is now 780 s, the daily plan names one candidate per provider plus two fallback providers
+  so a contended provider spends no session and the next one is measured, and the deferral now
+  says the pause was contended and that the next daily run retries.
+
 - **Review/48 measures found candidates on the daily run; the quality bar no longer depends on
   named models.** The bar a candidate must clear (for automatic measurement and the "below floor"
   flag) is now the weakest Artificial Analysis-scored model our lanes actually run, recomputed
