@@ -23,6 +23,11 @@ on:
         required: false
         default: false
         type: boolean
+      incremental:
+        description: "Daily incremental: deferred checks, the stalest seventh of routes, newly listed models"
+        required: false
+        default: false
+        type: boolean
       discovery_enabled:
         description: "Run bounded discovery for an exact candidate (qualifying routes run weekly)"
         required: false
@@ -118,7 +123,8 @@ jobs:
           CONTEXT_PURPOSE: ${{ inputs.context_purpose }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
-          DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
+          DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true || inputs.incremental == true }}
+          INCREMENTAL: ${{ github.event.schedule == '20 8 * * *' || inputs.incremental == true }}
           DISCOVERY_ENABLED: ${{ inputs.discovery_enabled == true }}
           DISCOVERY_CANDIDATE: ${{ inputs.discovery_candidate }}
           DISCOVERY_AXIS: ${{ inputs.discovery_axis }}
@@ -144,7 +150,7 @@ jobs:
           if [ "$DUE_ONLY" = "true" ]; then
             args+=(--due-only)
           fi
-          if [ "$GITHUB_EVENT_SCHEDULE" = "20 8 * * *" ]; then
+          if [ "$INCREMENTAL" = "true" ]; then
             args+=(--incremental)
           fi
           if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
