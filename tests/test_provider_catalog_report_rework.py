@@ -383,3 +383,48 @@ def test_the_nvidia_card_fetch_refuses_foreign_hosts_and_never_follows_redirects
             raise AssertionError("must not fetch")
 
     assert nvidia_card_summary(Boom(), (("NVIDIA Build", "https://evil.test/x"),)) == ""
+
+
+def test_route_only_add_for_a_brand_new_model_gets_provisional_input_and_output_caps():
+    from tests.test_provider_catalog_apply import CANDIDATE, PROOF, config
+
+    proof = replace(PROOF, input_context_limit=None, output_context_limit=None)
+    report = Report(candidates=[replace(CANDIDATE, discovery=None, evidence=proof.to_dict())])
+    route_only = Decision("host", "creator/new", "add", (), proof)
+    plan = plan_apply(report, (route_only,), config())
+    route = dict(plan.routes[0])
+    assert route["output_context_limit"] == 4_096 and route["hard_input_ceiling"] == 16_000
+    assert any("Provisional output cap" in note for note in plan.route_notes[0][1])
+    # A lane placement still needs a measured or published output limit.
+    with_lane = Decision("host", "creator/new", "add", ("lane",), proof)
+    assert not plan_apply(report, (with_lane,), config()).routes
+
+
+def test_placeholder_release_dates_and_vendor_boilerplate_are_not_facts(monkeypatch):
+    from citypods.provider_catalog.model_facts import nvidia_card_summary
+
+    assert "released" not in catalog_facts("x/y", {"created": 735790403})
+    assert catalog_facts("x/y", {"created": "2026-08-10"})["released"] == "2026-08-10"
+
+    class Card:
+        def __init__(self, text):
+            self.text, self.ok = text, True
+
+    class Session_:
+        def get(self, *a, **k):
+            return Card(
+                "Our AI models are designed and/or optimized to run on NVIDIA GPU-accelerated "
+                "systems, leveraging hardware and software frameworks for speed.\n\n"
+                "Muse Glimmer is a multimodal reasoning model built for local agents, coding and tool use."
+            )
+
+    monkeypatch.setattr(
+        "citypods.provider_catalog.model_facts.validate_source_url", lambda *a, **k: None
+    )
+    summary = nvidia_card_summary(Session_(), (("NVIDIA Build", "https://build.nvidia.com/x"),))
+    assert summary.startswith("Muse Glimmer is a multimodal")
+
+
+def test_the_header_says_why_the_floor_is_unavailable():
+    report = Report(floor_missing=("openai/gpt-oss-120b",))
+    assert "no Intelligence Index for openai/gpt-oss-120b" in render_body(report, run_date="d")

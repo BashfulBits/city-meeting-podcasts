@@ -458,6 +458,12 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             output_context_limit = provider_output_claim or (
                 litellm_output if type(litellm_output) is int and litellm_output > 0 else None
             )
+            provisional_output = False
+            if not output_context_limit and not cap and not decision.lanes:
+                # Route only, no lane: a conservative output cap stands in until discovery
+                # measures the model (brand-new models are in neither the catalog nor LiteLLM).
+                output_context_limit = PROVISIONAL_OUTPUT_LIMIT
+                provisional_output = True
             if not output_context_limit:
                 deferred.append(
                     f"{decision.key}: route config requires an output-context value; "
@@ -503,7 +509,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             route_notes.append(
                 (
                     rid,
-                    _provisional_notes(provider_context_claim)
+                    _provisional_notes(provider_context_claim, provisional_output)
                     if not cap
                     else (
                         f"Input cap evidence: {cap['admitted_input']} provider-counted input "
@@ -650,6 +656,8 @@ def alias_candidates(retired: str, routes, lanes) -> tuple[str, ...]:
 # A route added without provider-counted input evidence is held to this input size until a later
 # discovery run measures it, so a mis-sized prompt can never reach a model the catalog only claims.
 PROVISIONAL_INPUT_CEILING = 16_000
+# The matching output cap for a route added with no published output limit.
+PROVISIONAL_OUTPUT_LIMIT = 4_096
 
 
 def _provisional_input_claim(proof, decision) -> bool:
@@ -662,13 +670,19 @@ def _provisional_input_claim(proof, decision) -> bool:
     return not decision.lanes
 
 
-def _provisional_notes(claim):
+def _provisional_notes(claim, output=False):
     held = min(PROVISIONAL_INPUT_CEILING, claim or PROVISIONAL_INPUT_CEILING)
-    return (
+    notes = [
         f"Provisional input cap: no provider-counted evidence yet; hard_input_ceiling is held at "
         f"{held} (provider claim {claim or 'not published'}).",
         "Route only, no lane placement; a discovery run must measure the cap before any lane add.",
-    )
+    ]
+    if output:
+        notes.append(
+            f"Provisional output cap: no provider, catalog or LiteLLM output limit exists, so "
+            f"output_context_limit is held at {PROVISIONAL_OUTPUT_LIMIT} until it is measured."
+        )
+    return tuple(notes)
 
 
 def _verified_input_cap(discovery):

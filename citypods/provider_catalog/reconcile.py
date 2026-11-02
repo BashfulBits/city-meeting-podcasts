@@ -195,6 +195,8 @@ class Report:
     discovery_sessions: list[dict[str, Any]] = field(default_factory=list)
     # Why every model is unscored (the quality fetch failed); shown at the top of the issue.
     quality_error: str | None = None
+    # Floor reference models AA returned no Intelligence Index for.
+    floor_missing: tuple[str, ...] = ()
 
     @property
     def actionable(self) -> bool:
@@ -407,6 +409,14 @@ def reconcile(
     deferred: dict[str, str] = dict(previous_state.get("deferred") or {})
     known_anomalies = set(previous_state.get("anomalies") or [])
     report.quality_error = quality.error
+    if not quality.error:
+        from citypods.provider_catalog.quality import FLOOR_MODELS
+
+        report.floor_missing = tuple(
+            f"{creator}/{slug}"
+            for creator, slug in FLOOR_MODELS
+            if (creator, slug) not in quality.scores
+        )
     if quality.error:
         report.observations.append(f"quality: {quality.error}; every candidate is unscored")
 

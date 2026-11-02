@@ -3604,3 +3604,14 @@ machine state.
   route-level value) and edits `structured_output_method` and `structured_output_verified_on` in
   place. A route that inherits its method from the provider is deferred.
 
+#### Follow-up 2026-11-02 (run #85)
+
+- AA scoring works again (MiniMax M3.1 Flash 28.9, Nemotron 3.5 Lightning 5.5). The floor stays
+  unavailable because AA's v5 Intelligence Index is N/A for GPT-OSS-120B and Nemotron-3 Super;
+  the header now says which reference models are missing. A new model AA has not indexed, or whose
+  name normalizes to several AA entries (variants), stays unscored by design.
+- Route-only adds of brand-new models deferred for a missing output limit. They now take a
+  provisional 4,096-token output cap with the 16k input cap, flagged in the PR (route only; lane
+  placement still needs measured or published values).
+- NVIDIA's catalog reports `created: 735790403` for every model, so dates before 2015 are dropped.
+

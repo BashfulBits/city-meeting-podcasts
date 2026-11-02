@@ -545,7 +545,12 @@ def render_body(
         f"**Quality data unavailable: {_inline(report.quality_error)}.** Every model shows as "
         "unscored until this is fixed."
         if report.quality_error
-        else f"floor (lower of GPT-OSS-120B and Nemotron-3 Super) = {floor}."
+        else f"floor (lower of GPT-OSS-120B and Nemotron-3 Super) = {floor}"
+        + (
+            f" (AA returns no Intelligence Index for {_inline(', '.join(report.floor_missing))})."
+            if report.floor_missing
+            else "."
+        )
     )
     lines = [
         MARKER,
