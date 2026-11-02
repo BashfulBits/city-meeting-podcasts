@@ -299,6 +299,10 @@ providers:
   # No native LiteLLM adapter is assumed for this gateway; routes compile through the same
   # OpenAI-compatible direct-adapter path as Kilo/OpenCode/SiliconFlow (see `_direct_model` in
   # `scripts/compile_llm_limits.py`).
+  # Removed 2026-11-02: z-ai/glm-5.3-flash. A one-token prompt returned 504 after 302 s (and 16 of
+  # 16 production calls hit the Worker's 720 s timeout); google/gemma-4-31b-it answered "ok?" in
+  # 217 s and deepseek-ai/deepseek-v4.1-flash did not answer in 45 s, while the nemotron and
+  # diffusiongemma models answer in about 1 s. The GLM logical model is still served by others.
   nvidia:
     structured_output_method: json_schema
     api_base: https://integrate.api.nvidia.com/v1
@@ -1286,23 +1290,6 @@ routes:
   # ==========================================
   # ORCAROUTER ROUTES (api.orcarouter.ai)
   # ==========================================
-  - route_id: nvidia_glm_5_3_flash_free
-    model: nvidia/glm-5.3-flash
-    # Pools with OrcaRouter's and BeatAPI's GLM 5.3 Flash (same normalized key; NVIDIA lists it as z-ai/).
-    model_key: zai/glm-5.3-flash
-    provider: nvidia
-    upstream_model: z-ai/glm-5.3-flash
-    # NVIDIA's /models lists no context sizes; conservative until measured.
-    input_context_limit: 128000
-    output_context_limit: 16384
-    account_id: primary
-    # Unmeasured: 2 rpm keeps the provider-wide 35 above the sum of its routes (NVIDIA quotas are per model).
-    rpm: 2
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-31"
 
   - route_id: nvidia_diffusiongemma_26b_a4b_it_free
     model: nvidia/diffusiongemma-26b-a4b-it
