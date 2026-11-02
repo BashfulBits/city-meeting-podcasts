@@ -35,6 +35,124 @@ const COPY_FIELDS = [
 // the executor retain an unbounded text body. This is only used for classification, not persisted.
 const MAX_PROVIDER_ERROR_BODY_CHARS = 4096;
 
+// A streamed reply that goes quiet this long is treated as stalled. BeatAPI's streams were never
+// more than ~5 s apart in testing (2026-11-02); the 720 s response deadline still bounds the call.
+export const STREAM_IDLE_MS = 60_000;
+// Text kept while assembling a stream, so a runaway reply cannot grow without bound.
+export const MAX_STREAM_CHARS = 8_000_000;
+
+/**
+ * Reads an OpenAI-style server-sent-event chat stream and rebuilds the single JSON reply a
+ * non-streaming call returns, so nothing downstream needs to know the call was streamed. Parses
+ * only the new tail of the buffer (linear in stream length). A mid-stream `error` object is
+ * returned as the body, like a non-streaming error reply. Throws when the stream stalls, ends
+ * before a finish reason or [DONE], or exceeds the size ceiling.
+ */
+export async function assembleChatStream(response, { idleMs = STREAM_IDLE_MS, maxChars = MAX_STREAM_CHARS } = {}) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let size = 0;
+  let id;
+  let model;
+  let created;
+  let usage = null;
+  let finishReason = null;
+  let done = false;
+  let errorBody = null;
+  let content = "";
+  let reasoning = "";
+  let reasoningKey = "reasoning_content";
+  const toolCalls = [];
+
+  const handle = (frame) => {
+    const data = frame
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).replace(/^ /, ""))
+      .join("\n");
+    if (!data) return;
+    if (data === "[DONE]") {
+      done = true;
+      return;
+    }
+    let chunk;
+    try {
+      chunk = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (chunk?.error) {
+      errorBody = { error: chunk.error };
+      return;
+    }
+    id ??= chunk.id;
+    model ??= chunk.model;
+    created ??= chunk.created;
+    if (chunk.usage) usage = chunk.usage;
+    const choice = chunk.choices?.[0];
+    if (!choice) return;
+    const delta = choice.delta || {};
+    if (typeof delta.content === "string") content += delta.content;
+    for (const key of ["reasoning_content", "reasoning"]) {
+      if (typeof delta[key] === "string") {
+        reasoningKey = key;
+        reasoning += delta[key];
+      }
+    }
+    for (const call of delta.tool_calls || []) {
+      const slot = (toolCalls[call.index ?? 0] ??= { id: call.id, type: call.type || "function", function: { name: "", arguments: "" } });
+      if (call.id) slot.id = call.id;
+      if (call.function?.name) slot.function.name += call.function.name;
+      if (call.function?.arguments) slot.function.arguments += call.function.arguments;
+    }
+    if (choice.finish_reason) finishReason = choice.finish_reason;
+  };
+
+  try {
+    for (;;) {
+      let timer;
+      const idle = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("stream_idle_timeout")), idleMs);
+      });
+      let step;
+      try {
+        step = await Promise.race([reader.read(), idle]);
+      } finally {
+        clearTimeout(timer);
+      }
+      if (step.done) break;
+      size += step.value.byteLength;
+      if (size > maxChars) throw new Error("stream_too_large");
+      buffer += decoder.decode(step.value, { stream: true });
+      let at;
+      while ((at = buffer.search(/\r?\n\r?\n/)) >= 0) {
+        const match = buffer.slice(at).match(/^\r?\n\r?\n/);
+        handle(buffer.slice(0, at));
+        buffer = buffer.slice(at + match[0].length);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) handle(buffer);
+  } catch (err) {
+    await reader.cancel().catch(() => {});
+    throw err;
+  }
+  if (errorBody) return errorBody;
+  if (!done && !finishReason) throw new Error("stream_ended_early");
+  const message = { role: "assistant", content };
+  if (reasoning) message[reasoningKey] = reasoning;
+  if (toolCalls.length) message.tool_calls = toolCalls.filter(Boolean);
+  return {
+    id,
+    object: "chat.completion",
+    created,
+    model,
+    choices: [{ index: 0, message, finish_reason: finishReason }],
+    ...(usage ? { usage } : {}),
+  };
+}
+
 /** Gemini's OpenAI-compatible endpoint sometimes wraps one error object in a one-element array. */
 export function normalizeProviderBody(body) {
   return Array.isArray(body) ? body[0] : body;
@@ -203,6 +321,9 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
     upstreamModel: route.upstream_model,
     usesGateway: Boolean(aiGatewayBase),
     aiGatewayMaxAttempts: route.ai_gateway_max_attempts ?? providerCfg.ai_gateway_max_attempts ?? null,
+    // Revert a provider to plain request/response by removing `stream_response` from its block
+    // in config/provider_limits.yml (or set a route's `stream_response: false`) and recompiling.
+    streamResponse: (route.stream_response ?? providerCfg.stream_response) === true,
   };
 }
 
@@ -218,7 +339,15 @@ export async function callAiGateway({
   const creds = resolveProviderCredentials(env, route, dispatchLimits);
   const upstreamPayload = apiShapeFor(route).buildRequest(payload, route, shaping);
 
-  const headers = { accept: "application/json", "content-type": "application/json" };
+  const streaming = creds.streamResponse && (route.api_shape || "chat") === "chat";
+  if (streaming) {
+    upstreamPayload.stream = true;
+    upstreamPayload.stream_options = { include_usage: true };
+  }
+  const headers = {
+    accept: streaming ? "text/event-stream, application/json" : "application/json",
+    "content-type": "application/json",
+  };
   if (creds.apiKey) headers.authorization = `Bearer ${creds.apiKey}`;
   // Matches v1: only attach the gateway's own auth when this call actually goes through it, and
   // only when a token is configured -- a direct-to-provider call has no gateway edge to
@@ -246,12 +375,17 @@ export async function callAiGateway({
   const correlationId = response.headers.get("cf-aig-log-id") || response.headers.get("cf-ray") || null;
   let body = null;
   let parseError = null;
-  const rawBody = await response.text();
-  try {
-    body = rawBody ? JSON.parse(rawBody) : null;
-  } catch (err) {
-    parseError = err;
-    body = rawBody.slice(0, MAX_PROVIDER_ERROR_BODY_CHARS);
+  if (streaming && response.ok && /text\/event-stream/i.test(response.headers.get("content-type") || "")) {
+    // A stream error (stall, early end) throws like a network failure and is retried as one.
+    body = await assembleChatStream(response);
+  } else {
+    const rawBody = await response.text();
+    try {
+      body = rawBody ? JSON.parse(rawBody) : null;
+    } catch (err) {
+      parseError = err;
+      body = rawBody.slice(0, MAX_PROVIDER_ERROR_BODY_CHARS);
+    }
   }
   const retryAfterSeconds = parseRetryAfterSeconds(response, normalizeProviderBody(body));
 

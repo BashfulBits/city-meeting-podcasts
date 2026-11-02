@@ -411,6 +411,7 @@ API_SHAPES = ("chat", "systemone")
 
 _WORKER_ROUTE_FIELDS = (
     "route_id",
+    "stream_response",
     "ai_gateway_max_attempts",
     # The route's PRIMARY logical model. A route listed in several pools via `also_serves`
     # appears in several model_routes_map entries, so the Worker must not infer its identity from
@@ -469,6 +470,9 @@ _WORKER_ROUTE_FIELDS = (
 )
 
 _WORKER_PROVIDER_FIELDS = (
+    # true: the Worker streams this provider's chat replies and rebuilds the single reply (route
+    # `stream_response` overrides). Remove it to go back to plain request/response.
+    "stream_response",
     "api_base",
     "ai_gateway_slug",
     "ai_gateway_chat_path",
@@ -973,6 +977,10 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     providers = raw.get("providers", {})
     for provider_name, provider_cfg in providers.items():
         if isinstance(provider_cfg, dict):
+            if "stream_response" in provider_cfg and not isinstance(
+                provider_cfg["stream_response"], bool
+            ):
+                raise ValueError(f"provider {provider_name} stream_response must be true or false")
             if "ai_gateway_max_attempts" in provider_cfg:
                 provider_cfg["ai_gateway_max_attempts"] = _validate_ai_gateway_max_attempts(
                     provider_cfg["ai_gateway_max_attempts"], provider_name

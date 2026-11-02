@@ -159,6 +159,11 @@ providers:
     # `jev-1.13-free` (the review/49 anchor judge) is on the same key and the same window, but is
     # called via POST /v1/systemone, not chat completions, so it has no route here; its transport
     # is specified in the P1 breakout, and its calls must be budgeted against these routes.
+    # Streamed 2026-11-02: BeatAPI's Cloudflare edge ends a non-streaming call at ~125 s with a 524
+    # (3/3 long calls failed), while streams kept data flowing (gaps <= 5 s) for 7+ minutes and one
+    # 415 s reply completed. To go back to plain request/response, delete this line (or set it to
+    # false) and run scripts/compile_llm_limits.py.
+    stream_response: true
     api_base: https://api.beatapi.io/v1
     chat_path: /chat/completions
     # Registered AI Gateway custom provider (base URL https://api.beatapi.io/v1). The Worker calls
@@ -181,6 +186,11 @@ providers:
     # same base URL, gateway slug and limits as `beatapi` above (read its comments for the
     # measurements). It carries the five chat routes only: JEV (`beatapi_jev_1_13_free`) stays on
     # the primary account because its route id is pinned by the judge and remedy code. Do not top up.
+    # Streamed 2026-11-02: BeatAPI's Cloudflare edge ends a non-streaming call at ~125 s with a 524
+    # (3/3 long calls failed), while streams kept data flowing (gaps <= 5 s) for 7+ minutes and one
+    # 415 s reply completed. To go back to plain request/response, delete this line (or set it to
+    # false) and run scripts/compile_llm_limits.py.
+    stream_response: true
     api_base: https://api.beatapi.io/v1
     chat_path: /chat/completions
     ai_gateway_slug: custom-beatapi
