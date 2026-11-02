@@ -95,7 +95,9 @@ jobs:
     # Three bounded 90-minute new-route input searches plus catalog checks and cleanup.
     timeout-minutes: >-
       ${{ github.event_name == 'schedule' && github.event.schedule == '17 10 * * 1' && 300 ||
-          github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true && 180 || 120 }}
+          github.event_name == 'schedule' && github.event.schedule == '20 8 * * *' && 180 ||
+          github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true && 180 ||
+          github.event_name == 'workflow_dispatch' && inputs.incremental == true && 180 || 120 }}
     permissions:
       contents: read
       issues: write
@@ -155,6 +157,9 @@ jobs:
           fi
           if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
             args+=(--rate-evidence provider-catalog-rate-evidence.json)
+            args+=(--discovery-evidence provider-catalog-discovery-evidence.json)
+          elif [ "$INCREMENTAL" = "true" ]; then
+            # A hand-repeated daily run measures candidates like the scheduled one.
             args+=(--discovery-evidence provider-catalog-discovery-evidence.json)
           fi
           if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1" ]; then
@@ -217,7 +222,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Retain scheduled request-cap discovery evidence
-        if: always() && github.event_name == 'schedule'
+        if: always() && (github.event_name == 'schedule' || (inputs.incremental == true && inputs.discovery_enabled != true))
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: provider-catalog-discovery-evidence-${{ github.run_id }}

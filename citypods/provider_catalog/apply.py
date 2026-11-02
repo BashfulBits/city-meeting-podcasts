@@ -437,10 +437,10 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 decision.discovery_digest and cap["evidence_digest"] == decision.discovery_digest
             ):
                 cap = None
-            if not cap and not _provisional_input_claim(proof, decision):
+            if not cap:
                 deferred.append(
                     f"{decision.key}: fresh authenticated provider-counted input evidence "
-                    "required; refresh the issue"
+                    "required; the daily run measures found candidates, then refresh the issue"
                 )
                 continue
             litellm = discovery.get("litellm") if isinstance(discovery, Mapping) else None
@@ -455,14 +455,24 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 if type(proof.output_context_limit) is int and proof.output_context_limit > 0
                 else None
             )
-            output_context_limit = provider_output_claim or (
-                litellm_output if type(litellm_output) is int and litellm_output > 0 else None
+            measured_output = _verified_output_cap(discovery)
+            output_source = (
+                "a measured output search"
+                if measured_output
+                else "the provider catalog"
+                if provider_output_claim
+                else "LiteLLM"
+            )
+            output_context_limit = (
+                measured_output
+                or provider_output_claim
+                or (litellm_output if type(litellm_output) is int and litellm_output > 0 else None)
             )
             if not output_context_limit:
                 deferred.append(
-                    f"{decision.key}: route config requires an output-context value; "
-                    "provider/catalog and LiteLLM claims are unavailable, enter a reviewed "
-                    "operational value before adding the route"
+                    f"{decision.key}: route config requires an output-context value; no provider, "
+                    "catalog or LiteLLM claim exists and the output search has not run yet (the "
+                    "daily run measures it once the input search is done)"
                 )
                 continue
             model_key = proof.model_key
@@ -483,12 +493,8 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 "input_context_limit": max(
                     provider_context_claim or 0,
                     cap["admitted_input"] + cap["generated_output"],
-                )
-                if cap
-                else (provider_context_claim or PROVISIONAL_INPUT_CEILING),
-                "hard_input_ceiling": cap["admitted_input"]
-                if cap
-                else min(PROVISIONAL_INPUT_CEILING, provider_context_claim or 10**9),
+                ),
+                "hard_input_ceiling": cap["admitted_input"],
                 "structured_output_method": proof.structured_output_method,
                 "structured_output_verified_on": proof.structured_output_verified_on,
                 "rpm": 1,
@@ -503,9 +509,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             route_notes.append(
                 (
                     rid,
-                    _provisional_notes(provider_context_claim)
-                    if not cap
-                    else (
+                    (
                         f"Input cap evidence: {cap['admitted_input']} provider-counted input "
                         f"tokens admitted; {cap['generated_output']} output tokens generated "
                         f"in the same request (control {cap['control']}).",
@@ -518,10 +522,13 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                             f"the empirically observed input plus generated output."
                         ),
                         (
-                            f"Output context is unmeasured; configured value "
-                            f"{output_context_limit} is sourced from "
-                            f"{'the provider catalog' if provider_output_claim else 'LiteLLM'} "
-                            "and is subject to this PR's review."
+                            f"Output context: configured value {output_context_limit} is sourced "
+                            f"from {output_source}"
+                            + (
+                                " (a verified lower bound, not a proven maximum)."
+                                if measured_output
+                                else " and is subject to this PR's review."
+                            )
                         ),
                     ),
                 )
@@ -647,28 +654,36 @@ def alias_candidates(retired: str, routes, lanes) -> tuple[str, ...]:
     return tuple(p for p in ranked if _family(p) == family or shared(p))[:3]
 
 
-# A route added without provider-counted input evidence is held to this input size until a later
-# discovery run measures it, so a mis-sized prompt can never reach a model the catalog only claims.
-PROVISIONAL_INPUT_CEILING = 16_000
+OUTPUT_BASES = {"output", "completion_including_reasoning", "generated_output"}
 
 
-def _provisional_input_claim(proof, decision) -> bool:
-    """A route-only add may start at a provisional cap while it awaits discovery.
+def _verified_output_cap(discovery):
+    """The output tokens an isolated output search verified, or None.
 
-    Lane placement still needs measured input evidence: a lane can send any prompt, a route with
-    no lane is only eligible for work that already names its model. A provider that publishes no
-    context size (NVIDIA lists none) gets the same conservative ceiling.
+    Only a comparable, provider-counted bracket qualifies: a positive admitted lower bound with a
+    recognized output count basis and a control. It is a floor on what the route can produce, so
+    it is the cap used for the route; a later, deeper search may raise it.
     """
-    return not decision.lanes
-
-
-def _provisional_notes(claim):
-    held = min(PROVISIONAL_INPUT_CEILING, claim or PROVISIONAL_INPUT_CEILING)
-    return (
-        f"Provisional input cap: no provider-counted evidence yet; hard_input_ceiling is held at "
-        f"{held} (provider claim {claim or 'not published'}).",
-        "Route only, no lane placement; a discovery run must measure the cap before any lane add.",
+    if not isinstance(discovery, Mapping):
+        return None
+    axis = next(
+        (
+            row
+            for row in discovery.get("axes") or []
+            if isinstance(row, Mapping) and row.get("axis") == "output"
+        ),
+        None,
     )
+    admitted = axis.get("admitted") if axis else None
+    if (
+        type(admitted) is int
+        and admitted > 0
+        and axis.get("count_basis") in OUTPUT_BASES
+        and isinstance(axis.get("control"), str)
+        and axis["control"]
+    ):
+        return admitted
+    return None
 
 
 def _verified_input_cap(discovery):

@@ -545,7 +545,12 @@ def render_body(
         f"**Quality data unavailable: {_inline(report.quality_error)}.** Every model shows as "
         "unscored until this is fixed."
         if report.quality_error
-        else f"floor (lower of GPT-OSS-120B and Nemotron-3 Super) = {floor}."
+        else (
+            f"quality bar = {floor} ({report.floor_source}; candidates at or below it are not "
+            "automatically measured)."
+            if report.floor is not None
+            else "no quality bar: AA scores none of the models our lanes run."
+        )
     )
     lines = [
         MARKER,

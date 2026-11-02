@@ -3604,3 +3604,31 @@ machine state.
   route-level value) and edits `structured_output_method` and `structured_output_verified_on` in
   place. A route that inherits its method from the provider is deferred.
 
+#### Phase 6: measured limits for every new route — 2026-11-02
+
+Superseded: the provisional 16k input / 4,096 output caps for route-only adds (phase 1 and the
+2026-11-02 follow-up) are removed. A route is added only with measured limits.
+
+- **Quality bar.** `production_floor` = the weakest AA-scored model across the lanes that accept
+  catalog backups (recomputed from AA's current scores each run, so it follows index revisions and
+  never depends on one model staying indexed). The pinned GPT-OSS-120B / Nemotron-3 Super pair is a
+  fallback only when no lane model is scored. The issue header states the bar and its source.
+- **Who gets measured.** Automatic discovery skips only a *scored* model at or below the bar;
+  an unscored model (AA has not indexed it) is measured, since waiting on AA would leave every new
+  model unmeasured while it lags. This applies to the weekly run too.
+- **Daily measurement.** With `--incremental` (scheduled 08:20 UTC, or the manual `incremental`
+  input) `measurement_plan` picks, from the issue's already-found candidates, up to
+  `DAILY_DISCOVERY_SESSIONS` (1) to measure today: a candidate with a measured input but no output
+  limit first (so it becomes addable), then never-measured ones (or ones deferred for budget),
+  best score first, unscored after. The input session is the existing automatic input search; the
+  follow-up is an isolated output search, run only when no provider/catalog/LiteLLM output claim
+  exists. Results rebuild from authenticated history exactly as before (the history summary already
+  merges every compatible session's observations per axis). Job timeout 180 minutes; the evidence
+  artifact is uploaded for scheduled and incremental runs.
+- **`/apply`.** `output_context_limit` = verified output bracket (positive admitted lower bound,
+  recognized output count basis, control) → provider claim → LiteLLM → defer. A lower bound is a
+  verified floor, not a proven maximum; the PR note says so.
+- **Expectation.** One session per day means a backlog of N unmeasured candidates takes about N
+  to 2N days; scored, better models go first. Raise `DAILY_DISCOVERY_SESSIONS` (and the timeout)
+  if that is too slow.
+

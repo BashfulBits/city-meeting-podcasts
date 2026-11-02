@@ -78,6 +78,8 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
     reconcile,
 )
 
+# One size-search session per daily run (up to 90 minutes), so the run stays bounded.
+DAILY_DISCOVERY_SESSIONS = 1
 LIMITS_PATH = REPO_ROOT / "config" / "provider_limits.yml"
 PAUSE_SECONDS = 900
 # NVIDIA calls run up to ~400 s; a 300 s drain left the 2026-09-24 dry run contended.
@@ -731,12 +733,22 @@ def main(argv: list[str] | None = None) -> int:
                 print("context calibration deferred: authority/history unavailable")
     session = requests.Session()
     quality = fetch_quality_index(session)
+    # The weekly full run and the daily incremental run (scheduled, or repeated by hand with the
+    # `incremental` dispatch input) measure candidates; the daily run does one session per run.
     activated_schedule = (
         DISCOVERY_ACTIVATION_ENABLED
         and DISCOVERY_SCHEDULED_ENABLED
         and (
-            os.environ.get("GITHUB_EVENT_NAME") == "schedule"
-            and os.environ.get("GITHUB_EVENT_SCHEDULE") == "17 10 * * 1"
+            (
+                os.environ.get("GITHUB_EVENT_NAME") == "schedule"
+                and os.environ.get("GITHUB_EVENT_SCHEDULE") == "17 10 * * 1"
+            )
+            or (
+                args.incremental
+                and os.environ.get("GITHUB_EVENT_NAME") in {"schedule", "workflow_dispatch"}
+                and not args.discovery_enabled
+                and os.environ.get("GITHUB_REF") in {None, "refs/heads/main"}
+            )
         )
     )
     # A queued receipt is not itself live-call authority. A reviewed activation change must
@@ -773,6 +785,8 @@ def main(argv: list[str] | None = None) -> int:
         rate_run_id=rate_run_id,
         early_rate_checks=early,
         new_models=args.incremental,
+        measure_pending=args.incremental,
+        discovery_session_limit=DAILY_DISCOVERY_SESSIONS if args.incremental else None,
         context_run=context_run,
         discovery_enabled=discovery_enabled,
         discovery_automatic=discovery_automatic,

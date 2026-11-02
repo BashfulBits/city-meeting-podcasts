@@ -1820,6 +1820,10 @@ def test_manual_dispatch_can_repeat_the_daily_incremental_run():
     assert "inputs.incremental == true" in step["env"]["INCREMENTAL"]
     assert "'20 8 * * *'" in step["env"]["INCREMENTAL"]
     assert 'if [ "$INCREMENTAL" = "true" ]' in step["run"] and "--incremental" in step["run"]
+    # The incremental run measures candidates, so it needs the evidence path and a long timeout.
+    assert "--discovery-evidence" in step["run"].split('elif [ "$INCREMENTAL" = "true" ]')[1][:200]
+    assert "'20 8 * * *' && 180" in job["timeout-minutes"]
+    assert "inputs.incremental == true && 180" in job["timeout-minutes"]
 
 
 def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock():

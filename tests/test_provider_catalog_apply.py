@@ -546,9 +546,10 @@ def test_removal_is_rejected_deferred_or_counts_routes_added_in_the_same_plan():
     added = replace(PROOF, model_key="old")
     add = Decision("host", "creator/new", "add", (), added)
     report = Report(
-        anomalies=[proof], candidates=[replace(CANDIDATE, discovery=None, lanes=("lane",))]
+        anomalies=[proof], candidates=[replace(CANDIDATE, discovery=DISCOVERY, lanes=("lane",))]
     )
     report.candidates[0] = replace(report.candidates[0], evidence=added.to_dict())
+    add = replace(add, discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"])
     result = plan_apply(report, (add, decision), only)
     assert result.removed_routes == ("paid",) and not result.last_routes
     assert "No primary changes" not in proposal_body(result)
@@ -1409,14 +1410,16 @@ def test_input_priority_supporting_counts_do_not_claim_full_requested_output():
     assert "Consumed totals are separate from requested-output capacity proof" in body
 
 
-def test_route_only_addition_without_measured_input_is_provisional_and_listed():
+def test_route_only_addition_waits_for_the_daily_measurement_then_lists_its_pool():
     report = Report(candidates=[replace(CANDIDATE, discovery=None)])
     decision = Decision("host", "creator/new", "add", (), PROOF)
     result = plan_apply(report, (decision,), config())
-    route = dict(result.routes[0])
-    assert not result.deferred
-    assert route["hard_input_ceiling"] == 10000 and route["input_context_limit"] == 10000
-    assert "Provisional input cap" in result.route_notes[0][1][0]
+    assert not result.routes and "the daily run measures" in result.deferred[0]
+    measured = Report(candidates=[replace(CANDIDATE, discovery=DISCOVERY)])
+    decision = replace(
+        decision, discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"]
+    )
+    result = plan_apply(measured, (decision,), config())
     body = proposal_body(result)
     assert "| `host_creator_new` | `creator/new` | `primary` | `creator/new` | none |" in body
 
