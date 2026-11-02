@@ -54,7 +54,7 @@
       ]
     },
     "beatapi": {
-      "stream_response": true,
+      "stream_response": false,
       "api_base": "https://api.beatapi.io/v1",
       "ai_gateway_slug": "custom-beatapi",
       "ai_gateway_chat_path": "/chat/completions",
@@ -70,7 +70,7 @@
       ]
     },
     "beatapi_secondary": {
-      "stream_response": true,
+      "stream_response": false,
       "api_base": "https://api.beatapi.io/v1",
       "ai_gateway_slug": "custom-beatapi",
       "ai_gateway_chat_path": "/chat/completions",
