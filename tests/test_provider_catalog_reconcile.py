@@ -2322,3 +2322,99 @@ def test_duplicate_physical_routes_are_not_health_checked_twice(monkeypatch):
         early_rate_checks={"r2_alias"},
     )
     assert control.reserved == ["r1"]
+
+
+def _measured(summary_axes):
+    return {
+        "summary": {"retryable": False, "axes": summary_axes, "reason": "complete"},
+        "artifact": {"session": {"provider": "groq"}},
+    }
+
+
+def test_a_daily_run_measures_one_found_candidate_per_session_limit(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    # Two already-found candidates, neither measured; the better scored goes first, once.
+    state["last_full"]["candidates"] = [
+        {"provider": "groq", "model": "meta-llama/llama-new", "score": 55.0, "discovery": None},
+        {"provider": "openrouter", "model": "kimi/k9:free", "score": None, "discovery": None},
+    ]
+    calls = []
+
+    def fake(candidate, record, **kwargs):
+        calls.append((candidate.key, kwargs["selected_axes"]))
+        return _measured([])
+
+    monkeypatch.setattr(rec, "_discover_candidate_caps", fake)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args: OK,
+        due_only=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_session_limit=1,
+    )
+    assert calls == [("groq/meta-llama/llama-new", ("input",))]
+    assert report.discovery_sessions and report.floor is not None
+
+
+def test_a_found_candidate_with_a_measured_input_gets_its_output_search_next(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = [
+        {
+            "provider": "groq",
+            "model": "meta-llama/llama-new",
+            "score": 55.0,
+            "discovery": {
+                "axes": [
+                    {"axis": "input", "admitted": 9000},
+                    {"axis": "output", "admitted": None, "published": None},
+                ]
+            },
+        }
+    ]
+    # An earlier input session exists for this identity; the follow-up must still run.
+    calls = []
+    monkeypatch.setattr(
+        rec,
+        "_discover_candidate_caps",
+        lambda candidate, record, **kw: calls.append(kw["selected_axes"]) or _measured([]),
+    )
+    monkeypatch.setenv("K", "test-key")
+    identity = rec._candidate_discovery_identity(
+        "groq", "meta-llama/llama-new", rec.all_rules()["groq"], LIMITS["providers"]["groq"]
+    )
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args: OK,
+        due_only=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_session_limit=1,
+        discovery_history_calls={identity: 12},
+    )
+    assert calls == [("output",)]

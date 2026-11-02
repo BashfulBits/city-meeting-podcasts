@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import requests
@@ -21,6 +21,12 @@ from citypods.security import SecurityError, validate_source_url
 MAX_TEXT = 220
 _SIZE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)([bt])(?:-a(\d+(?:\.\d+)?)b)?(?![a-z0-9])", re.I)
 HF_SEARCH = "https://huggingface.co/api/models"
+# NVIDIA Build cards open with legal/hardware boilerplate; none of it describes the model.
+_BOILERPLATE = re.compile(
+    r"GPU-accelerated|designed and/or optimized|governing terms|terms of use|"
+    r"ready for commercial|not owned or developed by NVIDIA|trial service|license",
+    re.I,
+)
 
 
 def plain(value: Any, limit: int = MAX_TEXT) -> str:
@@ -41,15 +47,26 @@ def _size_from_name(model: str) -> str | None:
     return f"{total}{unit}" + (f" ({active}B active)" if active else "")
 
 
-def _day(value: Any) -> str | None:
+def _day(value: Any, *, future_ok: bool = False) -> str | None:
+    """An ISO date, only if it is a plausible release date.
+
+    NVIDIA's catalog reports `created: 735790403` for every model (1993-04-26), so a date before
+    2015 or after tomorrow is a placeholder, not a fact.
+    """
     try:
         if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
-            return datetime.fromtimestamp(float(value), UTC).date().isoformat()
-        if isinstance(value, str):
-            return date.fromisoformat(value[:10]).isoformat()
+            day = datetime.fromtimestamp(float(value), UTC).date()
+        elif isinstance(value, str):
+            day = date.fromisoformat(value[:10])
+        else:
+            return None
     except (ValueError, OverflowError, OSError):
         return None
-    return None
+    if day < date(2015, 1, 1):
+        return None
+    if not future_ok and day > datetime.now(UTC).date() + timedelta(days=1):
+        return None
+    return day.isoformat()
 
 
 def catalog_facts(model: str, record: Mapping[str, Any]) -> dict[str, str]:
@@ -62,7 +79,7 @@ def catalog_facts(model: str, record: Mapping[str, Any]) -> dict[str, str]:
         facts["size"] = size
     if released := _day(record.get("created")):
         facts["released"] = released
-    if expires := _day(record.get("expiration_date")):
+    if expires := _day(record.get("expiration_date"), future_ok=True):
         facts["expires"] = expires
     architecture = record.get("architecture")
     if isinstance(architecture, Mapping):
@@ -138,7 +155,11 @@ def nvidia_card_summary(session: requests.Session, links) -> str:
         return ""
     for block in re.split(r"\n\s*\n", text):
         stripped = block.strip()
-        if len(stripped) >= 80 and not stripped.startswith(("#", "|", "-", "*", ">", "!", "[")):
+        if (
+            len(stripped) >= 80
+            and not stripped.startswith(("#", "|", "-", "*", ">", "!", "["))
+            and not _BOILERPLATE.search(stripped)
+        ):
             return plain(stripped)
     return ""
 

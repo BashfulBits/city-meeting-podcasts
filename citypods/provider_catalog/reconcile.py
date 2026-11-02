@@ -195,6 +195,7 @@ class Report:
     discovery_sessions: list[dict[str, Any]] = field(default_factory=list)
     # Why every model is unscored (the quality fetch failed); shown at the top of the issue.
     quality_error: str | None = None
+    floor_source: str = ""
 
     @property
     def actionable(self) -> bool:
@@ -257,6 +258,70 @@ def lane_incumbent_scores(
                 scores.append(best)
         out[purpose] = scores
     return out
+
+
+def production_floor(
+    incumbents: Mapping[str, list[float]], quality: QualityIndex
+) -> tuple[float | None, str]:
+    """The quality bar a candidate is held to: the weakest AA-scored model our lanes run.
+
+    Pinning the bar to two named models failed the day AA stopped publishing an index for both
+    (2026-11): no floor, no automatic measurement. The models our lanes actually run are ours to
+    keep current, and the bar moves with every index revision because it is recomputed from AA's
+    current scores each run. The pinned reference models remain only as a fallback.
+    """
+    scores = [score for lane_scores in incumbents.values() for score in lane_scores]
+    if scores:
+        return min(scores), "weakest AA-scored model our lanes run"
+    return quality.floor, "pinned reference models"
+
+
+def _below_floor(candidate, floor: float | None) -> bool:
+    """A scored candidate at or under the bar. Unscored models (AA has not indexed them yet) are
+    measured anyway: skipping them would leave every new model unmeasured for as long as AA lags."""
+    return candidate.score is not None and floor is not None and candidate.score <= floor
+
+
+def measurement_plan(previous_state, floor: float | None, limit: int) -> dict[str, str]:
+    """Which already-found candidates the next daily sessions should measure, and on what axis.
+
+    A candidate needs an input search until it has one, then an output search unless a provider
+    or LiteLLM claim already supplies the output limit. Best-scored first, unscored after, so a
+    scarce session goes where the model is most likely to be added. `limit` sessions per run.
+    """
+    wanted = []
+    for row in (previous_state.get("last_full") or {}).get("candidates") or []:
+        if not isinstance(row, Mapping) or not row.get("provider") or not row.get("model"):
+            continue
+        score = row.get("score")
+        if score is not None and floor is not None and score <= floor:
+            continue
+        discovery = row.get("discovery")
+        axes = {
+            a.get("axis"): a for a in (discovery or {}).get("axes") or [] if isinstance(a, Mapping)
+        }
+        if not discovery or discovery.get("reason") == "automatic_discovery_deferred_run_budget":
+            axis = "input"
+        elif (axes.get("input") or {}).get("admitted") and not (axes.get("output") or {}).get(
+            "admitted"
+        ):
+            published = (axes.get("output") or {}).get("published")
+            litellm = ((discovery.get("litellm") or {}).get("output")) if discovery else None
+            if published or litellm:
+                continue
+            axis = "output"
+        else:
+            continue
+        wanted.append(
+            (
+                axis == "input",
+                score is None,
+                -(score or 0.0),
+                f"{row['provider']}/{row['model']}",
+                axis,
+            )
+        )
+    return {key: axis for *_rest, key, axis in sorted(wanted)[: max(0, limit)]}
 
 
 def suggest_lanes(
@@ -376,9 +441,14 @@ def reconcile(
     retry_candidate_keys: set[str] | None = None,
     new_models: bool = False,
     new_model_limit: int = DAILY_NEW_MODEL_LIMIT,
+    measure_pending: bool = False,
+    discovery_session_limit: int | None = None,
 ) -> Report:
-    report = Report(floor=quality.floor)
+    report = Report(floor=quality.floor, floor_source="pinned reference models")
     new_model_budget = new_model_limit
+    from citypods.provider_catalog.discovery import MAX_RUN_SESSIONS as MAX_SESSIONS
+
+    session_limit = MAX_SESSIONS if discovery_session_limit is None else discovery_session_limit
     if not isinstance(discovery_axis, str) or discovery_axis not in {"all", "input", "output"}:
         raise ValueError("invalid discovery axis")
     if type(discovery_automatic) is not bool:
@@ -391,7 +461,6 @@ def reconcile(
             MAX_RUN_CALLS,
             MAX_RUN_INPUT,
             MAX_RUN_OUTPUT,
-            MAX_RUN_SESSIONS,
             DiscoveryBudget,
         )
 
@@ -412,6 +481,7 @@ def reconcile(
 
     routes = [r for r in limits.get("routes") or [] if isinstance(r, dict)]
     incumbents = lane_incumbent_scores(lanes, routes, quality)
+    report.floor, report.floor_source = production_floor(incumbents, quality)
     # Data-driven usability floor: no candidate smaller than the smallest configured free route.
     min_context = min(
         (
@@ -450,12 +520,22 @@ def reconcile(
                 original_order[provider],
             )
         )
+    measure_plan = (
+        measurement_plan(previous_state, report.floor, session_limit)
+        if due_only and measure_pending and discovery_automatic
+        else {}
+    )
     for provider in selected:
         rules = all_rules().get(provider)
         cfg = provider_cfgs.get(provider)
         if rules is None or cfg is None:
             report.observations.append(f"{provider}: no plugin or no config; skipped")
             continue
+        measure_names = {
+            key.partition("/")[2]: axis
+            for key, axis in measure_plan.items()
+            if key.partition("/")[0] == provider
+        }
         provider_routes = [r for r in routes if r.get("provider") == provider]
         # A daily run calls only providers with deferred routes, bounded early-check triggers or,
         # when `new_models` is set, a catalog that lists a model absent from the last snapshot.
@@ -464,11 +544,15 @@ def reconcile(
         prior_models = prior.get("models")
         if not prior_models and prior.get("complete") is not True:
             prior_models = None
-        has_work = any(
-            str(r.get("route_id")) in deferred
-            or str(r.get("route_id")) in (early_rate_checks or set())
-            for r in provider_routes
-        ) or any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
+        has_work = (
+            any(
+                str(r.get("route_id")) in deferred
+                or str(r.get("route_id")) in (early_rate_checks or set())
+                for r in provider_routes
+            )
+            or any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
+            or bool(measure_names)
+        )
         watch_new = bool(
             due_only
             and new_models
@@ -484,6 +568,9 @@ def reconcile(
             fresh_names = set() if catalog.error else set(catalog.models) - known
             if not has_work and not fresh_names:
                 continue
+        if measure_names and not catalog.error:
+            # Already-found candidates the plan chose are visited like new models.
+            fresh_names = (fresh_names or set()) | (set(measure_names) & set(catalog.models))
         if catalog.error:
             report.anomalies.append(
                 Anomaly(provider, f"{provider}:catalog", "-", "inconclusive", catalog.error, False)
@@ -745,6 +832,7 @@ def reconcile(
                 remembered = (
                     candidate_keys is None
                     and retry_candidate_keys is None
+                    and model not in measure_names
                     and memory
                     and age is not None
                     and age < CANARY_MEMORY_DAYS
@@ -803,12 +891,15 @@ def reconcile(
             candidates = candidates[:CANARY_BUDGET_PER_PROVIDER]
             if fresh_names is not None:
                 retries = [c for c in candidates if c[0] not in fresh_names]
-                fresh = [c for c in candidates if c[0] in fresh_names]
+                measured = [c for c in candidates if c[0] in measure_names]
+                fresh = [c for c in candidates if c[0] in fresh_names and c[0] not in measure_names]
                 fresh = fresh[: max(0, new_model_budget)]
                 new_model_budget -= len(fresh)
-                candidates = retries + fresh
+                candidates = retries + measured + fresh
                 # A new model this run could not afford to canary stays "new" for the next run.
-                unserved = {c[0] for c in ordered if c[0] in fresh_names} - {c[0] for c in fresh}
+                unserved = {
+                    c[0] for c in ordered if c[0] in fresh_names and c[0] not in measure_names
+                } - {c[0] for c in fresh}
                 if unserved:
                     catalogs[provider]["models"] = tuple(
                         m for m in catalogs[provider]["models"] if m[0] not in unserved
@@ -1076,13 +1167,13 @@ def reconcile(
                     if (
                         discovery_enabled
                         and not pause.contended
-                        and len(report.discovery_sessions) < MAX_RUN_SESSIONS
+                        and len(report.discovery_sessions) < session_limit
                         and not any(
                             row.get("session", {}).get("provider") == provider
                             for row in report.discovery_sessions
                         )
                     ):
-                        discovery_floor = quality.score("openai/gpt-oss-120b", creator="openai")
+                        discovery_floor = report.floor
                         identity = _candidate_discovery_identity(provider, model, rules, cfg)
                         receipt_id = (discovery_receipt_ids or {}).get(
                             candidate.key, discovery_receipt_id
@@ -1092,8 +1183,10 @@ def reconcile(
                             and receipt_id is None
                             and candidate.key not in (retry_candidate_keys or set())
                         )
-                        already_discovered = automatic_candidate and identity in (
-                            discovery_history_calls or {}
+                        already_discovered = (
+                            automatic_candidate
+                            and identity in (discovery_history_calls or {})
+                            and model not in measure_names
                         )
                         if already_discovered:
                             if not candidate.discovery:
@@ -1109,17 +1202,13 @@ def reconcile(
                                     "input_tokens": 0,
                                     "output_tokens": 0,
                                 }
-                        elif automatic_candidate and (
-                            candidate.score is None
-                            or discovery_floor is None
-                            or candidate.score <= discovery_floor
-                        ):
+                        elif automatic_candidate and _below_floor(candidate, discovery_floor):
                             candidate.discovery = {
                                 "retryable": False,
                                 "reason": "below_automatic_quality_floor",
                                 "detail": (
-                                    "Automatic input discovery requires an AA score strictly "
-                                    "above the current GPT-OSS-120B score."
+                                    "Automatic discovery skips a model AA scores at or below "
+                                    "the weakest AA-scored model our lanes run."
                                 ),
                                 "axes": [],
                                 "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
@@ -1128,7 +1217,9 @@ def reconcile(
                             }
                         else:
                             selected_axes = (
-                                ("input",)
+                                (measure_names[model],)
+                                if model in measure_names
+                                else ("input",)
                                 if automatic_candidate
                                 else (discovery_axis,)
                                 if discovery_axis != "all"
@@ -1152,7 +1243,9 @@ def reconcile(
                                     selected_axes=selected_axes,
                                     sleep=sleep,
                                 )
-                                candidate.discovery = session_record["summary"]
+                                candidate.discovery = _merge_discovery(
+                                    candidate.discovery, session_record["summary"]
+                                )
                                 report.discovery_sessions.append(session_record["artifact"])
                             except Exception as exc:
                                 # Discovery is advisory; preserve the proven reachability result.
@@ -1171,14 +1264,15 @@ def reconcile(
                             candidate.key, discovery_receipt_id
                         )
                         identity = _candidate_discovery_identity(provider, model, rules, cfg)
-                        discovery_floor = quality.score("openai/gpt-oss-120b", creator="openai")
+                        discovery_floor = report.floor
                         if (
                             receipt_id is None
                             and candidate.key not in (retry_candidate_keys or set())
-                            and identity not in (discovery_history_calls or {})
-                            and candidate.score is not None
-                            and discovery_floor is not None
-                            and candidate.score > discovery_floor
+                            and (
+                                identity not in (discovery_history_calls or {})
+                                or model in measure_names
+                            )
+                            and not _below_floor(candidate, discovery_floor)
                         ):
                             canary_memory[f"{provider}/{model}"]["discovery_pending"] = True
                             canary_memory[f"{provider}/{model}"].setdefault(
@@ -1200,18 +1294,14 @@ def reconcile(
                         elif (
                             receipt_id is None
                             and candidate.key not in (retry_candidate_keys or set())
-                            and (
-                                candidate.score is None
-                                or discovery_floor is None
-                                or candidate.score <= discovery_floor
-                            )
+                            and _below_floor(candidate, discovery_floor)
                         ):
                             candidate.discovery = {
                                 "retryable": False,
                                 "reason": "below_automatic_quality_floor",
                                 "detail": (
-                                    "Automatic input discovery requires an AA score strictly "
-                                    "above the current GPT-OSS-120B score."
+                                    "Automatic discovery skips a model AA scores at or below "
+                                    "the weakest AA-scored model our lanes run."
                                 ),
                                 "axes": [],
                                 "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
@@ -1479,6 +1569,24 @@ def _candidate(
         structured_output_verified_on=proven_on if method else None,
         other_lanes=other_lanes(score, incumbents),
     )
+
+
+def _merge_discovery(previous, new):
+    """Fold a just-run session into what authenticated history already says about the candidate.
+
+    An isolated output search reports only the output axis; replacing the summary with it would
+    drop the measured input (and the characterization `/apply` keys on) until the next run
+    re-reads history. Axes the new session measured replace the old ones; the rest are kept.
+    """
+    if not isinstance(previous, Mapping) or not previous.get("axes"):
+        return new
+    fresh_axes = {a.get("axis"): a for a in new.get("axes") or []}
+    axes = [fresh_axes.pop(a.get("axis"), a) for a in previous["axes"]] + list(fresh_axes.values())
+    merged = {**new, "axes": axes}
+    for key in ("input_characterization", "litellm"):
+        if not new.get(key) and previous.get(key):
+            merged[key] = previous[key]
+    return merged
 
 
 def _candidate_discovery_identity(provider, model, rules, provider_cfg):

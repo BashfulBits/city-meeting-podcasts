@@ -3469,6 +3469,11 @@ profile-label/calibration corrections made while the local diagnostics were runn
 
 ### Automatic new-route input discovery — maintainer-approved 2026-10-14
 
+> **Partly superseded by Phase 6 (2026-11-02, maintainer instruction in session):** the bar is now
+> the weakest AA-scored model our lanes run (not GPT-OSS-120B), a scored model *at* the bar is
+> skipped, unscored models are measured, and the daily run adds an isolated output search. The
+> rest of this section (budgets, authenticated history, advisory evidence) still holds.
+
 The maintainer changed the activation target from manual-only discovery to automatic discovery
 when the weekly full catalog run finds a new route that passes the existing free-route,
 reachability and structured-output checks and has an Artificial Analysis score strictly above
@@ -3603,4 +3608,32 @@ machine state.
   `/apply` re-verifies on the route (fresh, uncontended, unchanged digest, known method, explicit
   route-level value) and edits `structured_output_method` and `structured_output_verified_on` in
   place. A route that inherits its method from the provider is deferred.
+
+#### Phase 6: measured limits for every new route — 2026-11-02
+
+Superseded: the provisional 16k input / 4,096 output caps for route-only adds (phase 1 and the
+2026-11-02 follow-up) are removed. A route is added only with measured limits.
+
+- **Quality bar.** `production_floor` = the weakest AA-scored model across the lanes that accept
+  catalog backups (recomputed from AA's current scores each run, so it follows index revisions and
+  never depends on one model staying indexed). The pinned GPT-OSS-120B / Nemotron-3 Super pair is a
+  fallback only when no lane model is scored. The issue header states the bar and its source.
+- **Who gets measured.** Automatic discovery skips only a *scored* model at or below the bar;
+  an unscored model (AA has not indexed it) is measured, since waiting on AA would leave every new
+  model unmeasured while it lags. This applies to the weekly run too.
+- **Daily measurement.** With `--incremental` (scheduled 08:20 UTC, or the manual `incremental`
+  input) `measurement_plan` picks, from the issue's already-found candidates, up to
+  `DAILY_DISCOVERY_SESSIONS` (1) to measure today: a candidate with a measured input but no output
+  limit first (so it becomes addable), then never-measured ones (or ones deferred for budget),
+  best score first, unscored after. The input session is the existing automatic input search; the
+  follow-up is an isolated output search, run only when no provider/catalog/LiteLLM output claim
+  exists. Results rebuild from authenticated history exactly as before (the history summary already
+  merges every compatible session's observations per axis). Job timeout 180 minutes; the evidence
+  artifact is uploaded for scheduled and incremental runs.
+- **`/apply`.** `output_context_limit` = verified output bracket (positive admitted lower bound,
+  recognized output count basis, control) → provider claim → LiteLLM → defer. A lower bound is a
+  verified floor, not a proven maximum; the PR note says so.
+- **Expectation.** One session per day means a backlog of N unmeasured candidates takes about N
+  to 2N days; scored, better models go first. Raise `DAILY_DISCOVERY_SESSIONS` (and the timeout)
+  if that is too slow.
 

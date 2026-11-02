@@ -1,8 +1,6 @@
 """Report rework: artifact state, scoring fallbacks, per-model decisions, method switch."""
 
-import hashlib
 import io
-import json
 import zipfile
 from dataclasses import replace
 from datetime import date
@@ -347,16 +345,90 @@ def test_switching_a_routes_structured_output_method_is_reverified_and_edited_in
     assert "inherits" in plan_apply(Report(anomalies=[inherited]), (moved,), config).deferred[0]
 
 
-def test_a_route_only_add_with_no_published_context_gets_the_provisional_cap():
-    from tests.test_provider_catalog_apply import CANDIDATE, PROOF, config
+def test_a_route_needs_a_measured_output_limit_when_no_claim_exists():
+    from tests.test_provider_catalog_apply import CANDIDATE, DISCOVERY, PROOF, config
 
-    proof = replace(PROOF, input_context_limit=None)
-    report = Report(candidates=[replace(CANDIDATE, discovery=None, evidence=proof.to_dict())])
-    plan = plan_apply(report, (Decision("host", "creator/new", "add", (), proof),), config())
-    route = dict(plan.routes[0])
-    assert route["hard_input_ceiling"] == route["input_context_limit"] == 16_000
-    assert "not published" in plan.route_notes[0][1][0]
-    assert hashlib.sha256(b"").hexdigest() and json.dumps({})
+    proof = replace(PROOF, output_context_limit=None)
+    digest_ = DISCOVERY["input_characterization"]["evidence_digest"]
+    decision = Decision("host", "creator/new", "add", (), proof, discovery_digest=digest_)
+
+    def planned(discovery):
+        report = Report(
+            candidates=[replace(CANDIDATE, evidence=proof.to_dict(), discovery=discovery)]
+        )
+        return plan_apply(report, (decision,), config())
+
+    unmeasured = planned(DISCOVERY)
+    assert not unmeasured.routes and "output search has not run" in unmeasured.deferred[0]
+    output_axis = {
+        "axis": "output",
+        "admitted": 8192,
+        "count_basis": "completion_including_reasoning",
+        "control": "output:v2",
+        "published": None,
+    }
+    measured = planned({**DISCOVERY, "axes": [*DISCOVERY["axes"], output_axis]})
+    route = dict(measured.routes[0])
+    assert route["output_context_limit"] == 8192
+    assert "measured output search" in measured.route_notes[0][1][-1]
+    # An unverified count basis or a missing control is not a measurement.
+    for bad in ({"count_basis": "local_estimate"}, {"control": ""}, {"admitted": 0}):
+        flawed = planned({**DISCOVERY, "axes": [*DISCOVERY["axes"], {**output_axis, **bad}]})
+        assert not flawed.routes
+
+
+def test_the_bar_is_the_weakest_scored_model_our_lanes_run():
+    from citypods.provider_catalog.reconcile import production_floor
+
+    quality = QualityIndex(scores={("openai", "gpt-oss-120b"): 30.0, ("nvidia", "x"): 50.0})
+    assert production_floor({"a": [41.0, 33.5], "b": [38.0], "c": []}, quality) == (
+        33.5,
+        "weakest AA-scored model our lanes run",
+    )
+    # No lane model is scored: fall back to the pinned reference models, and say so.
+    assert production_floor({"a": []}, quality)[1] == "pinned reference models"
+
+
+def test_measurement_plan_orders_input_before_output_and_skips_weak_or_claimed_models():
+    from citypods.provider_catalog.reconcile import measurement_plan
+
+    def cand(model, score, discovery=None, provider="p"):
+        return {"provider": provider, "model": model, "score": score, "discovery": discovery}
+
+    measured_input = {
+        "axes": [{"axis": "input", "admitted": 9000}, {"axis": "output", "admitted": None}]
+    }
+    claimed = {
+        "axes": [
+            {"axis": "input", "admitted": 9000},
+            {"axis": "output", "admitted": None, "published": 4096},
+        ]
+    }
+    state = {
+        "last_full": {
+            "candidates": [
+                cand("unscored", None),
+                cand("good", 40.0),
+                cand("weak", 5.5),
+                cand("deferred", 31.0, {"reason": "automatic_discovery_deferred_run_budget"}),
+                cand("needs-output", 35.0, measured_input),
+                cand("has-claim", 36.0, claimed),
+                cand(
+                    "done",
+                    37.0,
+                    {"axes": [{"axis": "input", "admitted": 1}, {"axis": "output", "admitted": 2}]},
+                ),
+            ]
+        }
+    }
+    assert measurement_plan(state, 30.0, 2) == {"p/needs-output": "output", "p/good": "input"}
+    assert list(measurement_plan(state, 30.0, 9)) == [
+        "p/needs-output",
+        "p/good",
+        "p/deferred",
+        "p/unscored",
+    ]
+    assert measurement_plan(state, 30.0, 0) == {}
 
 
 def test_a_method_switch_keeps_the_quoting_of_tool_written_routes():
@@ -383,3 +455,62 @@ def test_the_nvidia_card_fetch_refuses_foreign_hosts_and_never_follows_redirects
             raise AssertionError("must not fetch")
 
     assert nvidia_card_summary(Boom(), (("NVIDIA Build", "https://evil.test/x"),)) == ""
+
+
+def test_placeholder_release_dates_and_vendor_boilerplate_are_not_facts(monkeypatch):
+    from citypods.provider_catalog.model_facts import nvidia_card_summary
+
+    assert "released" not in catalog_facts("x/y", {"created": 735790403})
+    assert catalog_facts("x/y", {"created": "2026-08-10"})["released"] == "2026-08-10"
+
+    class Card:
+        def __init__(self, text):
+            self.text, self.ok = text, True
+
+    class Session_:
+        def get(self, *a, **k):
+            return Card(
+                "Our AI models are designed and/or optimized to run on NVIDIA GPU-accelerated "
+                "systems, leveraging hardware and software frameworks for speed.\n\n"
+                "Muse Glimmer is a multimodal reasoning model built for local agents, "
+                "coding and tool use."
+            )
+
+    monkeypatch.setattr(
+        "citypods.provider_catalog.model_facts.validate_source_url", lambda *a, **k: None
+    )
+    summary = nvidia_card_summary(Session_(), (("NVIDIA Build", "https://build.nvidia.com/x"),))
+    assert summary.startswith("Muse Glimmer is a multimodal")
+
+
+def test_the_header_names_the_bar_and_where_it_comes_from():
+    report = Report(floor=33.5, floor_source="weakest AA-scored model our lanes run")
+    assert "quality bar = 33.5 (weakest AA-scored model our lanes run" in render_body(
+        report, run_date="d"
+    )
+    assert "no quality bar" in render_body(Report(), run_date="d")
+
+
+def test_a_future_free_tier_expiry_is_kept_but_a_future_release_date_is_not():
+    facts = catalog_facts("x/y", {"expiration_date": "2099-01-01", "created": "2099-01-01"})
+    assert facts["expires"] == "2099-01-01" and "released" not in facts
+
+
+def test_a_new_session_keeps_the_axes_it_did_not_measure():
+    from citypods.provider_catalog.reconcile import _merge_discovery
+
+    previous = {
+        "axes": [
+            {"axis": "input", "admitted": 9000},
+            {"axis": "output", "admitted": None},
+        ],
+        "input_characterization": {"evidence_digest": "a" * 64},
+    }
+    new = {"axes": [{"axis": "output", "admitted": 4096}], "reason": "complete"}
+    merged = _merge_discovery(previous, new)
+    assert [(a["axis"], a["admitted"]) for a in merged["axes"]] == [
+        ("input", 9000),
+        ("output", 4096),
+    ]
+    assert merged["input_characterization"] == previous["input_characterization"]
+    assert _merge_discovery(None, new) is new
