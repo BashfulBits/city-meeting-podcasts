@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/48 manual daily-incremental run.** The reconciliation workflow's manual dispatch gains
+  an `incremental` input that runs exactly what the 08:20 UTC schedule runs (deferred checks, the
+  stalest seventh of routes, availability signals and newly listed models), so a failed or
+  skipped daily run can be repeated by hand. A manual run does not trigger the automatic
+  retirement job, which keys on the scheduled run.
+
 - **Provider catalog: filter duplicate physical routes and move legacy Nemotron aliases.** When
   upgrading routes, legacy model selectors are maintained under `model_aliases` rather than as
   duplicate route entries. Stale health routing and route health checks now deduplicate by physical
