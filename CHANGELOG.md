@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Provider catalog: filter duplicate physical routes and move legacy Nemotron aliases.** When
+  upgrading routes, legacy model selectors are maintained under `model_aliases` rather than as
+  duplicate route entries. Stale health routing and route health checks now deduplicate by physical
+  tuple (`provider`, `account_id`, `upstream_model`), preventing duplicate probe reservations for
+  uncompiled alias route IDs on the Worker dispatch rate ledger.
+
 - **Review/48 report rework.** The rolling issue no longer carries the bulk reconcile memory
   (provider catalog snapshots, canary memory, structured-output evidence; 340 KB of JSON that
   filled GitHub's body limit and pushed the report out): it is written to a
