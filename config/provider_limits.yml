@@ -163,7 +163,9 @@ providers:
     # (3/3 long calls failed), while streams kept data flowing (gaps <= 5 s) for 7+ minutes and one
     # 415 s reply completed. To go back to plain request/response, delete this line (or set it to
     # false) and run scripts/compile_llm_limits.py.
-    stream_response: true
+    # DISABLED 2026-11-02: assembling a 400 s stream used 2050 ms of Worker CPU and the cron
+    # invocation was killed (exceededCpu) with its other jobs; the Worker budget is ~10 ms.
+    stream_response: false
     api_base: https://api.beatapi.io/v1
     chat_path: /chat/completions
     # Registered AI Gateway custom provider (base URL https://api.beatapi.io/v1). The Worker calls
@@ -190,7 +192,9 @@ providers:
     # (3/3 long calls failed), while streams kept data flowing (gaps <= 5 s) for 7+ minutes and one
     # 415 s reply completed. To go back to plain request/response, delete this line (or set it to
     # false) and run scripts/compile_llm_limits.py.
-    stream_response: true
+    # DISABLED 2026-11-02: assembling a 400 s stream used 2050 ms of Worker CPU and the cron
+    # invocation was killed (exceededCpu) with its other jobs; the Worker budget is ~10 ms.
+    stream_response: false
     api_base: https://api.beatapi.io/v1
     chat_path: /chat/completions
     ai_gateway_slug: custom-beatapi
