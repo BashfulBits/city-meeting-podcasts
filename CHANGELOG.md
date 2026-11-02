@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Removed the NVIDIA GLM 5.3 Flash route.** NVIDIA's hosted endpoint never answered: a one-token
+  prompt returned 504 after 302 s and all 16 production calls on 2026-11-02 hit the Worker's
+  720 s timeout, each holding an NVIDIA lease that also kept the catalog run's pause from
+  draining. The model stays available through the other GLM 5.3 Flash routes.
+
 - **A provider that cannot drain no longer wastes the daily measurement.** The 2026-11-02 manual
   run chose MiniMax on NVIDIA, but NVIDIA's dispatch pause never drained: its judge calls hang
   until the Worker's 720 s timeout, longer than the 600 s drain wait, so the run recorded a
