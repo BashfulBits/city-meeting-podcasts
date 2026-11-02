@@ -415,7 +415,8 @@ def test_placeholder_release_dates_and_vendor_boilerplate_are_not_facts(monkeypa
             return Card(
                 "Our AI models are designed and/or optimized to run on NVIDIA GPU-accelerated "
                 "systems, leveraging hardware and software frameworks for speed.\n\n"
-                "Muse Glimmer is a multimodal reasoning model built for local agents, coding and tool use."
+                "Muse Glimmer is a multimodal reasoning model built for local agents, "
+                "coding and tool use."
             )
 
     monkeypatch.setattr(
