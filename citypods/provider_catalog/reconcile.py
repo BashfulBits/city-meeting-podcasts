@@ -282,6 +282,14 @@ def _below_floor(candidate, floor: float | None) -> bool:
     return candidate.score is not None and floor is not None and candidate.score <= floor
 
 
+# Providers beyond the session limit that a run may try when earlier ones cannot be measured.
+MEASURE_FALLBACK_PROVIDERS = 2
+DEFERRED_DISCOVERY_REASONS = (
+    "automatic_discovery_deferred_run_budget",
+    "automatic_discovery_deferred_pause_contended",
+)
+
+
 def measurement_plan(previous_state, floor: float | None, limit: int) -> dict[str, str]:
     """Which already-found candidates the next daily sessions should measure, and on what axis.
 
@@ -300,7 +308,7 @@ def measurement_plan(previous_state, floor: float | None, limit: int) -> dict[st
         axes = {
             a.get("axis"): a for a in (discovery or {}).get("axes") or [] if isinstance(a, Mapping)
         }
-        if not discovery or discovery.get("reason") == "automatic_discovery_deferred_run_budget":
+        if not discovery or discovery.get("reason") in DEFERRED_DISCOVERY_REASONS:
             axis = "input"
         elif (axes.get("input") or {}).get("admitted") and not (axes.get("output") or {}).get(
             "admitted"
@@ -321,7 +329,19 @@ def measurement_plan(previous_state, floor: float | None, limit: int) -> dict[st
                 axis,
             )
         )
-    return {key: axis for *_rest, key, axis in sorted(wanted)[: max(0, limit)]}
+    # One entry per provider, plus fallbacks: a provider whose dispatch pause cannot drain
+    # (contended) spends no session, and the next provider's candidate takes the slot instead.
+    plan: dict[str, str] = {}
+    providers: set[str] = set()
+    for *_rest, key, axis in sorted(wanted):
+        provider = key.partition("/")[0]
+        if provider in providers:
+            continue
+        if len(providers) >= max(0, limit) + MEASURE_FALLBACK_PROVIDERS:
+            break
+        providers.add(provider)
+        plan[key] = axis
+    return plan
 
 
 def suggest_lanes(
@@ -531,11 +551,15 @@ def reconcile(
         if rules is None or cfg is None:
             report.observations.append(f"{provider}: no plugin or no config; skipped")
             continue
-        measure_names = {
-            key.partition("/")[2]: axis
-            for key, axis in measure_plan.items()
-            if key.partition("/")[0] == provider
-        }
+        measure_names = (
+            {}
+            if len(report.discovery_sessions) >= session_limit
+            else {
+                key.partition("/")[2]: axis
+                for key, axis in measure_plan.items()
+                if key.partition("/")[0] == provider
+            }
+        )
         provider_routes = [r for r in routes if r.get("provider") == provider]
         # A daily run calls only providers with deferred routes, bounded early-check triggers or,
         # when `new_models` is set, a catalog that lists a model absent from the last snapshot.
@@ -1280,11 +1304,19 @@ def reconcile(
                             )
                             candidate.discovery = {
                                 "retryable": False,
-                                "reason": "automatic_discovery_deferred_run_budget",
+                                "reason": (
+                                    "automatic_discovery_deferred_pause_contended"
+                                    if pause.contended
+                                    else "automatic_discovery_deferred_run_budget"
+                                ),
                                 "detail": (
-                                    "Reachability and quality passed, but this run's bounded "
-                                    "discovery slot was unavailable; it will be rechecked "
-                                    "next week."
+                                    f"Reachability and quality passed, but {provider} still had "
+                                    "requests in flight after the drain wait, so nothing was "
+                                    "measured; the next daily run tries again."
+                                    if pause.contended
+                                    else "Reachability and quality passed, but this run's "
+                                    "discovery session limit was already spent; the next daily "
+                                    "run measures it."
                                 ),
                                 "axes": [],
                                 "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),

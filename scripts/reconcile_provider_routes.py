@@ -81,9 +81,10 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
 # One size-search session per daily run (up to 90 minutes), so the run stays bounded.
 DAILY_DISCOVERY_SESSIONS = 1
 LIMITS_PATH = REPO_ROOT / "config" / "provider_limits.yml"
-PAUSE_SECONDS = 900
-# NVIDIA calls run up to ~400 s; a 300 s drain left the 2026-09-24 dry run contended.
-DRAIN_TIMEOUT_SECONDS = 600
+PAUSE_SECONDS = 1200
+# The Worker abandons a call after 720 s, and NVIDIA's judge calls routinely hang that long
+# (2026-11-02 telemetry: 29 provider_response_timeout), so the drain must outlast one.
+DRAIN_TIMEOUT_SECONDS = 780
 
 
 class WorkerDispatchControl:
