@@ -47,7 +47,7 @@ def _size_from_name(model: str) -> str | None:
     return f"{total}{unit}" + (f" ({active}B active)" if active else "")
 
 
-def _day(value: Any) -> str | None:
+def _day(value: Any, *, future_ok: bool = False) -> str | None:
     """An ISO date, only if it is a plausible release date.
 
     NVIDIA's catalog reports `created: 735790403` for every model (1993-04-26), so a date before
@@ -62,7 +62,9 @@ def _day(value: Any) -> str | None:
             return None
     except (ValueError, OverflowError, OSError):
         return None
-    if day < date(2015, 1, 1) or day > datetime.now(UTC).date() + timedelta(days=1):
+    if day < date(2015, 1, 1):
+        return None
+    if not future_ok and day > datetime.now(UTC).date() + timedelta(days=1):
         return None
     return day.isoformat()
 
@@ -77,7 +79,7 @@ def catalog_facts(model: str, record: Mapping[str, Any]) -> dict[str, str]:
         facts["size"] = size
     if released := _day(record.get("created")):
         facts["released"] = released
-    if expires := _day(record.get("expiration_date")):
+    if expires := _day(record.get("expiration_date"), future_ok=True):
         facts["expires"] = expires
     architecture = record.get("architecture")
     if isinstance(architecture, Mapping):

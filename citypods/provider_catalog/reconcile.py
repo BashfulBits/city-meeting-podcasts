@@ -897,7 +897,9 @@ def reconcile(
                 new_model_budget -= len(fresh)
                 candidates = retries + measured + fresh
                 # A new model this run could not afford to canary stays "new" for the next run.
-                unserved = {c[0] for c in ordered if c[0] in fresh_names} - {c[0] for c in fresh}
+                unserved = {
+                    c[0] for c in ordered if c[0] in fresh_names and c[0] not in measure_names
+                } - {c[0] for c in fresh}
                 if unserved:
                     catalogs[provider]["models"] = tuple(
                         m for m in catalogs[provider]["models"] if m[0] not in unserved
@@ -1241,7 +1243,9 @@ def reconcile(
                                     selected_axes=selected_axes,
                                     sleep=sleep,
                                 )
-                                candidate.discovery = session_record["summary"]
+                                candidate.discovery = _merge_discovery(
+                                    candidate.discovery, session_record["summary"]
+                                )
                                 report.discovery_sessions.append(session_record["artifact"])
                             except Exception as exc:
                                 # Discovery is advisory; preserve the proven reachability result.
@@ -1565,6 +1569,24 @@ def _candidate(
         structured_output_verified_on=proven_on if method else None,
         other_lanes=other_lanes(score, incumbents),
     )
+
+
+def _merge_discovery(previous, new):
+    """Fold a just-run session into what authenticated history already says about the candidate.
+
+    An isolated output search reports only the output axis; replacing the summary with it would
+    drop the measured input (and the characterization `/apply` keys on) until the next run
+    re-reads history. Axes the new session measured replace the old ones; the rest are kept.
+    """
+    if not isinstance(previous, Mapping) or not previous.get("axes"):
+        return new
+    fresh_axes = {a.get("axis"): a for a in new.get("axes") or []}
+    axes = [fresh_axes.pop(a.get("axis"), a) for a in previous["axes"]] + list(fresh_axes.values())
+    merged = {**new, "axes": axes}
+    for key in ("input_characterization", "litellm"):
+        if not new.get(key) and previous.get(key):
+            merged[key] = previous[key]
+    return merged
 
 
 def _candidate_discovery_identity(provider, model, rules, provider_cfg):

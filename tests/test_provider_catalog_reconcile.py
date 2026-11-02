@@ -2339,7 +2339,7 @@ def test_a_daily_run_measures_one_found_candidate_per_session_limit(monkeypatch)
     # Two already-found candidates, neither measured; the better scored goes first, once.
     state["last_full"]["candidates"] = [
         {"provider": "groq", "model": "meta-llama/llama-new", "score": 55.0, "discovery": None},
-        {"provider": "or", "model": "kimi/k9:free", "score": None, "discovery": None},
+        {"provider": "openrouter", "model": "kimi/k9:free", "score": None, "discovery": None},
     ]
     calls = []
 

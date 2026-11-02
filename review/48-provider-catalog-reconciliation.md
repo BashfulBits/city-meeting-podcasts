@@ -3469,6 +3469,11 @@ profile-label/calibration corrections made while the local diagnostics were runn
 
 ### Automatic new-route input discovery — maintainer-approved 2026-10-14
 
+> **Partly superseded by Phase 6 (2026-11-02, maintainer instruction in session):** the bar is now
+> the weakest AA-scored model our lanes run (not GPT-OSS-120B), a scored model *at* the bar is
+> skipped, unscored models are measured, and the daily run adds an isolated output search. The
+> rest of this section (budgets, authenticated history, advisory evidence) still holds.
+
 The maintainer changed the activation target from manual-only discovery to automatic discovery
 when the weekly full catalog run finds a new route that passes the existing free-route,
 reachability and structured-output checks and has an Artificial Analysis score strictly above

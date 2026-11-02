@@ -489,3 +489,28 @@ def test_the_header_names_the_bar_and_where_it_comes_from():
         report, run_date="d"
     )
     assert "no quality bar" in render_body(Report(), run_date="d")
+
+
+def test_a_future_free_tier_expiry_is_kept_but_a_future_release_date_is_not():
+    facts = catalog_facts("x/y", {"expiration_date": "2099-01-01", "created": "2099-01-01"})
+    assert facts["expires"] == "2099-01-01" and "released" not in facts
+
+
+def test_a_new_session_keeps_the_axes_it_did_not_measure():
+    from citypods.provider_catalog.reconcile import _merge_discovery
+
+    previous = {
+        "axes": [
+            {"axis": "input", "admitted": 9000},
+            {"axis": "output", "admitted": None},
+        ],
+        "input_characterization": {"evidence_digest": "a" * 64},
+    }
+    new = {"axes": [{"axis": "output", "admitted": 4096}], "reason": "complete"}
+    merged = _merge_discovery(previous, new)
+    assert [(a["axis"], a["admitted"]) for a in merged["axes"]] == [
+        ("input", 9000),
+        ("output", 4096),
+    ]
+    assert merged["input_characterization"] == previous["input_characterization"]
+    assert _merge_discovery(None, new) is new
