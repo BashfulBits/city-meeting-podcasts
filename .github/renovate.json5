@@ -158,6 +158,14 @@
       automerge: false,
       groupName: "github actions (SHA-pinned)",
     },
+    {
+      // Runner OS environment (ubuntu-24.04) is ABI-coupled to the self-built static
+      // ffmpeg binary and audio-runner container (review/22). OS migrations require
+      // rebuilding ffmpeg and validating audio equivalence; do not auto-bump runner versions.
+      matchManagers: ["github-actions"],
+      matchDepTypes: ["github-runner"],
+      enabled: false,
+    },
     // gh CLI pin (constraints/gh-cli.txt, see its header for the 2026-07-27 incident).
     // Same caveat as the SHA-pinned Actions above: never auto-merged, since a compromised
     // gh release is exactly the class of risk a rubber-stamped automerge would let through.
