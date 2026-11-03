@@ -57,6 +57,7 @@ from citypods.provider_catalog.evidence import (  # noqa: E402
     verified_rate_history,
 )
 from citypods.provider_catalog.issue import (  # noqa: E402
+    accepted_aa_matches,
     decode_state,
     find_issue,
     render_body,
@@ -746,6 +747,10 @@ def main(argv: list[str] | None = None) -> int:
                 print("context calibration deferred: authority/history unavailable")
     session = requests.Session()
     quality = fetch_quality_index(session)
+    # AA entries the maintainer accepted as a model's match (ticked under Decisions) apply now.
+    aa_matches = accepted_aa_matches((existing or {}).get("body") or "", previous_state)
+    if quality is not None:
+        quality.aliases = dict(aa_matches)
     # The weekly full run and the daily incremental run (scheduled, or repeated by hand with the
     # `incremental` dispatch input) measure candidates; the daily run measures for up to two hours.
     activated_schedule = (
@@ -834,6 +839,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     report.observations.extend(discovery_history_gaps)
     _carry_rate_state(report, previous_state)
+    report.state["aa_matches"] = {key: list(value) for key, value in aa_matches.items()}
     if args.rate_evidence:
         now = datetime.now(UTC)
         repository = os.environ["GITHUB_REPOSITORY"]

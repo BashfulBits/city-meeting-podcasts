@@ -98,6 +98,8 @@ NO_RESPONSE_DIAGNOSTICS = {
 }
 # Aim this fraction of a provider-stated context limit: its own count includes template overhead.
 PROVIDER_LIMIT_HEADROOM_PERCENT = 95
+PROVIDER_LIMIT_HEADROOM_STEP = 5
+MIN_PROVIDER_LIMIT_HEADROOM_PERCENT = 80
 OUTCOMES = {"admitted", "refused", "lower_only", "quota", "daily", "outage", "inconclusive"}
 
 
@@ -709,6 +711,13 @@ def run_discovery(
         required_fresh = 1 if axis == "output" else 2
         upper_recheck = None
         provider_limits = set()
+        # Each refusal that still quotes the provider's limit means our headroom was too thin
+        # (its own count varies with content); aim lower after every repeat.
+        hint_refusals = sum(
+            1
+            for item in compatible_history
+            if item.request.control == control and positive(item.target_limit_hint)
+        )
         qualitative_upper = min(
             (
                 hinted_upper(item, provider_limits)
@@ -848,7 +857,12 @@ def run_discovery(
                     else:
                         target = bracket.lower + (qualitative_upper - bracket.lower) // 2
                 elif qualitative_upper in provider_limits:
-                    target = qualitative_upper * PROVIDER_LIMIT_HEADROOM_PERCENT // 100
+                    headroom = max(
+                        MIN_PROVIDER_LIMIT_HEADROOM_PERCENT,
+                        PROVIDER_LIMIT_HEADROOM_PERCENT
+                        - PROVIDER_LIMIT_HEADROOM_STEP * max(0, hint_refusals - 1),
+                    )
+                    target = qualitative_upper * headroom // 100
                 else:
                     target = max(1, qualitative_upper // 2)
                 if axis == "input":
@@ -1287,6 +1301,7 @@ def run_discovery(
                     fresh_successes = 0
                     qualitative_upper = None
                 else:
+                    hint_refusals += positive(observation.target_limit_hint)
                     qualitative_upper = min(
                         qualitative_upper or target, hinted_upper(observation, provider_limits)
                     )

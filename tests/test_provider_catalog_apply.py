@@ -1608,3 +1608,76 @@ def test_test_again_with_no_saved_results_explains_instead_of_failing(monkeypatc
 
     # No saved evidence (the measuring run crashed before saving): nothing to retry, no error.
     assert receipt is None
+
+
+def _unscored_with_matches():
+    matches = [
+        {"creator": "meta", "slug": "muse-spark", "name": "Muse Spark", "score": 40.0},
+        {"creator": "meta", "slug": "llama-4", "name": "Llama 4", "score": 10.0},
+    ]
+    return replace(CANDIDATE, score=None, below_floor=None, aa_matches=matches)
+
+
+def test_closest_aa_matches_are_checkboxes_and_a_ticked_one_is_read_back_next_run():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import accepted_aa_matches, decode_state
+
+    candidate = _unscored_with_matches()
+    report = Report(candidates=[candidate])
+    report.state = {"version": 3, "last_full": {"candidates": [asdict(candidate)]}}
+    body = render_body(report, run_date=TODAY.isoformat())
+    row = "- [ ] `host/creator/new`: AA match `meta/muse-spark` (Muse Spark, index 40)"
+    assert row in body and "AA match `meta/llama-4`" in body
+    ticked = body.replace(row, row.replace("[ ]", "[x]"))
+
+    decisions = parse_decisions(ticked, report)
+    assert [d.action for d in decisions] == ["aa_match"]
+    assert accepted_aa_matches(ticked, decode_state(ticked)) == {
+        "host/creator/new": ("meta", "muse-spark")
+    }
+    # Nothing ticked: nothing accepted. A row that was not offered is never accepted.
+    assert accepted_aa_matches(body, decode_state(body)) == {}
+    forged = ticked.replace("`meta/muse-spark`", "`openai/gpt-oss-120b`")
+    assert accepted_aa_matches(forged, decode_state(body)) == {}
+
+
+def test_a_stored_aa_match_survives_without_the_checkbox():
+    from citypods.provider_catalog.issue import accepted_aa_matches
+
+    state = {"aa_matches": {"host/creator/new": ["meta", "muse-spark"]}}
+    assert accepted_aa_matches("", state) == {"host/creator/new": ("meta", "muse-spark")}
+
+
+def test_readiness_explains_a_429_wait_and_why_a_candidate_was_not_measured():
+    from citypods.provider_catalog.readiness import WAITING, candidate_readiness
+
+    limited = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={
+                "axes": [{"axis": "input", "reason": "quota_deferred"}],
+                "retryable": True,
+                "quota_waits": 3,
+                "auto_attempts": 1,
+            },
+        )
+    )
+    assert (
+        limited.state == WAITING and "429" in limited.headline and "3 time(s)" in limited.headline
+    )
+    gave_up = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={
+                "axes": [{"axis": "input", "reason": "quota_deferred"}],
+                "quota_gave_up": True,
+                "auto_attempts": 1,
+            },
+        )
+    )
+    assert "10 minutes" in gave_up.headline and "try 2 of 4" in gave_up.next_step
+    noted = candidate_readiness(
+        replace(CANDIDATE, discovery=None, below_floor=False, measure_note="it waited")
+    )
+    assert noted.state == WAITING and "it waited" in noted.headline

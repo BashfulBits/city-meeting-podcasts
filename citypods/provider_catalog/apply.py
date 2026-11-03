@@ -104,6 +104,13 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
     for candidate in snapshot.candidates:
         prefix = f"`{candidate.key}`: "
         selected = [x.removeprefix(prefix) for x in checked if x.startswith(prefix)]
+        # AA matches change only what the next run scores; they never mix with route decisions.
+        matches = [x for x in selected if x.startswith("AA match ")]
+        if matches:
+            if len(matches) != 1:
+                raise ValueError(f"{candidate.key}: choose at most one AA match")
+            result.append(Decision(candidate.provider, candidate.model, "aa_match"))
+            selected = [x for x in selected if x not in matches]
         if not selected:
             continue
         if "test again" in selected:

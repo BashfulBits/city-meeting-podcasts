@@ -159,3 +159,50 @@ def test_contradictory_pagination_is_not_a_complete_catalog(monkeypatch, total_p
     quality = fetch_quality_index(Session([payload]))
     assert quality.error
     assert not quality.scores
+
+
+def _aa(*rows):
+    from citypods.provider_catalog.quality import QualityIndex
+
+    return QualityIndex(
+        scores={(c, slug): value for c, slug, _name, value in rows},
+        names={(c, slug): name for c, slug, name, _value in rows},
+    )
+
+
+def test_separator_and_display_name_spellings_of_one_model_match():
+    index = _aa(("minimax", "minimax-m3-1-flash", "MiniMax-M3.1-Flash", 28.9))
+    assert index.score("minimaxai/minimax-m3.1-flash") == 28.9
+    assert index.score("minimaxai/MiniMax-M31-Flash") == 28.9
+
+
+def test_a_compact_match_that_two_aa_models_share_stays_unscored_unless_hf_name_picks_one():
+    index = _aa(
+        ("acme", "acme-x-1-0", "Acme X1.0", 10.0),
+        ("acme", "acme-x10", "Acme X10", 20.0),
+    )
+    assert index.score("acme/x.10") is None
+    assert index.score("acme/x.10", hf_name="Acme-X10") == 20.0
+
+
+def test_similarity_is_never_applied_only_suggested():
+    index = _aa(
+        ("mistral", "mistral-large-3", "Mistral Large 3", 20.0),
+        ("meta", "muse-spark", "Muse Spark", 40.0),
+        ("meta", "llama-4", "Llama 4", 10.0),
+    )
+    assert index.score("mistralai/mistral-large-4-1t-a52b", creator="mistral") is None
+    near = index.near_misses("mistralai/mistral-large-4-1t-a52b", creator="mistral")
+    assert [row["slug"] for row in near] == ["mistral-large-3"]
+    family = index.near_misses("meta/muse-glimmer-30b", creator="meta")
+    assert family[0]["slug"] == "muse-spark" and family[0]["score"] == 40.0
+    assert len(index.near_misses("meta/muse-glimmer-30b", creator="meta", limit=1)) == 1
+
+
+def test_an_accepted_match_beats_every_heuristic_and_ignores_stale_targets():
+    index = _aa(("meta", "muse-spark", "Muse Spark", 40.0))
+    index.aliases["nvidia/meta/muse-glimmer-30b"] = ("meta", "muse-spark")
+    assert index.score("meta/muse-glimmer-30b", key="nvidia/meta/muse-glimmer-30b") == 40.0
+    assert index.score("meta/muse-glimmer-30b", key="nvidia/other") is None
+    index.aliases["nvidia/meta/gone"] = ("meta", "removed-from-aa")
+    assert index.score("meta/gone", key="nvidia/meta/gone") is None

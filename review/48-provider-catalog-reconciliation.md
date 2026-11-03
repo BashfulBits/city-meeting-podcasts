@@ -3694,3 +3694,26 @@ Decisions:
   from scratch and queues nothing.
 - Two connection resets at one input size count as time evidence (like a timeout), so the third
   attempt is smaller instead of repeating the same oversized body.
+
+## Addendum 2026-11-03 (2): 429 backoff, AA matching, fairer measurement
+
+Evidence: issue #2554 and the two daily runs after PR #2593. Minimax's first session made three calls
+in seven seconds: two 400s that quoted the provider's own `limit 262144` (the estimate and the
+provider's count drifted 6% between probes), then a `429` with no `Retry-After`, which ended the
+session as `quota_deferred`. The run had used 33 of its 120 minutes.
+
+- **429 backoff.** A 429 without `Retry-After` queues the candidate instead of ending it. The provider
+  pause stays held while the provider's other candidates run; the queue then waits 30 s, doubling to
+  600 s, and resumes with this run's earlier observations as history (so the bounds carry over). A 429
+  that follows the 600 s wait gives up until the next run. A 429 that does carry `Retry-After` keeps
+  the old inline wait. Timed (daily) runs only; the weekly full run is unchanged.
+- **Headroom.** After a refusal that quotes the provider's limit the next probe aims at 95% of it; each
+  repeat lowers that by 5 points (floor 80%).
+- **Fairness.** `measurement_plan` ranks by tries first; a timed run no longer cuts a provider's
+  planned candidates to the 3-per-run canary budget.
+- **Why not measured.** `Candidate.measure_note` records the reason a candidate had no session this run.
+- **AA matching.** `QualityIndex` matches AA display names and separator-free spellings, with the
+  Hugging Face repo name as a tiebreaker only among already-ambiguous hits. Similarity is never applied:
+  `near_misses` ranks the three closest AA entries for each unscored candidate, shown as
+  `AA match` checkboxes. A ticked row counts only if it is exactly one that the last run offered; it is
+  stored in state (`aa_matches`) and applied by the next run, which also re-scores carried candidates.

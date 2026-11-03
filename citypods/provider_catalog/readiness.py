@@ -91,6 +91,10 @@ def output_cap_for(discovery, provider_claim=None):
     return None, None
 
 
+def _waited(waits: int) -> str:
+    return f"; the run retried {waits} time(s) with growing waits" if waits else ""
+
+
 def _tokens(value: int) -> str:
     return f"{value:,}"
 
@@ -105,9 +109,10 @@ def candidate_readiness(candidate) -> Readiness:
                 "Tick `ignore`, or tick `add route only` if you want it anyway; `/apply` will "
                 "then say what evidence is missing.",
             )
+        note = getattr(candidate, "measure_note", None)
         return Readiness(
             WAITING,
-            "Limits not tested yet.",
+            "Limits not tested yet" + (f": {note}." if note else "."),
             "Nothing to do. The next daily run tests it; this line updates when it has.",
         )
 
@@ -158,6 +163,22 @@ def candidate_readiness(candidate) -> Readiness:
         return Readiness(
             WAITING,
             "The provider returned server errors on the input test (retried within the run).",
+            "Nothing to do. The daily run tests it again "
+            f"(try {tries + 1} of {MAX_AUTO_MEASURE_ATTEMPTS}).",
+        )
+    if reason == "quota_deferred" and retrying:
+        waits = discovery.get("quota_waits")
+        waits = waits if type(waits) is int and waits > 0 else 0
+        gave_up = discovery.get("quota_gave_up") is True
+        what = (
+            "The provider kept returning 429 (rate limited) on the input test, even after "
+            "waiting 10 minutes."
+            if gave_up
+            else f"The provider rate-limited (429) the input test{_waited(waits)}."
+        )
+        return Readiness(
+            WAITING,
+            what,
             "Nothing to do. The daily run tests it again "
             f"(try {tries + 1} of {MAX_AUTO_MEASURE_ATTEMPTS}).",
         )
