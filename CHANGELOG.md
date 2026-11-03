@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Disable dispatch keep-alive and pin catalog workflows to Ubuntu 24.04.**
+  Send `Connection: close` in `DispatchPauseClient` requests to prevent urllib3 connection
+  pool socket reuse across multi-minute probe spacing and canary intervals, eliminating
+  transient connection resets on Worker reservations. Pin provider catalog reconciliation and
+  command workflows to `ubuntu-24.04` to match runner policy and prevent runner-image drift.
+
 - **Renovate runner upgrade suppression.** Pinned GitHub runner environments (`runs-on`) to
   prevent Renovate from proposing automated Ubuntu LTS upgrades across workflow files, preserving
   the ABI alignment required by the self-built static FFmpeg binary (review/22).
