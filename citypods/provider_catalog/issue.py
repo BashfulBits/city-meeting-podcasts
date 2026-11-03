@@ -195,6 +195,7 @@ def _render_decision_block(
                     f"{lane} (-{gap:g})" for lane, gap in candidate.other_lanes
                 )
             out.append(label)
+            out.append(f"\n> {_readiness_line(candidate)}\n")
             out += [row(x) for x in rows[candidate.key]]
             placed.update(rows[candidate.key])
         links = [
@@ -223,6 +224,45 @@ def _render_decision_block(
             out.append(row(choice))
     out.append(DECISION_BLOCK_END)
     return "\n".join(out)
+
+
+def _readiness_line(candidate) -> str:
+    from citypods.provider_catalog.readiness import candidate_readiness
+
+    readiness = candidate_readiness(candidate)
+    return f"{readiness.headline} {readiness.next_step}"
+
+
+_STATE_LABEL = {"ready": "READY", "waiting": "WAITING", "action": "YOUR CALL"}
+
+
+def _next_steps_section(candidates) -> list[str]:
+    """The one table a maintainer needs: per new route, its state, tested caps and next step."""
+    if not candidates:
+        return []
+    from citypods.provider_catalog.readiness import candidate_readiness
+
+    lines = [
+        "## Next steps",
+        "",
+        "**READY** = limits tested; tick under **Decisions** and comment `/apply`. "
+        "**WAITING** = the daily run is still testing; nothing to do. "
+        "**YOUR CALL** = needs a decision from you.",
+        "",
+        "| Model | State | Input cap | Output cap | What to do |",
+        "|---|---|---:|---:|---|",
+    ]
+    for candidate in candidates:
+        readiness = candidate_readiness(candidate)
+        input_cap = _discovery_count(readiness.input_cap)
+        output_cap = _discovery_count(readiness.output_cap)
+        if readiness.output_source == "provisional":
+            output_cap += " (provisional)"
+        lines.append(
+            f"| `{candidate.key}` | {_STATE_LABEL[readiness.state]} | {input_cap} | "
+            f"{output_cap} | {readiness.next_step} |"
+        )
+    return [*lines, ""]
 
 
 def _inline(value, limit: int = 240) -> str:
@@ -558,9 +598,9 @@ def render_body(
         f"[Artificial Analysis](https://artificialanalysis.ai/) Intelligence Index; "
         f"{quality_note}",
         "",
-        f"## Candidates ({len(report.candidates)})",
-        "",
     ]
+    lines += _next_steps_section(report.candidates)
+    lines += [f"## Candidates ({len(report.candidates)})", ""]
     if report.candidates:
         lines += [
             "Free-marked models that completed a canary on our account and are not configured. "
@@ -585,10 +625,17 @@ def render_body(
         lines.append("None this week.")
     discoveries = [c for c in report.candidates if c.discovery]
     if discoveries:
-        lines += ["", "## Request-cap discovery", ""]
+        lines += [
+            "",
+            "## Request-cap discovery",
+            "",
+            "Evidence behind the **Next steps** above. Open a section only to audit a result.",
+            "",
+        ]
         for candidate in discoveries:
             result = candidate.discovery or {}
-            lines += [f"### `{candidate.key}`", ""]
+            lines += [f"### `{candidate.key}`", "", _readiness_line(candidate), ""]
+            lines += ["<details><summary>Test details and diagnostics</summary>", ""]
             hints = result.get("litellm")
             if isinstance(hints, dict):
                 lines += [
@@ -801,6 +848,7 @@ def render_body(
                         f"{attempt['outcome']} / {attempt['diagnostic']} "
                         f"(attempt `{attempt['attempt_id']}`)"
                     )
+            lines += ["", "</details>", ""]
     if pending:
         names = ", ".join(f"`{c.key}`" for c in pending)
         lines += [
@@ -857,15 +905,15 @@ def render_body(
                 "",
                 "## Decisions",
                 "",
-                "Tick what you want, then comment `/apply` to prepare reviewed catalog/rate PRs "
-                "with those changes (review/48). Ticks are kept across updates. A free route "
-                "that became paid is never removed automatically: remove it, or keep it as a "
-                "paid route. Retired routes are removed by their own automatic PR after a fresh "
-                "confirmation, so they need no tick. `add route only` adds the route with a "
-                "provisional input cap and no lane; lane placement needs measured evidence. "
-                "Partial request-cap discovery can be resumed with `test again`; that only "
-                "queues a later bounded run. Unavailable proofs remain ticked. An open PR does "
-                "not fulfill a selection until it is merged.",
+                "Tick what you want, then comment `/apply` to prepare a reviewed PR with those "
+                "changes (review/48). Each model's line says whether it is ready. If `/apply` "
+                "cannot do something yet, its reply says why and what to do; your ticks are "
+                "kept, so just comment `/apply` again later. `add route only` adds the route "
+                "with its tested input and output caps and no lane; lane placement needs "
+                "measured evidence. `test again` queues another bounded limit test. A free "
+                "route that became paid is never removed automatically: remove it, or keep it "
+                "as a paid route. Retired routes are removed by their own automatic PR, so "
+                "they need no tick. An open PR does not fulfill a selection until it is merged.",
                 "",
                 _render_decision_block(
                     choices,

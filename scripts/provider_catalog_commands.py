@@ -69,6 +69,49 @@ def run(args):
     return subprocess.run(args, cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
 
 
+_FAILED_TEST = re.compile(
+    r"^FAILED (tests/[A-Za-z0-9_./-]+(?:::[A-Za-z0-9_\[\].:-]{1,120})?)", re.M
+)
+
+
+def describe_failed_command(exc):
+    """Name the failing step for the public comment without echoing any command output.
+
+    Output can carry provider secrets, so only fixed program/script names, the exit code and
+    pytest node IDs (matched against a strict pattern) are repeated.
+    """
+    cmd = [str(part) for part in (exc.cmd if isinstance(exc.cmd, list | tuple) else [exc.cmd])]
+    if len(cmd) > 1 and cmd[0] == sys.executable and cmd[1] == "-m":
+        step = "tests (" + " ".join(cmd[2:4]) + ")"
+    elif len(cmd) > 1 and cmd[0] == sys.executable:
+        step = f"validation script {Path(cmd[1]).name}"
+    elif cmd and cmd[0] == "git":
+        step = "git " + (cmd[1] if len(cmd) > 1 else "")
+    elif cmd and cmd[0] == "gh":
+        step = "gh " + " ".join(cmd[1:3])
+    else:
+        step = Path(cmd[0]).name if cmd else "a command"
+    detail = f"{step} failed with exit code {exc.returncode}"
+    failed = list(
+        dict.fromkeys(_FAILED_TEST.findall(exc.stdout if isinstance(exc.stdout, str) else ""))
+    )
+    if failed:
+        detail += "; failing tests: " + ", ".join(f"`{item}`" for item in failed[:5])
+        if len(failed) > 5:
+            detail += f" (+{len(failed) - 5} more)"
+    if cmd and cmd[0] in {"git", "gh"}:
+        return (
+            detail + ". Publication failed and main is unchanged. A pull request for another "
+            "proposal kind may already exist. See the workflow run log, then comment `/apply` "
+            "again."
+        )
+    return (
+        detail + ". No pull request was opened and main is unchanged. The proposed change did not "
+        "pass the repository checks; see the workflow run log, fix the cause, then comment "
+        "`/apply` again."
+    )
+
+
 def process_event(event, permission):
     issue = event.get("issue") or {}
     number = issue.get("number")
@@ -666,7 +709,7 @@ def main(argv=None):
                 exc.diagnostic
                 if isinstance(exc, DispatchPauseError)
                 else (
-                    "verification or publication command failed"
+                    describe_failed_command(exc)
                     if isinstance(exc, subprocess.CalledProcessError)
                     else str(exc)
                 )

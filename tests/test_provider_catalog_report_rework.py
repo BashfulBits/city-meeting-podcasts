@@ -359,7 +359,7 @@ def test_a_route_needs_a_measured_output_limit_when_no_claim_exists():
         return plan_apply(report, (decision,), config())
 
     unmeasured = planned(DISCOVERY)
-    assert not unmeasured.routes and "output search has not run" in unmeasured.deferred[0]
+    assert not unmeasured.routes and "output limit is not" in unmeasured.deferred[0]
     output_axis = {
         "axis": "output",
         "admitted": 8192,

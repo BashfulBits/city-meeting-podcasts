@@ -1169,7 +1169,24 @@ def test_failed_worker_ledger_charge_aborts_instead_of_continuing_to_probe():
             raise DispatchPauseError("ledger unavailable")
 
     with pytest.raises(DispatchPauseError, match="could not reserve scarce"):
-        WorkerDispatchControl(Client()).reserve("scarce")
+        WorkerDispatchControl(Client()).reserve("scarce", sleep=lambda _s: None)
+
+
+def test_transient_worker_ledger_error_is_retried_before_reserving():
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+    from scripts.reconcile_provider_routes import WorkerDispatchControl
+
+    class Client:
+        calls = 0
+
+        def reserve(self, route_id, requests_made):
+            self.calls += 1
+            if self.calls < 3:
+                raise DispatchPauseError("v2/dispatch:reserve request failed: ConnectionError")
+
+    client, slept = Client(), []
+    WorkerDispatchControl(client).reserve("scarce", sleep=slept.append)
+    assert client.calls == 3 and slept == [5, 10]
 
 
 def test_state_decoder_accepts_legacy_json_and_rejects_corrupt_compressed_markers():
@@ -1589,29 +1606,35 @@ def test_maintenance_captures_scoped_headers_only_under_exclusive_pause(monkeypa
         assert {o.run_id for o in report.rate_observations} == {"42"}
 
 
-def test_worker_reservation_outage_prevents_health_provider_call(monkeypatch):
+def test_worker_reservation_outage_skips_the_route_without_calling_the_provider(monkeypatch):
     from citypods.compute.llm_dispatch_pause import DispatchPauseError
 
     class Outage(FakeControl):
         def reserve(self, route_id):
             raise DispatchPauseError("writes exceeded")
 
-    def forbidden(*args):
-        pytest.fail("provider was called before its reservation")
+    configured = {route["upstream_model"] for route in LIMITS["routes"]}
+    called = []
+
+    def record(rules, cfg, model, *args):
+        called.append(model)
+        return Response(503, {})
 
     monkeypatch.setenv("K", "fake")
-    with pytest.raises(DispatchPauseError):
-        reconcile(
-            LIMITS,
-            LANES,
-            NO_DECISIONS,
-            QUALITY,
-            {},
-            session=FakeSession(CATALOGS),
-            control=Outage(),
-            today=TODAY,
-            canary_fn=forbidden,
-        )
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=Outage(),
+        today=TODAY,
+        canary_fn=record,
+    )
+    assert any("dispatch ledger unavailable" in line for line in report.observations)
+    # Configured routes are never called without a reservation (new candidates have no ledger).
+    assert not configured & set(called)
 
 
 def test_expired_pause_discards_rate_evidence_after_exit(monkeypatch):

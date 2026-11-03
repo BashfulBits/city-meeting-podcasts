@@ -9,7 +9,7 @@ import re
 import tempfile
 import time
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -75,6 +75,14 @@ MAX_NO_RESPONSE_CALLS = 5
 INPUT_SIZE_GUIDANCE = {"computed_input_budget_exhausted", "input_size_refused_without_exact_counts"}
 MAX_RESPONSE_TIMEOUT_SECONDS = 720
 MAX_SESSION_SECONDS = 5_400
+# Production LLM calls must finish inside the v2 Worker's 720 s response ceiling. An input size
+# whose probe needed longer than this budget is "too slow" and cannot be proposed as a cap.
+INPUT_TIME_BUDGET_SECONDS = 600
+TRANSIENT_SERVER_STATUSES = {500, 502, 503, 504}
+MAX_OUTAGE_RETRIES = 2
+OUTAGE_BACKOFF_SECONDS = 15
+TIMEOUT_DIAGNOSTICS = {"worker_response_timeout", "transport_timeout"}
+SLOW_INPUT_DIAGNOSTIC = "input_too_slow_for_deadline"
 NO_RESPONSE_DIAGNOSTICS = {
     "transport_timeout",
     "transport_connection_error",
@@ -82,7 +90,38 @@ NO_RESPONSE_DIAGNOSTICS = {
     "worker_response_timeout",
     "worker_transport_error",
 }
+# Aim this fraction of a provider-stated context limit: its own count includes template overhead.
+PROVIDER_LIMIT_HEADROOM_PERCENT = 95
 OUTCOMES = {"admitted", "refused", "lower_only", "quota", "daily", "outage", "inconclusive"}
+
+
+def _with_input_timing(observation, elapsed):
+    """Stamp the probe's duration; a verified success slower than the budget is not a usable cap."""
+    seconds = max(0, math.ceil(elapsed))
+    if (
+        observation.outcome == "admitted"
+        and observation.verified
+        and seconds > INPUT_TIME_BUDGET_SECONDS
+    ):
+        return replace(
+            observation,
+            outcome="inconclusive",
+            verified=False,
+            coordinate=None,
+            count_basis="unknown",
+            diagnostic=SLOW_INPUT_DIAGNOSTIC,
+            elapsed_seconds=seconds,
+        )
+    return replace(observation, elapsed_seconds=seconds)
+
+
+def hinted_upper(item, provider_limits):
+    """Upper target for a size refusal: the provider's stated limit when it gave one."""
+    hint = getattr(item, "target_limit_hint", None)
+    if positive(hint) and hint < item.request.target:
+        provider_limits.add(hint)
+        return hint
+    return item.request.target
 
 
 def positive(value):
@@ -187,6 +226,11 @@ class DiscoveryObservation:
     sentinel_verification: str = "unknown"
     stream_bytes: int | None = None
     stream_events: int | None = None
+    # A typed provider context_length refusal, mapped onto this request's target scale. It steers
+    # the next input target below the stated limit; it is never a verified refused boundary.
+    target_limit_hint: int | None = None
+    # Wall-clock seconds the input probe took (set by the search loop, not the provider parser).
+    elapsed_seconds: int | None = None
 
     def __post_init__(self):
         if (
@@ -282,6 +326,8 @@ class DiscoveryObservation:
             self.reasoning_tokens,
             self.cached_tokens,
             self.retry_after_seconds,
+            self.target_limit_hint,
+            self.elapsed_seconds,
         ):
             if value is not None and (type(value) is not int or not 0 <= value <= 2**53 - 1):
                 raise ValueError("invalid discovery count")
@@ -655,13 +701,33 @@ def run_discovery(
         fresh_successes, quota_retry = 0, False
         required_fresh = 1 if axis == "output" else 2
         upper_recheck = None
+        provider_limits = set()
         qualitative_upper = min(
             (
-                item.request.target
+                hinted_upper(item, provider_limits)
                 for item in compatible_history
                 if item.request.control == control
                 and item.diagnostic in INPUT_SIZE_GUIDANCE | {"size_refused_without_exact_counts"}
                 and item.request.target > (pending.lower or 0)
+            ),
+            default=None,
+        )
+        # Sizes that timed out or ran past the time budget in the last day: a production call of
+        # that size would not finish in the Worker's 720 s either. Guides smaller probes only.
+        time_upper = min(
+            (
+                item.request.target
+                for item in compatible_history
+                if axis == "input"
+                and item.request.control == control
+                and item.request.target > (pending.lower or 0)
+                and (
+                    item.diagnostic in TIMEOUT_DIAGNOSTICS
+                    or item.diagnostic == SLOW_INPUT_DIAGNOSTIC
+                )
+                and timedelta(0)
+                <= datetime.now(UTC) - datetime.fromisoformat(item.observed_at)
+                <= timedelta(days=1)
             ),
             default=None,
         )
@@ -690,6 +756,7 @@ def run_discovery(
         qualitative_rechecked = False
         axis_calls = 0
         recent_output_cost = None
+        outage_retries = 0
         clipped_count = None
         clipped_recheck = None
         early_stop_retries = 0
@@ -753,6 +820,7 @@ def run_discovery(
                 axis == "input"
                 and qualitative_upper is not None
                 and qualitative_upper > (bracket.lower or 0)
+                and qualitative_upper not in provider_limits
                 and previous
                 and fresh_successes >= required_fresh
                 and not qualitative_rechecked
@@ -772,10 +840,25 @@ def run_discovery(
                         break
                     else:
                         target = bracket.lower + (qualitative_upper - bracket.lower) // 2
+                elif qualitative_upper in provider_limits:
+                    target = qualitative_upper * PROVIDER_LIMIT_HEADROOM_PERCENT // 100
                 else:
                     target = max(1, qualitative_upper // 2)
                 if axis == "input":
                     target = max(MIN_INPUT_PROBE, target)
+            if axis == "input" and time_upper is not None and not explicit_recheck:
+                if bracket.lower is None:
+                    if time_upper <= MIN_INPUT_PROBE:
+                        bracket.reason = "minimum_probe_too_slow"
+                        break
+                    target = max(MIN_INPUT_PROBE, min(target, time_upper // 2))
+                elif time_upper <= bracket.lower:
+                    time_upper = None
+                elif time_upper - bracket.lower <= max(1, math.ceil(bracket.lower / 200)):
+                    bracket.reason = "input_time_limited_lower_bound"
+                    break
+                else:
+                    target = min(target, bracket.lower + (time_upper - bracket.lower) // 2)
             checking_upper = upper_recheck is not None and target == upper_recheck
             if (
                 axis == "output"
@@ -920,6 +1003,8 @@ def run_discovery(
                 )
                 if not charged or observation.request != request:
                     raise ValueError("discovery_transport_admission_or_identity_mismatch")
+                if axis == "input":
+                    observation = _with_input_timing(observation, clock() - call_started)
                 journal.complete(observation)
             except Exception as exc:
                 if isinstance(exc, ValueError) and str(exc) == "discovery_budget_exhausted":
@@ -940,6 +1025,11 @@ def run_discovery(
                 )
             observations.append(observation)
             axis_calls += 1
+            if axis == "input" and (
+                observation.diagnostic in TIMEOUT_DIAGNOSTICS
+                or observation.diagnostic == SLOW_INPUT_DIAGNOSTIC
+            ):
+                time_upper = min(time_upper or target, target)
             if (
                 axis == "output"
                 and observation.outcome == "admitted"
@@ -1001,6 +1091,24 @@ def run_discovery(
             if observation.response_status in {401, 402, 403}:
                 reason = bracket.reason = "access_deferred"
                 break
+            if (
+                observation.outcome == "outage"
+                and not supporting
+                and observation.response_status in TRANSIENT_SERVER_STATUSES
+                and outage_retries < MAX_OUTAGE_RETRIES
+                and clock() + OUTAGE_BACKOFF_SECONDS < deadline
+            ):
+                # One 5xx is usually a blip, not an outage: retry after a pause instead of
+                # ending the axis with nothing measured.
+                outage_retries += 1
+                try:
+                    renew()
+                    sleep(OUTAGE_BACKOFF_SECONDS * outage_retries)
+                    renew()
+                except Exception:
+                    reason = bracket.reason = "pause_lost"
+                    break
+                continue
             if observation.outcome in {"outage", "daily"}:
                 reason = observation.outcome
                 bracket.reason = reason
@@ -1168,7 +1276,9 @@ def run_discovery(
                     fresh_successes = 0
                     qualitative_upper = None
                 else:
-                    qualitative_upper = min(qualitative_upper or target, target)
+                    qualitative_upper = min(
+                        qualitative_upper or target, hinted_upper(observation, provider_limits)
+                    )
                 continue
             blocking = (
                 {"output", "requested_output"}

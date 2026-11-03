@@ -605,6 +605,26 @@ def unsupported_discovery(response, request, transient):
     return DiscoveryObservation(request, datetime.now(UTC).isoformat())
 
 
+def _typed_context_limit_hint(response, request, payload):
+    """Map a typed `details: {type: context_length, limit, actual}` 400 onto the request target.
+
+    Seen on NVIDIA NIM (`limit` 262144, `actual` 484064 for a 500,000 target). The provider's own
+    counts say how far over the limit this request was, so the limit scaled by target/actual is
+    where a retry of the same prompt style should land. It guides the search; only an admitted
+    request verified by usage counts becomes a cap.
+    """
+    if request.axis != "input" or response.status != 400 or not isinstance(payload, dict):
+        return None
+    details = payload.get("details")
+    if not isinstance(details, dict) or details.get("type") != "context_length":
+        return None
+    limit, actual = details.get("limit"), details.get("actual")
+    if type(limit) is not int or type(actual) is not int or not 0 < limit < actual <= 2**53 - 1:
+        return None
+    hint = limit * request.target // actual
+    return hint if 0 < hint < request.target else None
+
+
 def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis):
     """Recognize explicit token coordinates in documented chat/vLLM size errors.
 
@@ -1015,6 +1035,10 @@ def chat_discovery_observation(
         return DiscoveryObservation(
             request, stamp, outcome="refused", verified=True, **(values | refusal)
         )
+    limit_hint = _typed_context_limit_hint(response, request, payload)
+    if limit_hint is not None:
+        values["diagnostic"] = "size_refused_without_exact_counts"
+        return DiscoveryObservation(request, stamp, target_limit_hint=limit_hint, **values)
     if response.status == 400 and isinstance(payload, dict):
         error = payload.get("error")
         if isinstance(error, dict) and isinstance(error.get("message"), str):
