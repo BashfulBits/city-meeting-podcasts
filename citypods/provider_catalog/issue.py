@@ -77,11 +77,54 @@ def method_choice(route_id: str, method: str) -> str:
     return f"`{route_id}`: switch structured-output method to `{method}`"
 
 
+def aa_match_choice(candidate_key: str, match: Mapping[str, Any]) -> str:
+    """Checkbox text that accepts one AA model as a candidate's AA entry (next run uses it)."""
+    label = re.sub(r"[^A-Za-z0-9 ._+-]", "", str(match.get("name") or ""))[:60].strip()
+    score = match.get("score")
+    detail = ", ".join(
+        part
+        for part in (label, f"index {score:g}" if isinstance(score, (int, float)) else "")
+        if part
+    )
+    return f"`{candidate_key}`: AA match `{match['creator']}/{match['slug']}`" + (
+        f" ({detail})" if detail else ""
+    )
+
+
+def accepted_aa_matches(body: str, state: Mapping[str, Any]) -> dict[str, tuple[str, str]]:
+    """Candidate key -> (AA creator, AA slug): matches kept in state plus rows ticked in the issue.
+
+    A ticked row counts only when it is exactly one of the closest matches the last run offered
+    for that candidate, so editing the issue cannot point a model at an arbitrary AA entry.
+    """
+    stored = state.get("aa_matches")
+    accepted = {
+        str(key): (str(value[0]), str(value[1]))
+        for key, value in (stored.items() if isinstance(stored, Mapping) else ())
+        if isinstance(value, (list, tuple)) and len(value) == 2
+    }
+    snapshot = Report()
+    try:
+        _merge_into_last_full(snapshot, state.get("last_full") or {}, set())
+    except (TypeError, ValueError, KeyError):
+        return accepted
+    offered = {
+        aa_match_choice(c.key, m): (c.key, (m["creator"], m["slug"]))
+        for c in snapshot.candidates
+        for m in c.aa_matches or ()
+    }
+    for choice in checked_decisions(body, tuple(offered)):
+        key, target = offered[choice]
+        accepted[key] = target
+    return accepted
+
+
 def decision_choices(report: Report) -> tuple[str, ...]:
     choices: list[str] = []
     for candidate in report.candidates:
         key = f"`{candidate.key}`"
         choices.append(f"{key}: ignore")
+        choices.extend(aa_match_choice(candidate.key, m) for m in candidate.aa_matches or ())
         choices.append(f"{key}: add route only")
         choices.extend(f"{key}: add as backup to `{lane}`" for lane in candidate.lanes)
         if candidate.discovery and candidate.discovery.get("retryable") is True:
@@ -147,7 +190,13 @@ def _facts_line(candidate) -> str:
         f"released {facts['released']}" if facts.get("released") else None,
         f"inputs: {facts['inputs']}" if facts.get("inputs") else None,
         f"license {facts['license']}" if facts.get("license") else None,
-        "AA " + _score_cell(candidate.score, candidate.below_floor),
+        "AA "
+        + _score_cell(candidate.score, candidate.below_floor)
+        + (
+            " (tick the closest AA entry under **Decisions** if one is the same model)"
+            if candidate.score is None and candidate.aa_matches
+            else ""
+        ),
     ]
     line = " · ".join(p for p in parts if p)
     if facts.get("expires"):

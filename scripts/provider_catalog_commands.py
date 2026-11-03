@@ -145,7 +145,9 @@ def prepare(body, base_commit, proposal_kind=None):
         for choice in re.findall(r"(?mi)^- \[x\] (.*? \(context [a-f0-9]{64}\))\s*$", body)
     )
     snapshot.context_changes = list(context_selected)
-    decisions = tuple(d for d in parse_decisions(body, snapshot) if d.action != "test_again")
+    decisions = tuple(
+        d for d in parse_decisions(body, snapshot) if d.action not in {"test_again", "aa_match"}
+    )
     context_selections = tuple(d.model for d in decisions if d.action == "context")
     if proposal_kind == "context" or (
         proposal_kind is None
@@ -650,7 +652,11 @@ def main(argv=None):
                     now=datetime.now(UTC),
                 )
             kinds = []
-            if any(d.action not in {"increase_rate", "context", "test_again"} for d in decisions):
+            matches = [d for d in decisions if d.action == "aa_match"]
+            if any(
+                d.action not in {"increase_rate", "context", "test_again", "aa_match"}
+                for d in decisions
+            ):
                 kinds.append("additions")
             if any(d.action == "increase_rate" for d in decisions):
                 kinds.append("limits")
@@ -685,6 +691,13 @@ def main(argv=None):
                         break
                 else:
                     raise ValueError("main changed repeatedly; retry /apply")
+            if matches:
+                comments.append(
+                    "AA match accepted for "
+                    + ", ".join(f"`{d.key}`" for d in matches)
+                    + ". No PR is needed: the next daily run reads the ticked row and scores the "
+                    "model from that AA entry. This command makes no provider request."
+                )
             if retries and retry_receipt is None:
                 comments.append(
                     f"`{retries[0].key}`: no saved test results exist to retry (the run that "

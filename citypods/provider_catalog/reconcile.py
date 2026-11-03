@@ -150,6 +150,11 @@ class Candidate:
     discovery: dict[str, Any] | None = None
     # Display-only model-card facts (summary, size, release, expiry); see model_facts.py.
     facts: dict[str, str] | None = None
+    # Closest AA models (creator, slug, name, score) for an unscored candidate; each is offered
+    # as a checkbox that accepts it as this model's AA entry on the next run.
+    aa_matches: list[dict[str, Any]] | None = None
+    # Why the daily run has not measured this candidate yet (shown in the issue), if it knows.
+    measure_note: str | None = None
 
     @property
     def key(self) -> str:
@@ -253,6 +258,7 @@ def lane_incumbent_scores(
                     str(route.get("upstream_model") or ""),
                     creator=provider_rules.creator if provider_rules else None,
                     free_suffix=provider_rules.free_suffix if provider_rules else "",
+                    key=f"{route.get('provider')}/{route.get('upstream_model')}",
                 )
                 if score is not None and (best is None or score > best):
                     best = score
@@ -353,6 +359,7 @@ def measurement_plan(
             continue
         wanted.append(
             (
+                attempts,
                 axis == "input",
                 score is None,
                 -(score or 0.0),
@@ -605,12 +612,19 @@ def reconcile(
         if due_only and measure_pending and discovery_automatic
         else {}
     )
+    unmeasured_reason: dict[str, str] = {}
     for provider in selected:
         rules = all_rules().get(provider)
         cfg = provider_cfgs.get(provider)
         if rules is None or cfg is None:
             report.observations.append(f"{provider}: no plugin or no config; skipped")
             continue
+        if measure_plan and not session_slot_open(provider):
+            for planned in measure_plan:
+                if planned.partition("/")[0] == provider:
+                    unmeasured_reason[planned] = (
+                        "this run's time budget was spent before it reached the provider"
+                    )
         measure_names = (
             {}
             if not session_slot_open(provider)
@@ -656,6 +670,9 @@ def reconcile(
             # Already-found candidates the plan chose are visited like new models.
             fresh_names = (fresh_names or set()) | (set(measure_names) & set(catalog.models))
         if catalog.error:
+            for planned in measure_plan:
+                if planned.partition("/")[0] == provider:
+                    unmeasured_reason[planned] = "the provider's model catalog failed to load"
             report.anomalies.append(
                 Anomaly(provider, f"{provider}:catalog", "-", "inconclusive", catalog.error, False)
             )
@@ -930,7 +947,7 @@ def reconcile(
                 if remembered:
                     if memory.get("verdict") == "proven":
                         score = quality.score(
-                            model, creator=rules.creator, free_suffix=rules.free_suffix
+                            model, creator=rules.creator, free_suffix=rules.free_suffix, key=key
                         )
                         if key not in explicit_keys and _score_at_or_below(score, report.floor):
                             auto_ignored.append((model, score))
@@ -950,7 +967,9 @@ def reconcile(
                 free = rules.free_evidence(model, record, ctx) if rules.free_evidence else False
                 if not free:
                     continue
-                score = quality.score(model, creator=rules.creator, free_suffix=rules.free_suffix)
+                score = quality.score(
+                    model, creator=rules.creator, free_suffix=rules.free_suffix, key=key
+                )
                 if key not in explicit_keys and _score_at_or_below(score, report.floor):
                     # Confirmed AA score at or under the weakest model our lanes run: nothing is
                     # probed or listed. The bar is recomputed each run, so it reappears if the
@@ -986,14 +1005,31 @@ def reconcile(
                     terminal_retry(model, {}, "route_absent_from_current_catalog")
             # Never-tried first, then retries of inconclusive results; best-scored first within
             # each, unscored last. So a candidate that keeps failing cannot starve new ones.
-            candidates.sort(key=lambda c: (c[3], c[2] is None, -(c[2] or 0), c[0]))
-            if len(candidates) > CANARY_BUDGET_PER_PROVIDER:
+            # The measurement plan ranks the already-found candidates (fewest tries first), and
+            # a timed run adds them to the usual budget for newly listed models.
+            plan_rank = {name: index for index, name in enumerate(measure_names)}
+            canary_budget = CANARY_BUDGET_PER_PROVIDER + (len(measure_names) if timed else 0)
+            candidates.sort(
+                key=lambda c: (
+                    plan_rank.get(c[0], len(plan_rank)),
+                    c[3],
+                    c[2] is None,
+                    -(c[2] or 0),
+                    c[0],
+                )
+            )
+            if len(candidates) > canary_budget:
                 report.observations.append(
-                    f"{provider}: {len(candidates) - CANARY_BUDGET_PER_PROVIDER} more free "
-                    f"candidate(s) wait for later runs (budget {CANARY_BUDGET_PER_PROVIDER}/run)"
+                    f"{provider}: {len(candidates) - canary_budget} more free "
+                    f"candidate(s) wait for later runs (budget {canary_budget}/run)"
                 )
             ordered = candidates
-            candidates = candidates[:CANARY_BUDGET_PER_PROVIDER]
+            for waiting in ordered[canary_budget:]:
+                unmeasured_reason[f"{provider}/{waiting[0]}"] = (
+                    f"it waited behind other {provider} candidates "
+                    f"(at most {canary_budget} are visited per run)"
+                )
+            candidates = candidates[:canary_budget]
             if fresh_names is not None:
                 retries = [c for c in candidates if c[0] not in fresh_names]
                 measured = [c for c in candidates if c[0] in measure_names]
@@ -1243,6 +1279,105 @@ def reconcile(
             if not api_key:
                 report.observations.append(f"{provider}: no API key; candidates not checked")
                 continue
+            quota_waits: dict[str, int] = {}
+            resume_queue: list[dict[str, Any]] = []
+
+            def run_session(
+                candidate,
+                record,
+                selected_axes,
+                automatic_candidate,
+                *,
+                first=True,
+                provider=provider,
+                rules=rules,
+                cfg=cfg,
+                quota_waits=quota_waits,
+                resume_queue=resume_queue,
+            ):
+                """One size-search session; a 429 without Retry-After is queued for a retry."""
+                model = candidate.model
+                try:
+                    identity = _candidate_discovery_identity(provider, model, rules, cfg)
+                    session_record = _discover_candidate_caps(
+                        candidate,
+                        record,
+                        provider_cfg=cfg,
+                        rules=rules,
+                        pause=pause,
+                        session=session,
+                        today=today,
+                        run_id=discovery_run_id,
+                        receipt_id=(discovery_receipt_ids or {}).get(
+                            candidate.key, discovery_receipt_id
+                        ),
+                        history=_history_with_run_sessions(
+                            discovery_history, report.discovery_sessions, identity
+                        ),
+                        shared_budget=discovery_shared_budget,
+                        selected_axes=selected_axes,
+                        sleep=sleep,
+                        deadline=(run_started + discovery_time_budget_seconds if timed else None),
+                        fresh_run_budget=timed,
+                    )
+                    candidate.discovery = _merge_discovery(
+                        candidate.discovery, session_record["summary"]
+                    )
+                    report.discovery_sessions.append(session_record["artifact"])
+                    save_sessions()
+                    if automatic_candidate and first:
+                        memory_row = canary_memory.setdefault(f"{provider}/{model}", {})
+                        attempts = int(memory_row.get("measure_attempts") or 0) + 1
+                        memory_row["measure_attempts"] = attempts
+                        candidate.discovery["auto_attempts"] = attempts
+                    elif automatic_candidate:
+                        candidate.discovery["auto_attempts"] = int(
+                            (canary_memory.get(candidate.key) or {}).get("measure_attempts") or 0
+                        )
+                    if timed and _ended_on_unpaced_429(session_record["artifact"]):
+                        _schedule_quota_retry(
+                            candidate,
+                            record,
+                            selected_axes,
+                            automatic_candidate,
+                            quota_waits,
+                            resume_queue,
+                        )
+                except Exception as exc:
+                    # Discovery is advisory; preserve the proven reachability result.
+                    candidate.discovery = {
+                        "retryable": False,
+                        "reason": "discovery_stopped_safely",
+                        "detail": f"Search stopped safely ({type(exc).__name__}).",
+                        "axes": [],
+                        "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                    }
+
+            def _schedule_quota_retry(
+                candidate, record, selected_axes, automatic_candidate, quota_waits, resume_queue
+            ):
+                """Back off after an unpaced 429; give up after one that follows the 10-min wait."""
+                waited = quota_waits.get(candidate.key, 0)
+                last_wait = _quota_wait_seconds(waited - 1) if waited else 0
+                if last_wait >= QUOTA_BACKOFF_MAX_SECONDS:
+                    candidate.discovery["quota_gave_up"] = True
+                    candidate.discovery["quota_waits"] = waited
+                    return
+                wait = _quota_wait_seconds(waited)
+                quota_waits[candidate.key] = waited + 1
+                candidate.discovery["quota_waits"] = waited + 1
+                resume_queue.append(
+                    {
+                        "candidate": candidate,
+                        "record": record,
+                        "axes": selected_axes,
+                        "automatic": automatic_candidate,
+                        "ready_at": discovery_clock() + wait,
+                    }
+                )
+
             for model, record, score, _retry in candidates:
                 pause.renew()
                 if not first_probe and rules.canary_interval_seconds:
@@ -1335,52 +1470,7 @@ def reconcile(
                                 if discovery_axis != "all"
                                 else None
                             )
-                            try:
-                                session_record = _discover_candidate_caps(
-                                    candidate,
-                                    record,
-                                    provider_cfg=cfg,
-                                    rules=rules,
-                                    pause=pause,
-                                    session=session,
-                                    today=today,
-                                    run_id=discovery_run_id,
-                                    receipt_id=(discovery_receipt_ids or {}).get(
-                                        candidate.key, discovery_receipt_id
-                                    ),
-                                    history=discovery_history,
-                                    shared_budget=discovery_shared_budget,
-                                    selected_axes=selected_axes,
-                                    sleep=sleep,
-                                    deadline=(
-                                        run_started + discovery_time_budget_seconds
-                                        if timed
-                                        else None
-                                    ),
-                                    fresh_run_budget=timed,
-                                )
-                                candidate.discovery = _merge_discovery(
-                                    candidate.discovery, session_record["summary"]
-                                )
-                                report.discovery_sessions.append(session_record["artifact"])
-                                save_sessions()
-                                if automatic_candidate:
-                                    memory_row = canary_memory.setdefault(f"{provider}/{model}", {})
-                                    attempts = int(memory_row.get("measure_attempts") or 0) + 1
-                                    memory_row["measure_attempts"] = attempts
-                                    candidate.discovery["auto_attempts"] = attempts
-                            except Exception as exc:
-                                # Discovery is advisory; preserve the proven reachability result.
-                                candidate.discovery = {
-                                    "retryable": False,
-                                    "reason": "discovery_stopped_safely",
-                                    "detail": f"Search stopped safely ({type(exc).__name__}).",
-                                    "axes": [],
-                                    "calls": 1
-                                    + len((candidate.evidence or {}).get("methods") or ()),
-                                    "input_tokens": 0,
-                                    "output_tokens": 0,
-                                }
+                            run_session(candidate, record, selected_axes, automatic_candidate)
                     elif discovery_automatic:
                         receipt_id = (discovery_receipt_ids or {}).get(
                             candidate.key, discovery_receipt_id
@@ -1448,6 +1538,28 @@ def reconcile(
                     report.observations.append(
                         f"{provider}/{model}: free-marked but {result.verdict} ({result.reason})"
                     )
+
+            # Candidates whose size search hit a 429 wait out their backoff here, after the other
+            # candidates of this provider have had their turn.
+            while resume_queue and timed:
+                resume_queue.sort(key=lambda row: row["ready_at"])
+                entry = resume_queue.pop(0)
+                until = entry["ready_at"]
+                if until + MIN_SESSION_SECONDS > run_started + (discovery_time_budget_seconds or 0):
+                    continue
+                try:
+                    while discovery_clock() < until:
+                        pause.renew()
+                        sleep(max(0.0, min(30, until - discovery_clock())))
+                except Exception:
+                    break
+                run_session(
+                    entry["candidate"],
+                    entry["record"],
+                    entry["axes"],
+                    entry["automatic"],
+                    first=False,
+                )
 
             if runner is not None and not pause.contended:
                 eligible = {o.route_id for o in report.rate_observations if o.provider == provider}
@@ -1591,6 +1703,13 @@ def reconcile(
             set(),
         )
         report.context_changes = previous.context_changes
+    _refresh_aa_scores(report, quality, incumbents, candidate_keys or set())
+    _note_unmeasured(
+        report,
+        unmeasured_reason,
+        set(measure_plan),
+        bool(due_only and measure_pending and discovery_automatic),
+    )
     report.state = {
         "version": 3,
         "catalogs": catalogs,
@@ -1680,6 +1799,118 @@ def _merge_into_last_full(
     report.candidates = [candidate for candidate in candidates if candidate.key not in current_keys]
     report.candidates.extend(current_candidates)
     report.observations = list(last_full.get("observations") or []) + report.observations
+
+
+QUOTA_BACKOFF_START_SECONDS = 30
+QUOTA_BACKOFF_MAX_SECONDS = 600
+
+
+def _quota_wait_seconds(step: int) -> int:
+    """Wait before retry number `step` + 1 after a 429: 30 s, doubling, capped at 10 minutes."""
+    return min(QUOTA_BACKOFF_MAX_SECONDS, QUOTA_BACKOFF_START_SECONDS * 2 ** max(0, step))
+
+
+def _ended_on_unpaced_429(artifact: Mapping[str, Any]) -> bool:
+    """The session's last provider answer was a 429 that did not say how long to wait."""
+    attempts = artifact.get("attempts") or []
+    last = (attempts[-1].get("observation") if attempts else None) or {}
+    return last.get("outcome") == "quota" and not last.get("retry_after_seconds")
+
+
+def _history_with_run_sessions(history, sessions, identity):
+    """Authenticated history plus what this run's earlier sessions measured for the same route.
+
+    A session that ended on a 429 resumes from its own bounds instead of probing from scratch.
+    """
+    from citypods.provider_catalog.discovery import DiscoveryObservation
+
+    rows = list(history or ())
+    for artifact in sessions:
+        if (artifact.get("session") or {}).get("identity") != identity:
+            continue
+        for attempt in artifact.get("attempts") or []:
+            if attempt.get("observation"):
+                rows.append(DiscoveryObservation.from_dict(attempt["observation"]))
+    return rows
+
+
+def _note_unmeasured(report, reasons, planned, daily) -> None:
+    """Record, per candidate, why this run did not measure it; clear notes that no longer hold."""
+    measured = set()
+    for row in report.discovery_sessions:
+        meta = row.get("session") or {}
+        measured.add(f"{meta.get('provider')}/{meta.get('upstream_model')}")
+    for candidate in report.candidates:
+        if candidate.key in measured or candidate.discovery:
+            candidate.measure_note = None
+        elif candidate.key in reasons:
+            candidate.measure_note = reasons[candidate.key]
+        elif daily and candidate.key in planned:
+            candidate.measure_note = "it was planned but this run ended before its turn"
+        elif daily:
+            candidate.measure_note = "it was not in this run's measurement plan"
+
+
+def _hf_repo_name(facts: Mapping[str, str] | None) -> str | None:
+    card = (facts or {}).get("card") or ""
+    prefix = "https://huggingface.co/"
+    return card.removeprefix(prefix).rsplit("/", 1)[-1] if card.startswith(prefix) else None
+
+
+def _refresh_aa_scores(report, quality, incumbents, explicit_keys) -> None:
+    """Re-score every listed candidate against this run's AA data and accepted matches.
+
+    A carried candidate keeps the score it had when it was last evaluated; an accepted match or
+    a better AA listing would otherwise wait for its next canary. Newly scored ones get their
+    lane suggestions and evidence digest recomputed; unscored ones get the closest AA names.
+    """
+    if quality.error:
+        return
+    rules_by_provider = all_rules()
+    kept, dropped = [], []
+    for candidate in report.candidates:
+        rules = rules_by_provider.get(candidate.provider)
+        if rules is None:
+            kept.append(candidate)
+            continue
+        hf_name = _hf_repo_name(candidate.facts)
+        score = quality.score(
+            candidate.model,
+            creator=rules.creator,
+            free_suffix=rules.free_suffix,
+            key=candidate.key,
+            hf_name=hf_name,
+        )
+        candidate.aa_matches = None
+        if score is None:
+            candidate.aa_matches = (
+                quality.near_misses(
+                    candidate.model,
+                    creator=rules.creator,
+                    free_suffix=rules.free_suffix,
+                    hf_name=hf_name,
+                )
+                or None
+            )
+        elif score != candidate.score:
+            candidate.score = score
+            candidate.below_floor = None if report.floor is None else score < report.floor
+            candidate.lanes = suggest_lanes(score, incumbents)
+            candidate.other_lanes = other_lanes(score, incumbents)
+            if candidate.evidence:
+                candidate.evidence_digest = candidate_digest(
+                    RouteEvidence.from_dict(candidate.evidence), candidate.lanes
+                )
+            if candidate.key not in explicit_keys and _score_at_or_below(score, report.floor):
+                dropped.append(f"{candidate.key} ({score:g})")
+                continue
+        kept.append(candidate)
+    report.candidates = kept
+    if dropped:
+        report.observations.append(
+            "auto-ignored after re-scoring against current AA data (at or below the quality bar "
+            f"{report.floor:g}): " + ", ".join(dropped)
+        )
 
 
 def _candidate(

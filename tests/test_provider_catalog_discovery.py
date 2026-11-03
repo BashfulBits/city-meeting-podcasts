@@ -3556,6 +3556,37 @@ def test_provider_stated_limit_steers_input_search_to_a_verified_cap(tmp_path):
     assert bracket["reason"] == "size_refusal_unmeasured_upper"
 
 
+def test_repeated_provider_limit_refusals_aim_lower_each_time(tmp_path):
+    limit, calls, hints = 262_144, [], []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        # The provider's own count drifts against ours: 3% under at 500k, 3% over below it.
+        counted = int(req.input_tokens * (0.968 if req.input_tokens >= 400_000 else 1.032))
+        if counted > limit:
+            hints.append(limit * req.target // counted)
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                diagnostic="size_refused_without_exact_counts",
+                target_limit_hint=hints[-1],
+            )
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            outcome="admitted",
+            coordinate=counted,
+            reported_input=counted,
+            count_basis="input",
+            verified=True,
+        )
+
+    execute(tmp_path, measure, supported_axes=("input",), seeds={"input": 500_000})
+    assert calls[1] == hints[0] * 95 // 100  # first refusal: normal headroom
+    assert calls[2] == hints[1] * 90 // 100  # it refused again, so leave more room
+
+
 def test_clipped_output_rechecks_actual_count_then_stops_without_upper(tmp_path):
     calls = []
 

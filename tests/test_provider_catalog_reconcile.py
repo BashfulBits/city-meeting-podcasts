@@ -2585,3 +2585,174 @@ def test_carried_candidates_at_or_below_the_current_bar_are_dropped_from_the_rep
         set(),
     )
     assert sorted(c.model for c in report.candidates) == ["fine", "new"]
+
+
+def test_429_without_retry_after_backs_off_then_gives_up_after_the_ten_minute_wait(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    now = [0.0]
+    visits = []
+
+    def discover(candidate, *_args, **_kwargs):
+        record = _stub_session(candidate)
+        if candidate.model.endswith("k9:free"):
+            visits.append(now[0])
+            record["artifact"]["attempts"] = [
+                {"observation": {"outcome": "quota", "retry_after_seconds": None}}
+            ]
+        return record
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="backoff-run",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: now[0],
+        sleep=sleep,
+    )
+    # First try, then retries after 30, 60, 120, 240, 480 and 600 s; the 429 that follows the
+    # ten-minute wait ends it.
+    assert len(visits) == 7
+    gaps = [round(b - a) for a, b in zip(visits, visits[1:], strict=False)]
+    assert all(gap >= want for gap, want in zip(gaps, [30, 60, 120, 240, 480, 600], strict=True))
+    k9 = next(c for c in report.candidates if c.model.endswith("k9:free"))
+    assert k9.discovery["quota_gave_up"] is True
+    assert k9.discovery["quota_waits"] == 6
+
+
+def test_quota_backoff_helpers():
+    from citypods.provider_catalog.reconcile import (
+        _ended_on_unpaced_429,
+        _history_with_run_sessions,
+        _quota_wait_seconds,
+    )
+
+    assert [_quota_wait_seconds(n) for n in range(8)] == [30, 60, 120, 240, 480, 600, 600, 600]
+    assert _ended_on_unpaced_429(
+        {"attempts": [{"observation": {"outcome": "quota", "retry_after_seconds": None}}]}
+    )
+    assert not _ended_on_unpaced_429(
+        {"attempts": [{"observation": {"outcome": "quota", "retry_after_seconds": 30}}]}
+    )
+    assert not _ended_on_unpaced_429({"attempts": []})
+    other = {"session": {"identity": "someone-else"}, "attempts": [{"observation": {"x": 1}}]}
+    assert _history_with_run_sessions(["saved"], [other], "mine") == ["saved"]
+
+
+def test_measurement_plan_serves_candidates_with_fewest_tries_first():
+    from citypods.provider_catalog.reconcile import measurement_plan
+
+    def row(model, score):
+        return {"provider": "nvidia", "model": model, "score": score}
+
+    state = {
+        "last_full": {
+            "candidates": [row("tried", 40.0), row("fresh-a", None), row("fresh-b", 9.0)]
+        },
+        "canaries": {"nvidia/tried": {"measure_attempts": 2}},
+    }
+    plan = measurement_plan(state, 5.0, 8, per_provider=False)
+    assert list(plan) == ["nvidia/fresh-b", "nvidia/fresh-a", "nvidia/tried"]
+
+
+def test_refresh_scores_carried_candidates_from_accepted_matches_and_suggests_for_the_rest():
+    from citypods.provider_catalog.quality import QualityIndex
+    from citypods.provider_catalog.reconcile import (
+        Candidate,
+        Report,
+        _note_unmeasured,
+        _refresh_aa_scores,
+    )
+
+    def row(model):
+        return Candidate(
+            provider="kilo",
+            model=model,
+            score=None,
+            below_floor=None,
+            context_limit=None,
+            links=(),
+            lanes=(),
+            proven_on="2026-10-30",
+        )
+
+    quality = QualityIndex(
+        scores={("kimi", "k9-pro"): 30.0, ("kimi", "k9-mini"): 3.0},
+        names={("kimi", "k9-pro"): "K9 Pro", ("kimi", "k9-mini"): "K9 Mini"},
+        aliases={"kilo/kimi/k9:free": ("kimi", "k9-pro")},
+    )
+    report = Report(floor=11.7, candidates=[row("kimi/k9:free"), row("kimi/k9-turbo:free")])
+    _refresh_aa_scores(report, quality, {}, set())
+    accepted, other = report.candidates
+    assert accepted.score == 30.0 and accepted.below_floor is False and not accepted.aa_matches
+    assert other.score is None
+    assert [m["slug"] for m in other.aa_matches or ()] == ["k9-pro", "k9-mini"]
+
+    _note_unmeasured(report, {"kilo/kimi/k9-turbo:free": "it waited"}, set(), True)
+    assert other.measure_note == "it waited"
+    assert accepted.measure_note == "it was not in this run's measurement plan"
+
+
+def test_planned_candidates_are_not_crowded_out_by_newly_listed_models(monkeypatch):
+    """Regression (#2554): three new kilo models filled the per-provider budget every run, so the
+    already-found candidates waiting for measurement were never visited."""
+    import citypods.provider_catalog.reconcile as rec
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = [
+        {"provider": "groq", "model": "meta-llama/llama-new", "score": 55.0, "discovery": None}
+    ]
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [*CATALOGS["https://groq.test"]["data"], {"id": "meta-llama/aaa-brand-new"}]
+        },
+    }
+    monkeypatch.setattr(rec, "CANARY_BUDGET_PER_PROVIDER", 1)
+    monkeypatch.setattr(
+        rec, "_discover_candidate_caps", lambda candidate, record, **kw: _measured([])
+    )
+    seen = []
+
+    def canary(rules, cfg, model, *rest):
+        seen.append(model)
+        return OK
+
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(grown),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary,
+        due_only=True,
+        new_models=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+    )
+    assert seen[0] == "meta-llama/llama-new"  # the planned one goes first
+    assert set(seen) == {"meta-llama/llama-new", "meta-llama/aaa-brand-new"}
+    assert {c.key for c in report.candidates} >= {"groq/meta-llama/llama-new"}

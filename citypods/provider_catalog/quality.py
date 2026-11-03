@@ -12,6 +12,7 @@ as a flag; lanes, not this module, decide what is good enough.
 
 from __future__ import annotations
 
+import difflib
 import os
 import re
 from collections.abc import Mapping
@@ -70,11 +71,30 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
+def _compact(value: str) -> str:
+    """Separator-free form: `m3.1`, `m3-1` and `m31` are the same model name."""
+    return re.sub(r"[^a-z0-9]", "", _strip_optional(_slug(value)))
+
+
+NEAR_MISS_LIMIT = 3
+# Below this similarity a name is noise, not a plausible match worth a checkbox.
+NEAR_MISS_MIN_RATIO = 0.55
+NEAR_MISS_FAMILY_RATIO = 0.3
+
+
 @dataclass
 class QualityIndex:
     scores: dict[tuple[str, str], float] = field(default_factory=dict)
     error: str | None = None
+    # AA display name per (creator, slug): a second spelling to match against.
+    names: dict[tuple[str, str], str] = field(default_factory=dict)
+    # Maintainer-accepted matches, "provider/model" -> (AA creator, AA slug); an exact choice
+    # beats every heuristic. Entries AA no longer lists are ignored.
+    aliases: dict[str, tuple[str, str]] = field(default_factory=dict)
     _by_normalized: dict[tuple[str, str], list[float]] | None = field(
+        default=None, repr=False, compare=False
+    )
+    _by_compact: dict[tuple[str, str], set[tuple[str, str]]] | None = field(
         default=None, repr=False, compare=False
     )
 
@@ -84,9 +104,118 @@ class QualityIndex:
         return None if any(v is None for v in values) else min(values)  # type: ignore[type-var]
 
     def score(
+        self,
+        model: str,
+        *,
+        creator: str | None = None,
+        free_suffix: str = "",
+        key: str | None = None,
+        hf_name: str | None = None,
+    ) -> float | None:
+        """AA Intelligence Index for a provider model ID, or None if AA has no single match.
+
+        `key` (`provider/model`) looks up a maintainer-accepted match first; `hf_name` (the
+        Hugging Face repo name) only breaks a tie the generic rules leave ambiguous.
+        """
+        chosen = self.aliases.get(key) if key else None
+        if chosen is not None and chosen in self.scores:
+            return self.scores[chosen]
+        exact = self._score_exact(model, creator=creator, free_suffix=free_suffix)
+        if exact is not None:
+            return exact
+        return self._score_compact(model, creator=creator, free_suffix=free_suffix, hf_name=hf_name)
+
+    def _creators(self, model: str, creator: str | None, free_suffix: str):
+        model = model.removesuffix(free_suffix) if free_suffix else model
+        namespace, _, name = model.rpartition("/")
+        namespace = namespace.split("/")[-1].lower() if namespace else ""
+        creators = [c for c in (CREATOR_ALIASES.get(namespace, namespace), creator) if c]
+        return creators, name
+
+    def _score_compact(self, model, *, creator, free_suffix, hf_name):
+        """Same model spelled differently: AA slug or display name equal once separators go.
+
+        Only an equality after dropping separators and release-channel markers, and only when
+        exactly one AA model (within the creator) answers to it; a Hugging Face repo name may
+        pick between two. Looser, similarity-based matches are suggestions, never applied.
+        """
+        creators, name = self._creators(model, creator, free_suffix)
+        wanted = [_compact(name)]
+        for candidate_creator in creators:
+            wanted.append(_compact(f"{candidate_creator}-{name}"))
+        index = self._compact_index()
+        for candidate_creator in creators:
+            hits = {hit for form in wanted for hit in index.get((candidate_creator, form), ())}
+            if len(hits) > 1 and hf_name:
+                # The model card's own spelling picks the AA slug that spells it the same way.
+                spelled = {_slug(hf_name), f"{candidate_creator}-{_slug(hf_name)}"}
+                hits = {hit for hit in hits if hit[1] in spelled} or hits
+            if len(hits) == 1:
+                return self.scores[next(iter(hits))]
+        return None
+
+    def _compact_index(self) -> dict[tuple[str, str], set[tuple[str, str]]]:
+        if self._by_compact is None:
+            index: dict[tuple[str, str], set[tuple[str, str]]] = {}
+            for creator, slug in self.scores:
+                for label in (slug, self.names.get((creator, slug), "")):
+                    if label:
+                        index.setdefault((creator, _compact(label)), set()).add((creator, slug))
+                        # AA may prefix the creator to the slug or name.
+                        bare = _compact(label.removeprefix(f"{creator}-"))
+                        index.setdefault((creator, bare), set()).add((creator, slug))
+            self._by_compact = index
+        return self._by_compact
+
+    def near_misses(
+        self,
+        model: str,
+        *,
+        creator: str | None = None,
+        free_suffix: str = "",
+        hf_name: str | None = None,
+        limit: int = NEAR_MISS_LIMIT,
+    ) -> list[dict[str, Any]]:
+        """Closest AA models to an unscored one, for a maintainer to accept or reject.
+
+        Ranked by spelling similarity (slug and display name), with a bonus for sharing the
+        creator and for sharing leading name tokens. Never applied automatically.
+        """
+        creators, name = self._creators(model, creator, free_suffix)
+        wanted = {w for w in (_compact(name), _compact(hf_name or "")) if w}
+        wanted_tokens = _slug(name).split("-")
+        ranked = []
+        for (aa_creator, slug), value in self.scores.items():
+            best = 0.0
+            for label in (slug, self.names.get((aa_creator, slug), "")):
+                if not label:
+                    continue
+                for form in {_compact(label), _compact(label.removeprefix(f"{aa_creator}-"))}:
+                    for want in wanted:
+                        best = max(best, difflib.SequenceMatcher(None, want, form).ratio())
+            shared = 0
+            for ours, theirs in zip(wanted_tokens, _slug(slug).split("-"), strict=False):
+                if ours != theirs:
+                    break
+                shared += 1
+            # A same-creator model sharing the leading name tokens (`muse-glimmer` ~ `muse-spark`)
+            # is worth showing even when the rest of the spelling differs.
+            family = aa_creator in creators and shared >= 1 and best >= NEAR_MISS_FAMILY_RATIO
+            if best < NEAR_MISS_MIN_RATIO and not family:
+                continue
+            rank = best + (0.15 if aa_creator in creators else 0.0) + 0.02 * min(shared, 4)
+            ranked.append(
+                (rank, aa_creator, slug, self.names.get((aa_creator, slug)) or slug, value)
+            )
+        ranked.sort(key=lambda row: (-row[0], row[1], row[2]))
+        return [
+            {"creator": c, "slug": slug, "name": label, "score": value}
+            for _rank, c, slug, label, value in ranked[: max(0, limit)]
+        ]
+
+    def _score_exact(
         self, model: str, *, creator: str | None = None, free_suffix: str = ""
     ) -> float | None:
-        """AA Intelligence Index for a provider model ID, or None if AA has no single match."""
         model = model.removesuffix(free_suffix) if free_suffix else model
         namespace, _, name = model.rpartition("/")
         namespace = namespace.split("/")[-1].lower() if namespace else ""
@@ -143,6 +272,7 @@ def _fetch_one(session: requests.Session, url: str, api_key: str) -> tuple[Quali
     """Return the index and whether a failure looks like a moved endpoint (first page, no data)."""
     path = url.split("artificialanalysis.ai", 1)[-1]
     scores: dict[tuple[str, str], float] = {}
+    names: dict[tuple[str, str], str] = {}
     page = 1
     try:
         while True:
@@ -156,7 +286,7 @@ def _fetch_one(session: requests.Session, url: str, api_key: str) -> tuple[Quali
             rows = payload["data"]
             if not isinstance(rows, list):
                 return QualityIndex(error=f"Artificial Analysis {path} invalid data"), False
-            scores.update(_scores(rows))
+            scores.update(_scores(rows, names))
             pagination = payload.get("pagination")
             if pagination is None:
                 break  # The documented endpoint returns the whole list in one response.
@@ -179,10 +309,12 @@ def _fetch_one(session: requests.Session, url: str, api_key: str) -> tuple[Quali
     if not scores:
         error = f"Artificial Analysis {path} listed no Intelligence Index scores"
         return QualityIndex(error=error), True
-    return QualityIndex(scores=scores), False
+    return QualityIndex(scores=scores, names=names), False
 
 
-def _scores(rows: list[Mapping[str, Any]]) -> dict[tuple[str, str], float]:
+def _scores(
+    rows: list[Mapping[str, Any]], names: dict[tuple[str, str], str] | None = None
+) -> dict[tuple[str, str], float]:
     scores: dict[tuple[str, str], float] = {}
     for row in rows:
         creator_row = row.get("model_creator") or {}
@@ -209,4 +341,6 @@ def _scores(rows: list[Mapping[str, Any]]) -> dict[tuple[str, str], float]:
         if keys and isinstance(slug, str) and value >= 0:
             for key in keys:
                 scores[(key.lower(), slug.lower())] = value
+                if names is not None and isinstance(row.get("name"), str) and row["name"]:
+                    names[(key.lower(), slug.lower())] = row["name"]
     return scores
