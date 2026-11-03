@@ -3709,8 +3709,11 @@ session as `quota_deferred`. The run had used 33 of its 120 minutes.
   the old inline wait. Timed (daily) runs only; the weekly full run is unchanged.
 - **Headroom.** After a refusal that quotes the provider's limit the next probe aims at 95% of it; each
   repeat lowers that by 5 points (floor 80%).
-- **Fairness.** `measurement_plan` ranks by tries first; a timed run no longer cuts a provider's
-  planned candidates to the 3-per-run canary budget.
+- **Fairness.** `measurement_plan` ranks by tries first. Root cause of the kilo/openrouter/nvidia
+  backlog: the per-provider canary budget (3) was applied to a list sorted never-tried-first, so
+  newly listed models (kilo: gemma-4-31b-it, inkling, inkling-small) took every slot each run and
+  the planned candidates were cut before they were visited. A timed run now ranks planned
+  candidates first and adds their count to the budget, so new models are still checked.
 - **Why not measured.** `Candidate.measure_note` records the reason a candidate had no session this run.
 - **AA matching.** `QualityIndex` matches AA display names and separator-free spellings, with the
   Hugging Face repo name as a tiebreaker only among already-ambiguous hits. Similarity is never applied:

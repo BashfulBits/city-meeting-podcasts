@@ -2705,3 +2705,54 @@ def test_refresh_scores_carried_candidates_from_accepted_matches_and_suggests_fo
     _note_unmeasured(report, {"kilo/kimi/k9-turbo:free": "it waited"}, set(), True)
     assert other.measure_note == "it waited"
     assert accepted.measure_note == "it was not in this run's measurement plan"
+
+
+def test_planned_candidates_are_not_crowded_out_by_newly_listed_models(monkeypatch):
+    """Regression (#2554): three new kilo models filled the per-provider budget every run, so the
+    already-found candidates waiting for measurement were never visited."""
+    import citypods.provider_catalog.reconcile as rec
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = [
+        {"provider": "groq", "model": "meta-llama/llama-new", "score": 55.0, "discovery": None}
+    ]
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [*CATALOGS["https://groq.test"]["data"], {"id": "meta-llama/aaa-brand-new"}]
+        },
+    }
+    monkeypatch.setattr(rec, "CANARY_BUDGET_PER_PROVIDER", 1)
+    monkeypatch.setattr(
+        rec, "_discover_candidate_caps", lambda candidate, record, **kw: _measured([])
+    )
+    seen = []
+
+    def canary(rules, cfg, model, *rest):
+        seen.append(model)
+        return OK
+
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(grown),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary,
+        due_only=True,
+        new_models=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+    )
+    assert seen[0] == "meta-llama/llama-new"  # the planned one goes first
+    assert set(seen) == {"meta-llama/llama-new", "meta-llama/aaa-brand-new"}
+    assert {c.key for c in report.candidates} >= {"groq/meta-llama/llama-new"}

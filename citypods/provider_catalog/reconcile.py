@@ -1006,13 +1006,9 @@ def reconcile(
             # Never-tried first, then retries of inconclusive results; best-scored first within
             # each, unscored last. So a candidate that keeps failing cannot starve new ones.
             # The measurement plan ranks the already-found candidates (fewest tries first), and
-            # a timed run takes all of them: the clock, not a count, limits that run.
+            # a timed run adds them to the usual budget for newly listed models.
             plan_rank = {name: index for index, name in enumerate(measure_names)}
-            canary_budget = (
-                max(CANARY_BUDGET_PER_PROVIDER, len(measure_names))
-                if timed
-                else CANARY_BUDGET_PER_PROVIDER
-            )
+            canary_budget = CANARY_BUDGET_PER_PROVIDER + (len(measure_names) if timed else 0)
             candidates.sort(
                 key=lambda c: (
                     plan_rank.get(c[0], len(plan_rank)),
