@@ -2988,3 +2988,34 @@ def test_carried_bounds_from_another_identity_are_not_merged(monkeypatch):
     by_axis = {a["axis"]: a for a in row.discovery["axes"]}
     assert by_axis["input"]["admitted"] is None  # the other identity's 9,000 did not carry over
     assert by_axis["output"]["admitted"] == 4_096
+
+
+def test_an_accepted_aa_match_does_not_keep_a_dropped_candidate_pending():
+    """Regression (#2554, muse-glimmer): the accepted AA match re-scored it below the bar and it
+    left the candidates, but the ticked match row kept it listed as a pending prior selection."""
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import aa_match_choice
+    from citypods.provider_catalog.reconcile import Candidate, Report
+
+    match = {"creator": "meta", "slug": "muse-glimmer", "name": "Muse Glimmer", "score": 6.3}
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        None,
+        None,
+        100000,
+        (),
+        (),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+        aa_matches=[match],
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08")
+    row = aa_match_choice(candidate.key, match)
+    assert f"- [ ] {row}" in prior
+    ticked = prior.replace(f"- [ ] {row}", f"- [x] {row}")
+    new = render_body(Report(), run_date="2026-10-09", previous_body=ticked)
+    assert "Pending prior selections" not in new
+    assert not (decode_state(new).get("last_full") or {}).get("candidates")
