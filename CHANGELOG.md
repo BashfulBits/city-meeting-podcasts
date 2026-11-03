@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Renovate runner upgrade suppression.** Pinned GitHub runner environments (`runs-on`) to
+  prevent Renovate from proposing automated Ubuntu LTS upgrades across workflow files, preserving
+  the ABI alignment required by the self-built static FFmpeg binary (review/22).
+
 - **Review/48 request-cap discovery: typed size limits and slow routes.** A provider's typed
   `context_length` refusal (NVIDIA `details.limit/actual`) now steers the next input probe to 95%
   of the stated limit instead of ending as `inconclusive`; it is a hint, so only an admitted,
