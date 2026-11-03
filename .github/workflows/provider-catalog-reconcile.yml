@@ -91,7 +91,7 @@ concurrency:
 
 jobs:
   reconcile:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Three bounded 90-minute new-route input searches plus catalog checks and cleanup.
     timeout-minutes: >-
       ${{ github.event_name == 'schedule' && github.event.schedule == '17 10 * * 1' && 300 ||
