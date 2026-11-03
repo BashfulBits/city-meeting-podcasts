@@ -644,6 +644,75 @@ def test_persistent_5xx_is_an_outage_after_bounded_retries(tmp_path):
     assert result.brackets[0]["reason"] == "outage"
 
 
+def test_a_500_on_a_huge_first_input_request_steps_the_size_down(tmp_path):
+    """Regression (#2554, muse-glimmer): HTTP 500 at 500,000 tokens ended the axis as an outage
+    on every run, so no smaller size was ever tried."""
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        if req.target > 100_000:
+            return DiscoveryObservation(
+                req, STAMP, outcome="outage", diagnostic="http_non_success", response_status=500
+            )
+        return observation(req, req.target, reported_input=req.input_tokens)
+
+    result = execute(
+        tmp_path, measure, supported_axes=("input",), seeds={"input": 500_000}, sleep=lambda s: None
+    )
+    assert calls[:3] == [500_000, 500_000, 500_000]  # the first size keeps its two blip retries
+    assert 250_000 in calls and any(c <= 100_000 for c in calls)
+    bracket = result.brackets[0]
+    assert bracket["admitted"] and bracket["admitted"] <= 100_000
+    assert bracket["refused"] is None  # a 5xx is guidance, never a refused bound
+
+
+def test_a_503_never_steps_the_input_size_down(tmp_path):
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        return DiscoveryObservation(
+            req, STAMP, outcome="outage", diagnostic="http_non_success", response_status=503
+        )
+
+    execute(tmp_path, measure, supported_axes=("input",), sleep=lambda s: None)
+    assert len(set(calls)) == 1
+
+
+def test_first_output_search_that_keeps_getting_dropped_steps_the_size_down(tmp_path):
+    """Regression (#2554, minimax): 16,384 output tokens ran ~270 s and was dropped, seven times,
+    all at the same size."""
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        if req.target > 3_000:
+            return DiscoveryObservation(req, STAMP, diagnostic="transport_connection_error")
+        return observation(req, req.target, reported_input=req.input_tokens)
+
+    result = execute(tmp_path, measure, supported_axes=("output",))
+    assert calls[:3] == [16_384, 8_192, 4_096]
+    bracket = result.brackets[1]
+    assert bracket["axis"] == "output" and bracket["admitted"] and bracket["admitted"] <= 3_000
+
+
+def test_first_output_search_that_never_gets_through_halves_until_the_allowance_ends(tmp_path):
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        return DiscoveryObservation(req, STAMP, diagnostic="transport_connection_error")
+
+    result = execute(tmp_path, measure, supported_axes=("output",))
+    assert calls == [16_384, 8_192, 4_096, 2_048, 1_024]
+    assert result.brackets[1]["reason"] == "uncertain_no_response_after_five_calls"
+
+
 def test_multiple_transport_attempts_are_reported_when_later_call_responds(tmp_path):
     calls = []
 

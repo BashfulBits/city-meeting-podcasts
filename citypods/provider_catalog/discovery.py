@@ -84,6 +84,16 @@ INPUT_TIME_BUDGET_SECONDS = 600
 TRANSIENT_SERVER_STATUSES = {500, 502, 503, 504}
 MAX_OUTAGE_RETRIES = 2
 OUTAGE_BACKOFF_SECONDS = 15
+# A first input search whose size keeps drawing 5xx (muse-glimmer: HTTP 500 in 3 s at 500,000
+# tokens, every run) is more likely too large than down: halve it this many times before ending
+# the axis as an outage. Like a timeout, this guides smaller probes and is never a refused bound.
+MAX_OUTAGE_STEPDOWNS = 4
+# Only a plain 500 says "this request broke me"; 502/503/504 are gateways and overload, which a
+# smaller body does not cure, so those still end the axis as an outage.
+STEPDOWN_STATUSES = {500}
+# A first output search that cannot finish at one size (minimax: 16,384 tokens ran ~270 s and was
+# dropped, seven times) halves it down to this floor instead of retrying the same size.
+MIN_OUTPUT_PROBE = 512
 TIMEOUT_DIAGNOSTICS = {"worker_response_timeout", "transport_timeout"}
 # A very large request body that is reset twice at one size is treated like a timeout: retrying
 # the same size a third time only spends the five-call no-response allowance (2026-11-03).
@@ -776,6 +786,7 @@ def run_discovery(
         axis_calls = 0
         recent_output_cost = None
         outage_retries = 0
+        outage_stepdowns = 0
         clipped_count = None
         clipped_recheck = None
         early_stop_retries = 0
@@ -916,6 +927,34 @@ def run_discovery(
                         bracket.reason = "output_time_limited_lower_bound"
                         break
                     target = min(target, bracket.lower + (hint - bracket.lower) // 2)
+            if (
+                axis == "output"
+                and bracket.lower is None
+                and pending.lower is None
+                and not explicit_recheck
+                and not checking_upper
+            ):
+                # Nothing admitted yet: a size that timed out, was dropped or drew a 5xx will not
+                # finish a third time either, so aim smaller instead of spending the allowance.
+                failed = [
+                    item.request.target
+                    for item in compatible_history + observations
+                    if item.request.axis == axis
+                    and item.outcome in {"inconclusive", "outage"}
+                    and item.request.control == control
+                    and timedelta(0)
+                    <= datetime.now(UTC) - datetime.fromisoformat(item.observed_at)
+                    <= timedelta(days=1)
+                    and (
+                        item.diagnostic in TIMEOUT_DIAGNOSTICS | {"transport_connection_error"}
+                        or item.outcome == "outage"
+                    )
+                ]
+                if failed:
+                    if min(failed) // 2 < MIN_OUTPUT_PROBE:
+                        bracket.reason = "minimum_output_probe_too_slow"
+                        break
+                    target = min(target, min(failed) // 2)
             if axis == "input" and bracket.lower is None and bracket.upper is not None:
                 target = max(target, MIN_INPUT_PROBE)
             if request_ceiling is not None and target > request_ceiling:
@@ -1136,6 +1175,20 @@ def run_discovery(
                 except Exception:
                     reason = bracket.reason = "pause_lost"
                     break
+                continue
+            if (
+                observation.outcome == "outage"
+                and axis == "input"
+                and not supporting
+                and bracket.lower is None
+                and observation.response_status in STEPDOWN_STATUSES
+                and outage_stepdowns < MAX_OUTAGE_STEPDOWNS
+                and target // 2 >= MIN_INPUT_PROBE
+                and clock() + OUTAGE_BACKOFF_SECONDS < deadline
+            ):
+                outage_stepdowns += 1
+                time_upper = min(time_upper or target, target)
+                outage_retries = MAX_OUTAGE_RETRIES - 1  # one retry per smaller size
                 continue
             if observation.outcome in {"outage", "daily"}:
                 reason = observation.outcome
