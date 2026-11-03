@@ -193,14 +193,19 @@ class DispatchPauseClient:
         self.timeout = timeout
 
     def _request(self, method: str, path: str, body: Mapping[str, Any] | None = None) -> dict:
-        headers = {"authorization": f"Bearer {self.token}"} if self.token else {}
+        headers = {
+            "connection": "close",
+            **({"authorization": f"Bearer {self.token}"} if self.token else {}),
+        }
         url = urljoin(self.url.rstrip("/") + "/", path)
         # Re-arming a pause is idempotent; admission/reservation calls must never retry.
+        # Disabling keep-alive ensures long intervals between probes do not reuse stale sockets.
         operation = path.split("?", 1)[0]
         retryable = (method, operation) in {
             ("POST", "v2/dispatch:pause"),
             ("POST", "v2/dispatch:resume"),
             ("GET", "v2/dispatch:pause-status"),
+            ("GET", "v2/stats"),
         }
         attempts = 2 if retryable else 1
         for attempt in range(attempts):
