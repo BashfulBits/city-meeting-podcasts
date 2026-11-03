@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Daily provider-catalog run no longer crashes on its 4th measurement session.** The discovery
+  evidence artifact still enforced the 3-session manual cap while the time-bound daily run may
+  start up to 16; the shared cap is now `MAX_ARTIFACT_SESSIONS`. A failed evidence write no longer
+  relabels a finished session as stopped, and no longer loses the run's state and issue update.
+
 - **AA match suggestions.** An unscored provider-catalog candidate lists the three closest
   Artificial Analysis models as checkboxes under **Decisions**. Ticking one makes the next daily
   run score the model from that entry (no PR needed). AA names and separator spellings
