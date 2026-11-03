@@ -312,7 +312,13 @@ DEFERRED_DISCOVERY_REASONS = (
 
 
 def measurement_plan(
-    previous_state, floor: float | None, limit: int, *, per_provider: bool = True
+    previous_state,
+    floor: float | None,
+    limit: int,
+    *,
+    per_provider: bool = True,
+    decisions: Decisions | None = None,
+    today: date | None = None,
 ) -> dict[str, str]:
     """Which already-found candidates the next daily sessions should measure, and on what axis.
 
@@ -327,6 +333,9 @@ def measurement_plan(
         score = row.get("score")
         if score is not None and floor is not None and score <= floor:
             continue
+        if decisions is not None and today is not None:
+            if decisions.is_ignored(row["provider"], row["model"], today):
+                continue  # decided after it was found; the carried row is stale
         discovery = row.get("discovery")
         axes = {
             a.get("axis"): a for a in (discovery or {}).get("axes") or [] if isinstance(a, Mapping)
@@ -613,7 +622,14 @@ def reconcile(
             )
         )
     measure_plan = (
-        measurement_plan(previous_state, report.floor, session_limit, per_provider=not timed)
+        measurement_plan(
+            previous_state,
+            report.floor,
+            session_limit,
+            per_provider=not timed,
+            decisions=decisions,
+            today=today,
+        )
         if due_only and measure_pending and discovery_automatic
         else {}
     )
@@ -674,6 +690,11 @@ def reconcile(
         if measure_names and not catalog.error:
             # Already-found candidates the plan chose are visited like new models.
             fresh_names = (fresh_names or set()) | (set(measure_names) & set(catalog.models))
+            if rules.catalog_is_complete:
+                for gone in set(measure_names) - set(catalog.models):
+                    unmeasured_reason[f"{provider}/{gone}"] = (
+                        "the provider's catalog no longer lists it"
+                    )
         if catalog.error:
             for planned in measure_plan:
                 if planned.partition("/")[0] == provider:
@@ -1699,7 +1720,13 @@ def reconcile(
         if (_days_since(value.get("on"), today) or 0) < CANARY_MEMORY_DAYS
     }
     if due_only:
-        _merge_into_last_full(report, previous_state.get("last_full") or {}, rechecked_routes)
+        _merge_into_last_full(
+            report,
+            previous_state.get("last_full") or {},
+            rechecked_routes,
+            decisions=decisions,
+            today=today,
+        )
     elif context_run is None:
         previous = Report()
         _merge_into_last_full(
@@ -1750,7 +1777,12 @@ def reconcile(
 
 
 def _merge_into_last_full(
-    report: Report, last_full: Mapping[str, Any], rechecked_routes: set[str]
+    report: Report,
+    last_full: Mapping[str, Any],
+    rechecked_routes: set[str],
+    *,
+    decisions: Decisions | None = None,
+    today: date | None = None,
 ) -> None:
     """A due-only run re-checks a few deferred routes; everything else carries over unchanged.
 
@@ -1798,6 +1830,17 @@ def _merge_into_last_full(
         # Re-judged against this run's bar: a model AA scores at or under it is auto-ignored.
         and not _score_at_or_below(c.get("score"), report.floor)
     ]
+    if decisions is not None and today is not None:
+        # A maintainer decision made after the row was found (the weekly run that would have
+        # rebuilt it may have aborted) retires it; otherwise it waits forever for a test the
+        # candidate loop skips by design.
+        retired = [c for c in candidates if decisions.is_ignored(c.provider, c.model, today)]
+        if retired:
+            candidates = [c for c in candidates if c not in retired]
+            report.observations.append(
+                f"{len(retired)} carried candidate(s) dropped: ignored by maintainer decision "
+                f"({', '.join(sorted(c.key for c in retired)[:8])})"
+            )
     report.anomalies = carried + report.anomalies
     current_candidates = report.candidates
     current_keys = {candidate.key for candidate in current_candidates}

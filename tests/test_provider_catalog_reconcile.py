@@ -2788,3 +2788,91 @@ def test_planned_candidates_are_not_crowded_out_by_newly_listed_models(monkeypat
     assert seen[0] == "meta-llama/llama-new"  # the planned one goes first
     assert set(seen) == {"meta-llama/llama-new", "meta-llama/aaa-brand-new"}
     assert {c.key for c in report.candidates} >= {"groq/meta-llama/llama-new"}
+
+
+def _carried(provider, model, score=None):
+    return {
+        "provider": provider,
+        "model": model,
+        "score": score,
+        "below_floor": None,
+        "context_limit": None,
+        "links": [],
+        "lanes": [],
+        "proven_on": "2026-10-30",
+        "structured_output_method": "json_schema",
+        "discovery": None,
+    }
+
+
+def _daily_run_over(monkeypatch, candidates, decisions=NO_DECISIONS, catalogs=CATALOGS):
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = candidates
+    monkeypatch.setenv("K", "test-key")
+    seen = []
+
+    def canary(rules, cfg, model, *rest):
+        seen.append(model)
+        return OK
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        decisions,
+        QUALITY,
+        state,
+        session=FakeSession(catalogs),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary,
+        due_only=True,
+        new_models=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+    )
+    return report, seen
+
+
+def test_measurement_plan_skips_models_the_maintainer_has_since_ignored():
+    from citypods.provider_catalog.reconcile import measurement_plan
+
+    state = {
+        "last_full": {
+            "candidates": [
+                {"provider": "kilo", "model": "kept", "score": None},
+                {"provider": "kilo", "model": "ignored", "score": None},
+            ]
+        }
+    }
+    decisions = Decisions(ignored=({"provider": "kilo", "model": "ignored", "reason": "r"},))
+    plan = measurement_plan(state, 5.0, 8, per_provider=False, decisions=decisions, today=TODAY)
+    assert list(plan) == ["kilo/kept"]
+
+
+def test_daily_run_retires_carried_candidates_ignored_after_they_were_found(monkeypatch):
+    """Regression (#2554): the weekly run that would rebuild the list aborted, so ignored models
+    stayed WAITING for a test the candidate loop correctly never ran."""
+    rows = [_carried("groq", "meta-llama/stale"), _carried("groq", "meta-llama/llama-new", 55.0)]
+    decisions = Decisions(
+        ignored=(
+            {"provider": "groq", "model": "meta-llama/stale", "reason": "r", "decided_on": "x"},
+        )
+    )
+    report, _seen = _daily_run_over(monkeypatch, rows, decisions)
+    keys = {c.key for c in report.candidates}
+    assert "groq/meta-llama/stale" not in keys
+    assert "groq/meta-llama/llama-new" in keys
+    assert any("ignored by maintainer decision" in o for o in report.observations)
+
+
+def test_planned_candidate_gone_from_the_catalog_says_so(monkeypatch):
+    rows = [_carried("groq", "meta-llama/delisted")]
+    report, seen = _daily_run_over(monkeypatch, rows)
+    assert "meta-llama/delisted" not in seen
+    gone = next(c for c in report.candidates if c.key == "groq/meta-llama/delisted")
+    assert gone.measure_note == "the provider's catalog no longer lists it"
