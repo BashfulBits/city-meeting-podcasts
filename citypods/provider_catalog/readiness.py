@@ -21,7 +21,20 @@ READY = "ready"
 WAITING = "waiting"
 ACTION = "action"
 
-_NOT_RUN = {None, "", "not_selected"}
+_NOT_RUN = {
+    None,
+    "",
+    "not_selected",
+    # Interrupted before a usable result: a later run must retry, not fall back to a default.
+    "outage",
+    "quota_deferred",
+    "access_deferred",
+    "pause_lost",
+    "budget_exhausted",
+    "deadline_or_reported_usage_overrun",
+}
+# Stubs stored when automatic discovery deliberately skips a candidate: nothing will measure it.
+_NOT_MEASURED = {"below_automatic_quality_floor", "automatic_discovery_already_recorded"}
 _SERVER_ERROR_REASONS = {"outage"}
 _TIME_LIMITED = {"input_time_limited_lower_bound", "minimum_probe_too_slow"}
 
@@ -148,6 +161,13 @@ def candidate_readiness(candidate) -> Readiness:
             "Too slow: even the smallest probe did not finish inside the 600 s time budget, "
             "so no cap can keep calls under the Worker's 720 s ceiling.",
             "Tick `ignore` unless you expect the provider to speed up; `test again` re-checks.",
+        )
+    if reason in _NOT_MEASURED:
+        return Readiness(
+            ACTION,
+            "Limits not tested: the daily run does not measure this model automatically.",
+            "Tick `ignore`, or tick `add route only` if you want it anyway; `/apply` will "
+            "then say what evidence is missing.",
         )
     if discovery.get("retryable") is True:
         return Readiness(

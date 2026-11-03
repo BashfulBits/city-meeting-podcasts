@@ -1093,6 +1093,7 @@ def run_discovery(
                 break
             if (
                 observation.outcome == "outage"
+                and not supporting
                 and observation.response_status in TRANSIENT_SERVER_STATUSES
                 and outage_retries < MAX_OUTAGE_RETRIES
                 and clock() + OUTAGE_BACKOFF_SECONDS < deadline

@@ -634,7 +634,7 @@ def render_body(
         ]
         for candidate in discoveries:
             result = candidate.discovery or {}
-            lines += [f"### `{candidate.key}`", "", f"**{_readiness_line(candidate)}**", ""]
+            lines += [f"### `{candidate.key}`", "", _readiness_line(candidate), ""]
             lines += ["<details><summary>Test details and diagnostics</summary>", ""]
             hints = result.get("litellm")
             if isinstance(hints, dict):

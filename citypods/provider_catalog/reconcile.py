@@ -993,7 +993,13 @@ def reconcile(
                     pause.renew()  # renew AFTER spacing, immediately before the request
                     first_probe = False
                     if route is not None:
-                        control.reserve(rid)
+                        try:
+                            control.reserve(rid)
+                        except DispatchPauseError as exc:
+                            report.observations.append(
+                                f"{rid}: dispatch ledger unavailable ({exc}); not checked this run"
+                            )
+                            return False
                         report.rate_attempted_routes.add(rid)
                         if remaining is not None:
                             quota[rid] = {**quota[rid], "rpd_remaining": remaining - 1}
@@ -1395,7 +1401,12 @@ def reconcile(
                         if not first_probe:
                             sleep(spacing)
                         pause.renew()
-                        control.reserve(rid)
+                        try:
+                            control.reserve(rid)
+                        except DispatchPauseError as exc:
+                            raise ProbeBudgetExceeded(
+                                f"dispatch ledger unavailable ({exc})"
+                            ) from exc
                         report.rate_attempted_routes.add(rid)
                         if remaining is not None:
                             quota[rid]["rpd_remaining"] -= 1
@@ -2311,7 +2322,13 @@ def confirm_retirement_candidates(
             if rules.canary_interval_seconds:
                 sleep(rules.canary_interval_seconds)
             pause.renew()
-            control.reserve(rid)
+            try:
+                control.reserve(rid)
+            except DispatchPauseError as exc:
+                report.observations.append(
+                    f"{rid}: dispatch ledger unavailable ({exc}); removal confirmation deferred"
+                )
+                continue
             response = canary_fn(rules, provider_cfg, anomaly.model, api_key, session)
             confirmation = classify(response, rules)
             checked_at = datetime.now(UTC).isoformat()

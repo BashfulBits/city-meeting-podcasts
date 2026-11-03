@@ -1546,3 +1546,33 @@ def test_issue_leads_with_next_steps_and_hides_diagnostics_in_details():
     assert "Ready to add." in decisions and "- [ ] `host/creator/new`: add route only" in decisions
     details = body[body.index("## Request-cap discovery") :]
     assert details.count("<details>") == details.count("</details>") >= 1
+
+
+@pytest.mark.parametrize(
+    "reason", ["outage", "quota_deferred", "access_deferred", "pause_lost", "budget_exhausted"]
+)
+def test_interrupted_output_search_is_not_finished_so_no_provisional_default(reason):
+    from citypods.provider_catalog.readiness import output_cap_for
+
+    assert output_cap_for(_finished_output_axis(reason)) == (None, None)
+    assert output_cap_for(_finished_output_axis("stalled"))[1] == "provisional"
+
+
+@pytest.mark.parametrize(
+    "reason", ["below_automatic_quality_floor", "automatic_discovery_already_recorded"]
+)
+def test_candidates_automatic_discovery_skips_need_a_decision_not_a_wait(reason):
+    from citypods.provider_catalog.readiness import ACTION, candidate_readiness
+
+    stub = {"axes": [], "retryable": False, "reason": reason}
+    assert candidate_readiness(replace(CANDIDATE, discovery=stub)).state == ACTION
+
+
+def test_publication_failure_does_not_claim_the_checks_failed():
+    import subprocess
+
+    from scripts.provider_catalog_commands import describe_failed_command
+
+    text = describe_failed_command(subprocess.CalledProcessError(128, ["git", "push", "origin"]))
+    assert "Publication failed and main is unchanged" in text
+    assert "repository checks" not in text

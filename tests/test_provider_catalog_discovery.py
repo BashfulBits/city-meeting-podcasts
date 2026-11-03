@@ -4383,3 +4383,26 @@ def test_input_priority_support_does_not_inherit_tiny_historical_output_allowanc
     )
     combined = next(req for req in seen if req.axis == "total_input_heavy")
     assert combined.control == "total_input_heavy:reservation-v2:opposite=3000"
+
+
+def test_supporting_check_keeps_outage_handling_without_a_wasted_retry(tmp_path):
+    slept = []
+
+    def measure(req, admit, timeout):
+        admit()
+        if req.axis == "input":
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                outcome="admitted",
+                coordinate=req.input_tokens,
+                reported_input=req.input_tokens,
+                count_basis="input",
+                verified=True,
+            )
+        return DiscoveryObservation(
+            req, STAMP, outcome="outage", diagnostic="http_non_success", response_status=500
+        )
+
+    execute(tmp_path, measure, seeds={"input": 4_000}, sleep=slept.append, input_priority=True)
+    assert slept == []

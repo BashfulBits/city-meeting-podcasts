@@ -99,6 +99,12 @@ def describe_failed_command(exc):
         detail += "; failing tests: " + ", ".join(f"`{item}`" for item in failed[:5])
         if len(failed) > 5:
             detail += f" (+{len(failed) - 5} more)"
+    if cmd and cmd[0] in {"git", "gh"}:
+        return (
+            detail + ". Publication failed and main is unchanged. A pull request for another "
+            "proposal kind may already exist. See the workflow run log, then comment `/apply` "
+            "again."
+        )
     return (
         detail + ". No pull request was opened and main is unchanged. The proposed change did not "
         "pass the repository checks; see the workflow run log, fix the cause, then comment "

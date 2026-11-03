@@ -3658,7 +3658,7 @@ Decisions:
   same hint, so a later run starts below a size that already timed out. This mirrors the existing
   output rule (`output_time_limited_lower_bound`).
 - A 500/502/503/504 outage is retried twice (15 s, 30 s) inside the search before the axis is
-  reported as an outage. `WorkerDispatchControl.reserve` retries three times, and the health-recheck
+  reported as an outage. `WorkerDispatchControl.reserve` makes three attempts (5 s, 10 s waits), and the health-recheck
   loop skips one route when the ledger is unavailable (no reservation, no request).
 - `readiness.py` turns the same evidence `/apply` reads into READY / WAITING / YOUR CALL. After the
   output search has run with no measurement, provider claim or LiteLLM claim, `/apply` uses a
