@@ -1353,9 +1353,12 @@ def reconcile(
                         deadline=(run_started + discovery_time_budget_seconds if timed else None),
                         fresh_run_budget=timed,
                     )
+                    carried = carried_discovery.get(candidate.key) or {}
+                    if carried.get("identity") not in (None, identity):
+                        carried = {}  # another account or endpoint: its bounds do not transfer
                     candidate.discovery = _merge_discovery(
-                        candidate.discovery or carried_discovery.get(candidate.key),
-                        session_record["summary"],
+                        candidate.discovery or carried,
+                        {**session_record["summary"], "identity": identity},
                     )
                     report.discovery_sessions.append(session_record["artifact"])
                     save_sessions()
@@ -2012,7 +2015,16 @@ def _merge_discovery(previous, new):
     unselected = {
         a.get("axis"): a for a in new.get("axes") or [] if a.get("reason") == "not_selected"
     }
-    axes = [fresh_axes.pop(a.get("axis"), a) for a in previous["axes"]]
+    axes = []
+    for old in previous["axes"]:
+        axis = old.get("axis")
+        if axis in fresh_axes:
+            axes.append(fresh_axes.pop(axis))
+        elif axis in unselected and "published" in unselected[axis]:
+            # Keep the measured bounds; the catalog's published claim is today's, not the old one.
+            axes.append({**old, "published": unselected[axis]["published"]})
+        else:
+            axes.append(old)
     axes += list(fresh_axes.values())
     axes += [a for axis, a in unselected.items() if axis not in {x.get("axis") for x in axes}]
     merged = {**new, "axes": axes}
