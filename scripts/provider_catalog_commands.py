@@ -685,6 +685,13 @@ def main(argv=None):
                         break
                 else:
                     raise ValueError("main changed repeatedly; retry /apply")
+            if retries and retry_receipt is None:
+                comments.append(
+                    f"`{retries[0].key}`: no saved test results exist to retry (the run that "
+                    "measured it ended before its results were saved). Nothing is lost: the "
+                    "daily run measures a candidate with no saved results from scratch, and "
+                    "this command makes no provider request."
+                )
             if retry_receipt:
                 comments.append(
                     "Request-cap discovery queued for the next eligible UTC day. "
@@ -751,7 +758,10 @@ def prepare_discovery_retry(decision, *, event, issue_number, now):
         references, repository=repository, now=now
     )
     if gaps:
-        raise ValueError("authenticated request-cap evidence is unavailable")
+        raise ValueError(
+            "saved request-cap results could not be verified right now (GitHub artifacts "
+            "unavailable); comment `/apply` again later"
+        )
     compatible = [
         item
         for item in observations
@@ -760,7 +770,7 @@ def prepare_discovery_retry(decision, *, event, issue_number, now):
         and item.request.fixture_version == "discovery-v1"
     ]
     if not compatible:
-        raise ValueError("no authenticated request-cap result exists for this candidate")
+        return None
     unresolved = False
     for axis in rules.discovery_axes:
         bracket = Bracket(axis, default_discovery_seed(axis))
@@ -769,7 +779,10 @@ def prepare_discovery_retry(decision, *, event, issue_number, now):
                 bracket.observe(item)
         unresolved |= not bracket.converged
     if not unresolved:
-        raise ValueError("all supported request-cap axes are already converged")
+        raise ValueError(
+            "every request-cap axis is already fully measured, so there is nothing to retry; "
+            "tick `add route only` instead"
+        )
     revision = digest([asdict(item) for item in compatible])
     comment = event.get("comment") or {}
     return discovery_retry_receipt(

@@ -3665,3 +3665,32 @@ Decisions:
   provisional 4,096-token `output_context_limit`, marked provisional in the PR notes, instead of
   deferring forever. This relaxes the earlier "enter a reviewed value" rule; the PR remains the review.
 
+
+## Addendum 2026-11-03: time-bound daily measurement, auto-ignore, durable evidence
+
+Evidence: issue #2554 after the 2026-11-03 daily run. `/apply` for `minimax-m3.1-flash` / `test again`
+failed with "no authenticated request-cap result exists": the weekly-full run that measured it had
+crashed and the evidence file is written only at the end of a run. `muse-glimmer` and `minimax`
+were never re-measured because `measurement_plan` re-queued only the two `deferred` reasons.
+`nemotron-3.5-lightning` (AA 5.5, bar 11.7) showed WAITING because its stored `below_floor` was
+computed against an older bar.
+
+Decisions:
+
+- The daily run measures found candidates for up to `DAILY_DISCOVERY_SECONDS` (7,200 s) of wall
+  clock, across providers and several per provider (`TIMED_SESSION_CEILING` 16). A session starts
+  only if `MIN_SESSION_SECONDS` (600) remain; the budget is also each session's deadline. The old
+  one-session-per-provider rule remains for the weekly and manual paths. Each timed session gets its
+  own per-session envelope; the clock is the run-level bound.
+- A candidate with an AA score at or below the production bar is auto-ignored: not probed, not
+  listed (the bar and score are re-read every run, so it returns if either moves). Explicit
+  retry/manual keys bypass it. Carried-over candidates are re-judged against the current bar.
+- `measurement_plan` re-queues an unfinished input search (outage, stalled, stopped safely) up to
+  `MAX_AUTO_MEASURE_ATTEMPTS` (4) times, counted in `canaries[key].measure_attempts`; after that the
+  issue says `test again` or `ignore`.
+- Discovery evidence is rewritten after every session (`discovery_sessions_sink`), so a crashed run
+  keeps its authenticated results.
+- `test again` with no saved results is no longer an error: `/apply` says the daily run measures it
+  from scratch and queues nothing.
+- Two connection resets at one input size count as time evidence (like a timeout), so the third
+  attempt is smaller instead of repeating the same oversized body.

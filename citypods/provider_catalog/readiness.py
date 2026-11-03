@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from citypods.provider_catalog.discovery import MAX_AUTO_MEASURE_ATTEMPTS
+
 # Used only after the output search has finished without a measured value and neither the
 # provider catalog nor LiteLLM publishes one. Mirrors the 4,096-token completion allowance the
 # structured-output checks already use (review/48); the PR marks it provisional for review.
@@ -149,11 +151,15 @@ def candidate_readiness(candidate) -> Readiness:
         )
 
     reason = input_row.get("reason") or discovery.get("reason")
-    if reason in _SERVER_ERROR_REASONS:
+    tries = discovery.get("auto_attempts")
+    tries = tries if type(tries) is int and tries > 0 else 0
+    retrying = tries < MAX_AUTO_MEASURE_ATTEMPTS and reason not in _NOT_MEASURED
+    if reason in _SERVER_ERROR_REASONS and retrying:
         return Readiness(
             WAITING,
-            "The provider returned server errors on the input test (retried automatically).",
-            "Nothing to do. The next daily run tries again.",
+            "The provider returned server errors on the input test (retried within the run).",
+            "Nothing to do. The daily run tests it again "
+            f"(try {tries + 1} of {MAX_AUTO_MEASURE_ATTEMPTS}).",
         )
     if reason in _TIME_LIMITED:
         return Readiness(
@@ -169,11 +175,19 @@ def candidate_readiness(candidate) -> Readiness:
             "Tick `ignore`, or tick `add route only` if you want it anyway; `/apply` will "
             "then say what evidence is missing.",
         )
-    if discovery.get("retryable") is True:
+    if retrying and (discovery.get("retryable") is True or reason == "discovery_stopped_safely"):
+        return Readiness(
+            WAITING,
+            "Input limit not found yet (partial result).",
+            "Nothing to do. The daily run tests it again "
+            f"(try {tries + 1} of {MAX_AUTO_MEASURE_ATTEMPTS}).",
+        )
+    if discovery.get("retryable") is True or reason in _SERVER_ERROR_REASONS:
         return Readiness(
             ACTION,
-            "Input limit not found yet (partial result).",
-            "Tick `test again` to queue another bounded run, then comment `/apply`.",
+            f"Input limit still not found after {tries} automatic tries.",
+            "Tick `test again` to queue one more bounded run, then comment `/apply`; or tick "
+            "`ignore`.",
         )
     return Readiness(
         WAITING,

@@ -31,6 +31,7 @@ from citypods.llm_rate_probe import (
 )
 from citypods.provider_catalog.classify import Classification, classify
 from citypods.provider_catalog.decisions import Decisions
+from citypods.provider_catalog.discovery import MAX_AUTO_MEASURE_ATTEMPTS
 from citypods.provider_catalog.evidence import (
     CatalogEvidence,
     LimitObservation,
@@ -277,21 +278,36 @@ def production_floor(
     return quality.floor, "pinned reference models"
 
 
-def _below_floor(candidate, floor: float | None) -> bool:
-    """A scored candidate at or under the bar. Unscored models (AA has not indexed them yet) are
+def _score_at_or_below(score: float | None, floor: float | None) -> bool:
+    """An AA-scored model at or under the bar. Unscored models (AA has not indexed them yet) are
     measured anyway: skipping them would leave every new model unmeasured for as long as AA lags."""
-    return candidate.score is not None and floor is not None and candidate.score <= floor
+    return score is not None and floor is not None and score <= floor
+
+
+def _below_floor(candidate, floor: float | None) -> bool:
+    return _score_at_or_below(candidate.score, floor)
 
 
 # Providers beyond the session limit that a run may try when earlier ones cannot be measured.
 MEASURE_FALLBACK_PROVIDERS = 2
+# Time-bound (daily) runs start another size-search session only while at least this much of the
+# budget remains, and never more than this many in one run.
+MIN_SESSION_SECONDS = 600
+TIMED_SESSION_CEILING = 16
+# Stubs saved when nothing will be measured automatically; they are never re-queued.
+STUB_DISCOVERY_REASONS = (
+    "below_automatic_quality_floor",
+    "automatic_discovery_already_recorded",
+)
 DEFERRED_DISCOVERY_REASONS = (
     "automatic_discovery_deferred_run_budget",
     "automatic_discovery_deferred_pause_contended",
 )
 
 
-def measurement_plan(previous_state, floor: float | None, limit: int) -> dict[str, str]:
+def measurement_plan(
+    previous_state, floor: float | None, limit: int, *, per_provider: bool = True
+) -> dict[str, str]:
     """Which already-found candidates the next daily sessions should measure, and on what axis.
 
     A candidate needs an input search until it has one, then an output search unless a provider
@@ -309,7 +325,21 @@ def measurement_plan(previous_state, floor: float | None, limit: int) -> dict[st
         axes = {
             a.get("axis"): a for a in (discovery or {}).get("axes") or [] if isinstance(a, Mapping)
         }
+        attempts = int(
+            (
+                (previous_state.get("canaries") or {}).get(f"{row['provider']}/{row['model']}")
+                or {}
+            ).get("measure_attempts")
+            or 0
+        )
         if not discovery or discovery.get("reason") in DEFERRED_DISCOVERY_REASONS:
+            axis = "input"
+        elif (
+            not (axes.get("input") or {}).get("admitted")
+            and discovery.get("reason") not in STUB_DISCOVERY_REASONS
+            and attempts < MAX_AUTO_MEASURE_ATTEMPTS
+        ):
+            # Interrupted or inconclusive input search (outage, stalled 400s, ...): try again.
             axis = "input"
         elif (axes.get("input") or {}).get("admitted") and not (axes.get("output") or {}).get(
             "admitted"
@@ -336,6 +366,11 @@ def measurement_plan(previous_state, floor: float | None, limit: int) -> dict[st
     providers: set[str] = set()
     for *_rest, key, axis in sorted(wanted):
         provider = key.partition("/")[0]
+        if not per_provider:
+            if len(plan) >= max(0, limit):
+                break
+            plan[key] = axis
+            continue
         if provider in providers:
             continue
         if len(providers) >= max(0, limit) + MEASURE_FALLBACK_PROVIDERS:
@@ -464,12 +499,36 @@ def reconcile(
     new_model_limit: int = DAILY_NEW_MODEL_LIMIT,
     measure_pending: bool = False,
     discovery_session_limit: int | None = None,
+    discovery_time_budget_seconds: float | None = None,
+    discovery_clock: Callable[[], float] = time.monotonic,
+    discovery_sessions_sink: Callable[[list[dict[str, Any]]], None] | None = None,
 ) -> Report:
     report = Report(floor=quality.floor, floor_source="pinned reference models")
     new_model_budget = new_model_limit
     from citypods.provider_catalog.discovery import MAX_RUN_SESSIONS as MAX_SESSIONS
 
     session_limit = MAX_SESSIONS if discovery_session_limit is None else discovery_session_limit
+    # Time-bound mode (the daily run): sessions start while time remains, across any providers
+    # and several per provider, instead of a fixed count of one per provider.
+    timed = discovery_time_budget_seconds is not None
+    if timed:
+        session_limit = TIMED_SESSION_CEILING
+    run_started = discovery_clock()
+
+    def session_slot_open(provider: str) -> bool:
+        if len(report.discovery_sessions) >= session_limit:
+            return False
+        if timed:
+            spent = discovery_clock() - run_started
+            return spent + MIN_SESSION_SECONDS <= (discovery_time_budget_seconds or 0)
+        return not any(
+            row.get("session", {}).get("provider") == provider for row in report.discovery_sessions
+        )
+
+    def save_sessions() -> None:
+        if discovery_sessions_sink is not None:
+            discovery_sessions_sink(report.discovery_sessions)
+
     if not isinstance(discovery_axis, str) or discovery_axis not in {"all", "input", "output"}:
         raise ValueError("invalid discovery axis")
     if type(discovery_automatic) is not bool:
@@ -542,7 +601,7 @@ def reconcile(
             )
         )
     measure_plan = (
-        measurement_plan(previous_state, report.floor, session_limit)
+        measurement_plan(previous_state, report.floor, session_limit, per_provider=not timed)
         if due_only and measure_pending and discovery_automatic
         else {}
     )
@@ -554,7 +613,7 @@ def reconcile(
             continue
         measure_names = (
             {}
-            if len(report.discovery_sessions) >= session_limit
+            if not session_slot_open(provider)
             else {
                 key.partition("/")[2]: axis
                 for key, axis in measure_plan.items()
@@ -778,6 +837,8 @@ def reconcile(
             and not catalog.error
         ):
             retry_models_seen: set[str] = set()
+            auto_ignored: list[tuple[str, float]] = []
+            explicit_keys = (retry_candidate_keys or set()) | (candidate_keys or set())
 
             def terminal_retry(
                 model,
@@ -815,6 +876,7 @@ def reconcile(
                         calls=calls,
                     )
                 )
+                save_sessions()
 
             for model, record in sorted(catalog.models.items()):
                 key = f"{provider}/{model}"
@@ -870,6 +932,9 @@ def reconcile(
                         score = quality.score(
                             model, creator=rules.creator, free_suffix=rules.free_suffix
                         )
+                        if key not in explicit_keys and _score_at_or_below(score, report.floor):
+                            auto_ignored.append((model, score))
+                            continue
                         report.candidates.append(
                             evidenced_candidate(
                                 model,
@@ -886,6 +951,12 @@ def reconcile(
                 if not free:
                     continue
                 score = quality.score(model, creator=rules.creator, free_suffix=rules.free_suffix)
+                if key not in explicit_keys and _score_at_or_below(score, report.floor):
+                    # Confirmed AA score at or under the weakest model our lanes run: nothing is
+                    # probed or listed. The bar is recomputed each run, so it reappears if the
+                    # bar or AA's score moves.
+                    auto_ignored.append((model, score))
+                    continue
                 candidates.append(
                     (
                         model,
@@ -894,6 +965,15 @@ def reconcile(
                         memory is not None and not memory.get("discovery_pending"),
                     )
                 )
+            if auto_ignored:
+                shown = ", ".join(f"{m} ({sc:g})" for m, sc in auto_ignored[:5])
+                more = f", +{len(auto_ignored) - 5} more" if len(auto_ignored) > 5 else ""
+                note = (
+                    f"{provider}: auto-ignored {len(auto_ignored)} model(s) scored at or below "
+                    f"the quality bar ({report.floor:g}): {shown}{more}"
+                )
+                if note not in report.observations:
+                    report.observations.append(note)
             for key in (retry_candidate_keys or set()) | (candidate_keys or set()):
                 provider_prefix, separator, model = key.partition("/")
                 if (
@@ -1202,15 +1282,7 @@ def reconcile(
                         )
                     )
                     candidate = report.candidates[-1]
-                    if (
-                        discovery_enabled
-                        and not pause.contended
-                        and len(report.discovery_sessions) < session_limit
-                        and not any(
-                            row.get("session", {}).get("provider") == provider
-                            for row in report.discovery_sessions
-                        )
-                    ):
+                    if discovery_enabled and not pause.contended and session_slot_open(provider):
                         discovery_floor = report.floor
                         identity = _candidate_discovery_identity(provider, model, rules, cfg)
                         receipt_id = (discovery_receipt_ids or {}).get(
@@ -1280,11 +1352,23 @@ def reconcile(
                                     shared_budget=discovery_shared_budget,
                                     selected_axes=selected_axes,
                                     sleep=sleep,
+                                    deadline=(
+                                        run_started + discovery_time_budget_seconds
+                                        if timed
+                                        else None
+                                    ),
+                                    fresh_run_budget=timed,
                                 )
                                 candidate.discovery = _merge_discovery(
                                     candidate.discovery, session_record["summary"]
                                 )
                                 report.discovery_sessions.append(session_record["artifact"])
+                                save_sessions()
+                                if automatic_candidate:
+                                    memory_row = canary_memory.setdefault(f"{provider}/{model}", {})
+                                    attempts = int(memory_row.get("measure_attempts") or 0) + 1
+                                    memory_row["measure_attempts"] = attempts
+                                    candidate.discovery["auto_attempts"] = attempts
                             except Exception as exc:
                                 # Discovery is advisory; preserve the proven reachability result.
                                 candidate.discovery = {
@@ -1329,7 +1413,7 @@ def reconcile(
                                     "measured; the next daily run tries again."
                                     if pause.contended
                                     else "Reachability and quality passed, but this run's "
-                                    "discovery session limit was already spent; the next daily "
+                                    "discovery time budget was already spent; the next daily "
                                     "run measures it."
                                 ),
                                 "axes": [],
@@ -1587,6 +1671,8 @@ def _merge_into_last_full(
         )
         for c in last_full.get("candidates") or []
         if c.get("structured_output_method")
+        # Re-judged against this run's bar: a model AA scores at or under it is auto-ignored.
+        and not _score_at_or_below(c.get("score"), report.floor)
     ]
     report.anomalies = carried + report.anomalies
     current_candidates = report.candidates
@@ -1998,6 +2084,8 @@ def _discover_candidate_caps(
     shared_budget,
     sleep,
     selected_axes=None,
+    deadline=None,
+    fresh_run_budget=False,
 ):
     """Run the separate, charged size search only after candidate reachability is proven."""
     import secrets
@@ -2072,6 +2160,14 @@ def _discover_candidate_caps(
     # Token reservations below describe the size-search requests, which carry the
     # explicit measured token sizes.
     budget = DiscoveryBudget(calls=reachability_calls)
+    if fresh_run_budget:
+        # Time-bound runs are limited by the clock, not by the three-session shared envelope;
+        # each session still carries the reviewed per-session ceilings.
+        from citypods.provider_catalog.discovery import MAX_RUN_CALLS, MAX_RUN_INPUT, MAX_RUN_OUTPUT
+
+        shared_budget = DiscoveryBudget(
+            max_calls=MAX_RUN_CALLS, max_input=MAX_RUN_INPUT, max_output=MAX_RUN_OUTPUT
+        )
     if shared_budget is not None:
         shared_budget.calls += reachability_calls
     # Reachability/structured-output checks just completed; space the first size probe too.
@@ -2126,6 +2222,7 @@ def _discover_candidate_caps(
                 budget=budget,
                 shared_budget=shared_budget,
                 sleep=sleep,
+                deadline=deadline,
             )
         except Exception as exc:
             # Preserve charged attempts even if orchestration fails after admission.

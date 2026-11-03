@@ -82,6 +82,12 @@ TRANSIENT_SERVER_STATUSES = {500, 502, 503, 504}
 MAX_OUTAGE_RETRIES = 2
 OUTAGE_BACKOFF_SECONDS = 15
 TIMEOUT_DIAGNOSTICS = {"worker_response_timeout", "transport_timeout"}
+# A very large request body that is reset twice at one size is treated like a timeout: retrying
+# the same size a third time only spends the five-call no-response allowance (2026-11-03).
+CONNECTION_RESETS_AS_TIMEOUT = 2
+# A candidate whose input search keeps ending without a usable result is re-measured by the
+# daily run this many times; after that it waits for a maintainer's `test again`.
+MAX_AUTO_MEASURE_ATTEMPTS = 4
 SLOW_INPUT_DIAGNOSTIC = "input_too_slow_for_deadline"
 NO_RESPONSE_DIAGNOSTICS = {
     "transport_timeout",
@@ -576,6 +582,7 @@ def run_discovery(
     session_deadline = deadline
     shared_output_cost = None
     no_response_calls = 0
+    connection_resets: dict[int, int] = {}
     observations, brackets = [], []
     transport_retries = []
     reason = "complete"
@@ -1030,6 +1037,10 @@ def run_discovery(
                 or observation.diagnostic == SLOW_INPUT_DIAGNOSTIC
             ):
                 time_upper = min(time_upper or target, target)
+            if axis == "input" and observation.diagnostic == "transport_connection_error":
+                connection_resets[target] = connection_resets.get(target, 0) + 1
+                if connection_resets[target] >= CONNECTION_RESETS_AS_TIMEOUT:
+                    time_upper = min(time_upper or target, target)
             if (
                 axis == "output"
                 and observation.outcome == "admitted"

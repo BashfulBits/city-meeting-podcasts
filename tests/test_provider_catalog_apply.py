@@ -1529,7 +1529,18 @@ def test_readiness_states_tell_the_maintainer_what_happens_next():
             discovery={"axes": [{"axis": "input", "reason": "stalled"}], "retryable": True},
         )
     )
-    assert retry.state == ACTION and "`test again`" in retry.next_step
+    assert retry.state == WAITING and "try 1 of 4" in retry.next_step
+    exhausted = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={
+                "axes": [{"axis": "input", "reason": "stalled"}],
+                "retryable": True,
+                "auto_attempts": 4,
+            },
+        )
+    )
+    assert exhausted.state == ACTION and "`test again`" in exhausted.next_step
 
 
 def test_issue_leads_with_next_steps_and_hides_diagnostics_in_details():
@@ -1576,3 +1587,24 @@ def test_publication_failure_does_not_claim_the_checks_failed():
     text = describe_failed_command(subprocess.CalledProcessError(128, ["git", "push", "origin"]))
     assert "Publication failed and main is unchanged" in text
     assert "repository checks" not in text
+
+
+def test_test_again_with_no_saved_results_explains_instead_of_failing(monkeypatch):
+    from datetime import UTC, datetime
+
+    import scripts.provider_catalog_commands as commands
+    from citypods.provider_catalog.apply import Decision
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(commands, "discover_discovery_references", lambda **kwargs: [])
+    monkeypatch.setattr(commands, "verified_discovery_history", lambda *a, **k: ((), (), ()))
+
+    receipt = commands.prepare_discovery_retry(
+        Decision("nvidia", "minimaxai/minimax-m3.1-flash", "test_again"),
+        event={},
+        issue_number=2554,
+        now=datetime.now(UTC),
+    )
+
+    # No saved evidence (the measuring run crashed before saving): nothing to retry, no error.
+    assert receipt is None
