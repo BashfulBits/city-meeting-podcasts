@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Provider catalog: the daily run now measures found candidates for up to two hours (across
+  providers, several per provider) instead of one session per run. Models AA scores at or below
+  our weakest lane model are auto-ignored, and unfinished input searches (outage, stalled) are
+  re-queued up to four times.
+
+- Provider catalog: `/apply` `test again` no longer fails when no saved results exist; discovery
+  evidence is saved after every session so a crashed run keeps it; repeated connection resets at
+  one input size now step the size down.
+
 - **Disable dispatch keep-alive and pin catalog workflows to Ubuntu 24.04.**
   Send `Connection: close` in `DispatchPauseClient` requests to prevent urllib3 connection
   pool socket reuse across multi-minute probe spacing and canary intervals, eliminating
