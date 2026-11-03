@@ -15,6 +15,26 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/48 request-cap discovery: typed size limits and slow routes.** A provider's typed
+  `context_length` refusal (NVIDIA `details.limit/actual`) now steers the next input probe to 95%
+  of the stated limit instead of ending as `inconclusive`; it is a hint, so only an admitted,
+  provider-counted request becomes a cap. Input probes that time out, or succeed slower than a
+  600 s budget, are no longer retried at the same size or proposed as caps: the search shrinks
+  until a size fits the Worker's 720 s ceiling. A transient 5xx is retried twice with backoff
+  before an axis is called an outage.
+- **Review/48 issue and `/apply` clarity.** The rolling issue opens with a **Next steps** table
+  (READY / WAITING / YOUR CALL, tested input and output caps, what to do) and repeats the verdict
+  beside each model's checkboxes; probe diagnostics move into collapsible details. Every `/apply`
+  deferral now says what to do, and a failed `/apply` names the failing step and test IDs instead
+  of "verification or publication command failed". After the output search has run with no
+  measurement or published claim, `/apply` uses a flagged provisional 4,096-token output limit
+  rather than deferring forever.
+
+- **Provider reconciliation no longer aborts on one failed dispatch reservation.** The reserve call
+  retries a transient Worker `ConnectionError` and the health-recheck loop skips only that route
+  (no request is sent without a reservation), instead of failing the whole 90-minute run and
+  discarding its state.
+
 - **BeatAPI streaming is switched off again.** In production, assembling a BeatAPI stream in the
   Worker used 2,050 ms of CPU over a 400 s call, and the cron invocation was killed
   (`exceededCpu`) along with the other jobs it was running; the Worker's per-invocation CPU budget
