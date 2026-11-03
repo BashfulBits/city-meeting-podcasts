@@ -600,7 +600,12 @@ def render_body(
         c
         for c in prior.candidates
         if c.key not in {current.key for current in report.candidates}
-        and any(choice.startswith(f"`{c.key}`: ") for choice in selected)
+        # An accepted AA match is a note for the next run, not a decision to fulfil: it must not
+        # keep a candidate that has since left the list (e.g. auto-ignored by that match) pending.
+        and any(
+            choice.startswith(f"`{c.key}`: ") and not choice.startswith(f"`{c.key}`: AA match ")
+            for choice in selected
+        )
     ]
     pending_paid = [
         a
