@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **An accepted AA match no longer keeps a dropped candidate listed.** Ticking an AA match for a
+  model that the match then re-scored below the quality bar left it on the provider-catalog issue
+  as a "pending prior selection" indefinitely. The match is a note for the next run, not a
+  decision to fulfil, so it no longer counts as one.
+
 - **A size search no longer repeats a size the provider cannot handle.** An input search that
   draws HTTP 500 at its first, very large size (muse-glimmer at 500,000 tokens) now halves the
   size up to four times instead of ending as an outage. An output search with nothing admitted
