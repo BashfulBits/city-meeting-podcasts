@@ -2876,3 +2876,8 @@ def test_planned_candidate_gone_from_the_catalog_says_so(monkeypatch):
     assert "meta-llama/delisted" not in seen
     gone = next(c for c in report.candidates if c.key == "groq/meta-llama/delisted")
     assert gone.measure_note == "the provider's catalog no longer lists it"
+    from citypods.provider_catalog.readiness import WAITING, candidate_readiness
+
+    ready = candidate_readiness(gone)
+    assert ready.state == WAITING
+    assert "no longer lists it" in ready.headline and "next daily run" not in ready.next_step

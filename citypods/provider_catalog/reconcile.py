@@ -53,6 +53,7 @@ from citypods.provider_catalog.probe import (
     structured_canary,
 )
 from citypods.provider_catalog.quality import QualityIndex
+from citypods.provider_catalog.readiness import CATALOG_MISSING_NOTE
 from citypods.provider_catalog.registry import all_rules
 from citypods.provider_catalog.rules import ProviderRules, Response
 
@@ -692,9 +693,7 @@ def reconcile(
             fresh_names = (fresh_names or set()) | (set(measure_names) & set(catalog.models))
             if rules.catalog_is_complete:
                 for gone in set(measure_names) - set(catalog.models):
-                    unmeasured_reason[f"{provider}/{gone}"] = (
-                        "the provider's catalog no longer lists it"
-                    )
+                    unmeasured_reason[f"{provider}/{gone}"] = CATALOG_MISSING_NOTE
         if catalog.error:
             for planned in measure_plan:
                 if planned.partition("/")[0] == provider:
