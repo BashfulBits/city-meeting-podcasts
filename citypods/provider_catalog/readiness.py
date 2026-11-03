@@ -19,6 +19,9 @@ from citypods.provider_catalog.discovery import MAX_AUTO_MEASURE_ATTEMPTS
 # structured-output checks already use (review/48); the PR marks it provisional for review.
 PROVISIONAL_OUTPUT_CONTEXT_LIMIT = 4_096
 
+# The reason a planned candidate is not measured when its provider's catalog dropped it.
+CATALOG_MISSING_NOTE = "the provider's catalog no longer lists it"
+
 READY = "ready"
 WAITING = "waiting"
 ACTION = "action"
@@ -110,6 +113,13 @@ def candidate_readiness(candidate) -> Readiness:
                 "then say what evidence is missing.",
             )
         note = getattr(candidate, "measure_note", None)
+        if note == CATALOG_MISSING_NOTE:
+            return Readiness(
+                WAITING,
+                f"Limits not tested: {note}.",
+                "Nothing to do. It leaves this list when the weekly run rebuilds it; tick "
+                "`ignore` to retire it sooner.",
+            )
         return Readiness(
             WAITING,
             "Limits not tested yet" + (f": {note}." if note else "."),
