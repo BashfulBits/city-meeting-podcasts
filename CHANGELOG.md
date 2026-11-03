@@ -15,6 +15,22 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **A size search no longer repeats a size the provider cannot handle.** An input search that
+  draws HTTP 500 at its first, very large size (muse-glimmer at 500,000 tokens) now halves the
+  size up to four times instead of ending as an outage. An output search with nothing admitted
+  yet that is timed out or dropped (minimax at 16,384 tokens) halves too, instead of retrying the
+  same size five times. Neither is ever recorded as a refused limit.
+- **A one-axis daily session no longer erases the other axes' results.** The output session that
+  followed minimax's input session replaced its measured input limit with a blank placeholder,
+  so the plan flipped back to input each day. A session now merges into the candidate's stored
+  discovery and leaves axes it did not select as they were.
+
+- **Ignored and delisted candidates no longer sit as "WAITING" on the provider-catalog issue.**
+  The daily run carried every candidate from the last full run, even ones the maintainer had since
+  ignored, so they showed "the next daily run tests it" for a test the loop skips by design. They
+  are now dropped when carried, left out of the measurement plan, and a planned model that its
+  provider no longer lists says so.
+
 - **Daily provider-catalog run no longer crashes on its 4th measurement session.** The discovery
   evidence artifact still enforced the 3-session manual cap while the time-bound daily run may
   start up to 16; the shared cap is now `MAX_ARTIFACT_SESSIONS`. A failed evidence write no longer
