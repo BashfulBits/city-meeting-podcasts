@@ -1645,12 +1645,12 @@ def discovery_artifact(sessions, *, repository, run_id, head_sha, now):
     """A separate namespace: discovery results cannot authorize configured-route cap edits."""
     from citypods.provider_catalog.discovery import (
         MAX_ARTIFACT_BYTES,
-        MAX_RUN_SESSIONS,
+        MAX_ARTIFACT_SESSIONS,
         MAX_SESSION_CALLS,
         DiscoveryObservation,
     )
 
-    if len(sessions) > MAX_RUN_SESSIONS:
+    if len(sessions) > MAX_ARTIFACT_SESSIONS:
         raise ValueError("too many discovery sessions")
     normalized = []
     for session in sessions:

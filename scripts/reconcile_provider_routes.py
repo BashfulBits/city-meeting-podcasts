@@ -920,14 +920,20 @@ def main(argv: list[str] | None = None) -> int:
             )
         report.state["last_full"]["context_changes"] = list(report.context_changes)
     if args.discovery_evidence and report.discovery_sessions:
-        envelope = discovery_artifact(
-            report.discovery_sessions,
-            repository=os.environ.get("GITHUB_REPOSITORY", "local/local"),
-            run_id=os.environ.get("GITHUB_RUN_ID", "local"),
-            head_sha=os.environ.get("GITHUB_SHA", "0" * 40),
-            now=datetime.now(UTC),
-        )
-        args.discovery_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
+        # An evidence envelope that fails its own schema must not also lose the run's state and
+        # issue update (2026-11-03: a 4th daily session tripped the old 3-session cap here).
+        try:
+            envelope = discovery_artifact(
+                report.discovery_sessions,
+                repository=os.environ.get("GITHUB_REPOSITORY", "local/local"),
+                run_id=os.environ.get("GITHUB_RUN_ID", "local"),
+                head_sha=os.environ.get("GITHUB_SHA", "0" * 40),
+                now=datetime.now(UTC),
+            )
+        except ValueError as exc:
+            print(f"::error::discovery evidence not written ({exc}); state is still saved")
+        else:
+            args.discovery_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
     if not args.due_only and not args.provider:
         # Self-check (catalog reads only): would discovery re-find what is already configured?
         # A drop here means a plugin gate drifted from how routes are actually chosen.

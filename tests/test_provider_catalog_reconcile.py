@@ -2562,6 +2562,38 @@ def test_time_bound_discovery_starts_sessions_while_time_remains_and_saves_each(
     assert saved == [1, 2]  # evidence is written after every session, not only at the end
 
 
+def test_a_failed_evidence_write_does_not_relabel_a_finished_session(monkeypatch, capsys):
+    import citypods.provider_catalog.reconcile as module
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", lambda c, *a, **k: _stub_session(c))
+    monkeypatch.setenv("K", "test-key")
+
+    def sink(_sessions):
+        raise ValueError("too many discovery sessions")
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="timed-run",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+        discovery_sessions_sink=sink,
+    )
+    measured = [c for c in report.candidates if c.discovery]
+    assert measured
+    assert all(c.discovery["reason"] == "unsupported_endpoint_axis" for c in measured)
+    assert "discovery evidence not saved" in capsys.readouterr().out
+
+
 def test_carried_candidates_at_or_below_the_current_bar_are_dropped_from_the_report():
     from citypods.provider_catalog.reconcile import Report, _merge_into_last_full
 
