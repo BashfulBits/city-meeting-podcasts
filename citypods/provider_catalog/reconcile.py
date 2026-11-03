@@ -635,6 +635,13 @@ def reconcile(
         else {}
     )
     unmeasured_reason: dict[str, str] = {}
+    # What the last run stored per candidate: a daily session measures one axis and must keep the
+    # others it did not touch.
+    carried_discovery = {
+        f"{row.get('provider')}/{row.get('model')}": row["discovery"]
+        for row in (previous_state.get("last_full") or {}).get("candidates") or []
+        if isinstance(row, Mapping) and row.get("discovery")
+    }
     for provider in selected:
         rules = all_rules().get(provider)
         cfg = provider_cfgs.get(provider)
@@ -1345,8 +1352,12 @@ def reconcile(
                         deadline=(run_started + discovery_time_budget_seconds if timed else None),
                         fresh_run_budget=timed,
                     )
+                    carried = carried_discovery.get(candidate.key) or {}
+                    if carried.get("identity") not in (None, identity):
+                        carried = {}  # another account or endpoint: its bounds do not transfer
                     candidate.discovery = _merge_discovery(
-                        candidate.discovery, session_record["summary"]
+                        candidate.discovery or carried,
+                        {**session_record["summary"], "identity": identity},
                     )
                     report.discovery_sessions.append(session_record["artifact"])
                     save_sessions()
@@ -1995,8 +2006,26 @@ def _merge_discovery(previous, new):
     """
     if not isinstance(previous, Mapping) or not previous.get("axes"):
         return new
-    fresh_axes = {a.get("axis"): a for a in new.get("axes") or []}
-    axes = [fresh_axes.pop(a.get("axis"), a) for a in previous["axes"]] + list(fresh_axes.values())
+    # A placeholder for an axis this session did not select says nothing; it must not erase
+    # what an earlier session measured (minimax lost its input result to a later output session).
+    fresh_axes = {
+        a.get("axis"): a for a in new.get("axes") or [] if a.get("reason") != "not_selected"
+    }
+    unselected = {
+        a.get("axis"): a for a in new.get("axes") or [] if a.get("reason") == "not_selected"
+    }
+    axes = []
+    for old in previous["axes"]:
+        axis = old.get("axis")
+        if axis in fresh_axes:
+            axes.append(fresh_axes.pop(axis))
+        elif axis in unselected and "published" in unselected[axis]:
+            # Keep the measured bounds; the catalog's published claim is today's, not the old one.
+            axes.append({**old, "published": unselected[axis]["published"]})
+        else:
+            axes.append(old)
+    axes += list(fresh_axes.values())
+    axes += [a for axis, a in unselected.items() if axis not in {x.get("axis") for x in axes}]
     merged = {**new, "axes": axes}
     for key in ("input_characterization", "litellm"):
         if not new.get(key) and previous.get(key):

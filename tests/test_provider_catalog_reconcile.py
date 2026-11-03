@@ -2790,6 +2790,66 @@ def test_planned_candidates_are_not_crowded_out_by_newly_listed_models(monkeypat
     assert {c.key for c in report.candidates} >= {"groq/meta-llama/llama-new"}
 
 
+def test_an_output_only_session_keeps_the_input_result_an_earlier_session_measured():
+    """Regression (#2554, minimax): the output session's `not_selected` input placeholder erased
+    the 252,698-token input result, so the plan flipped back to input the next day."""
+    from citypods.provider_catalog.reconcile import _merge_discovery
+
+    previous = {
+        "reason": "partial",
+        "axes": [
+            {"axis": "input", "admitted": 252_698, "reason": "quota_deferred"},
+            {"axis": "output", "admitted": None, "reason": None},
+        ],
+        "input_characterization": {"admitted_input": 252_698},
+    }
+    new = {
+        "reason": "partial",
+        "axes": [
+            {"axis": "input", "admitted": None, "reason": "not_selected"},
+            {"axis": "output", "admitted": 4_096, "reason": None},
+            {"axis": "total_input_heavy", "admitted": None, "reason": "not_selected"},
+        ],
+    }
+    merged = _merge_discovery(previous, new)
+    by_axis = {a["axis"]: a for a in merged["axes"]}
+    assert by_axis["input"]["admitted"] == 252_698
+    assert by_axis["output"]["admitted"] == 4_096
+    assert by_axis["total_input_heavy"]["reason"] == "not_selected"
+    assert merged["input_characterization"] == {"admitted_input": 252_698}
+
+
+def test_daily_session_merges_into_the_carried_discovery_not_a_blank_candidate(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    carried = {
+        **_carried("groq", "meta-llama/llama-new", 55.0),
+        "discovery": {
+            "reason": "partial",
+            "retryable": True,
+            "axes": [{"axis": "input", "admitted": 9_000, "reason": "quota_deferred"}],
+        },
+    }
+    session = _measured([])
+    session["summary"] = {
+        "retryable": True,
+        "reason": "partial",
+        "calls": 1,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "axes": [
+            {"axis": "input", "admitted": None, "reason": "not_selected"},
+            {"axis": "output", "admitted": 4_096, "reason": None},
+        ],
+    }
+    monkeypatch.setattr(rec, "_discover_candidate_caps", lambda candidate, record, **kw: session)
+    report, _seen = _daily_run_over(monkeypatch, [carried])
+    row = next(c for c in report.candidates if c.key == "groq/meta-llama/llama-new")
+    by_axis = {a["axis"]: a for a in row.discovery["axes"]}
+    assert by_axis["input"]["admitted"] == 9_000
+    assert by_axis["output"]["admitted"] == 4_096
+
+
 def _carried(provider, model, score=None):
     return {
         "provider": provider,
@@ -2881,3 +2941,50 @@ def test_planned_candidate_gone_from_the_catalog_says_so(monkeypatch):
     ready = candidate_readiness(gone)
     assert ready.state == WAITING
     assert "no longer lists it" in ready.headline and "next daily run" not in ready.next_step
+
+
+def test_retained_axis_takes_the_catalogs_current_published_claim():
+    from citypods.provider_catalog.reconcile import _merge_discovery
+
+    previous = {
+        "reason": "partial",
+        "axes": [{"axis": "output", "admitted": 4_096, "published": 32_768, "reason": None}],
+    }
+    new = {
+        "reason": "partial",
+        "axes": [{"axis": "output", "admitted": None, "published": None, "reason": "not_selected"}],
+    }
+    (row,) = _merge_discovery(previous, new)["axes"]
+    assert row["admitted"] == 4_096 and row["published"] is None
+
+
+def test_carried_bounds_from_another_identity_are_not_merged(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    carried = {
+        **_carried("groq", "meta-llama/llama-new", 55.0),
+        "discovery": {
+            "reason": "partial",
+            "retryable": True,
+            "identity": "some-other-account-or-endpoint",
+            "axes": [{"axis": "input", "admitted": 9_000, "reason": "quota_deferred"}],
+        },
+    }
+    session = _measured([])
+    session["summary"] = {
+        "retryable": True,
+        "reason": "partial",
+        "calls": 1,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "axes": [
+            {"axis": "input", "admitted": None, "reason": "not_selected"},
+            {"axis": "output", "admitted": 4_096, "reason": None},
+        ],
+    }
+    monkeypatch.setattr(rec, "_discover_candidate_caps", lambda candidate, record, **kw: session)
+    report, _seen = _daily_run_over(monkeypatch, [carried])
+    row = next(c for c in report.candidates if c.key == "groq/meta-llama/llama-new")
+    by_axis = {a["axis"]: a for a in row.discovery["axes"]}
+    assert by_axis["input"]["admitted"] is None  # the other identity's 9,000 did not carry over
+    assert by_axis["output"]["admitted"] == 4_096
