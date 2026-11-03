@@ -31,7 +31,7 @@ from citypods.llm_rate_probe import (
 )
 from citypods.provider_catalog.classify import Classification, classify
 from citypods.provider_catalog.decisions import Decisions
-from citypods.provider_catalog.discovery import MAX_AUTO_MEASURE_ATTEMPTS
+from citypods.provider_catalog.discovery import MAX_ARTIFACT_SESSIONS, MAX_AUTO_MEASURE_ATTEMPTS
 from citypods.provider_catalog.evidence import (
     CatalogEvidence,
     LimitObservation,
@@ -299,7 +299,7 @@ MEASURE_FALLBACK_PROVIDERS = 2
 # Time-bound (daily) runs start another size-search session only while at least this much of the
 # budget remains, and never more than this many in one run.
 MIN_SESSION_SECONDS = 600
-TIMED_SESSION_CEILING = 16
+TIMED_SESSION_CEILING = MAX_ARTIFACT_SESSIONS
 # Stubs saved when nothing will be measured automatically; they are never re-queued.
 STUB_DISCOVERY_REASONS = (
     "below_automatic_quality_floor",
@@ -533,8 +533,13 @@ def reconcile(
         )
 
     def save_sessions() -> None:
+        # A failed evidence write is not a failed measurement: the session already finished, and
+        # raising here would let a caller's handler mislabel it as discovery_stopped_safely.
         if discovery_sessions_sink is not None:
-            discovery_sessions_sink(report.discovery_sessions)
+            try:
+                discovery_sessions_sink(report.discovery_sessions)
+            except (OSError, ValueError) as exc:
+                print(f"::warning::discovery evidence not saved ({type(exc).__name__}: {exc})")
 
     if not isinstance(discovery_axis, str) or discovery_axis not in {"all", "input", "output"}:
         raise ValueError("invalid discovery axis")

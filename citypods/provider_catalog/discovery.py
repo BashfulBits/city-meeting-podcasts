@@ -30,6 +30,9 @@ MAX_SESSION_INPUT = 16_777_216
 MAX_RUN_INPUT = MAX_SESSION_INPUT * MAX_RUN_SESSIONS
 MAX_SESSION_OUTPUT = 1_572_864
 MAX_RUN_OUTPUT = MAX_SESSION_OUTPUT * MAX_RUN_SESSIONS
+# One evidence artifact holds a whole run: a manual run's MAX_RUN_SESSIONS, or the daily time-bound
+# run's ceiling (reconcile.TIMED_SESSION_CEILING), which may start several sessions per provider.
+MAX_ARTIFACT_SESSIONS = 16
 
 
 def output_discovery_control(min_tokens: bool = False) -> str:

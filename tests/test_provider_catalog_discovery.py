@@ -11,6 +11,7 @@ from citypods.provider_catalog.discovery import (
     DEFAULT_OUTPUT_SEED,
     INPUT_OUTPUT_COUNTERPART,
     MAX_ARTIFACT_BYTES,
+    MAX_ARTIFACT_SESSIONS,
     MAX_INPUT,
     MAX_RUN_CALLS,
     MAX_RUN_INPUT,
@@ -88,6 +89,51 @@ def test_discovery_artifact_accepts_full_run_session_and_attempt_budget():
         len(session["attempts"]) == MAX_SESSION_CALLS for session in artifact["payload"]["sessions"]
     )
     assert len(json.dumps(artifact).encode()) < MAX_ARTIFACT_BYTES
+
+
+def test_discovery_artifact_holds_a_whole_daily_timed_run():
+    # 2026-11-03: the daily run started a 4th session and the 3-session manual cap crashed it
+    # at the final evidence write, losing the run's state and issue update.
+    from citypods.provider_catalog.evidence import discovery_artifact
+    from citypods.provider_catalog.reconcile import TIMED_SESSION_CEILING
+
+    assert TIMED_SESSION_CEILING == MAX_ARTIFACT_SESSIONS > MAX_RUN_SESSIONS
+    now = datetime.now(UTC)
+    sessions = []
+    for session_number in range(MAX_ARTIFACT_SESSIONS + 1):
+        session_id = f"session-{session_number}"
+        identity = discovery_identity("kilo", "account", f"model-{session_number}", "https://k")
+        req = replace(request(), session_id=session_id, attempt_id="a", identity=identity)
+        sessions.append(
+            {
+                "session": {
+                    "session_id": session_id,
+                    "identity": identity,
+                    "provider": "kilo",
+                    "account_id": "account",
+                    "upstream_model": f"model-{session_number}",
+                    "endpoint": "https://k",
+                    "catalog_digest": "a" * 64,
+                    "free_evidence_digest": "b" * 64,
+                    "parser_version": "parser-v1",
+                    "fixture_version": "fixture-v1",
+                    "created_at": now.isoformat(),
+                },
+                "attempts": [
+                    {
+                        "request": asdict(req),
+                        "observation": asdict(observation(req, req.input_tokens)),
+                    }
+                ],
+            }
+        )
+    kwargs = {"repository": "owner/repo", "run_id": "1", "head_sha": "c" * 40, "now": now}
+
+    artifact = discovery_artifact(sessions[:MAX_ARTIFACT_SESSIONS], **kwargs)
+
+    assert len(artifact["payload"]["sessions"]) == MAX_ARTIFACT_SESSIONS
+    with pytest.raises(ValueError, match="too many discovery sessions"):
+        discovery_artifact(sessions, **kwargs)
 
 
 def request(axis="input", target=2048, attempt="a"):
