@@ -174,7 +174,7 @@ def test_a_changed_entry_for_the_model_itself_still_defers():
             discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
         ),
     )
-    assert not result.routes and "candidate changed" in result.deferred[0]
+    assert not result.routes and "limits or identity changed" in result.deferred[0]
     # Evidence recorded before the per-model digest existed is compared on its other fields only.
     legacy = replace(PROOF, model_digest="")
     ok = plan(
@@ -215,7 +215,7 @@ def test_model_digest_ignores_other_models_and_old_evidence_keeps_its_candidate_
 def test_unknown_identity_is_deferred_and_legacy_state_is_advisory():
     unknown = replace(PROOF, model_key=None)
     result = plan(unknown, Decision("host", "creator/new", "add", evidence=unknown))
-    assert "identity_required" in result.deferred[0]
+    assert "no model_key" in result.deferred[0]
     assert plan(decision=Decision("host", "creator/new", "add")).deferred
 
 
@@ -248,7 +248,7 @@ def test_stale_or_missing_discovery_evidence_cannot_prepare_an_addition():
     decision = Decision("host", "creator/new", "add", ("lane",), PROOF)
     result = plan_apply(report, (decision,), config())
     assert not result.routes
-    assert "authenticated provider-counted input evidence" in result.deferred[0]
+    assert "input limit not tested" in result.deferred[0]
 
 
 def test_non_provider_counted_or_stale_discovery_cap_is_not_accepted():
@@ -737,7 +737,7 @@ def test_unknown_compiler_required_bound_defers_only_that_candidate(field):
         assert dict(result.routes[0])["input_context_limit"] == 12234
     else:
         assert result.deferred and not result.routes
-        assert "output-context value" in result.deferred[0]
+        assert "output limit is not" in result.deferred[0]
 
 
 def test_old_selection_cannot_place_an_already_configured_task_plugin_in_a_chat_lane():
@@ -1428,4 +1428,121 @@ def test_lane_addition_still_requires_measured_input():
     report = Report(candidates=[replace(CANDIDATE, discovery=None)])
     decision = Decision("host", "creator/new", "add", ("lane",), PROOF)
     result = plan_apply(report, (decision,), config())
-    assert not result.routes and "input evidence" in result.deferred[0]
+    assert not result.routes and "input limit not tested" in result.deferred[0]
+
+
+def test_failed_apply_command_names_the_step_without_echoing_output():
+    import subprocess
+    import sys
+
+    from scripts.provider_catalog_commands import describe_failed_command
+
+    stdout = (
+        "FAILED tests/test_provider_catalog_apply.py::test_x[a-b] - AssertionError: "
+        "key sk-secret-123\nFAILED tests/test_llm_lanes.py::test_y - boom\n"
+    )
+    exc = subprocess.CalledProcessError(
+        1,
+        [sys.executable, "-m", "pytest", "-q", "tests/test_llm_lanes.py"],
+        output=stdout,
+        stderr="TOKEN=abc",
+    )
+    text = describe_failed_command(exc)
+    assert "tests (pytest -q) failed with exit code 1" in text
+    assert "`tests/test_provider_catalog_apply.py::test_x[a-b]`" in text
+    assert "`tests/test_llm_lanes.py::test_y`" in text
+    assert "sk-secret" not in text and "TOKEN" not in text and "AssertionError" not in text
+    assert "comment `/apply` again" in text
+
+    script = subprocess.CalledProcessError(2, [sys.executable, "scripts/compile_llm_limits.py"])
+    assert "validation script compile_llm_limits.py failed with exit code 2" in (
+        describe_failed_command(script)
+    )
+
+
+def _finished_output_axis(reason="stalled"):
+    return {**DISCOVERY, "axes": [*DISCOVERY["axes"], {"axis": "output", "reason": reason}]}
+
+
+def test_finished_output_search_without_a_value_uses_a_flagged_provisional_default():
+    from citypods.provider_catalog.readiness import PROVISIONAL_OUTPUT_CONTEXT_LIMIT
+
+    proof = replace(PROOF, output_context_limit=None)
+    report = Report(
+        candidates=[replace(CANDIDATE, evidence=proof.to_dict(), discovery=_finished_output_axis())]
+    )
+    decision = Decision(
+        "host",
+        "creator/new",
+        "add",
+        evidence=proof,
+        discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+    )
+    result = plan_apply(report, (decision,), config())
+    assert result.routes and not result.deferred
+    route = dict(result.routes[0])
+    assert route["output_context_limit"] == PROVISIONAL_OUTPUT_CONTEXT_LIMIT
+    notes = " ".join(" ".join(lines) for _rid, lines in result.route_notes)
+    assert "provisional default" in notes and "subject to this PR's review" in notes
+
+
+def test_readiness_states_tell_the_maintainer_what_happens_next():
+    from citypods.provider_catalog.readiness import ACTION, READY, WAITING, candidate_readiness
+
+    proof = replace(PROOF, output_context_limit=None)
+    waiting = candidate_readiness(replace(CANDIDATE, evidence=proof.to_dict(), discovery=DISCOVERY))
+    assert waiting.state == WAITING and waiting.input_cap == 12000 and waiting.output_cap is None
+    assert "/apply" in waiting.next_step
+
+    ready = candidate_readiness(
+        replace(CANDIDATE, evidence=proof.to_dict(), discovery=_finished_output_axis())
+    )
+    assert ready.state == READY and ready.output_source == "provisional"
+    assert "Ready to add" in ready.headline and "`add route only`" in ready.next_step
+
+    slow_input = {**DISCOVERY["axes"][0], "reason": "input_time_limited_lower_bound"}
+    slow = candidate_readiness(
+        replace(
+            CANDIDATE,
+            evidence=PROOF.to_dict(),
+            discovery={**DISCOVERY, "axes": [slow_input]},
+        )
+    )
+    assert slow.state == READY and "720 s" in slow.headline
+
+    untested = candidate_readiness(replace(CANDIDATE, discovery=None, below_floor=True))
+    assert untested.state == ACTION
+    pending = candidate_readiness(replace(CANDIDATE, discovery=None, below_floor=False))
+    assert pending.state == WAITING
+
+    outage = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={"axes": [{"axis": "input", "reason": "outage"}], "reason": "outage"},
+        )
+    )
+    assert outage.state == WAITING and "server errors" in outage.headline
+
+    retry = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={"axes": [{"axis": "input", "reason": "stalled"}], "retryable": True},
+        )
+    )
+    assert retry.state == ACTION and "`test again`" in retry.next_step
+
+
+def test_issue_leads_with_next_steps_and_hides_diagnostics_in_details():
+    proof = replace(PROOF, output_context_limit=None)
+    candidate = replace(CANDIDATE, evidence=proof.to_dict(), discovery=_finished_output_axis())
+    body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
+    assert body.index("## Next steps") < body.index("## Candidates")
+    row = next(
+        line for line in body.splitlines() if line.startswith("| `host/creator/new` | READY")
+    )
+    assert "12,000" in row and "4,096 (provisional)" in row and "`/apply`" in row
+    # The same verdict sits beside the checkboxes, so the tick and its meaning are together.
+    decisions = body[body.index("## Decisions") :]
+    assert "Ready to add." in decisions and "- [ ] `host/creator/new`: add route only" in decisions
+    details = body[body.index("## Request-cap discovery") :]
+    assert details.count("<details>") == details.count("</details>") >= 1

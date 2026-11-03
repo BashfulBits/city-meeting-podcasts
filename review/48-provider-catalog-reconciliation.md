@@ -3637,3 +3637,31 @@ Superseded: the provisional 16k input / 4,096 output caps for route-only adds (p
   to 2N days; scored, better models go first. Raise `DAILY_DISCOVERY_SESSIONS` (and the timeout)
   if that is too slow.
 
+## Addendum 2026-11-02: typed size limits, slow input routes and issue clarity
+
+Evidence: issue #2554 and the 2026-11-02 runs. NVIDIA `minimax-m3.1-flash` answered four 500,000-token
+input probes with HTTP 400 `details: {type: context_length, limit: 262144, actual: 484064}`, which
+the generic path recorded as `http_non_success / inconclusive`, so the axis ended `stalled` with no
+admitted value. The weekly-full run died 90 minutes in on one `v2/dispatch:reserve ConnectionError`
+and uploaded no state. `/apply` failed with an opaque `CalledProcessError`.
+
+Decisions:
+
+- A typed `context_length` 400 (`limit < actual`) on the input axis maps the limit onto the request
+  target scale (`limit * target / actual`) as `target_limit_hint`. It sets the qualitative upper to
+  that value and the next target to 95% of it. It is never a refused boundary; the admitted value
+  still needs the existing two-success provider-counted contract.
+- Input timeouts and verified successes slower than `INPUT_TIME_BUDGET_SECONDS` (600 s, leaving
+  headroom under the Worker's 720 s) are time evidence, not caps: a slow success is stored as
+  `inconclusive / input_too_slow_for_deadline` with `elapsed_seconds`, and the next target is the
+  midpoint below the slow size (or half of it with no lower bound). Last-24-hour history seeds the
+  same hint, so a later run starts below a size that already timed out. This mirrors the existing
+  output rule (`output_time_limited_lower_bound`).
+- A 500/502/503/504 outage is retried twice (15 s, 30 s) inside the search before the axis is
+  reported as an outage. `WorkerDispatchControl.reserve` retries three times, and the health-recheck
+  loop skips one route when the ledger is unavailable (no reservation, no request).
+- `readiness.py` turns the same evidence `/apply` reads into READY / WAITING / YOUR CALL. After the
+  output search has run with no measurement, provider claim or LiteLLM claim, `/apply` uses a
+  provisional 4,096-token `output_context_limit`, marked provisional in the PR notes, instead of
+  deferring forever. This relaxes the earlier "enter a reviewed value" rule; the PR remains the review.
+

@@ -19,6 +19,7 @@ from typing import Any, Protocol
 import requests
 
 from citypods.compute.api_shape import route_speaks_chat
+from citypods.compute.llm_dispatch_pause import DispatchPauseError
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.llm_rate_probe import (
     ProbeBudgetExceeded,
@@ -1045,7 +1046,14 @@ def reconcile(
                     sleep(rules.canary_interval_seconds)
                 pause.renew()
                 first_probe = False
-                control.reserve(rid)
+                try:
+                    control.reserve(rid)
+                except DispatchPauseError as exc:
+                    # No reservation means no request: skip this route, keep the rest of the run.
+                    report.observations.append(
+                        f"{rid}: dispatch ledger unavailable ({exc}); not checked this run"
+                    )
+                    continue
                 report.rate_attempted_routes.add(rid)
                 count_existing_request(rid)
                 response = canary_fn(rules, cfg, model, api_key, session)

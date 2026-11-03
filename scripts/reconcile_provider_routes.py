@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import zipfile
 import zlib
 from collections.abc import Iterator, Mapping
@@ -85,6 +86,9 @@ PAUSE_SECONDS = 1200
 # The Worker abandons a call after 720 s, and NVIDIA's judge calls routinely hang that long
 # (2026-11-02 telemetry: 29 provider_response_timeout), so the drain must outlast one.
 DRAIN_TIMEOUT_SECONDS = 780
+# A transient Worker connection error must not abort a 90-minute run (2026-11-02 weekly-full).
+RESERVE_ATTEMPTS = 3
+RESERVE_BACKOFF_SECONDS = 5
 
 
 class WorkerDispatchControl:
@@ -110,12 +114,18 @@ class WorkerDispatchControl:
         except DispatchPauseError:
             return {}
 
-    def reserve(self, route_id: str) -> None:
-        try:
-            self.client.reserve(route_id, 1)
-        except DispatchPauseError as exc:
-            # A failed ledger write cannot authorize another scarce-quota method request.
-            raise DispatchPauseError(f"could not reserve {route_id}: {exc}") from exc
+    def reserve(self, route_id: str, *, sleep: Any = time.sleep) -> None:
+        last: DispatchPauseError | None = None
+        for attempt in range(RESERVE_ATTEMPTS):
+            try:
+                self.client.reserve(route_id, 1)
+                return
+            except DispatchPauseError as exc:
+                last = exc
+                if attempt + 1 < RESERVE_ATTEMPTS:
+                    sleep(RESERVE_BACKOFF_SECONDS * (attempt + 1))
+        # A failed ledger write cannot authorize another scarce-quota method request.
+        raise DispatchPauseError(f"could not reserve {route_id}: {last}") from last
 
 
 def _control(no_pause: bool) -> Any:

@@ -12,6 +12,7 @@ from typing import Any
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.provider_catalog.evidence import RouteEvidence, candidate_digest, digest
 from citypods.provider_catalog.issue import decision_choices, method_choice
+from citypods.provider_catalog.readiness import output_cap_for
 from citypods.provider_catalog.reconcile import Report
 from citypods.review_issues import DECISION_BLOCK_END, DECISION_BLOCK_START, checked_decisions
 
@@ -287,7 +288,11 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 route.get("provider") != decision.provider
                 or route.get("upstream_model") != decision.model
             ):
-                deferred.append(f"{decision.route_id}: route identity changed; refresh the issue")
+                deferred.append(
+                    f"{decision.route_id}: the route changed since the issue was written; wait for "
+                    "the next reconciliation run to update the issue, then tick again and "
+                    "comment `/apply`"
+                )
                 continue
             if not isinstance(route.get("free"), bool):
                 rejected.append(f"{decision.route_id}: explicit boolean free field required")
@@ -394,10 +399,17 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             )
             old = decision.evidence
             if not proof or not old:
-                deferred.append(f"{decision.key}: fresh evidence unavailable; refresh the issue")
+                deferred.append(
+                    f"{decision.key}: no current test result for this model; run the Provider "
+                    "catalog reconciliation workflow (or wait for the daily run), then "
+                    "comment `/apply` again"
+                )
                 continue
             if decision.offered_lanes and tuple(current.lanes) != decision.offered_lanes:
-                deferred.append(f"{decision.key}: offered lanes changed; choose again")
+                deferred.append(
+                    f"{decision.key}: the lanes offered for this model changed; re-tick the lane "
+                    "you want in the updated issue, then comment `/apply`"
+                )
                 continue
             comparison = (
                 "provider",
@@ -414,7 +426,11 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             if any(getattr(proof, k) != getattr(old, k) for k in comparison) or (
                 old.model_digest and proof.model_digest != old.model_digest
             ):
-                deferred.append(f"{decision.key}: candidate changed; refresh and choose again")
+                deferred.append(
+                    f"{decision.key}: the model's limits or identity changed since you ticked it; "
+                    "re-tick it in the updated issue (re-tested values are shown there), "
+                    "then comment `/apply`"
+                )
                 continue
             if (
                 not proof.catalog_complete
@@ -426,10 +442,17 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 or proof.structured_output_method
                 not in config.limits.get("structured_output_methods", {})
             ):
-                deferred.append(f"{decision.key}: complete paused fresh JSON proof required")
+                deferred.append(
+                    f"{decision.key}: today's JSON-output check did not pass or was interrupted; "
+                    "comment `/apply` again later (it re-checks the route each time)"
+                )
                 continue
             if not proof.model_key:
-                deferred.append(f"{decision.key}: identity_required; review a manual mapping")
+                deferred.append(
+                    f"{decision.key}: cannot tell which existing model this is (no model_key); "
+                    "add a `model_key` mapping in `config/provider_limits.yml` by hand, or "
+                    "tick `ignore`"
+                )
                 continue
             discovery = current.discovery if current else None
             cap = _verified_input_cap(discovery)
@@ -439,40 +462,30 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 cap = None
             if not cap:
                 deferred.append(
-                    f"{decision.key}: fresh authenticated provider-counted input evidence "
-                    "required; the daily run measures found candidates, then refresh the issue"
+                    f"{decision.key}: input limit not tested (or retested since you ticked); "
+                    "the daily run measures it, or tick `test again`. Then comment `/apply` again"
                 )
                 continue
-            litellm = discovery.get("litellm") if isinstance(discovery, Mapping) else None
-            litellm_output = litellm.get("output") if isinstance(litellm, Mapping) else None
             provider_context_claim = (
                 proof.input_context_limit
                 if type(proof.input_context_limit) is int and proof.input_context_limit > 0
                 else None
             )
-            provider_output_claim = (
-                proof.output_context_limit
-                if type(proof.output_context_limit) is int and proof.output_context_limit > 0
-                else None
+            output_context_limit, output_origin = output_cap_for(
+                discovery,
+                proof.output_context_limit,
             )
-            measured_output = _verified_output_cap(discovery)
-            output_source = (
-                "a measured output search"
-                if measured_output
-                else "the provider catalog"
-                if provider_output_claim
-                else "LiteLLM"
-            )
-            output_context_limit = (
-                measured_output
-                or provider_output_claim
-                or (litellm_output if type(litellm_output) is int and litellm_output > 0 else None)
-            )
+            output_source = {
+                "measured": "a measured output search",
+                "provider": "the provider catalog",
+                "litellm": "LiteLLM",
+                "provisional": "a provisional default (no measurement or published claim)",
+            }.get(output_origin)
+            measured_output = output_origin == "measured"
             if not output_context_limit:
                 deferred.append(
-                    f"{decision.key}: route config requires an output-context value; no provider, "
-                    "catalog or LiteLLM claim exists and the output search has not run yet (the "
-                    "daily run measures it once the input search is done)"
+                    f"{decision.key}: input limit is tested; the output limit is not. The next "
+                    "daily run measures it -- comment `/apply` again after that (your tick stays)"
                 )
                 continue
             model_key = proof.model_key
