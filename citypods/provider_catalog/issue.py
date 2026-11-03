@@ -97,9 +97,10 @@ def accepted_aa_matches(body: str, state: Mapping[str, Any]) -> dict[str, tuple[
     A ticked row counts only when it is exactly one of the closest matches the last run offered
     for that candidate, so editing the issue cannot point a model at an arbitrary AA entry.
     """
+    stored = state.get("aa_matches")
     accepted = {
         str(key): (str(value[0]), str(value[1]))
-        for key, value in (state.get("aa_matches") or {}).items()
+        for key, value in (stored.items() if isinstance(stored, Mapping) else ())
         if isinstance(value, (list, tuple)) and len(value) == 2
     }
     snapshot = Report()

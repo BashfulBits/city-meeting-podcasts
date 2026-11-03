@@ -1647,6 +1647,9 @@ def test_a_stored_aa_match_survives_without_the_checkbox():
 
     state = {"aa_matches": {"host/creator/new": ["meta", "muse-spark"]}}
     assert accepted_aa_matches("", state) == {"host/creator/new": ("meta", "muse-spark")}
+    # Editable state in the wrong shape must not stop a scheduled run.
+    assert accepted_aa_matches("", {"aa_matches": ["meta", "muse-spark"]}) == {}
+    assert accepted_aa_matches("", {"aa_matches": "x"}) == {}
 
 
 def test_readiness_explains_a_429_wait_and_why_a_candidate_was_not_measured():
