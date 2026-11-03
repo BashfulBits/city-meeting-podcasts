@@ -4406,3 +4406,18 @@ def test_supporting_check_keeps_outage_handling_without_a_wasted_retry(tmp_path)
 
     execute(tmp_path, measure, seeds={"input": 4_000}, sleep=slept.append, input_priority=True)
     assert slept == []
+
+
+def test_repeated_connection_resets_at_one_size_step_down_like_a_timeout(tmp_path):
+    targets = []
+
+    def measure(req, admit, timeout):
+        admit()
+        targets.append(req.target)
+        return DiscoveryObservation(req, STAMP, diagnostic="transport_connection_error")
+
+    result = execute(tmp_path, measure, supported_axes=("input",))
+
+    # Two resets at the first size, then smaller sizes instead of a third identical attempt.
+    assert targets[0] == targets[1] and targets[2] < targets[1]
+    assert result.reason == "uncertain_no_response_after_five_calls"

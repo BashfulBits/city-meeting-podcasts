@@ -545,3 +545,31 @@ def test_a_new_session_keeps_the_axes_it_did_not_measure():
     ]
     assert merged["input_characterization"] == previous["input_characterization"]
     assert _merge_discovery(None, new) is new
+
+
+def test_measurement_plan_requeues_unfinished_input_searches_with_a_bounded_number_of_tries():
+    from citypods.provider_catalog.reconcile import measurement_plan
+
+    def cand(model, discovery):
+        return {"provider": "nvidia", "model": model, "score": None, "discovery": discovery}
+
+    outage = {
+        "reason": "outage",
+        "retryable": True,
+        "axes": [{"axis": "input", "reason": "outage"}],
+    }
+    stalled = {"retryable": True, "axes": [{"axis": "input", "reason": "stalled"}]}
+    stub = {"reason": "below_automatic_quality_floor", "axes": []}
+    state = {
+        "last_full": {"candidates": [cand("out", outage), cand("stall", stalled), cand("s", stub)]},
+        "canaries": {"nvidia/stall": {"measure_attempts": 4}},
+    }
+    # Time-bound mode lists several candidates of one provider; the exhausted and stub ones wait.
+    assert measurement_plan(state, 10.0, 16, per_provider=False) == {"nvidia/out": "input"}
+    state["canaries"]["nvidia/stall"]["measure_attempts"] = 3
+    assert measurement_plan(state, 10.0, 16, per_provider=False) == {
+        "nvidia/out": "input",
+        "nvidia/stall": "input",
+    }
+    assert len(measurement_plan(state, 10.0, 16)) == 1  # fixed mode: one per provider
+    assert len(measurement_plan(state, 10.0, 1, per_provider=False)) == 1

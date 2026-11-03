@@ -79,8 +79,10 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
     reconcile,
 )
 
-# One size-search session per daily run (up to 90 minutes), so the run stays bounded.
-DAILY_DISCOVERY_SESSIONS = 1
+# The daily run measures found candidates one size-search session after another while this much
+# time remains (two hours), across providers and several per provider, so a backlog clears in
+# days rather than weeks. The workflow's 180-minute job timeout leaves room for the catalog checks.
+DAILY_DISCOVERY_SECONDS = 7_200
 LIMITS_PATH = REPO_ROOT / "config" / "provider_limits.yml"
 PAUSE_SECONDS = 1200
 # The Worker abandons a call after 720 s, and NVIDIA's judge calls routinely hang that long
@@ -745,7 +747,7 @@ def main(argv: list[str] | None = None) -> int:
     session = requests.Session()
     quality = fetch_quality_index(session)
     # The weekly full run and the daily incremental run (scheduled, or repeated by hand with the
-    # `incremental` dispatch input) measure candidates; the daily run does one session per run.
+    # `incremental` dispatch input) measure candidates; the daily run measures for up to two hours.
     activated_schedule = (
         DISCOVERY_ACTIVATION_ENABLED
         and DISCOVERY_SCHEDULED_ENABLED
@@ -782,6 +784,25 @@ def main(argv: list[str] | None = None) -> int:
     if retry_receipts and not discovery_enabled:
         print("request-cap retries deferred until the reviewed discovery activation is enabled")
         retry_receipts = {}
+
+    def write_evidence(sessions):
+        # Rewritten after every session so a run that later crashes still leaves its
+        # authenticated results (the 2026-11-02 weekly-full lost them when it aborted).
+        if sessions:
+            args.discovery_evidence.write_text(
+                json.dumps(
+                    discovery_artifact(
+                        sessions,
+                        repository=os.environ.get("GITHUB_REPOSITORY", "local/local"),
+                        run_id=os.environ.get("GITHUB_RUN_ID", "local"),
+                        head_sha=os.environ.get("GITHUB_SHA", "0" * 40),
+                        now=datetime.now(UTC),
+                    ),
+                    indent=2,
+                )
+                + "\n"
+            )
+
     report = reconcile(
         limits,
         load_lanes(),
@@ -797,7 +818,8 @@ def main(argv: list[str] | None = None) -> int:
         early_rate_checks=early,
         new_models=args.incremental,
         measure_pending=args.incremental,
-        discovery_session_limit=DAILY_DISCOVERY_SESSIONS if args.incremental else None,
+        discovery_time_budget_seconds=DAILY_DISCOVERY_SECONDS if args.incremental else None,
+        discovery_sessions_sink=write_evidence if args.discovery_evidence else None,
         context_run=context_run,
         discovery_enabled=discovery_enabled,
         discovery_automatic=discovery_automatic,

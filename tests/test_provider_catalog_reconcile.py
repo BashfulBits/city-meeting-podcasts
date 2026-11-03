@@ -192,10 +192,24 @@ QUALITY = QualityIndex(
 )
 
 
+# k9 unscored: AA has not indexed it, so it is measured rather than auto-ignored.
+QUALITY_K9_UNSCORED = QualityIndex(
+    scores={key: value for key, value in QUALITY.scores.items() if key != ("kimi", "k9")}
+)
+
 NO_DECISIONS = Decisions()
 
 
-def _run(monkeypatch, *, canaries=None, state=None, decisions=NO_DECISIONS, control=None, **kw):
+def _run(
+    monkeypatch,
+    *,
+    canaries=None,
+    state=None,
+    decisions=NO_DECISIONS,
+    control=None,
+    quality=QUALITY,
+    **kw,
+):
     monkeypatch.setenv("K", "test-key")
     canaries = {"qwen/qwen-gone": GONE, **(canaries or {})}
     sent = []
@@ -209,7 +223,7 @@ def _run(monkeypatch, *, canaries=None, state=None, decisions=NO_DECISIONS, cont
         LIMITS,
         LANES,
         decisions,
-        QUALITY,
+        quality,
         state or {},
         session=FakeSession(CATALOGS),
         control=control,
@@ -228,8 +242,11 @@ def test_a_proven_free_model_becomes_a_candidate_with_score_links_and_lane_sugge
     assert new.score == 55.0 and new.below_floor is False
     assert new.lanes == ("tagger",)  # 55 >= the lane's 40; the opted-out lane is never offered
     assert any("huggingface" in url for _, url in new.links)
-    k9 = keys["openrouter/kimi/k9:free"]
-    assert k9.below_floor is True and k9.lanes == () and k9.context_limit == 131072
+    # k9 (AA 30) is under the bar (weakest lane model, 33): auto-ignored, never probed or listed.
+    assert "openrouter/kimi/k9:free" not in keys and "kimi/k9:free" not in sent
+    assert any(
+        "auto-ignored" in note and "kimi/k9:free (30)" in note for note in report.observations
+    )
     assert "kimi/k9" not in sent  # the paid variant has no free evidence
     assert "whisper-large-v3" not in sent  # non-chat entries are never canaried
     assert set(control.paused_providers) == {"groq", "openrouter", "zai"}
@@ -314,8 +331,8 @@ def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounde
         if candidate.discovery
         and candidate.discovery.get("reason") != "below_automatic_quality_floor"
     )
-    assert any(
-        candidate.discovery and candidate.discovery.get("reason") == "below_automatic_quality_floor"
+    assert not any(
+        candidate.score is not None and candidate.score <= 33.0
         for candidate in automatic.candidates
     )
 
@@ -481,15 +498,17 @@ def test_ignored_candidates_are_not_canaried(monkeypatch):
 
 
 def test_a_failed_candidate_is_not_retried_for_28_days_and_cannot_starve_others(monkeypatch):
-    report, sent, _ = _run(monkeypatch, canaries={"kimi/k9:free": GONE})
+    report, sent, _ = _run(
+        monkeypatch, canaries={"kimi/k9:free": GONE}, quality=QUALITY_K9_UNSCORED
+    )
     assert "kimi/k9:free" in sent and not any(c.model == "kimi/k9:free" for c in report.candidates)
-    _, sent_again, _ = _run(monkeypatch, state=report.state)
+    _, sent_again, _ = _run(monkeypatch, state=report.state, quality=QUALITY_K9_UNSCORED)
     assert "kimi/k9:free" not in sent_again
     later = {
         **report.state,
         "canaries": {"openrouter/kimi/k9:free": {"verdict": "retired", "on": "2026-08-01"}},
     }
-    _, sent_later, _ = _run(monkeypatch, state=later)
+    _, sent_later, _ = _run(monkeypatch, state=later, quality=QUALITY_K9_UNSCORED)
     assert "kimi/k9:free" in sent_later
 
 
@@ -720,7 +739,7 @@ def test_inconclusive_candidates_are_retried_but_after_fresh_ones(monkeypatch):
     state = {
         "canaries": {"openrouter/kimi/k9:free": {"verdict": "quota_exhausted", "on": "2026-09-20"}}
     }
-    report, sent, _ = _run(monkeypatch, state=state)
+    report, sent, _ = _run(monkeypatch, state=state, quality=QUALITY_K9_UNSCORED)
     assert "kimi/k9:free" in sent
     assert "openrouter/kimi/k9:free" in {c.key for c in report.candidates}
 
@@ -2486,3 +2505,83 @@ def test_a_contended_provider_spends_no_session_and_the_next_provider_is_measure
     groq = next(c for c in report.candidates if c.provider == "groq")
     assert groq.discovery["reason"] == "automatic_discovery_deferred_pause_contended"
     assert "in flight" in groq.discovery["detail"]
+
+
+def _stub_session(candidate):
+    return {
+        "summary": {
+            "retryable": False,
+            "reason": "unsupported_endpoint_axis",
+            "reachability": "verified",
+            "calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "axes": [],
+        },
+        "artifact": {
+            "session": {"provider": candidate.provider},
+            "attempts": [],
+            "reason": "unsupported_endpoint_axis",
+        },
+    }
+
+
+def test_time_bound_discovery_starts_sessions_while_time_remains_and_saves_each(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    now = [0.0]
+    started = []
+    saved = []
+
+    def discover(candidate, *_args, **kwargs):
+        started.append((candidate.key, kwargs["deadline"], kwargs["fresh_run_budget"]))
+        now[0] += 4_000  # each session is long; a third would overrun the 7,200 s budget
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="timed-run",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: now[0],
+        discovery_sessions_sink=lambda sessions: saved.append(len(sessions)),
+    )
+    assert len(started) == 2  # the third candidate waits: 8,000 s spent leaves no session
+    assert all(deadline == 7_200 and fresh for _key, deadline, fresh in started)
+    assert saved == [1, 2]  # evidence is written after every session, not only at the end
+
+
+def test_carried_candidates_at_or_below_the_current_bar_are_dropped_from_the_report():
+    from citypods.provider_catalog.reconcile import Report, _merge_into_last_full
+
+    def row(model, score):
+        return {
+            "provider": "kilo",
+            "model": model,
+            "score": score,
+            "below_floor": None,
+            "context_limit": None,
+            "links": [],
+            "lanes": [],
+            "proven_on": "2026-10-30",
+            "structured_output_method": "json_schema",
+        }
+
+    report = Report(floor=11.7)
+    _merge_into_last_full(
+        report,
+        {"candidates": [row("weak", 5.5), row("bar", 11.7), row("fine", 20.0), row("new", None)]},
+        set(),
+    )
+    assert sorted(c.model for c in report.candidates) == ["fine", "new"]
