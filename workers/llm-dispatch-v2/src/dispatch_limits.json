@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 55,
+    "routes_count": 56,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -2746,6 +2746,49 @@
       "structured_output_schema_strip_keys": [],
       "request_params": null,
       "reasoning_controls": null
+    },
+    "nvidia_minimaxai_minimax_m3_1_flash": {
+      "route_id": "nvidia_minimaxai_minimax_m3_1_flash",
+      "stream_response": null,
+      "ai_gateway_max_attempts": null,
+      "model": "minimaxai/minimax-m3.1-flash",
+      "provider": "nvidia",
+      "upstream_model": "minimaxai/minimax-m3.1-flash",
+      "input_context_limit": 244940,
+      "output_context_limit": 12800,
+      "hard_input_ceiling": 244760,
+      "hard_input_ceiling_tolerance": null,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": null,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "tpm_window_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": null,
+      "tier": null,
+      "api_shape": null,
+      "request_path": null,
+      "yields_to": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
     }
   },
   "model_routes_map": {
@@ -2863,6 +2906,9 @@
     ],
     "typesafe/jev-1.13": [
       "beatapi_jev_1_13_free"
+    ],
+    "minimaxai/minimax-m3.1-flash": [
+      "nvidia_minimaxai_minimax_m3_1_flash"
     ]
   },
   "model_aliases": {
@@ -2966,7 +3012,9 @@
     "jev-1.13-free": "typesafe/jev-1.13",
     "beatapi/jev-1.13-free": "typesafe/jev-1.13",
     "beatapi/glm-5.3-flash-free": "zai/glm-5.3-flash",
-    "beatapi/minimax-m3.1-flash-free": "minimax/minimax-m3.1-flash"
+    "beatapi/minimax-m3.1-flash-free": "minimax/minimax-m3.1-flash",
+    "minimaxai/minimax-m3.1-flash": "minimaxai/minimax-m3.1-flash",
+    "nvidia/minimaxai/minimax-m3.1-flash": "minimaxai/minimax-m3.1-flash"
   },
   "model_routing": {
     "gemini/gemini-3.7-flash": [
