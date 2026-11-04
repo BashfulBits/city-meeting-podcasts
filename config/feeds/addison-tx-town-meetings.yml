@@ -32,9 +32,6 @@ source:
       body: "Former Sam's Club Staff Presentation"
   body_any:
     - "Town Hall Meeting"
-lifecycle:
-  status: dormant
-  reason: "old body name"
 podcast_title: "Addison: Public Input"
 podcast_author: "City of Addison, TX"
 podcast_email: ""
