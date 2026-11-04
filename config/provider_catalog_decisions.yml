@@ -61,4 +61,16 @@ ignored:
     model: dots-studio/dots-3-note-preview:free
     reason: Maintainer /apply selection
     decided_on: '2026-10-31'
+  - provider: kilo
+    model: poolside/laguna-s-2.1:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-04'
+  - provider: openrouter
+    model: poolside/laguna-s-2.1:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-04'
+  - provider: nvidia
+    model: meta/muse-glimmer-30b
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-04'
 acknowledged: []
