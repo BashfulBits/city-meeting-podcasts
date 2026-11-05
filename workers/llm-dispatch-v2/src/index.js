@@ -1250,6 +1250,8 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
     ? job.provider_idempotency_key || null
     : null;
   const jobWithPayload = { ...job, payload };
+  let inWindow5xxRetries = 0;
+  const max5xxInWindowRetries = 4;
 
   for (;;) {
     const attemptId = crypto.randomUUID();
@@ -1265,6 +1267,25 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
     });
 
     if (outcome.result) {
+      const isGoogle5xx =
+        route?.provider === "gemini" &&
+        outcome.result.outcome === "retryable_error" &&
+        Number.isInteger(outcome.result.provider_status_code) &&
+        [500, 503].includes(outcome.result.provider_status_code);
+
+      if (isGoogle5xx && inWindow5xxRetries < max5xxInWindowRetries) {
+        // Paced backoff capped at 5 seconds per maintainer contract
+        const baseMs = Math.min(5000, 1000 * 2 ** inWindow5xxRetries);
+        const backoffMs = Math.min(5000, Math.round(baseMs * (0.8 + Math.random() * 0.4)));
+        if (Date.now() + backoffMs + 2000 < bundleDeadline) {
+          inWindow5xxRetries += 1;
+          if (jobWithPayload.attempt_ordinal != null) jobWithPayload.attempt_ordinal += 1;
+          laneState.predecessorActualStart = outcome.result.actual_start_at;
+          await sleepUntil(Date.now() + backoffMs);
+          continue;
+        }
+      }
+
       laneState.predecessorActualStart = outcome.result.actual_start_at;
       return outcome.result;
     }

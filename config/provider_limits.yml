@@ -520,10 +520,8 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    # Extra headroom on the completion-settled input window (pacing.js tpmWindowMarginMs).
-    # Pending calls stay charged through their lease; response-end settlement prevents delayed
-    # starts from releasing input quota early. See review/55's 2026-10-19 quota recovery follow-up.
-    tpm_window_margin_seconds: 15
+    # Free-tier rate limit is 16,000 input tokens per minute (anchored to arrival time).
+    # Ceiling is 14,400 (10% safety cushion); no artificial window margin needed.
     hard_input_ceiling: 14400
     free: true
     observed_on: "2026-09-12"
@@ -545,10 +543,8 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    # Extra headroom on the completion-settled input window (pacing.js tpmWindowMarginMs).
-    # Pending calls stay charged through their lease; response-end settlement prevents delayed
-    # starts from releasing input quota early. See review/55's 2026-10-19 quota recovery follow-up.
-    tpm_window_margin_seconds: 15
+    # Free-tier rate limit is 16,000 input tokens per minute (anchored to arrival time).
+    # Ceiling is 14,400 (10% safety cushion); no artificial window margin needed.
     hard_input_ceiling: 14400
     free: true
     observed_on: "2026-09-12"

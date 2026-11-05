@@ -271,6 +271,49 @@ test("scheduled() retries once after a 429 and completes successfully", async ()
   }
 });
 
+test("scheduled() retries a Google 500 in-window and completes successfully", async () => {
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(url);
+    if (parsed.host === B2_HOST) {
+      return fakeFetch(store)(url, init);
+    }
+    calls += 1;
+    if (calls === 1) {
+      return new Response(
+        JSON.stringify({ error: { status: "INTERNAL", message: "internal error encountered." } }),
+        { status: 500, headers: { "content-type": "application/json" } }
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "recovered after 500" } }],
+        usage: { prompt_tokens: 100, completion_tokens: 50 },
+      }),
+      { status: 200 }
+    );
+  };
+  try {
+    const env = makeEnv();
+    await enqueueOneJob(env, "job-500", store);
+
+    const waitUntilPromises = [];
+    await worker.scheduled({}, env, { waitUntil: (p) => waitUntilPromises.push(p) });
+    await Promise.all(waitUntilPromises);
+
+    const coordinator = env.LLM_SCHEDULER.getByName();
+    const pollRes = await coordinator.pollBatch(["job-500"]);
+    assert.equal(pollRes.statuses[0].state, "completed");
+    const resultBody = JSON.parse(store.get(pollRes.statuses[0].result_key));
+    assert.equal(resultBody.choices[0].message.content, "recovered after 500");
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("scheduled() does nothing when B2 credentials are not configured", async () => {
   const store = new Map();
   let fetchCalls = 0;
