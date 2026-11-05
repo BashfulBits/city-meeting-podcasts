@@ -1118,7 +1118,6 @@ backend is down. The response text fallback is bounded and not stored.
 | **`mistral/mistral-large-2512`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B Dense | Mistral AI | 256k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Direct or dispatch | Complex meeting synthesis, policy dispute resolution, high-stakes soundbite selection |
 | **`mistral/mistral-large-3`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B+ Frontier | Mistral AI | 256k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Available in pool | Frontier civic reasoning, ordinance comparison, multi-speaker attribution |
 | **`mistral/mistral-small-2603`** | ⭐ **Tier 2 (Advanced MoE)**<br>119B MoE (128 experts) | Mistral AI | 256k tokens | 49 RPM<br>50k TPM (1B Mo pool) | Available in pool | Full 3-hour meeting ingestion, narrative chapter summaries, legislative amendments |
-| **`mistral/codestral-2508`** | ⭐ **Tier 2 (Structured Specialist)**<br>22B–32B Dense | Mistral AI + Airforce | 256k tokens | 125 RPM<br>625k TPM (1B Mo pool) | Available in pool | Strict JSON schema extraction, table/ordinance parsing, agenda crosswalk recovery |
 | **`moonshotai/kimi-k2.7-code`** | ⭐ **Tier 2 (Code & Structured)**<br>High-Capacity Code | Airforce | 131k tokens | 1 RPM<br>1,000 Free RPD | Available in pool | Structured extraction, JSON validation, schema-constrained parsing |
 | **`mistral/devstral-2512`** | ⭐ **Tier 2 (Agentic Reasoner)**<br>Agentic Fine-tuned | Mistral AI | 256k tokens | 49 RPM<br>1M TPM (1B Mo pool) | Available in pool | Multi-pass transcript cleanup, meeting action item tracking, tool calling |
 | **`mistral/mistral-medium-latest`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 50 RPM<br>25k TPM (1B Mo pool) | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
@@ -1628,7 +1627,7 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
 2. **Civic & Topic Classification (`tag`):** High-volume, short prompt with rigid ontology outputs.
    - *Primary Candidates:* `google/gemma-4-31b-it` (29k RPD free capacity), `google/gemma-4-26b-a4b-it`, `gemini/gemini-3.1-flash-lite`.
 3. **Structured Agenda Extraction & Crosswalk (`chapter_titles` / `agenda_crosswalk`):** Requires 100% strict JSON schema compliance and zero table-structure hallucination.
-   - *Primary Candidates:* `mistral/codestral-2508` (124 RPM, 256k context), `mistral/devstral-2512`, `mistral/mistral-medium-latest`.
+   - *Primary Candidates:* `mistral/devstral-2512`, `mistral/mistral-medium-latest`.
 4. **Key Soundbite & Quote Selection (`soundbite-select`):** Requires speaker intent nuance, context bounding, and editorial judgment.
    - *Primary Candidates:* `mistral/mistral-large-2512`, `meta-llama/llama-3.3-70b-instruct`, `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`.
 5. **High-Volume Backfills & Reprocessing:** Requires sub-cent token pricing or massive free quotas.
