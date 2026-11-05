@@ -634,7 +634,7 @@ def test_policy_bearing_call_requires_non_empty_recipe_hash():
     storage = MemStorage()
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/codestral-2508",
+            model="openai/gpt-oss-120b",
             mode="dispatch",
             dispatch_v2_url="https://dispatch.example",
         ),
@@ -1136,8 +1136,7 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
             "gemini/gemini-3.6-flash",
             f"{_GW}/google-ai-studio/v1beta/models/gemini-3.6-flash:generateContent",
         ),
-        # Mistral's only configured model (Codestral) is now also served by Airforce, so a
-        # single-provider Groq model stands in for the plain OpenAI-compatible case.
+        # A single-provider Groq model stands in for the plain OpenAI-compatible case.
         ("qwen/qwen3.8-27b", f"{_GW}/groq/chat/completions"),
         ("zai/glm-4.7-flash", f"{_GW}/custom-zai/v4/chat/completions"),
     ],

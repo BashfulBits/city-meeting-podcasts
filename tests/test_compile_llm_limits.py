@@ -146,19 +146,6 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
         compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl-120b-a12b"] == nemotron_35_super_key
     )
 
-    codestral_key = "mistral/codestral-2508"
-    codestral_routes = compiled["model_routes_map"][codestral_key]
-    # Native Mistral accounts were removed 2026-09-30 (metered, account-tier restricted); only the
-    # airforce codestral-latest route still serves this model key.
-    assert len(codestral_routes) == 1
-    assert {compiled["routes_by_id"][route_id]["provider"] for route_id in codestral_routes} == {
-        "airforce",
-    }
-    assert compiled["model_aliases"]["mistral/codestral-latest"] == codestral_key
-    worker = compile_llm_limits._worker_catalog(compiled)
-    assert worker["model_aliases"]["codestral-latest"] == codestral_key
-    assert worker["model_aliases"]["airforce/codestral-latest"] == codestral_key
-
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
     compiled = compile_llm_limits.compile_limits()
@@ -177,11 +164,6 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
         and route["input_context_limit"] > 0
         and route["output_context_limit"] > 0
         for route in compiled["routes"]
-    )
-    codestral = compiled["routes_by_id"]["mistral_codestral_airforce_primary"]
-    assert (codestral["input_context_limit"], codestral["output_context_limit"]) == (
-        256000,
-        8192,
     )
 
 
@@ -376,9 +358,6 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
             "gemini/gemini-3.5-flash",
         ]
     }
-    assert compiled["model_routes_map"]["mistral/codestral-2508"] == [
-        "mistral_codestral_airforce_primary",
-    ]
     worker = compile_llm_limits._worker_catalog(compiled)
     python_catalog = compile_llm_limits._python_routes(compiled)
     assert worker["model_routing"] == compiled["model_routing"]
@@ -612,7 +591,7 @@ def test_validated_routes_reports_the_offending_index_not_a_bare_keyerror():
 def test_validated_routes_rejects_a_duplicate_hand_authored_route_id():
     routes = [
         {"route_id": "dup", "model": "gemini/gemini-3-flash-preview"},
-        {"route_id": "dup", "model": "mistral/codestral-2508"},
+        {"route_id": "dup", "model": "dummy/model-b"},
     ]
     with pytest.raises(ValueError, match=r"route #1 redeclares route_id 'dup'"):
         compile_llm_limits._validated_routes(routes)

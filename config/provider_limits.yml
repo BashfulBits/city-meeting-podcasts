@@ -1310,32 +1310,6 @@ routes:
     structured_output_verified_on: "2026-09-24"
 
   # ==========================================
-  # AIRFORCE FREE ROUTES (api.airforce)
-  # OpenAI-compatible API gateway providing free tier endpoints.
-  # 1 RPM account-wide rate limit with guaranteed response windows.
-  # ==========================================
-  - route_id: mistral_codestral_airforce_primary
-    model: mistral/codestral-latest
-    model_key: mistral/codestral-2508
-    provider: airforce
-    upstream_model: codestral-latest
-    input_context_limit: 256000
-    output_context_limit: 8192
-    account_id: primary
-    rpm: 1
-    rpd: 1000
-    tpm: 200000
-    request_start_margin_seconds: 2
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-16"
-    observed_recovery_seconds: 111
-    retry_after_trustworthy: true
-    upstream_429_default: upstream_capacity
-
-  # ==========================================
   # BEATAPI FREE ROUTES (api.beatapi.io, `-free` ids only)
   # One account-wide free limit of 1 successful request/min (provider-level rpm above), shared by
   # every route below. Live 2026-10-07: all five returned 200 to a one-token ping in 2-5 s with no
