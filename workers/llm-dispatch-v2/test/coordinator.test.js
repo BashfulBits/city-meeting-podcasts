@@ -1632,10 +1632,10 @@ test("authorizeRetry own_tpm on a Google route logs what the window ledger belie
   assert.equal(event.route_id, "gemma_4_31b_primary");
   assert.equal(event.job_reservation, 10800);
   assert.equal(event.job_input_estimate, 9000);
-  // The 90s-old entry is outside the 60s + 15s margin span; only the 40s-old one counts.
+  // The 90s-old entry is outside the 60s span; only the 40s-old one counts.
   assert.equal(event.ledger_window_tokens, 5000);
   assert.equal(event.ledger_window_calls, 1);
-  assert.equal(event.window_margin_ms, 15_000);
+  assert.equal(event.window_margin_ms, 0);
   const row = [...sql.exec("SELECT tpm_reserved, tpm_window_start FROM routes WHERE route_id = 'gemma_4_31b_primary'")][0];
   assert.equal(row.tpm_window_start, now);
   assert.equal(row.tpm_reserved, 14400);
@@ -4176,23 +4176,23 @@ async function googleQuotaFixture(t, count = 2, input = 11000) {
     clock: (at) => { now = at; }, start: now };
 }
 
-test("Google holds pending input past 75s, settles at response end and resumes", async t => {
+test("Google holds pending input past 75s, settles at arrival/start and resumes", async t => {
   const fixture = await googleQuotaFixture(t);
   const { coordinator, sql, storage, plan, ledger, result, start, clock } = fixture;
   assert.equal(plan.jobs.length, 1);
   const pending = JSON.parse(ledger().input_window_json)[0];
-  assert.equal(pending.at, plan.jobs[0].lease_expires_at);
+  assert.equal(pending.at, start);
   assert.equal(pending.scheduled_at, start);
   assert.equal(pending.lease_token, plan.jobs[0].lease_token);
-  clock(start + 90_000);
+  clock(start + 40_000);
   assert.equal((await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.length, 0);
   await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result()]);
-  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 90_000, tokens: 11000 }]);
+  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 30_000, tokens: 11000 }]);
   // Persisted window survives eviction/recreation, with no extra per-call RPC.
   const recreated = new LLMSchedulerDO({ storage }, coordinator.env);
-  clock(start + 120_000);
+  clock(start + 50_000);
   assert.equal((await recreated.claimDispatchWindow(Date.now(), 30)).jobs.length, 0);
-  clock(start + 165_000);
+  clock(start + 110_000);
   assert.equal((await recreated.claimDispatchWindow(Date.now(), 30)).jobs.length, 1);
   assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='completed'")[0].n, 1);
 });
@@ -4217,7 +4217,7 @@ test("Google failed and unstarted calls release only their own lease-tagged inpu
       assert.equal(entries.some(e => e.lease_token === plan.jobs[0].lease_token), false);
       assert.equal(entries.length, failure === "unknown_429" ? 2 : 1);
       if (failure === "unknown_429") {
-        assert.ok(entries.some(e => e.at === start + 90_000 && e.tokens === 11000));
+        assert.ok(entries.some(e => e.at === start + 80_000 && e.tokens === 11000));
       }
       const saved = ledger().input_window_json;
       await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [outcome]);
@@ -4233,7 +4233,7 @@ test("Google measured errors settle input usage", async t => {
     outcome: "retryable_error", failure_class: "output_budget_exhausted",
     observed_input_tokens: 12000, observed_output_tokens: 2000,
   })]);
-  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 80_000, tokens: 12000 }]);
+  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 70_000, tokens: 12000 }]);
 });
 
 test("Google TPM cooldown survives exhausted retries and in-flight success", async t => {
@@ -4292,12 +4292,11 @@ test("Google partial-bundle duplicates and stale leases cannot double-charge inp
   assert.equal(ledger().input_window_json, saved);
 });
 
-test("Google lost-executor input debt survives reaping, then expires", async t => {
+test("Google lost-executor input debt holds for window span, then expires", async t => {
   const { coordinator, plan, ledger, start, clock } = await googleQuotaFixture(t);
-  clock(plan.jobs[0].lease_expires_at + 1);
+  clock(start + 30_000);
   assert.equal((await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.length, 0);
-  assert.equal(ledger().provisional_reservation, 0);
-  clock(plan.jobs[0].lease_expires_at + 75_000);
+  clock(start + 80_000);
   assert.ok((await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.length > 0);
   assert.ok(Date.now() > start);
 });
@@ -4308,7 +4307,7 @@ test("Google completion refunds input so fitting jobs share the window", async t
   await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [result(undefined, {
     observed_input_tokens: 2000,
   })]);
-  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 20_000, tokens: 2000 }]);
+  assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 10_000, tokens: 2000 }]);
   assert.equal((await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.length, 1,
     "actual 2k plus the next 11k fits the input window without an unnecessary full-window wait");
 });
@@ -4387,22 +4386,19 @@ test("timeout upgrade is additive and retains route counts on warm startup", asy
 });
 
 
-test("Google Gemma availability has three early retries, a five-minute cap and provider floors", () => {
+test("Google Gemma availability has max 5-second backoff and provider floors", () => {
   const { coordinator } = makeCoordinator();
   const now = Date.now();
-  for (const streak of [1, 2, 3]) {
+  for (const streak of [1, 2, 3, 4, 5, 20]) {
     const delay = coordinator._googleGemmaAvailabilityBlockedUntil(streak, now) - now;
-    assert.ok(delay >= 30_000 && delay <= 60_000);
-  }
-  for (const streak of [4, 5, 6, 20]) {
-    assert.ok(coordinator._googleGemmaAvailabilityBlockedUntil(streak, now) <= now + 300_000);
+    assert.ok(delay >= 500 && delay <= 5000, `delay ${delay} should be <= 5000`);
   }
   assert.equal(coordinator._googleGemmaAvailabilityBlockedUntil(1, now, 600), now + 600_000);
   assert.ok(coordinator._upstreamCapacityBlockedUntil(20, now, true) >= now + 86_400_000);
 });
 
 
-test("Google Gemma 503 requeues after previous failures with a short route cooldown", async () => {
+test("Google Gemma 503 requeues after previous failures with a max 5s route cooldown", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
@@ -4436,7 +4432,7 @@ test("Google Gemma 503 requeues after previous failures with a short route coold
   assert.equal(row.upstream_capacity_streak, 1);
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = ?", "j-empty-2xx")][0].state, "queued");
   assert.ok(
-    row.blocked_until >= now + 30_000 && row.blocked_until <= now + 61_000,
-    "Google availability must allow another cron opportunity"
+    row.blocked_until > now && row.blocked_until <= now + 5000,
+    "Google availability must allow rapid retry capped at 5 seconds"
   );
 });

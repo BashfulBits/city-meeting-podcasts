@@ -2024,13 +2024,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return now + Math.min(maxCooldown * 1000, Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5)));
   }
 
-  /** Three early cron retry opportunities, then at most five minutes; quotas still gate claims. */
+  /** Transient Google availability cooldown; max 5s backoff per maintainer contract. */
   _googleGemmaAvailabilityBlockedUntil(streak, now, retryAfterSeconds = null) {
-    const delay = streak <= 3 ? 30_000 + Math.random() * 30_000
-      : Math.min(300_000, 60_000 * 2 ** Math.min(streak - 4, 3)) * (0.8 + Math.random() * 0.2);
+    const delay = Math.min(5000, 1000 * 2 ** Math.min(Math.max(0, streak - 1), 2)) * (0.8 + Math.random() * 0.4);
     const providerFloor = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
       ? retryAfterSeconds * 1000 : 0;
-    return now + Math.ceil(Math.max(delay, providerFloor));
+    return now + Math.ceil(providerFloor > 0 ? providerFloor : Math.min(5000, delay));
   }
 
 
@@ -5472,8 +5471,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       tpd_updated_at: notBeforeAt,
       input_window_json: mergedRoute.provider === "gemini"
         ? JSON.stringify([...inputWindow(mergedRoute).filter((e) => e.at > notBeforeAt - tpmWindowSpanMs(mergedRoute)),
-            // Keep pending calls charged through their lease, then settle at response end.
-            { at: lease?.expiresAt ?? notBeforeAt, tokens: reservation,
+            // Google rate limits by arrival time; pending reservations anchor to scheduled start
+            // and clear after the minute window, not holding until lease expiry.
+            { at: notBeforeAt, tokens: reservation,
               ...(lease ? { lease_token: lease.token, scheduled_at: notBeforeAt } : {}) }])
         : "[]",
       tpm_window_start: tpmWindowStart,
@@ -6768,7 +6768,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const retrySeconds = Number(retryAfterSeconds);
           const providerDelay = Number.isFinite(retrySeconds) && retrySeconds > 0
             ? Math.ceil(retrySeconds * 1000) + 1000 : 0;
-          const blockedUntil = now + Math.max(tpmWindowSpanMs(route), providerDelay);
+          const blockedUntil = providerDelay > 0
+            ? now + providerDelay
+            : now + tpmWindowSpanMs(route);
           this._updateRoute(routeId, {
             full_token_budget: 0, token_budget_updated_at: now, tpm_reserved: tpm, tpm_window_start: now,
             last_provider_status: 429, last_failure_class: failureClass, maxBlockedUntil: blockedUntil,
@@ -7672,7 +7674,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
             const streak = (ledger.upstream_capacity_streak || 0) + (alreadyCooling ? 0 : 1);
             const failedRoute = this._dispatchLimits().routes_by_id?.[job.lease_route_id];
             const googleAvailability = failedRoute?.provider === "gemini" &&
-              /^gemma-4-/.test(String(failedRoute.upstream_model || "")) &&
               [500, 503].includes(result.provider_status_code);
             const nextBlock = googleAvailability
               ? this._googleGemmaAvailabilityBlockedUntil(streak, now, result.retry_after_seconds)

@@ -188,9 +188,9 @@ export function inputWindow(route) {
 }
 
 /**
- * Settle a lease-tagged Google input reservation at response end, a conservative upper bound on
- * arrival at the provider. Pending entries are held at the lease deadline until this happens;
- * a lost executor therefore ages out safely without a start RPC or a per-attempt table.
+ * Settle a lease-tagged Google input reservation at request start/arrival time (the actual
+ * rate-limit window anchor for Google AI Studio). Pending entries anchor to scheduled start
+ * time and clear after the minute window.
  */
 export function settleInputWindow(route, job, result, now, nonConsuming = false) {
   const entries = inputWindow(route).filter((entry) => entry.lease_token !== job.lease_token);
@@ -200,10 +200,9 @@ export function settleInputWindow(route, job, result, now, nonConsuming = false)
       Number.isFinite(observed) && observed >= 0;
     const tokens = hasUsage ? observed : Number(job.token_reservation) || 0;
     if (tokens > 0) {
-      const endedAt = Number(result.actual_end_at);
+      const startedAt = Number(result.actual_start_at);
       entries.push({
-        at: Math.max(Number(result.actual_start_at), Number.isFinite(endedAt) && endedAt > 0
-          ? endedAt : now),
+        at: Number.isFinite(startedAt) && startedAt > 0 ? startedAt : now,
         tokens,
       });
     }
