@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Gated Google 5xx in-window retries on TPM capacity and retained 5xx input accounting.** Prevents
+  immediate HTTP 429 rate limit errors on Google AI Studio (`gemma-4-31b-it`) by skipping in-window
+  5xx retries when repeating a prompt's input tokens would exceed the route's rolling 60-second
+  TPM limit (`(inWindow5xxRetries + 2) * tokens <= routeTpm`). Retains input token window
+  accounting on Google 500/503 responses that reached the provider (`actual_start_at != null`)
+  in `settleInputWindow`, preventing subsequent jobs from being admitted before Google's 60-second
+  arrival token quota has refilled.
+
 - **Prioritize Kilo over OpenRouter for Nemotron routes.** Reordered
   `kilo_nvidia_nemotron_3_ultra_550b_a55b_free` and `kilo_nemotron_3_5_super_vl_free` ahead of their
   OpenRouter siblings in `config/provider_limits.yml` and recompiled route catalogs. Removed the
