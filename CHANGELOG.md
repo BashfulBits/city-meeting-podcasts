@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Optimized Google AI Studio throughput and rate-limit handling.** Anchored Google input-window
+  accounting to scheduled start/arrival time rather than response completion time, removed the
+  unnecessary 15-second `tpm_window_margin_seconds` buffer on Gemma 4 31B routes, honored exact
+  provider 429 `retryDelay` headers (+1s buffer) globally on `own_tpm` instead of forcing a 60s
+  cooldown, capped Google transient 5xx route backoff at 5 seconds, and added paced in-window
+  retries for transient Google 500/503 errors within the bundle execution deadline.
+
 - **Removed NVIDIA Nemotron 3 Nano Omni and Groq Qwen 3.6 routes.** Retired the unused
   `nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free` and `groq_qwen_3_6_27b_primary` routes from
   `config/provider_limits.yml` and recompiled route catalogs.
