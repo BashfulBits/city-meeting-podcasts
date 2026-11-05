@@ -866,6 +866,66 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
+  # ==========================================
+  # KILO CODE ROUTES (Kilo Gateway)
+  # ==========================================
+  - route_id: kilo_stepfun_step_3_7_flash_free
+    model: kilo/stepfun/step-3.7-flash:free
+    provider: kilo
+    upstream_model: stepfun/step-3.7-flash:free
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: primary
+    concurrency: 1
+    rpm: 20
+    rpd: 200
+    hard_input_ceiling: 249027
+    free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: kilo_nvidia_nemotron_3_ultra_550b_a55b_free
+    model: kilo/nvidia/nemotron-3-ultra-550b-a55b:free
+    model_key: nvidia/nemotron-3-ultra-550b-a55b:free
+    provider: kilo
+    upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
+    input_context_limit: 1000000
+    output_context_limit: 65536
+    # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
+    input_token_ratio: 1.75
+    account_id: primary
+    concurrency: 1
+    rpm: 20
+    rpd: 200
+    hard_input_ceiling: 234437
+    free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 234437
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: kilo_nemotron_3_5_super_vl_free
+    model: kilo/nvidia/nemotron-3.5-super-vl:free
+    # Pools with the OpenRouter and NVIDIA legs of the same model.
+    model_key: openrouter/nvidia/nemotron-3.5-super-vl:free
+    provider: kilo
+    upstream_model: nvidia/nemotron-3.5-super-vl:free
+    # Kilo lists 1,000,000; the sibling legs measured 249,027 input tokens, so stay at their window.
+    input_context_limit: 262144
+    output_context_limit: 131072
+    account_id: primary
+    concurrency: 1
+    rpm: 20
+    rpd: 200
+    hard_input_ceiling: 249027
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-31"
+    observed_input_ceiling: 249027
+
   - route_id: openrouter_nvidia_nemotron_3_ultra_550b_a55b_free
     model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
     # OpenRouter and Kilo expose the same upstream free model under provider-qualified selectors.
@@ -904,48 +964,6 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
-  # ==========================================
-  # KILO CODE ROUTES (Kilo Gateway)
-  # ==========================================
-  - route_id: kilo_stepfun_step_3_7_flash_free
-    model: kilo/stepfun/step-3.7-flash:free
-    provider: kilo
-    upstream_model: stepfun/step-3.7-flash:free
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    rpd: 200
-    tpm: 100000
-    hard_input_ceiling: 249027
-    free: true
-    observed_on: "2026-09-12"
-    observed_input_ceiling: 249027
-    input_per_token: 0.0
-    output_per_token: 0.0
-
-  - route_id: kilo_nvidia_nemotron_3_ultra_550b_a55b_free
-    model: kilo/nvidia/nemotron-3-ultra-550b-a55b:free
-    model_key: nvidia/nemotron-3-ultra-550b-a55b:free
-    provider: kilo
-    upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
-    input_context_limit: 1000000
-    output_context_limit: 65536
-    # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
-    input_token_ratio: 1.75
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    rpd: 200
-    tpm: 100000
-    hard_input_ceiling: 234437
-    free: true
-    observed_on: "2026-09-12"
-    observed_input_ceiling: 234437
-    input_per_token: 0.0
-    output_per_token: 0.0
-
 
 
   # ==========================================
@@ -981,25 +999,6 @@ routes:
   # NVIDIA becomes an additional, independent free capacity source for that same logical model
   # rather than a new one, exactly like the existing SambaNova+SiliconFlow / OpenRouter+Kilo+
   # OpenCode poolings above.
-  - route_id: kilo_nemotron_3_5_super_vl_free
-    model: kilo/nvidia/nemotron-3.5-super-vl:free
-    # Pools with the OpenRouter and NVIDIA legs of the same model.
-    model_key: openrouter/nvidia/nemotron-3.5-super-vl:free
-    provider: kilo
-    upstream_model: nvidia/nemotron-3.5-super-vl:free
-    # Kilo lists 1,000,000; the sibling legs measured 249,027 input tokens, so stay at their window.
-    input_context_limit: 262144
-    output_context_limit: 131072
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    rpd: 200
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-31"
-
   - route_id: nvidia_kimi_k3_free
     model: moonshotai/kimi-k3
     provider: nvidia
