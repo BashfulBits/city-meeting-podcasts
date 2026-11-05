@@ -4236,6 +4236,43 @@ test("Google measured errors settle input usage", async t => {
   assert.deepEqual(JSON.parse(ledger().input_window_json), [{ at: start + 70_000, tokens: 12000 }]);
 });
 
+test("Google 500/503 server errors retain arrival input tokens in sliding window", async t => {
+  for (const statusCode of [500, 503]) {
+    await t.test(`HTTP ${statusCode}`, async t => {
+      const { coordinator, plan, ledger, result, start, clock } = await googleQuotaFixture(t);
+      clock(start + 15_000);
+      const outcome = result(undefined, {
+        outcome: "retryable_error",
+        failure_class: "server_error",
+        provider_status_code: statusCode,
+        actual_start_at: start + 5_000,
+        actual_end_at: start + 8_000,
+        observed_input_tokens: null,
+        observed_output_tokens: null,
+      });
+      await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [outcome]);
+      const entries = JSON.parse(ledger().input_window_json);
+      assert.deepEqual(entries, [{ at: start + 5_000, tokens: 11000 }]);
+
+      // Clear route-level 5xx cooldown to isolate input_window_json pacing
+      coordinator._getSql().exec(
+        "UPDATE routes SET blocked_until=0 WHERE route_id=?",
+        "google-project"
+      );
+
+      // Within the 60s window, next 11k job cannot be claimed due to TPM capacity
+      clock(start + 20_000);
+      const blockedClaim = await coordinator.claimDispatchWindow(Date.now(), 30);
+      assert.equal(blockedClaim.jobs.length, 0);
+
+      // After arrival window rolls off, next claim is admitted
+      clock(start + 85_000);
+      const admittedClaim = await coordinator.claimDispatchWindow(Date.now(), 30);
+      assert.equal(admittedClaim.jobs.length, 1);
+    });
+  }
+});
+
 test("Google TPM cooldown survives exhausted retries and in-flight success", async t => {
   const fixture = await googleQuotaFixture(t, 2, 3000);
   const { coordinator, sql, plan, ledger, result, start, clock } = fixture;
