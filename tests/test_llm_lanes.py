@@ -372,7 +372,7 @@ class TestRecipeAffectingModelPins:
         [
             ("chapter-agenda", "nvidia/nemotron-3-ultra-550b-a55b:free"),
             ("chapter-locator", "deepseek/deepseek-v4-flash"),
-            ("topic-tags:tagger", "gemini/gemini-3.1-flash-lite"),
+            ("topic-tags:tagger", "gemini/gemini-3.5-flash-lite"),
         ],
     )
     def test_production_route_is_pinned(self, purpose, expected):

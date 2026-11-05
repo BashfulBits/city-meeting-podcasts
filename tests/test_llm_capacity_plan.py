@@ -7,8 +7,8 @@ def test_full_plan_is_not_800_jobs_per_lane():
     report = project()
     assert report["new_jobs"] == 4000
     assert report["provider_attempts"] == 4400
-    assert report["ingress_units"] == 22400
-    assert report["billed_rows_estimate"] == 117640
+    assert report["ingress_units"] == 24000
+    assert report["billed_rows_estimate"] == 124040
     assert not report["fits_shared_caps"]
     assert all(row["purpose"] != "r6-judge" for row in report["lanes"])
 

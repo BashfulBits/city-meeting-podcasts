@@ -890,9 +890,10 @@ def test_tag_lane_uses_async_llm_dispatch_and_keeps_provider_key_off_runner():
     # `llm_lanes` registry, which also carries the lane's ingress write budget (review/44 Phase 4).
     # models[0] is the recipe/calibration key; the rest are throughput spill (2026-09-24).
     assert site["llm_lanes"]["topic-tags:tagger"]["models"] == [
-        "gemini/gemini-3.1-flash-lite",
-        "kilo/stepfun/step-3.7-flash:free",
+        "gemini/gemini-3.5-flash-lite",
+        "openrouter/nvidia/nemotron-3.5-super-vl:free",
         "deepseek/deepseek-v4-flash",
+        "gemini/gemini-3.1-flash-lite",
     ]
 
 
