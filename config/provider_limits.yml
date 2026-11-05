@@ -788,29 +788,6 @@ routes:
     observed_burst: 30
     observed_input_ceiling: 7125
 
-  - route_id: groq_qwen_3_6_27b_primary
-    model: qwen/qwen3.6-27b
-    provider: groq
-    upstream_model: qwen/qwen3.6-27b
-    input_context_limit: 131072
-    output_context_limit: 65536
-    account_id: primary
-    rpm: 30
-    rpd: 1000
-    # Distinct from gpt-oss-120b's 8000: this model's error body reports a separate, stricter
-    # "input tokens per minute (ITPM): Limit 7000" (confirmed live 2026-09-12, reproduced twice).
-    # 8000 (Groq's general per-model TPM header, which this route previously copied from
-    # gpt-oss-120b) overstates what this specific model actually allows.
-    tpm: 7000
-    # Same 7000 figure as tpm above: the binary-search ceiling probe converged near 7125 (an
-    # estimate from char/4 token counting), but the directly-quoted ITPM=7000 is exact and
-    # stricter, so it is used here instead of the noisier estimate.
-    hard_input_ceiling: 7000
-    free: true
-    observed_on: "2026-09-12"
-    observed_burst: 30
-    observed_input_ceiling: 7000
-
   - route_id: groq_qwen_3_8_27b_primary
     model: qwen/qwen3.8-27b
     provider: groq
@@ -1250,56 +1227,6 @@ routes:
     observed_burst: 5
     hard_input_ceiling: 249027
     observed_input_ceiling: 249027
-
-  - route_id: nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free
-    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-    # Omni-modal (text/image/video/speech) reasoning model; used here as a plain text chat route.
-    # 256k-token context per public benchmarks (artificialanalysis.ai/models/
-    # nemotron-3-nano-omni-30b-a3b) -- NVIDIA's own model card was not independently confirmed for
-    # this exact figure, so treat it as reported-but-not-primary-sourced.
-    provider: nvidia
-    upstream_model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-    input_context_limit: 256000
-    output_context_limit: 32768
-    account_id: primary
-    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
-    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
-    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
-    # showed up immediately as a drop in dispatched jobs.
-    rpm: 4
-    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
-    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
-    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
-    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
-    # formula, not measured or published. Input-ceiling (max size of one request, measured
-    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
-    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
-    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
-    # developer forums: "limits vary by model and are not published"). This tpm value remains
-    # exactly what it was before this session -- an unverified inherited placeholder, not a
-    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
-    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
-    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
-    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
-    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
-    # request this size, exactly the behavior this route's real ~6x ratio calls for.
-    tpm: 40000
-    hard_input_ceiling: 234437
-    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
-    # queueing it. Successful calls on these models run 41s median / 77s p90 /
-    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
-    # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier.
-    concurrency: 4
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-12"
-    observed_burst: 0
-    observed_input_ceiling: 234437
-    upstream_429_default: upstream_capacity
 
   # ==========================================
   # ORCAROUTER ROUTES (api.orcarouter.ai)
