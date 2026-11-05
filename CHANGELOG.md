@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Retired Codestral route.** Removed `mistral_codestral_airforce_primary`
+  (`mistral/codestral-2508`) from `config/provider_limits.yml` and recompiled route catalogs.
+
 - **Raised LLM dispatch ingress limits after the packed-state cutover.** The shared daily guard
   moves from 4,000 jobs / 25,600 write units to 6,000 / 38,400, and the tagger and moments lane
   ceilings rise 1.5x (9,600 to 14,400; 4,800 to 7,200), the two lanes whose caps closed ingress on
