@@ -79,11 +79,19 @@ MAX_LEASES_PER_UTC_DAY: 7000
 # before retries. Capacity evidence: review/evidence/2026-10-02-llm-800-meeting-capacity.md
 # Reproduce with scripts/llm_capacity_plan.py.
 # Keep the shared cap bounded near measured drain; raising it alone only grows the queue.
-MAX_JOBS_PER_UTC_DAY: 4000
+# Raised 4,000 -> 6,000 (2026-11-05) after the review/57 packed-state cutover: a full packed day
+# (2026-11-04) wrote 24,269 billed rows for 1,370 jobs ingested and ~800 completed, against
+# 51-72k rows/day under legacy tables. Worst case at the new caps: 6,000 jobs x ~6 enqueue rows
+# (compact queue) = 36k, plus 2,000 drained jobs x 24 lifecycle rows = 48k, plus ~2.4k idle and
+# operational rows, about 86k, under the 90,000-row safe stop. Real drain is ~800/day.
+MAX_JOBS_PER_UTC_DAY: 6000
 # Admission units cover enqueue indexes only, not completion/retry/retirement billed rows.
 # This ceiling remains below the static enqueue-row bound and live row headroom gates ingress.
 # Per-lane ceilings can exceed this envelope; their sum is demand, not guaranteed funding.
-MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 25600
+# Raised 25,600 -> 38,400 (2026-11-05, with MAX_JOBS_PER_UTC_DAY above). validateConfig
+# assumes the legacy 2 rows/unit, so 38,400 x 2 = 76,800 stays under DO_ROWS_ENQUEUE_STOP
+# (90,000) even after a rollback to legacy tables; 45,000 is the static ceiling.
+MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 38400
 # Global cap on queued jobs (MAX_QUEUED_JOBS): past it new work waits in the producer, not in
 # the DO. Left at the coordinator's default of 20,000 (`_maxQueuedJobs`), so not declared --
 # see the variable-limit note above.

@@ -880,8 +880,9 @@ headroom for the reporting gap, since short live-tail samples cannot reconstruct
 There is no working daily lease cap
 (`MAX_LEASES_PER_UTC_DAY` is a 7,000
 backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
-by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 4,000,
-`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 25,600) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
+by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 6,000,
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 38,400; raised from 4,000 / 25,600 after the
+[review/57](review/57-llm-dispatch-row-efficiency.md) packed-state cutover) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
 These are shared free-tier safety ceilings, not capacity for 800 fully enriched meetings.
 Tagging can split meetings into batches. Lane ceilings express an explicit planning scenario
 (two tag batches per eligible meeting); the producer's tag caps count episodes.

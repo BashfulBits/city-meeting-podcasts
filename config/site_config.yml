@@ -92,7 +92,8 @@ tagging:
 # slice no other lane may consume. Reserved must sum to <= MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (config/dispatch_tuning.yml);
 # `compile_llm_lanes.py` enforces that and the per-lane arithmetic below.
 # Lane daily ceilings are independent ceilings, not additive reservations. The shared ingress
-# guard targets 4,000 jobs / 25,600 write units per UTC day: 800 meetings through five core
+# guard is 6,000 jobs / 38,400 write units per UTC day (raised from 4,000 / 25,600 after the
+# review/57 packed-state cutover); the planning case is 800 meetings through five core
 # one-job-per-meeting tasks (agenda, locator, tagger, moments). Live row headroom may
 # defer work before any lane reaches 800. Reserved capacity is protected for its lane; all
 # reservations must fit the shared write-unit guard. Judge packets may use multiple jobs for one
@@ -164,9 +165,11 @@ llm_lanes:
       - "deepseek/deepseek-v4-flash"
     max_queued_jobs: 6400
     reserved_write_units: 1860
-    # Planning allowance: 800 meetings x two chapter batches x six units = 9,600.
-    # The queue cap provides a ~4-day smoothing envelope for backfill and bursts.
-    daily_write_units: 9600
+    # Planning allowance: 800 meetings x two chapter batches x six units = 9,600, raised 1.5x to
+    # 14,400 (2026-11-05): this ceiling closed tagger ingress on 2026-10-23 (9,600/9,600) with
+    # the queue below its cap, and the packed state cut per-job DO rows. The queue cap still
+    # bounds backlog; provider capacity, not ingress, sets throughput.
+    daily_write_units: 14400
   r6-moments:
     telemetry: {producer: moments, unit: episode, completion: consumed, scope: retained_catalog}
     # Size-aware routing selects the shortest model fitting the prompt for small packets (<= 45k)
@@ -187,8 +190,9 @@ llm_lanes:
     backup_after_attempts: 2
     max_queued_jobs: 3200
     reserved_write_units: 916
-    # 800 eligible meeting jobs x six ingress units = 4,800 units/day.
-    daily_write_units: 4800
+    # 800 eligible meeting jobs x six ingress units = 4,800 units/day, raised 1.5x to 7,200
+    # (2026-11-05): this ceiling closed moments ingress on 2026-10-23 (4,798/4,800).
+    daily_write_units: 7200
   # --- Judge stack (review/49, review/53) ----------------------------------------------------
   # Every judge job is pinned to one model (per_model, 4 ingress units), so a judge's identity is
   # part of every judgment and calibration cell; per_model lanes cannot declare backup_models, so

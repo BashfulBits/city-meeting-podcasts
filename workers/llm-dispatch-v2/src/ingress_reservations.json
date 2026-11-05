@@ -2,7 +2,7 @@
   "_generated_by": "scripts/compile_llm_lanes.py",
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
-  "global_write_budget": 25600,
+  "global_write_budget": 38400,
   "reserved_total": 16116,
   "reservations": {
     "chapter-agenda": {
@@ -81,7 +81,7 @@
     },
     "r6-moments": {
       "reserved_write_units": 916,
-      "daily_write_units": 4800,
+      "daily_write_units": 7200,
       "max_queued_jobs": 3200,
       "models": [
         "zai/glm-5.3-flash",
@@ -118,7 +118,7 @@
     },
     "topic-tags:tagger": {
       "reserved_write_units": 1860,
-      "daily_write_units": 9600,
+      "daily_write_units": 14400,
       "max_queued_jobs": 6400,
       "models": [
         "gemini/gemini-3.1-flash-lite",

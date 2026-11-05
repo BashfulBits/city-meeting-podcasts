@@ -263,6 +263,7 @@ def main() -> None:
         print(json.dumps(judging_demand(meetings=args.meetings), indent=2))
         return
     values = vars(args)
+    values.pop("judging")
     for name in ("chapter_fraction", "tag_fraction", "moment_fraction", "retry_fraction"):
         if not 0 <= values[name] <= 1:
             parser.error(f"{name} must be between zero and one")
