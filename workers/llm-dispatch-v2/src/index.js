@@ -1273,7 +1273,17 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
         Number.isInteger(outcome.result.provider_status_code) &&
         [500, 503].includes(outcome.result.provider_status_code);
 
-      if (isGoogle5xx && inWindow5xxRetries < max5xxInWindowRetries) {
+      const routeTpm = Number(route?.tpm || 0);
+      const estimatedInput = Number(
+        job.reserved_input_estimate || job.token_reservation || job.input_token_estimate || 0
+      );
+      // An in-window retry consumes another prompt reservation in the provider's rolling 60s
+      // arrival window. If repeated attempts would exceed the route's TPM allowance, retrying
+      // within the bundle deadline guarantees an immediate HTTP 429 rate limit refusal.
+      const canFitInTpmWindow =
+        routeTpm <= 0 || (inWindow5xxRetries + 2) * estimatedInput <= routeTpm;
+
+      if (isGoogle5xx && inWindow5xxRetries < max5xxInWindowRetries && canFitInTpmWindow) {
         // Paced backoff capped at 5 seconds per maintainer contract
         const baseMs = Math.min(5000, 1000 * 2 ** inWindow5xxRetries);
         const backoffMs = Math.min(5000, Math.round(baseMs * (0.8 + Math.random() * 0.4)));

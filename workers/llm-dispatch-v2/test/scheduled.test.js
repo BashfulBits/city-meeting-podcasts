@@ -314,6 +314,84 @@ test("scheduled() retries a Google 500 in-window and completes successfully", as
   }
 });
 
+test("scheduled() skips in-window 500 retry when tokens exceed route TPM", async () => {
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(url);
+    if (parsed.host === B2_HOST) {
+      return fakeFetch(store)(url, init);
+    }
+    calls += 1;
+    return new Response(
+      JSON.stringify({ error: { status: "INTERNAL", message: "internal error encountered." } }),
+      { status: 500, headers: { "content-type": "application/json" } }
+    );
+  };
+  try {
+    const catalogOverride = {
+      ...CATALOG,
+      routes_by_id: {
+        "route-a": {
+          ...CATALOG.routes_by_id["route-a"],
+          tpm: 16000,
+        },
+      },
+    };
+    const env = makeEnv(
+      { DISPATCH_LIMITS_OVERRIDE: catalogOverride },
+      { DISPATCH_LIMITS_OVERRIDE: catalogOverride }
+    );
+
+    // Enqueue a job with 10,000 input tokens.
+    // (0 + 2) * 10,000 = 20,000 > 16,000 TPM -> cannot fit in-window retry.
+    const payload = {
+      model: "gemini/gemini-flash-lite",
+      messages: [{ role: "user", content: "hi" }],
+    };
+    store.set("payloads/job-tight-tpm/request.json", JSON.stringify(payload));
+    const req = new Request("http://localhost/v2/jobs:enqueue-batch", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer secret-token" },
+      body: JSON.stringify({
+        jobs: [
+          {
+            id: "job-tight-tpm",
+            idempotency_key: "key-tight-tpm",
+            request_digest: "digest-tight-tpm",
+            policy_json: JSON.stringify({
+              allowed_models: ["gemini/gemini-flash-lite"],
+              allow_paid: false,
+            }),
+            prompt_family: "tags",
+            input_token_estimate: 10000,
+            max_output_token_estimate: 200,
+            payload_key: "payloads/job-tight-tpm/request.json",
+          },
+        ],
+      }),
+    });
+    const res = await worker.fetch(req, env);
+    assert.equal(res.status, 200);
+
+    const waitUntilPromises = [];
+    await worker.scheduled({}, env, { waitUntil: (p) => waitUntilPromises.push(p) });
+    await Promise.all(waitUntilPromises);
+
+    assert.equal(calls, 1, "did not retry in-window because input tokens exceed route TPM");
+    const coordinator = env.LLM_SCHEDULER.getByName();
+    const pollRes = await coordinator.pollBatch(["job-tight-tpm"]);
+    assert.equal(pollRes.statuses[0].state, "queued");
+    const rows = [...coordinator._getSql().exec(
+      "SELECT transient_retry_count FROM jobs WHERE id='job-tight-tpm'"
+    )];
+    assert.equal(rows[0].transient_retry_count, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("scheduled() does nothing when B2 credentials are not configured", async () => {
   const store = new Map();
   let fetchCalls = 0;
