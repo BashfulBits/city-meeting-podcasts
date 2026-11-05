@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Removed NVIDIA Nemotron 3 Nano Omni and Groq Qwen 3.6 routes.** Retired the unused
+  `nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free` and `groq_qwen_3_6_27b_primary` routes from
+  `config/provider_limits.yml` and recompiled route catalogs.
+
 - **An accepted AA match no longer keeps a dropped candidate listed.** Ticking an AA match for a
   model that the match then re-scored below the quality bar left it on the provider-catalog issue
   as a "pending prior selection" indefinitely. The match is a note for the next run, not a
