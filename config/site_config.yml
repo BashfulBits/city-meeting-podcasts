@@ -154,15 +154,16 @@ llm_lanes:
     daily_write_units: 7200
   topic-tags:tagger:
     telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
-    # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
-    # calibration-matrix key (models[0]). The two additional models (2026-09-24) are throughput
-    # spill onto independent free pools and take the largest transcripts Gemini's ceiling cannot
-    # (Kilo step-3.7-flash: AA 19.5, 200/day, 249k; OrcaRouter DeepSeek v4: AA 34.3, 800/day, 1M).
-    # Each answer records the model that produced it, so calibration stays keyed on real usage.
+    # Primary recipe route is Gemini 3.5 Flash Lite (AA 11.7, 1000/day, unshared quota).
+    # Secondary and tertiary throughput spill onto independent high-capacity free pools:
+    # Nemotron 3.5 Super VL (AA 13.6, pooled across Kilo, OpenRouter, and NVIDIA) and
+    # DeepSeek V4 Flash (AA 32.6, 1800/day, 1M context). Gemini 3.1 Flash Lite is placed
+    # as last priority to preserve its quota for chapter-agenda.
     models:
-      - "gemini/gemini-3.1-flash-lite"
-      - "kilo/stepfun/step-3.7-flash:free"
+      - "gemini/gemini-3.5-flash-lite"
+      - "openrouter/nvidia/nemotron-3.5-super-vl:free"
       - "deepseek/deepseek-v4-flash"
+      - "gemini/gemini-3.1-flash-lite"
     max_queued_jobs: 6400
     reserved_write_units: 1860
     # Planning allowance: 800 meetings x two chapter batches x six units = 9,600, raised 1.5x to

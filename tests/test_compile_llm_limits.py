@@ -145,6 +145,12 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert (
         compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl-120b-a12b"] == nemotron_35_super_key
     )
+    assert compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl:free"] == nemotron_35_super_key
+    assert compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl"] == nemotron_35_super_key
+    assert (
+        compiled["model_aliases"]["openrouter/nvidia/nemotron-3.5-super-vl"]
+        == nemotron_35_super_key
+    )
 
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():

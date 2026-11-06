@@ -121,15 +121,16 @@
       "daily_write_units": 14400,
       "max_queued_jobs": 6400,
       "models": [
-        "gemini/gemini-3.1-flash-lite",
-        "kilo/stepfun/step-3.7-flash:free",
-        "deepseek/deepseek-v4-flash"
+        "gemini/gemini-3.5-flash-lite",
+        "openrouter/nvidia/nemotron-3.5-super-vl:free",
+        "deepseek/deepseek-v4-flash",
+        "gemini/gemini-3.1-flash-lite"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "reasoning": {},
-      "write_units_per_job": 6
+      "write_units_per_job": 7
     }
   }
 }
