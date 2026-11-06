@@ -1184,7 +1184,17 @@ def llm_tag_suggestions(
     )
     if not isinstance(content, str):
         raise ValueError("LLM tag backend returned no structured content")
-    response = model.model_validate(parse_structured_json(content, context="LLM tag response"))
+    raw_payload = parse_structured_json(content, context="LLM tag response")
+    if isinstance(raw_payload, list):
+        raw_payload = {"tags": raw_payload}
+    elif (
+        isinstance(raw_payload, dict)
+        and "tags" not in raw_payload
+        and len(raw_payload) == 1
+        and isinstance(next(iter(raw_payload.values())), list)
+    ):
+        raw_payload = {"tags": next(iter(raw_payload.values()))}
+    response = model.model_validate(raw_payload)
     chapter_by_id = {item["chapter_id"]: item for item in (chapter_inputs or [])}
     source_text = {"agenda": agenda_item_titles + "\n" + agenda_text, "transcript": transcript_text}
     transcript_segments = [
