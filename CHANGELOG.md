@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Tag structured output array normalization.** Accept bare JSON array responses and single-key
+  wrapped lists from structured LLM outputs in `llm_tag_suggestions`, preventing schema validation
+  failures when models like `gemini-3.1-flash-lite` return top-level tag lists directly.
+
 - **Tagger models update and NVIDIA Nemotron 3.5 Super VL route wiring.** Updated
   `topic-tags:tagger` lane in `config/site_config.yml` to retire `kilo/stepfun/step-3.7-flash:free`,
   promote `gemini/gemini-3.5-flash-lite` (AA 11.7, 1,000 RPD) to primary recipe model, add
