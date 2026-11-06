@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Unblock LLM job submission and judging throughput.**
+  - **Raise DO active bundle limit:** Increase `MAX_ACTIVE_BUNDLES` from 5 to 12 in dispatch tuning
+    so fast worker bundles are not blocked by long-running Gemma/JEV claim bundles.
+  - **Rule candidate judging slot load balancing:** Enable Slot B (`non_google`, e.g. Nemotron)
+    alongside Slot A (`google`) to evaluate rule-candidate subjects in `sibling_candidates`, and
+    raise `max_outstanding_packets.sibling` from 480 to 800 packets.
+  - **Terminal failure recovery:** Add `scripts/clear_terminal_failures.py` CLI, storage helper
+    `clear_terminal_failure()`, and `.github/workflows/clear-terminal-failures.yml` workflow to
+    audit and prune poisoned failure markers for clean lineage retry.
+
 - **Tag structured output array normalization.** Accept bare JSON array responses and single-key
   wrapped lists from structured LLM outputs in `llm_tag_suggestions`, preventing schema validation
   failures when models like `gemini-3.1-flash-lite` return top-level tag lists directly.
