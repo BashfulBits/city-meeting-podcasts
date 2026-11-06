@@ -19,6 +19,7 @@ from citypods.compute.llm_deferred import (
     _load_snapshot_from_keys,
     _read_json,
     _write_json,
+    clear_terminal_failure,
     deferred_failure_key,
     deferred_key,
     discard_completed_result,
@@ -280,6 +281,8 @@ def test_schema_correction_marker_is_retryable_until_a_second_malformed_reply_ex
 
     discard_terminal_failure(storage, snapshot, handle, error, exhausted=True, now=NOW)
     assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is False
+    assert clear_terminal_failure(storage, handle.recipe_hash) is True
+    assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is True
 
 
 def test_repair_prunes_only_expired_terminal_failure_markers():

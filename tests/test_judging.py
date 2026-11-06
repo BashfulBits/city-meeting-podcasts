@@ -1922,6 +1922,11 @@ def test_the_stage_loads_probes_only_when_enabled(monkeypatch):
 def test_the_sibling_slot_is_a_pool_of_independent_candidates():
     sibling = LANES["judge:sibling"]
     assert sibling_candidates(None, sibling, FAMILIES) == (GEMMA_31B, GEMMA_26B)
+    assert sibling_candidates(None, sibling, FAMILIES, allow_all_slots=True) == (
+        GEMMA_31B,
+        GEMMA_26B,
+        "openrouter/nvidia/nemotron-3.5-super-vl:free",
+    )
     assert sibling_candidates(GEMINI, sibling, FAMILIES) == (
         "openrouter/nvidia/nemotron-3.5-super-vl:free",
     )

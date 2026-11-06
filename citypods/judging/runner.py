@@ -46,6 +46,7 @@ from citypods.judging.backends import (
     choose_options,
 )
 from citypods.judging.families import (
+    RULE_FAMILY,
     UNKNOWN_FAMILY,
     choose_sibling_candidates,
     family_of,
@@ -866,8 +867,14 @@ def plan(
             per_question = [q for q in spec.questions if q.kind != "choose"]
             group_units: dict[tuple[str, str], list[Item]] = {}
             for subject in subjects:
+                is_rule = family_of(subject.producer_model, ctx.families) == RULE_FAMILY
                 sibling = _pick_sibling(
-                    sibling_candidates(subject.producer_model, ctx.sibling, ctx.families),
+                    sibling_candidates(
+                        subject.producer_model,
+                        ctx.sibling,
+                        ctx.families,
+                        allow_all_slots=is_rule,
+                    ),
                     _models_used(subject),
                     ctx,
                 )
@@ -1008,8 +1015,15 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
     if not choose or len(subjects) < 2:
         return
     question = choose[0]
+    producer_families = {family_of(s.producer_model, ctx.families) for s in subjects}
+    is_rule_meeting = producer_families == {RULE_FAMILY}
     sibling = _pick_sibling(
-        choose_sibling_candidates([s.producer_model for s in subjects], ctx.sibling, ctx.families),
+        choose_sibling_candidates(
+            [s.producer_model for s in subjects],
+            ctx.sibling,
+            ctx.families,
+            allow_all_slots=is_rule_meeting,
+        ),
         _models_used(subjects[0]),
         ctx,
     )

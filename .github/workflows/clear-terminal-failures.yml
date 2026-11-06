@@ -1,0 +1,87 @@
+name: Clear terminal failures
+
+# Manual cleanup: clear terminal failure markers (state/llm_deferred_failures/) from storage
+# so blocked recipe lineages (e.g. tag recipes that failed before a parser fix) can retry cleanly.
+#
+# Dispatch from the Actions tab → "Clear terminal failures" → Run workflow.
+# Leave `apply` unchecked first for a dry-run (prints matching markers without mutating storage),
+# then run with `apply` checked from main to delete matching markers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task to clear ('tag', 'agenda-item-extract', 'agenda-chapter-locate', 'all')"
+        required: false
+        type: string
+        default: "tag"
+      status:
+        description: "Failure statuses to clear (comma-separated)"
+        required: false
+        type: string
+        default: "exhausted,structural_blocked"
+      recipe_hash:
+        description: "Clear only this exact recipe hash (optional; blank = all matching)"
+        required: false
+        type: string
+        default: ""
+      apply:
+        description: "Actually delete failure markers from storage (unchecked = dry-run)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: llm-deferred-failures
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  clear:
+    runs-on: ubuntu-latest
+    env:
+      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Clear terminal failure markers
+        env:
+          TASK_INPUT: ${{ inputs.task }}
+          STATUS_INPUT: ${{ inputs.status }}
+          RECIPE_HASH_INPUT: ${{ inputs.recipe_hash }}
+          APPLY_INPUT: ${{ inputs.apply }}
+          GIT_REF: ${{ github.ref }}
+        run: |
+          ARGS=()
+          if [ -n "$TASK_INPUT" ]; then ARGS+=(--task "$TASK_INPUT"); fi
+          if [ -n "$STATUS_INPUT" ]; then ARGS+=(--status "$STATUS_INPUT"); fi
+          if [ -n "$RECIPE_HASH_INPUT" ]; then ARGS+=(--recipe-hash "$RECIPE_HASH_INPUT"); fi
+          if [ "$APPLY_INPUT" = "true" ]; then
+            if [ "$GIT_REF" != "refs/heads/main" ]; then
+              echo "::error::apply can only mutate state from main"
+              exit 1
+            fi
+            ARGS+=(--apply)
+          fi
+          PYTHONPATH=. python scripts/clear_terminal_failures.py "${ARGS[@]}"
