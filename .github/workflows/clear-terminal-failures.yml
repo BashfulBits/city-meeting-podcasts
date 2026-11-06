@@ -20,6 +20,11 @@ on:
         required: false
         type: string
         default: "exhausted,structural_blocked"
+      days:
+        description: "Only scan markers modified in the last N days (0 = all history; default 7)"
+        required: false
+        type: string
+        default: "7"
       recipe_hash:
         description: "Clear only this exact recipe hash (optional; blank = all matching)"
         required: false
@@ -41,7 +46,9 @@ permissions:
 jobs:
   clear:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
+      PYTHONUNBUFFERED: "1"
       B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
@@ -69,6 +76,7 @@ jobs:
         env:
           TASK_INPUT: ${{ inputs.task }}
           STATUS_INPUT: ${{ inputs.status }}
+          DAYS_INPUT: ${{ inputs.days }}
           RECIPE_HASH_INPUT: ${{ inputs.recipe_hash }}
           APPLY_INPUT: ${{ inputs.apply }}
           GIT_REF: ${{ github.ref }}
@@ -76,6 +84,7 @@ jobs:
           ARGS=()
           if [ -n "$TASK_INPUT" ]; then ARGS+=(--task "$TASK_INPUT"); fi
           if [ -n "$STATUS_INPUT" ]; then ARGS+=(--status "$STATUS_INPUT"); fi
+          if [ -n "$DAYS_INPUT" ]; then ARGS+=(--days "$DAYS_INPUT"); fi
           if [ -n "$RECIPE_HASH_INPUT" ]; then ARGS+=(--recipe-hash "$RECIPE_HASH_INPUT"); fi
           if [ "$APPLY_INPUT" = "true" ]; then
             if [ "$GIT_REF" != "refs/heads/main" ]; then
