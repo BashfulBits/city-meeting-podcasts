@@ -39,13 +39,12 @@ MAX_CONCURRENT_ROUTE_LANES: 6
 # MAX_RESPONSE_SECONDS, and waiting on a provider costs no Worker CPU time.
 DISPATCH_WINDOW_SECONDS: 30
 CRON_TICK_SECONDS: 60
-# Raised from 2 on 2026-09-20 to let one additional slow bundle overlap, and from 3 to 5 on
-# 2026-10-17: the claim counter `active_bundle_limit` grew from 8 to 42 in four hours while the
-# Gemma sibling backlog waited, because three slow bundles (NVIDIA calls take 35-170 s, JEV and
-# overflow routes minutes) filled every slot. This changes concurrency only; daily bundle/job/write
-# caps remain unchanged, and MAX_IN_FLIGHT_LLM_CALLS plus the per-provider/per-route concurrency
-# limits remain the admission safety boundaries.
-MAX_ACTIVE_BUNDLES: 5
+# Raised from 2 on 2026-09-20, from 3 to 5 on 2026-10-17, and from 5 to 12 on 2026-11-05:
+# slow bundles (Gemma taking 200-300s, JEV taking minutes) filled every slot and caused 54 empty
+# claims in a single day under active_bundle_limit. This changes concurrency only; daily
+# bundle/job/write caps remain unchanged, and MAX_IN_FLIGHT_LLM_CALLS plus the
+# per-provider/per-route concurrency limits remain the admission safety boundaries.
+MAX_ACTIVE_BUNDLES: 12
 # Raised from 8 to 12 and from 12 to 20 to relieve in_flight_call_limit bottlenecks.
 # Per-provider and per-route limits remain the admission safety boundaries.
 MAX_IN_FLIGHT_LLM_CALLS: 20

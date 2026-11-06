@@ -445,6 +445,20 @@ def schema_correction_attempted(storage, recipe_hash: str) -> bool:
     return bool(isinstance(data, Mapping) and data.get("schema_correction_attempted"))
 
 
+def clear_terminal_failure(storage, recipe_hash: str) -> bool:
+    """Delete a terminal-failure marker so the recipe lineage may be retried cleanly."""
+    if storage is None:
+        return False
+    key = deferred_failure_key(recipe_hash)
+    try:
+        if hasattr(storage, "delete"):
+            storage.delete(key)
+            return True
+    except Exception:
+        return False
+    return False
+
+
 def _record_structural_recovery(recipe_hash: str, marker: Mapping[str, Any], **fields: Any) -> None:
     """Correlate optional recovery evidence without exposing recipe inputs or adding reads."""
     if not enabled():
@@ -1617,6 +1631,7 @@ __all__ = [
     "DeferredSnapshot",
     "DeferredSnapshotEntry",
     "MAX_TERMINAL_FAILURE_RETRIES",
+    "clear_terminal_failure",
     "discard_terminal_failure",
     "discard_deferred",
     "needs_moments_replan",
