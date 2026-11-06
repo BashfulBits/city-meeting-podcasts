@@ -15,6 +15,20 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Tagger models update and NVIDIA Nemotron 3.5 Super VL route wiring.** Updated
+  `topic-tags:tagger` lane in `config/site_config.yml` to retire `kilo/stepfun/step-3.7-flash:free`,
+  promote `gemini/gemini-3.5-flash-lite` (AA 11.7, 1,000 RPD) to primary recipe model, add
+  `openrouter/nvidia/nemotron-3.5-super-vl:free` (AA 13.6, 400 RPD, pooled across Kilo, OpenRouter,
+  and NVIDIA) as secondary spill capacity, retain `deepseek/deepseek-v4-flash` (AA 32.6, 1,800 RPD),
+  and demote `gemini/gemini-3.1-flash-lite` to last priority so `chapter-agenda` can more fully
+  utilize Flash-Lite 3.1 quota. Wired model aliases in `config/provider_limits.yml` for
+  `nvidia/nemotron-3.5-super-vl:free`, `nvidia/nemotron-3.5-super-vl`, and
+  `openrouter/nvidia/nemotron-3.5-super-vl` to canonical
+  `openrouter/nvidia/nemotron-3.5-super-vl:free`, and set `upstream_429_default: upstream_capacity`
+  on the direct NVIDIA route. *Backfill story:* Promoting Flash-Lite 3.5 as primary updates
+  `tag_input_fingerprint` and `tag_recipe_hash`, gradually re-tagging catalog episodes on routine
+  runs within the lane's daily ingress and queue caps.
+
 - **Gated Google 5xx in-window retries on TPM capacity and retained 5xx input accounting.** Prevents
   immediate HTTP 429 rate limit errors on Google AI Studio (`gemma-4-31b-it`) by skipping in-window
   5xx retries when repeating a prompt's input tokens would exceed the route's rolling 60-second
