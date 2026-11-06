@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Terminal failure cleanup resilience and performance.** Optimize `clear_terminal_failures.py`
+  with `--days` time cutoff (default 7 days) and 8-worker concurrent downloads via
+  `ThreadPoolExecutor`, safe error handling for transient storage exceptions, and real-time progress
+  logging with unbuffered workflow output in `.github/workflows/clear-terminal-failures.yml`.
+
 - **Unblock LLM job submission and judging throughput.**
   - **Raise DO active bundle limit:** Increase `MAX_ACTIVE_BUNDLES` from 5 to 12 in dispatch tuning
     so fast worker bundles are not blocked by long-running Gemma/JEV claim bundles.
