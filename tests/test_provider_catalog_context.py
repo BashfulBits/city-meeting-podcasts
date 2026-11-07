@@ -1730,9 +1730,9 @@ def test_context_writer_ignores_issue_proof_and_reauthenticates_fresh_main(monke
 @pytest.mark.parametrize(
     "event,schedule,ref",
     [
-        ("workflow_dispatch", "17 10 * * 1", "refs/heads/main"),
+        ("workflow_dispatch", "07 10 * * 1", "refs/heads/main"),
         ("schedule", "37 9 * * *", "refs/heads/main"),
-        ("schedule", "17 10 * * 1", "refs/heads/feature"),
+        ("schedule", "07 10 * * 1", "refs/heads/feature"),
     ],
 )
 def test_context_cli_rejects_manual_daily_and_non_main_runs(
@@ -1761,7 +1761,7 @@ def test_weekly_disabled_or_stale_catalog_does_not_start_history_admission_or_ca
 
     for key, value in {
         "GITHUB_EVENT_NAME": "schedule",
-        "GITHUB_EVENT_SCHEDULE": "17 10 * * 1",
+        "GITHUB_EVENT_SCHEDULE": "07 10 * * 1",
         "GITHUB_REF": "refs/heads/main",
         "GITHUB_REPOSITORY": "owner/repo",
         "GITHUB_RUN_ID": "100",

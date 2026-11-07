@@ -8,7 +8,7 @@ on:
   schedule:
     # Every 5 hours: transcription uses a 285m start cutoff and 350m backstop, so a run may
     # intentionally make the next scheduled run wait briefly while the current transcript finishes.
-    - cron: "0 */5 * * *"
+    - cron: "34 */5 * * *"
   workflow_dispatch:
 
 # Own concurrency group, distinct from `pages` and `audio`: a deploy is never canceled by ASR, and

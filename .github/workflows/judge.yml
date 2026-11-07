@@ -8,7 +8,7 @@ on:
   schedule:
     # Every two hours: twelve passes split each judge lane's daily cap into run caps
     # (site_config.yml llm_lanes judge:*), keeping JEV's single-flight window lightly loaded.
-    - cron: "45 */2 * * *"
+    - cron: "37 */2 * * *"
   workflow_dispatch:
     inputs:
       dry_run:

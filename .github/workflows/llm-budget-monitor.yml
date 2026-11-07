@@ -7,7 +7,7 @@ name: LLM token-budget monitor
 # workflow never changes config. The issue closes itself on a day with no findings.
 on:
   schedule:
-    - cron: "40 23 * * *"
+    - cron: "11 23 * * *"
   workflow_dispatch: {}
 
 permissions:

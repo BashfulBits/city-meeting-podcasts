@@ -260,7 +260,7 @@ Thin foundation so later phases have real code to test. No new product features.
 - **Feed validation in CI**: every generated `*.xml` validated; build fails if invalid.
 - **Lint/format gates**: `ruff` + `ruff format` as required status checks.
 - **Workflows**: `ci.yml` (PRs + push), `preview.yml` (per-PR preview deploy of `docs/`),
-  `deploy.yml` (scheduled `0 */4 * * *` + main-push production deploy to Pages).
+  `deploy.yml` (scheduled `26 */4 * * *` + main-push production deploy to Pages).
 
 ### Phase 2 — Media materialization pipeline + CivicPlus *(re-scoped)*
 Investigation (done) showed CivicMedia serves only tokenized HLS, so CivicPlus can't be a
@@ -328,7 +328,7 @@ dependency rather than deferred.
 | `site_description` | ... | Index page subtitle |
 | `site_author` / `site_author_url` | `""` | Footer attribution |
 | `github_repo` | `""` | `"user/repo"` for Issue links |
-| `schedule_cron` | `"0 */4 * * *"` | Production deploy cadence |
+| `schedule_cron` | `"26 */4 * * *"` | Production deploy cadence |
 | `request_delay_seconds` | `0.1` | Politeness sleep per worker thread |
 | `defaults.podcast_language` | `"en-us"` | Inherited by all cities |
 | `defaults.podcast_category` | `"Government"` | Inherited by all cities |

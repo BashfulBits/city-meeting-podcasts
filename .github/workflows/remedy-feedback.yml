@@ -12,7 +12,7 @@ on:
   issues:
     types: [closed, reopened]
   schedule:
-    - cron: "15 5 * * *"
+    - cron: "32 5 * * *"
   workflow_dispatch:
 
 permissions: {}

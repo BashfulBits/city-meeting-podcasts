@@ -3,7 +3,7 @@ name: Audio runner image
 on:
   schedule:
     # Rebuild weekly so registry availability and the pinned toolchain are exercised regularly.
-    - cron: "17 4 * * 0"
+    - cron: "35 4 * * 0"
   workflow_dispatch:
   push:
     branches: [main]

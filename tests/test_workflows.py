@@ -189,7 +189,7 @@ def test_workflows_use_node24_cache_actions_without_force_flag():
 def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     workflow, job = _job("r7-diarization.yml", "diarize")
     triggers = _on(workflow)
-    assert triggers["schedule"] == [{"cron": "30 */6 * * *"}]
+    assert triggers["schedule"] == [{"cron": "31 */6 * * *"}]
     assert "workflow_dispatch" in triggers
     assert workflow["concurrency"] == {
         "group": "r7-speaker-evaluation-state",
@@ -461,7 +461,7 @@ def test_no_combined_enrich_workflow():
 def test_asr_workflow_runs_every_five_hours():
     wf, _ = _job("asr.yml")
     schedules = _on(wf).get("schedule", [])
-    assert {item.get("cron") for item in schedules} == {"0 */5 * * *"}
+    assert {item.get("cron") for item in schedules} == {"34 */5 * * *"}
 
 
 def test_asr_reconcile_scopes_storage_secrets_to_the_step_that_needs_them():
@@ -1229,8 +1229,8 @@ def test_chapter_workflows_use_alternating_two_hour_schedules():
     agenda, _agenda_job = _job("chapter-agenda.yml")
     locator, _locator_job = _job("chapter-locator.yml")
 
-    assert _on(agenda)["schedule"] == [{"cron": "0 */2 * * *"}]
-    assert _on(locator)["schedule"] == [{"cron": "0 1-23/2 * * *"}]
+    assert _on(agenda)["schedule"] == [{"cron": "43 */2 * * *"}]
+    assert _on(locator)["schedule"] == [{"cron": "17 1-23/2 * * *"}]
 
 
 def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
@@ -1242,15 +1242,15 @@ def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
     )
 
     assert [item["cron"] for item in _on(wf)["schedule"]] == [
-        "45 0 * * *",
-        "25 3 * * *",
-        "05 6 * * *",
-        "45 8 * * *",
-        "25 11 * * *",
-        "05 14 * * *",
-        "45 16 * * *",
-        "25 19 * * *",
-        "05 22 * * *",
+        "12 0 * * *",
+        "36 3 * * *",
+        "25 6 * * *",
+        "15 8 * * *",
+        "42 11 * * *",
+        "27 14 * * *",
+        "22 16 * * *",
+        "09 19 * * *",
+        "41 22 * * *",
     ]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
     assert wf["concurrency"] == {
@@ -1601,7 +1601,7 @@ def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
 def test_deferred_full_prune_workflow_runs_weekly_and_is_main_only():
     wf, job = _job("llm-deferred-full-prune.yml", "prune")
     schedules = _on(wf)["schedule"]
-    assert schedules == [{"cron": "30 4 * * 0"}]
+    assert schedules == [{"cron": "14 4 * * 0"}]
     assert job["if"] == "github.ref == 'refs/heads/main'"
     assert job["timeout-minutes"] == 180
     step = next(
@@ -1622,7 +1622,7 @@ def test_provider_catalog_reconcile_is_issue_only_paused_and_keyed_from_config()
     assert wf["permissions"] == {}
     assert job["permissions"] == {"contents": "read", "issues": "write", "actions": "read"}
     crons = {entry["cron"] for entry in _on(wf)["schedule"]}
-    assert crons == {"17 10 * * 1", "20 8 * * *"}
+    assert crons == {"07 10 * * 1", "27 8 * * *"}
     step = job["steps"][_step_index(job, "reconcile_provider_routes.py")]
     assert "--sync-issues" in step["run"] and "--due-only" in step["run"]
     assert "--apply" not in step["run"] and "--open-pr" not in step["run"]
@@ -1865,11 +1865,11 @@ def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock()
 def test_context_artifact_is_weekly_main_only_and_apply_keeps_writer_lock():
     wf, producer = _job("provider-catalog-reconcile.yml", "reconcile")
     run = next(s for s in producer["steps"] if s.get("name") == "Reconcile provider catalogs")
-    assert '"$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1"' in run["run"]
+    assert '"$GITHUB_EVENT_SCHEDULE" = "07 10 * * 1"' in run["run"]
     assert "--context-evidence" in run["run"]
     upload = next(s for s in producer["steps"] if s.get("name") == "Retain scoped context evidence")
     assert "github.event_name == 'schedule'" in upload["if"]
-    assert "github.event.schedule == '17 10 * * 1'" in upload["if"]
+    assert "github.event.schedule == '07 10 * * 1'" in upload["if"]
     assert upload["with"]["retention-days"] == 90
     assert wf["concurrency"]["group"] == "provider-catalog-writers"
 

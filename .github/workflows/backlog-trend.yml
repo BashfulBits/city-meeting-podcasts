@@ -2,7 +2,7 @@ name: LLM backlog trend
 
 on:
   schedule:
-    - cron: "20 0 * * *"
+    - cron: "54 0 * * *"
   workflow_dispatch: {}
 
 permissions:

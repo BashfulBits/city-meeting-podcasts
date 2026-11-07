@@ -9,7 +9,7 @@ name: Availability digest
 
 on:
   schedule:
-    - cron: "0 8 * * 1" # Mondays 08:00 UTC (after the weekly endpoint-contracts probe at 06:30)
+    - cron: "53 8 * * 1" # Mondays after the weekly endpoint-contracts probe
   workflow_dispatch:
 
 permissions:

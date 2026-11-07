@@ -325,7 +325,7 @@ moments:
   timeout_seconds: 90
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
-schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
+schedule_cron: "26 */4 * * *"            # production deploy cadence (also set in workflow)
 request_delay_seconds: 0.1               # politeness sleep per worker thread
 max_workers: 8
 max_encodes_per_source: 2                # parallel episode workers within one source (silence + encode)

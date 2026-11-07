@@ -4,7 +4,7 @@ name: City discovery
 # Tavily/LLM capacity, and bot comments/label changes must not create a feedback loop.
 on:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "49 3 * * *"
   workflow_dispatch:
     inputs:
       city_slug:

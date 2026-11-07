@@ -6,7 +6,7 @@ name: Weekly judge audit
 
 on:
   schedule:
-    - cron: "0 13 * * 1"
+    - cron: "25 13 * * 1"
   workflow_dispatch:
 
 concurrency:

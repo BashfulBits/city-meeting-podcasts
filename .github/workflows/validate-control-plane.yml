@@ -29,7 +29,7 @@ name: Validate R2/CAS control plane
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 5 * * 1" # Mondays 05:00 UTC (ahead of the weekly endpoint-contracts check)
+    - cron: "21 5 * * 1" # Monday control-plane validation before weekly endpoint checks
 
 permissions:
   contents: read

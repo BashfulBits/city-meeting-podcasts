@@ -2,7 +2,7 @@ name: R7 Speaker Calibration Review
 
 on:
   schedule:
-    - cron: "0 13 * * 1"
+    - cron: "49 13 * * 1"
   workflow_dispatch:
 
 concurrency:
