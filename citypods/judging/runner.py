@@ -1228,6 +1228,7 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     cache_value_bytes = 0
     cache_observations: Counter = Counter()
     origin_refreshed: set[int] = set()
+    origin_failed: dict[int, StorageReadUnavailable | TextsUnavailable] = {}
 
     def remember_texts(ep: Any, value: EpisodeTexts | TextsUnavailable) -> None:
         nonlocal cache_value_bytes
@@ -1256,7 +1257,13 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
             cached = texts_cache.get(id(ep))
             if isinstance(cached, EpisodeTexts):
                 return cached
-        value = texts_for_origin(ep)
+        if id(ep) in origin_failed:
+            raise origin_failed[id(ep)]
+        try:
+            value = texts_for_origin(ep)
+        except (StorageReadUnavailable, TextsUnavailable) as exc:
+            origin_failed[id(ep)] = exc
+            raise
         old = texts_cache.get(id(ep))
         if old is not None:
             cache_value_bytes -= _estimate_text_cache_value_bytes(old)

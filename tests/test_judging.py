@@ -1693,6 +1693,28 @@ def test_quote_check_reloads_from_origin_when_cached_cdn_evidence_digest_differs
     assert stats.counts["transcript_cache_origin_fallbacks"] >= 1
 
 
+def test_failed_origin_retry_is_attempted_once_per_episode_and_retried_next_pass():
+    ep = _episode()
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer()
+    ctx = _adj_ctx(dispatch)
+    ctx.texts_for = lambda _ep: dataclasses.replace(TEXTS, segments=_segments(word="stale"))
+    attempts = []
+
+    def unavailable(episode):
+        attempts.append(episode)
+        raise runner.TextsUnavailable("origin unavailable")
+
+    ctx.texts_for_origin = unavailable
+    first = runner.run([ep], ctx)
+    assert first.counts["quote_check_deferred"] > 1
+    assert len(attempts) == 1
+    assert _any_pending(ep)
+    runner.run([ep], ctx)
+    assert len(attempts) == 2
+
+
 def test_the_quote_check_reads_a_bounded_number_of_transcripts_a_pass():
     eps = [_episode(uid=f"ep-{i}", llm=[]) for i in range(3)]
     dispatch = FakeDispatch()
