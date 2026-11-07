@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Deduplicated lane pending jobs and unified model aliases in /v2/stats.**
+  Expose deduplicated queued job counts per lane in `ingress.by_purpose[].pending` when
+  requested via `?pending=1` or `?lanes=1`. Queries leverage the partial covering index
+  `idx_jobs_queued_purpose` with an in-memory 15-second TTL cache, and are skipped completely
+  when the global queue count is zero to avoid query overhead during routine cron or producer ticks.
+  Also expose unified `model_aliases` and per-lane `completed` job counts to simplify widget
+  and dashboard consumers.
+
 Judge quote checks now try the guarded public CDN URL for B2-backed transcripts before reading
 from B2, with hash and evidence-digest fallback checks. Run metrics expose edge cache status,
 transfer volume and time, B2 fallback volume, and the parsed-text cache's estimated peak size.
