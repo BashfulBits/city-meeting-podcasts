@@ -1504,11 +1504,19 @@ class JudgeStage(LLMProducerStage):
         from citypods.judging.texts import build_episode_texts, tag_definitions
 
         definitions = tag_definitions()
+        transcript_read_metrics: collections.Counter = collections.Counter()
+        cdn_session = None
 
-        def texts_for(ep: Episode) -> EpisodeTexts:
+        def build_texts_for(ep: Episode, *, prefer_cdn: bool) -> EpisodeTexts:
             try:
                 raw = (
-                    _read_storage_bytes(ctx.storage, ep.transcript_key or "")
+                    _read_judge_transcript_bytes(
+                        storage,
+                        ep.transcript_key or "",
+                        cdn_session,
+                        transcript_read_metrics,
+                        prefer_cdn=prefer_cdn,
+                    )
                     if ep.transcript_key
                     else None
                 )
@@ -1523,8 +1531,19 @@ class JudgeStage(LLMProducerStage):
                 raise runner.TextsUnavailable(str(exc)) from exc
             return build_episode_texts(ep, raw, definitions)
 
+        def texts_for(ep: Episode) -> EpisodeTexts:
+            return build_texts_for(ep, prefer_cdn=True)
+
+        def texts_for_origin(ep: Episode) -> EpisodeTexts:
+            return build_texts_for(ep, prefer_cdn=False)
+
         backend = ctx.judge_backend
         storage = getattr(getattr(backend, "_backend", backend), "storage", None) or ctx.storage
+        cdn_enabled = _judge_storage_uses_b2_cdn(storage)
+        if cdn_enabled:
+            from citypods.http import make_session
+
+            cdn_session = make_session()
         dry_run = self._dry_run() or backend is None
         uids = {ep.uid or ep.guid for ep in episodes if ep.uid or ep.guid}
 
@@ -1586,6 +1605,7 @@ class JudgeStage(LLMProducerStage):
             sibling=sibling,
             families=load_families(),
             texts_for=texts_for,
+            texts_for_origin=texts_for_origin if cdn_enabled else None,
             look_up=lambda recipe: look_up_deferred(
                 storage,
                 recipe,
@@ -1612,7 +1632,12 @@ class JudgeStage(LLMProducerStage):
             probes_per_pass=probes_per_pass,
             audit_rows=ctx.judge_audit_rows,
         )
-        result = runner.run(episodes, judging)
+        try:
+            result = runner.run(episodes, judging)
+        finally:
+            if cdn_session is not None:
+                cdn_session.close()
+        result.counts.update(transcript_read_metrics)
         for key, count in sorted(result.counts.items()):
             # Restartable leftovers are deferrals (they feed the backlog trend); the rest are
             # quality/volume counters for the run log.
@@ -5214,6 +5239,84 @@ def _read_storage_bytes(storage, key: str) -> bytes | None:
         if not storage.get_file(key, local_path):
             return None
         return local_path.read_bytes()
+
+
+def _judge_storage_uses_b2_cdn(storage) -> bool:
+    """Whether transcript public URLs are backed by the configured B2 public front door."""
+    primary = getattr(storage, "primary", storage)
+    return getattr(primary, "name", None) == "b2" and callable(getattr(storage, "public_url", None))
+
+
+def _read_judge_transcript_bytes(
+    storage,
+    key: str,
+    session,
+    metrics: collections.Counter,
+    *,
+    prefer_cdn: bool = True,
+) -> bytes | None:
+    """Read judge transcripts through the B2 public CDN first, then fall back to B2 storage.
+
+    Provider-transcript keys carry a 12-character SHA-1 prefix of the raw bytes; verify it before
+    accepting a CDN response. Other transcript formats are validated by the judge's rebuilt
+    evidence digest, with a direct B2 retry on mismatch in ``runner._evidence_text``.
+    """
+    from requests import RequestException
+
+    use_cdn = prefer_cdn and session is not None and _judge_storage_uses_b2_cdn(storage)
+    if use_cdn:
+        metrics["transcript_cdn_attempts"] += 1
+        started = time.perf_counter()
+        response = None
+        try:
+            response = session.get(storage.public_url(key), timeout=30)
+            response.raise_for_status()
+            data = bytes(response.content)
+            metrics["transcript_cdn_bytes"] += len(data)
+            cache_status = str(response.headers.get("CF-Cache-Status", "")).upper()
+            if cache_status == "HIT":
+                metrics["transcript_cdn_cache_hits"] += 1
+            elif cache_status == "MISS":
+                metrics["transcript_cdn_cache_misses"] += 1
+            else:
+                metrics["transcript_cdn_cache_status_other"] += 1
+            provider_hash = re.search(r"-provider-([0-9a-f]{12})\.[^.]+$", key.rsplit("/", 1)[-1])
+            if not data:
+                metrics["transcript_cdn_empty_responses"] += 1
+            elif provider_hash and not hashlib.sha1(data).hexdigest().startswith(
+                provider_hash.group(1)
+            ):
+                metrics["transcript_cdn_integrity_mismatches"] += 1
+            else:
+                return data
+        except RequestException:
+            metrics["transcript_cdn_request_failures"] += 1
+        finally:
+            if response is not None:
+                response.close()
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            metrics["transcript_cdn_elapsed_ms"] += elapsed_ms
+            metrics["transcript_cdn_elapsed_ms_max"] = max(
+                metrics["transcript_cdn_elapsed_ms_max"], elapsed_ms
+            )
+        metrics["transcript_cdn_origin_fallbacks"] += 1
+    elif not prefer_cdn:
+        metrics["transcript_cdn_evidence_digest_fallbacks"] += 1
+    else:
+        metrics["transcript_storage_direct_reads"] += 1
+
+    try:
+        data = _read_storage_bytes(storage, key)
+    except StorageReadUnavailable:
+        if _judge_storage_uses_b2_cdn(storage):
+            metrics["transcript_b2_fallback_failures"] += 1
+        raise
+    if _judge_storage_uses_b2_cdn(storage):
+        metrics["transcript_b2_fallback_reads"] += 1
+        metrics["transcript_b2_fallback_bytes"] += len(data or b"")
+    else:
+        metrics["transcript_storage_direct_bytes"] += len(data or b"")
+    return data
 
 
 def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections import Counter
 from concurrent.futures import Future
 from datetime import UTC, datetime
 
@@ -24,6 +25,7 @@ from citypods.stages import (
     StageStats,
     _diarize_fits_remaining_budget,
     _mark_stage_complete,
+    _read_judge_transcript_bytes,
     default_stages,
     enrich_stages,
     render_stages,
@@ -34,6 +36,89 @@ from citypods.stages import (
 )
 from citypods.storage import StorageReadUnavailable
 from citypods.storage.local import LocalStorage
+
+
+def test_judge_transcript_reads_accept_a_matching_public_cdn_object():
+    import hashlib
+
+    content = b"provider transcript bytes"
+    digest = hashlib.sha1(content).hexdigest()[:12]
+    key = f"transcripts/source/episode-provider-{digest}.txt"
+
+    class Storage:
+        name = "b2"
+
+        def public_url(self, object_key):
+            return f"https://audio.citymeetings.fyi/{object_key}"
+
+        def exists(self, object_key):
+            pytest.fail(f"B2 fallback should not check existence for {object_key}")
+
+    class Response:
+        headers = {"CF-Cache-Status": "HIT"}
+
+        def __init__(self):
+            self.content = content
+
+        def raise_for_status(self):
+            return None
+
+        def close(self):
+            return None
+
+    class Session:
+        def get(self, url, *, timeout):
+            assert url == f"https://audio.citymeetings.fyi/{key}"
+            assert timeout == 30
+            return Response()
+
+    metrics = Counter()
+    assert _read_judge_transcript_bytes(Storage(), key, Session(), metrics) == content
+    assert metrics["transcript_cdn_attempts"] == 1
+    assert metrics["transcript_cdn_cache_hits"] == 1
+    assert metrics["transcript_b2_fallback_reads"] == 0
+
+
+def test_judge_transcript_reads_fall_back_to_b2_on_provider_hash_mismatch(tmp_path):
+    content = b"origin transcript bytes"
+    key = "transcripts/source/episode-provider-000000000000.txt"
+
+    class Storage:
+        name = "b2"
+
+        def public_url(self, object_key):
+            return f"https://audio.citymeetings.fyi/{object_key}"
+
+        def exists(self, object_key):
+            assert object_key == key
+            return True
+
+        def get_file(self, object_key, path):
+            assert object_key == key
+            path.write_bytes(content)
+            return True
+
+    class Response:
+        headers = {"CF-Cache-Status": "HIT"}
+        content = b"stale CDN bytes"
+
+        def raise_for_status(self):
+            return None
+
+        def close(self):
+            return None
+
+    class Session:
+        def get(self, _url, *, timeout):
+            assert timeout == 30
+            return Response()
+
+    metrics = Counter()
+    assert _read_judge_transcript_bytes(Storage(), key, Session(), metrics) == content
+    assert metrics["transcript_cdn_integrity_mismatches"] == 1
+    assert metrics["transcript_cdn_origin_fallbacks"] == 1
+    assert metrics["transcript_b2_fallback_reads"] == 1
+    assert metrics["transcript_b2_fallback_bytes"] == len(content)
 
 
 class FakeFfmpeg:
