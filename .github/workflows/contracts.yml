@@ -8,7 +8,7 @@ name: Endpoint contracts
 
 on:
   schedule:
-    - cron: "30 6 * * 1" # Mondays 06:30 UTC
+    - cron: "08 6 * * 1" # Mondays at a staggered minute
   workflow_dispatch:
     inputs:
       all:

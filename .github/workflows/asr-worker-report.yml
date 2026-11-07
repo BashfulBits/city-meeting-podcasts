@@ -2,7 +2,7 @@ name: ASR Worker Report
 
 on:
   schedule:
-    - cron: "42 14 * * *"
+    - cron: "08 14 * * *"
   workflow_dispatch:
     inputs:
       recent:

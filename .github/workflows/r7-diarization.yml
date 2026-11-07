@@ -6,7 +6,7 @@ name: R7 Diarization
 # artifact can immediately produce private review candidates.
 on:
   schedule:
-    - cron: "30 */6 * * *"
+    - cron: "31 */6 * * *"
   workflow_dispatch:
 
 concurrency:

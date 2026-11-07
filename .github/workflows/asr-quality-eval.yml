@@ -2,7 +2,7 @@ name: ASR Quality Eval
 
 on:
   schedule:
-    - cron: "0 9 * * 1"
+    - cron: "16 9 * * 1"
   workflow_dispatch:
     inputs:
       sample_limit:

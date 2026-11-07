@@ -7,8 +7,8 @@ name: Audio
 
 on:
   schedule:
-    # Offset from the deploy cron (deploy at :00) so audio backfill trails each render.
-    - cron: "30 */4 * * *"
+    # Stagger after the deploy cron so audio backfill trails each render.
+    - cron: "47 */4 * * *"
   workflow_dispatch:
 
 # Own concurrency group, distinct from `pages` and `asr`: one audio run at a time (its shards run

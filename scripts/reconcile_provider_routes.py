@@ -685,7 +685,7 @@ def main(argv: list[str] | None = None) -> int:
             or args.due_only
             or args.provider
             or os.environ.get("GITHUB_REF") != "refs/heads/main"
-            or os.environ.get("GITHUB_EVENT_SCHEDULE") != "17 10 * * 1"
+            or os.environ.get("GITHUB_EVENT_SCHEDULE") != "07 10 * * 1"
         ):
             parser.error("context evidence is weekly scheduled main only")
         if isinstance(control, WorkerDispatchControl):
@@ -759,7 +759,7 @@ def main(argv: list[str] | None = None) -> int:
         and (
             (
                 os.environ.get("GITHUB_EVENT_NAME") == "schedule"
-                and os.environ.get("GITHUB_EVENT_SCHEDULE") == "17 10 * * 1"
+                and os.environ.get("GITHUB_EVENT_SCHEDULE") == "07 10 * * 1"
             )
             or (
                 args.incremental

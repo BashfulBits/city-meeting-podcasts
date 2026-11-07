@@ -5,7 +5,7 @@ name: Prune expired LLM deferred records
 # weekly maintenance pass performs the full TTL cleanup that the normal path cannot see.
 on:
   schedule:
-    - cron: "30 4 * * 0" # weekly, one hour before the Sunday 05:30 UTC deferred sweep
+    - cron: "14 4 * * 0" # weekly, before the Sunday deferred sweep
   workflow_dispatch:
 
 permissions:

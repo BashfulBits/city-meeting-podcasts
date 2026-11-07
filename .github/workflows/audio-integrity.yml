@@ -2,7 +2,7 @@ name: Audio integrity audit
 
 on:
   schedule:
-    - cron: "15 7 * * *"
+    - cron: "18 7 * * *"
   workflow_dispatch:
     inputs:
       partition:

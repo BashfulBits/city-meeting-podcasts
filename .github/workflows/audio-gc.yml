@@ -18,7 +18,7 @@ name: Storage reclaim
 
 on:
   schedule:
-    - cron: "30 7 * * 1" # Mondays 07:30 UTC (before the availability digest at 08:00)
+    - cron: "33 7 * * 1" # Mondays before the availability digest
   workflow_dispatch:
     inputs:
       apply:

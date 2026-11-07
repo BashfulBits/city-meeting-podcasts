@@ -5,10 +5,9 @@ name: LLM deferred sweep
 # its existing temporary singleton reap path while it drains. The job persists completed results
 # and prunes expired registry records, but its normal six-hour run is a short observation/retry pass.
 #
-# Scheduled every six hours, anchored so one run still lands at 17:30 UTC -- an hour after
+# Scheduled every six hours, anchored so one run still lands at 17:37 UTC -- 67 minutes after
 # DeepSeek's 16:30 off-peak window opens (review/27 §5.3), which the previous once-daily cron
-# existed to catch. That off-peak run is preserved exactly; the other three are what shortened the
-# observation lag.
+# existed to catch. The off-peak run stays in that window; the other three shorten observation lag.
 #
 # Raised from once daily on 2026-08-27. A v2 job completes within minutes of dispatch but was only
 # *observed* by this sweep, so a daily cadence left completions pending for up to ~23h. That is a
@@ -21,7 +20,7 @@ name: LLM deferred sweep
 
 on:
   schedule:
-    - cron: "30 5,11,17,23 * * *" # every 6h; the 17:30 run is 1h into DeepSeek's off-peak window
+    - cron: "37 5,11,17,23 * * *" # every 6h; the 17:37 run is 1h into DeepSeek's off-peak window
   workflow_dispatch:
     inputs:
       pending_audit_limit:

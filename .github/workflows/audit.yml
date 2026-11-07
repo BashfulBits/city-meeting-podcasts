@@ -8,7 +8,7 @@ name: Feed health audit
 
 on:
   schedule:
-    - cron: "0 12 * * *" # daily at 12:00 UTC
+    - cron: "32 12 * * *" # daily at a staggered minute
   workflow_dispatch:
     inputs:
       enclosures:
