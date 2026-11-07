@@ -284,6 +284,22 @@ class S3CompatibleStorage:
     def public_url(self, key: str) -> str:
         return f"{self.public_base_url}/{key}"
 
+    def read_immutable_public_bytes(
+        self, key, session, metrics, *, prefer_cdn=True, validate=None, metric_prefix="transcript"
+    ):
+        """Explicitly opt an immutable public object into CDN-first reads."""
+        from citypods.storage.public_read import read_immutable_public_bytes
+
+        return read_immutable_public_bytes(
+            self,
+            key,
+            session,
+            metrics,
+            prefer_cdn=prefer_cdn,
+            validate=validate,
+            metric_prefix=metric_prefix,
+        )
+
     # --- compare-and-swap (optional StorageBackend capability) ---
 
     def get_bytes(self, key: str) -> tuple[bytes, str] | None:

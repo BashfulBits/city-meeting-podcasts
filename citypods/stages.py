@@ -5242,81 +5242,28 @@ def _read_storage_bytes(storage, key: str) -> bytes | None:
 
 
 def _judge_storage_uses_b2_cdn(storage) -> bool:
-    """Whether transcript public URLs are backed by the configured B2 public front door."""
-    primary = getattr(storage, "primary", storage)
-    return getattr(primary, "name", None) == "b2" and callable(getattr(storage, "public_url", None))
+    from citypods.storage.public_read import supports_public_cdn
+
+    return supports_public_cdn(storage)
 
 
-def _read_judge_transcript_bytes(
-    storage,
-    key: str,
-    session,
-    metrics: collections.Counter,
-    *,
-    prefer_cdn: bool = True,
-) -> bytes | None:
-    """Read judge transcripts through the B2 public CDN first, then fall back to B2 storage.
+def _read_judge_transcript_bytes(storage, key, session, metrics, *, prefer_cdn=True):
+    """Read public transcript content and verify provider keys before accepting CDN bytes."""
+    from citypods.storage.public_read import read_immutable_public_bytes
 
-    Provider-transcript keys carry a 12-character SHA-1 prefix of the raw bytes; verify it before
-    accepting a CDN response. Other transcript formats are validated by the judge's rebuilt
-    evidence digest, with a direct B2 retry on mismatch in ``runner._evidence_text``.
-    """
-    from requests import RequestException
+    provider_hash = re.search(r"-provider-([0-9a-f]{12})\.[^.]+$", key.rsplit("/", 1)[-1])
 
-    use_cdn = prefer_cdn and session is not None and _judge_storage_uses_b2_cdn(storage)
-    if use_cdn:
-        metrics["transcript_cdn_attempts"] += 1
-        started = time.perf_counter()
-        response = None
-        try:
-            response = session.get(storage.public_url(key), timeout=30)
-            response.raise_for_status()
-            data = bytes(response.content)
-            metrics["transcript_cdn_bytes"] += len(data)
-            cache_status = str(response.headers.get("CF-Cache-Status", "")).upper()
-            if cache_status == "HIT":
-                metrics["transcript_cdn_cache_hits"] += 1
-            elif cache_status == "MISS":
-                metrics["transcript_cdn_cache_misses"] += 1
-            else:
-                metrics["transcript_cdn_cache_status_other"] += 1
-            provider_hash = re.search(r"-provider-([0-9a-f]{12})\.[^.]+$", key.rsplit("/", 1)[-1])
-            if not data:
-                metrics["transcript_cdn_empty_responses"] += 1
-            elif provider_hash and not hashlib.sha1(data).hexdigest().startswith(
-                provider_hash.group(1)
-            ):
-                metrics["transcript_cdn_integrity_mismatches"] += 1
-            else:
-                return data
-        except RequestException:
-            metrics["transcript_cdn_request_failures"] += 1
-        finally:
-            if response is not None:
-                response.close()
-            elapsed_ms = int((time.perf_counter() - started) * 1000)
-            metrics["transcript_cdn_elapsed_ms"] += elapsed_ms
-            metrics["transcript_cdn_elapsed_ms_max"] = max(
-                metrics["transcript_cdn_elapsed_ms_max"], elapsed_ms
-            )
-        metrics["transcript_cdn_origin_fallbacks"] += 1
-    elif not prefer_cdn:
-        metrics["transcript_cdn_evidence_digest_fallbacks"] += 1
-    else:
-        metrics["transcript_storage_direct_reads"] += 1
+    def validate(data):
+        return not provider_hash or hashlib.sha1(data).hexdigest().startswith(
+            provider_hash.group(1)
+        )
 
-    try:
-        data = _read_storage_bytes(storage, key)
-    except StorageReadUnavailable:
-        if _judge_storage_uses_b2_cdn(storage):
-            metrics["transcript_b2_fallback_failures"] += 1
-        raise
-    if _judge_storage_uses_b2_cdn(storage):
-        metrics["transcript_b2_fallback_reads"] += 1
-        metrics["transcript_b2_fallback_bytes"] += len(data or b"")
-    else:
-        metrics["transcript_storage_direct_bytes"] += len(data or b"")
-    return data
+    read = getattr(storage, "read_immutable_public_bytes", None)
+    if read is None:
+        return read_immutable_public_bytes(
+            storage, key, session, metrics, prefer_cdn=prefer_cdn, validate=validate
+        )
+    return read(key, session, metrics, prefer_cdn=prefer_cdn, validate=validate)
 
 
 def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:

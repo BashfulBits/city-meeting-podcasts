@@ -1557,6 +1557,8 @@ pending or missing.
 Like `tag`, the lane runs unsharded but is a scoped, lane-owned writer: it pushes through the
 foreign-block-preserving `push_records_merged` (protecting every block but `judging`), skips the
 full-run reconcile, and checkpoints after its pass once its batched jobs are submitted. On
+Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
+state, conditional, and other storage reads continue to use their owning backend directly. For
 B2-backed runs, judge transcript reads try the configured public CDN URL through the guarded HTTP
 session first, then fall back to B2 on HTTP/network failure or a provider-transcript key hash
 mismatch. If rebuilt evidence still has the wrong digest, quote checking retries from B2 before
