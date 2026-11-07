@@ -3499,15 +3499,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
         scheduler.utc_day
       )];
       const completedByPurpose = new Map();
-      try {
-        for (const row of sql.exec(
-          "SELECT purpose, SUM(calls) AS completed FROM attempt_usage WHERE utc_day = ? GROUP BY purpose",
-          scheduler.utc_day
-        )) {
-          completedByPurpose.set(row.purpose, Number(row.completed) || 0);
+      const packed = this._packed();
+      if (packed) {
+        const today = scheduler.utc_day;
+        for (let i = 0; i < TELEMETRY_SHARDS; i++) {
+          const shardUsage = packed.shard(i)?.usage || {};
+          for (const cell of Object.values(shardUsage)) {
+            if (cell.utc_day === today && cell.purpose) {
+              const prev = completedByPurpose.get(cell.purpose) || 0;
+              completedByPurpose.set(cell.purpose, prev + (Number(cell.calls) || 0));
+            }
+          }
         }
-      } catch {
-        // Table or columns may be empty in mock storage
+      } else {
+        try {
+          for (const row of sql.exec(
+            "SELECT purpose, SUM(calls) AS completed FROM attempt_usage WHERE utc_day = ? GROUP BY purpose",
+            scheduler.utc_day
+          )) {
+            completedByPurpose.set(row.purpose, Number(row.completed) || 0);
+          }
+        } catch {
+          // Table or columns may be empty in mock storage
+        }
       }
 
       // Deduplicated pending jobs per lane: only computed when explicitly requested
