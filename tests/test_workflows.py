@@ -1229,7 +1229,7 @@ def test_chapter_workflows_use_alternating_two_hour_schedules():
     agenda, _agenda_job = _job("chapter-agenda.yml")
     locator, _locator_job = _job("chapter-locator.yml")
 
-    assert _on(agenda)["schedule"] == [{"cron": "43 */2 * * *"}]
+    assert _on(agenda)["schedule"] == [{"cron": "06 */2 * * *"}]
     assert _on(locator)["schedule"] == [{"cron": "17 1-23/2 * * *"}]
 
 
@@ -1819,11 +1819,11 @@ def test_manual_dispatch_can_repeat_the_daily_incremental_run():
     step = next(s for s in job["steps"] if s.get("name") == "Reconcile provider catalogs")
     assert "inputs.incremental == true" in step["env"]["DUE_ONLY"]
     assert "inputs.incremental == true" in step["env"]["INCREMENTAL"]
-    assert "'20 8 * * *'" in step["env"]["INCREMENTAL"]
+    assert "'27 8 * * *'" in step["env"]["INCREMENTAL"]
     assert 'if [ "$INCREMENTAL" = "true" ]' in step["run"] and "--incremental" in step["run"]
     # The incremental run measures candidates, so it needs the evidence path and a long timeout.
     assert "--discovery-evidence" in step["run"].split('elif [ "$INCREMENTAL" = "true" ]')[1][:200]
-    assert "'20 8 * * *' && 180" in job["timeout-minutes"]
+    assert "'27 8 * * *' && 180" in job["timeout-minutes"]
     assert "inputs.incremental == true && 180" in job["timeout-minutes"]
 
 
