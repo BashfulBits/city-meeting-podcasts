@@ -413,6 +413,7 @@ export async function handleRequest(request, env) {
     const counterOnly = url.searchParams.get("rate_failures") === "1";
     const availabilityOnly = url.searchParams.get("availability_failures") === "1";
     const routesOnly = url.searchParams.get("routes") === "1";
+    const includePending = url.searchParams.get("pending") === "1" || url.searchParams.get("lanes") === "1";
     if (Number(counterOnly) + Number(availabilityOnly) + Number(detailed) + Number(routesOnly) > 1) {
       return errorResponse(400, "invalid_request", "stats modes conflict");
     }
@@ -431,7 +432,7 @@ export async function handleRequest(request, env) {
         ? await coordinator.routeInventoryStats(Date.now(), limit)
         : detailed
         ? await coordinator.detailedStatsGuarded(Date.now(), limit, { failureClasses })
-        : await coordinator.stats(Date.now());
+        : await coordinator.stats(Date.now(), { includePending });
       if (snapshot?.ok === false) {
         return errorResponse(429, snapshot.error, snapshot.detail);
       }

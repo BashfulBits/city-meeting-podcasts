@@ -377,6 +377,21 @@ test("GET /v2/stats requires auth and returns the bounded snapshot by default", 
   assert.ok(body.jobs && typeof body.jobs.by_state === "object");
   assert.ok(body.bundles && body.scheduler);
   assert.equal(body.queued_by_model, undefined);
+  assert.ok(body.model_aliases && typeof body.model_aliases === "object");
+});
+
+test("GET /v2/stats?pending=1 returns lane pending metrics", async () => {
+  const env = createMockEnv();
+  const res = await worker.fetch(
+    new Request("http://localhost/v2/stats?pending=1", {
+      headers: { authorization: "Bearer secret-token" },
+    }),
+    env
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.ok(body.ingress && Array.isArray(body.ingress.by_purpose));
+  assert.ok(body.ingress.by_purpose.every((lane) => typeof lane.pending === "number"));
 });
 
 test("GET /v2/ingress-status requires auth and reports the admission preflight", async () => {

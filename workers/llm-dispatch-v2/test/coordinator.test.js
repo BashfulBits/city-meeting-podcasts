@@ -4473,3 +4473,31 @@ test("Google Gemma 503 requeues after previous failures with a max 5s route cool
     "Google availability must allow rapid retry capped at 5 seconds"
   );
 });
+
+test("stats reports deduplicated pending jobs per lane only when includePending is requested", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const now = Date.now();
+
+  // Zero queued jobs: pending is 0 even without includePending
+  const emptyStats = await coordinator.stats(now);
+  const emptyAgenda = emptyStats.ingress.by_purpose.find((r) => r.purpose === "chapter-agenda");
+  assert.equal(emptyAgenda?.pending, 0);
+
+  // Enqueue 2 jobs under chapter-agenda with multiple candidate models each
+  await coordinator.enqueueBatch([
+    laneModelJob("j-pending-1", "chapter-agenda", ["google/gemma-4-31b-it", "meta/llama-3.3-70b-instruct"]),
+    laneModelJob("j-pending-2", "chapter-agenda", ["google/gemma-4-31b-it"]),
+  ]);
+
+  // Default stats query without includePending leaves pending as null when queue > 0 to preserve zero extra overhead
+  const defaultStats = await coordinator.stats(now);
+  assert.equal(defaultStats.ingress.by_purpose.find((r) => r.purpose === "chapter-agenda")?.pending, null);
+
+  // With includePending: true, pending count is deduplicated per lane
+  const pendingStats = await coordinator.stats(now, { includePending: true });
+  assert.equal(pendingStats.ingress.by_purpose.find((r) => r.purpose === "chapter-agenda")?.pending, 2);
+
+  // model_aliases is present and maps upstream models
+  assert.ok(typeof pendingStats.model_aliases === "object");
+});
+

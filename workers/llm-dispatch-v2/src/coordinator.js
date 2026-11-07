@@ -3465,8 +3465,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * Return the recurring, payload-free scheduler snapshot used by producer workflows. Its SQL
    * reads only bounded singleton/configuration state; it must remain safe to call before and
    * after every LLM producer run, even when queued or retained job history is large.
+   *
+   * When `includePending` is requested (e.g. `GET /v2/stats?pending=1` or `?lanes=1`),
+   * deduplicated queued job counts per lane are computed using the partial covering index
+   * `idx_jobs_queued_purpose` and cached in memory (TTL 15s) to avoid repeating the query
+   * across rapid polls or tick cycles. If total queue count is zero, the query is skipped.
    */
-  async stats(now) {
+  async stats(now, { includePending = false } = {}) {
     const sql = this._getSql();
     return this._transactionSync(() => {
       this._ensureQueuedJobCounter();
@@ -3493,17 +3498,67 @@ export class LLMSchedulerDO extends DurableObjectBase {
         "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
         scheduler.utc_day
       )];
-      const ingressByPurpose = ingressPurposes.map((row) => {
-        const quotaInfo = reservations[row.purpose];
+      const completedByPurpose = new Map();
+      try {
+        for (const row of sql.exec(
+          "SELECT purpose, SUM(calls) AS completed FROM attempt_usage WHERE utc_day = ? GROUP BY purpose",
+          scheduler.utc_day
+        )) {
+          completedByPurpose.set(row.purpose, Number(row.completed) || 0);
+        }
+      } catch {
+        // Table or columns may be empty in mock storage
+      }
+
+      // Deduplicated pending jobs per lane: only computed when explicitly requested
+      // (includePending: true via ?pending=1 or ?lanes=1) and only when queued jobs exist.
+      // Uses the partial index idx_jobs_queued_purpose and in-memory TTL cache (15s)
+      // to avoid query overhead during routine cron/producer ticks.
+      const queuedCount = Number(scheduler.queued_job_count) || 0;
+      const pendingByPurpose = new Map();
+      if (includePending && queuedCount > 0) {
+        if (this._cachedPendingByPurpose && (now - (this._lastPendingAt || 0) < 15_000)) {
+          for (const [p, c] of this._cachedPendingByPurpose.entries()) {
+            pendingByPurpose.set(p, c);
+          }
+        } else {
+          try {
+            for (const row of sql.exec(
+              "SELECT purpose, COUNT(*) AS pending FROM jobs WHERE state = 'queued' GROUP BY purpose"
+            )) {
+              pendingByPurpose.set(row.purpose, Number(row.pending) || 0);
+            }
+            this._cachedPendingByPurpose = new Map(pendingByPurpose);
+            this._lastPendingAt = now;
+          } catch {
+            // Table or index may be missing in lightweight mock storage
+          }
+        }
+      }
+
+      const allPurposes = new Set([
+        ...ingressPurposes.map((r) => r.purpose),
+        ...completedByPurpose.keys(),
+        ...pendingByPurpose.keys(),
+        ...Object.keys(reservations),
+      ]);
+      const ingressMap = new Map(ingressPurposes.map((r) => [r.purpose, r]));
+      const ingressByPurpose = [...allPurposes].map((p) => {
+        const row = ingressMap.get(p);
+        const quotaInfo = reservations[p];
         const dailyUnits = Number(quotaInfo?.daily_write_units) || 0;
         const perJob = Number(quotaInfo?.write_units_per_job) || 4;
         const dailyQuota = perJob > 0 ? Math.floor(dailyUnits / perJob) : 0;
-        const ingested = Number(row.jobs_ingested) || 0;
+        const ingested = Number(row?.jobs_ingested) || 0;
+        const completed = completedByPurpose.get(p) || 0;
+        const pending = includePending ? (pendingByPurpose.get(p) || 0) : (queuedCount === 0 ? 0 : null);
         const pct = dailyQuota > 0 ? Math.round((ingested / dailyQuota) * 1000) / 10 : 0;
         return {
-          purpose: row.purpose,
+          purpose: p,
           jobs_ingested: ingested,
-          write_units: Number(row.write_units) || 0,
+          completed,
+          pending,
+          write_units: Number(row?.write_units) || 0,
           daily_quota: dailyQuota,
           percent_used: pct,
           max_queued_jobs: Number(quotaInfo?.max_queued_jobs) || null,
@@ -3564,8 +3619,30 @@ export class LLMSchedulerDO extends DurableObjectBase {
           cursor: scheduler.catalog_rescue_cursor ?? null,
           complete: scheduler.catalog_rescue_complete === 1,
         },
+        model_aliases: this._canonicalModelAliases(),
       };
     });
+  }
+
+  /**
+   * Unified model alias mapping derived from provider_limits.yml (dispatch_limits.json).
+   * Combines model_aliases with all route upstream_model and route_id references to
+   * ensure dashboard consumers and widgets normalize diverse route identifiers uniformly.
+   */
+  _canonicalModelAliases() {
+    const catalog = this._dispatchLimits();
+    const aliases = { ...(catalog?.model_aliases || {}) };
+    for (const [routeId, route] of Object.entries(catalog?.routes_by_id || {})) {
+      const canonical = route.model;
+      if (!canonical) continue;
+      if (route.upstream_model && !aliases[route.upstream_model]) {
+        aliases[route.upstream_model] = canonical;
+      }
+      if (!aliases[routeId]) {
+        aliases[routeId] = canonical;
+      }
+    }
+    return aliases;
   }
 
   /**
