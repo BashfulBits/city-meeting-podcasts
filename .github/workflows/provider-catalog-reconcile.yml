@@ -127,7 +127,6 @@ jobs:
           GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           DUE_ONLY: ${{ github.event.schedule == '27 8 * * *' || inputs.due_only == true || inputs.incremental == true }}
           INCREMENTAL: ${{ github.event.schedule == '27 8 * * *' || inputs.incremental == true }}
-          INCREMENTAL: ${{ github.event.schedule == '27 8 * * *' || inputs.incremental == true }}
           DISCOVERY_ENABLED: ${{ inputs.discovery_enabled == true }}
           DISCOVERY_CANDIDATE: ${{ inputs.discovery_candidate }}
           DISCOVERY_AXIS: ${{ inputs.discovery_axis }}

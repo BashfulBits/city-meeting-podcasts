@@ -24,6 +24,26 @@ WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 REPO_ROOT = WORKFLOWS.parents[1]
 
 
+@pytest.mark.parametrize("workflow", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name)
+def test_workflow_has_no_duplicate_yaml_keys(workflow):
+    """GitHub rejects duplicate keys, but safe_load silently overwrites them."""
+
+    def check(node):
+        if isinstance(node, yaml.MappingNode):
+            seen = set()
+            for key, value in node.value:
+                assert key.value not in seen, (
+                    f"{workflow}:{key.start_mark.line + 1}: duplicate key {key.value!r}"
+                )
+                seen.add(key.value)
+                check(value)
+        elif isinstance(node, yaml.SequenceNode):
+            for item in node.value:
+                check(item)
+
+    check(yaml.compose(workflow.read_text()))
+
+
 def _job(workflow_file: str, job_name: str | None = None) -> tuple[dict, dict]:
     wf = yaml.safe_load((WORKFLOWS / workflow_file).read_text())
     job = wf["jobs"][job_name] if job_name else next(iter(wf["jobs"].values()))
