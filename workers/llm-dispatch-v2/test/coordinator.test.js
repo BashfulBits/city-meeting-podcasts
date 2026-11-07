@@ -4501,3 +4501,47 @@ test("stats reports deduplicated pending jobs per lane only when includePending 
   assert.ok(typeof pendingStats.model_aliases === "object");
 });
 
+test("stats aggregates lane completed counts from packed usage cells and fallback", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+
+  // 1. Legacy fallback from attempt_usage table
+  sql.exec(
+    "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES (?, ?, ?, ?)",
+    today, "chapter-agenda", "gemma", 15
+  );
+  let snap = await coordinator.stats(now);
+  assert.equal(snap.ingress.by_purpose.find((r) => r.purpose === "chapter-agenda")?.completed, 15);
+
+  // 2. Packed authority mode
+  sql.exec("CREATE TABLE IF NOT EXISTS packed_telemetry (shard INTEGER PRIMARY KEY, json TEXT NOT NULL)");
+  const shardJson = JSON.stringify({
+    usage: {
+      [`${today}:chapter-agenda:gemma`]: {
+        utc_day: today,
+        purpose: "chapter-agenda",
+        route_id: "gemma",
+        calls: 30,
+      },
+      [`${today}:judge:sibling:gemma`]: {
+        utc_day: today,
+        purpose: "judge:sibling",
+        route_id: "gemma",
+        calls: 42,
+      },
+    },
+    failures: {},
+  });
+  sql.exec(
+    "UPDATE scheduler SET packed_state_active = 1, packed_routes_json = '{}', packed_estimates_json = '{}', packed_leases_json = '{}' WHERE id = 1"
+  );
+  sql.exec("INSERT OR REPLACE INTO packed_telemetry (shard, json) VALUES (0, ?)", shardJson);
+  coordinator._readView = undefined;
+
+  snap = await coordinator.stats(now);
+  assert.equal(snap.ingress.by_purpose.find((r) => r.purpose === "chapter-agenda")?.completed, 30);
+  assert.equal(snap.ingress.by_purpose.find((r) => r.purpose === "judge:sibling")?.completed, 42);
+});
+
+
