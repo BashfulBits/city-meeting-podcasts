@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Scheduled GitHub Actions workflows now use staggered, nonzero UTC minute offsets while preserving
+their existing cadence. The city-request intake retry cron keeps its 15-minute interval at an offset
+from common quarter-hour ticks. This reduces synchronized starts; GitHub may still delay scheduled
+triggers during platform load.
+
 - **Terminal failure cleanup resilience and performance.** Optimize `clear_terminal_failures.py`
   with `--days` time cutoff (default 7 days) and 8-worker concurrent downloads via
   `ThreadPoolExecutor`, safe error handling for transient storage exceptions, and real-time progress
