@@ -1504,11 +1504,19 @@ class JudgeStage(LLMProducerStage):
         from citypods.judging.texts import build_episode_texts, tag_definitions
 
         definitions = tag_definitions()
+        transcript_read_metrics: collections.Counter = collections.Counter()
+        cdn_session = None
 
-        def texts_for(ep: Episode) -> EpisodeTexts:
+        def build_texts_for(ep: Episode, *, prefer_cdn: bool) -> EpisodeTexts:
             try:
                 raw = (
-                    _read_storage_bytes(ctx.storage, ep.transcript_key or "")
+                    _read_judge_transcript_bytes(
+                        storage,
+                        ep.transcript_key or "",
+                        cdn_session,
+                        transcript_read_metrics,
+                        prefer_cdn=prefer_cdn,
+                    )
                     if ep.transcript_key
                     else None
                 )
@@ -1523,8 +1531,19 @@ class JudgeStage(LLMProducerStage):
                 raise runner.TextsUnavailable(str(exc)) from exc
             return build_episode_texts(ep, raw, definitions)
 
+        def texts_for(ep: Episode) -> EpisodeTexts:
+            return build_texts_for(ep, prefer_cdn=True)
+
+        def texts_for_origin(ep: Episode) -> EpisodeTexts:
+            return build_texts_for(ep, prefer_cdn=False)
+
         backend = ctx.judge_backend
         storage = getattr(getattr(backend, "_backend", backend), "storage", None) or ctx.storage
+        cdn_enabled = _judge_storage_uses_b2_cdn(storage)
+        if cdn_enabled:
+            from citypods.http import make_session
+
+            cdn_session = make_session()
         dry_run = self._dry_run() or backend is None
         uids = {ep.uid or ep.guid for ep in episodes if ep.uid or ep.guid}
 
@@ -1586,6 +1605,7 @@ class JudgeStage(LLMProducerStage):
             sibling=sibling,
             families=load_families(),
             texts_for=texts_for,
+            texts_for_origin=texts_for_origin if cdn_enabled else None,
             look_up=lambda recipe: look_up_deferred(
                 storage,
                 recipe,
@@ -1612,7 +1632,12 @@ class JudgeStage(LLMProducerStage):
             probes_per_pass=probes_per_pass,
             audit_rows=ctx.judge_audit_rows,
         )
-        result = runner.run(episodes, judging)
+        try:
+            result = runner.run(episodes, judging)
+        finally:
+            if cdn_session is not None:
+                cdn_session.close()
+        result.counts.update(transcript_read_metrics)
         for key, count in sorted(result.counts.items()):
             # Restartable leftovers are deferrals (they feed the backlog trend); the rest are
             # quality/volume counters for the run log.
@@ -5214,6 +5239,31 @@ def _read_storage_bytes(storage, key: str) -> bytes | None:
         if not storage.get_file(key, local_path):
             return None
         return local_path.read_bytes()
+
+
+def _judge_storage_uses_b2_cdn(storage) -> bool:
+    from citypods.storage.public_read import supports_public_cdn
+
+    return supports_public_cdn(storage)
+
+
+def _read_judge_transcript_bytes(storage, key, session, metrics, *, prefer_cdn=True):
+    """Read public transcript content and verify provider keys before accepting CDN bytes."""
+    from citypods.storage.public_read import read_immutable_public_bytes
+
+    provider_hash = re.search(r"-provider-([0-9a-f]{12})\.[^.]+$", key.rsplit("/", 1)[-1])
+
+    def validate(data):
+        return not provider_hash or hashlib.sha1(data).hexdigest().startswith(
+            provider_hash.group(1)
+        )
+
+    read = getattr(storage, "read_immutable_public_bytes", None)
+    if read is None:
+        return read_immutable_public_bytes(
+            storage, key, session, metrics, prefer_cdn=prefer_cdn, validate=validate
+        )
+    return read(key, session, metrics, prefer_cdn=prefer_cdn, validate=validate)
 
 
 def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:

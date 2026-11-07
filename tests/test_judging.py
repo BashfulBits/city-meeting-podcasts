@@ -789,6 +789,64 @@ def test_the_judge_stage_submits_shadow_packets_and_records_markers():
     assert ep.tags[0]["display"] is True and ep.llm_tag_candidates[-1]["display"] is False
 
 
+def test_judge_stage_uses_the_b2_public_cdn_and_reports_cache_metrics(monkeypatch, capsys):
+    from citypods import http
+    from citypods.stages import JudgeStage
+
+    content = _vtt(_segments())
+
+    class PublicStorage(_Storage):
+        name = "b2"
+
+        def public_url(self, key):
+            return f"https://audio.citymeetings.fyi/{key}"
+
+        def exists(self, key):
+            pytest.fail(f"CDN success should not read B2 for {key}")
+
+    class Response:
+        headers = {"CF-Cache-Status": "HIT"}
+
+        def __init__(self):
+            self.content = content
+
+        def raise_for_status(self):
+            return None
+
+        def close(self):
+            return None
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, *, timeout):
+            self.urls.append((url, timeout))
+            return Response()
+
+        def close(self):
+            return None
+
+    storage = PublicStorage({"t.vtt": content})
+    ctx = _stage_ctx(enabled=True)
+    ctx.storage = storage
+    ctx.judge_backend = _Backend(storage)
+    session = Session()
+    monkeypatch.setattr(http, "make_session", lambda: session)
+    ep = _episode()
+    ep.transcript_key, ep.transcript_format = "t.vtt", "vtt"
+
+    JudgeStage().process(None, SimpleNamespace(slug="x"), [ep], ctx)
+
+    assert session.urls and session.urls[0] == (
+        "https://audio.citymeetings.fyi/t.vtt",
+        30,
+    )
+    output = capsys.readouterr().out
+    assert "transcript_cdn_cache_hits=1" in output
+    assert "transcript_cache_peak_estimated_bytes=" in output
+
+
 def test_the_report_reads_agreement_escalation_and_backfill_from_stored_judgments():
     from datetime import UTC, datetime
 
@@ -1618,6 +1676,45 @@ def test_an_answer_that_cannot_be_quote_checked_yet_waits_and_is_recorded_later(
     assert recovered.counts["quote_valid"] >= 1
 
 
+def test_quote_check_reloads_from_origin_when_cached_cdn_evidence_digest_differs():
+    ep = _episode(llm=[])
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer()
+
+    stale_texts = dataclasses.replace(TEXTS, segments=_segments(word="stale"))
+    ctx = _adj_ctx(dispatch)
+    ctx.texts_for = lambda _ep: stale_texts
+    ctx.texts_for_origin = lambda _ep: TEXTS
+    stats = runner.run([ep], ctx)
+
+    sibling_rows = [row for row in _tag_judgments(ep) if row["judge_role"] == "sibling"]
+    assert sibling_rows and all(row["quote_valid"] for row in sibling_rows)
+    assert stats.counts["transcript_cache_origin_fallbacks"] >= 1
+
+
+def test_failed_origin_retry_is_attempted_once_per_episode_and_retried_next_pass():
+    ep = _episode()
+    dispatch = FakeDispatch()
+    runner.run([ep], _adj_ctx(dispatch))
+    dispatch.answer()
+    ctx = _adj_ctx(dispatch)
+    ctx.texts_for = lambda _ep: dataclasses.replace(TEXTS, segments=_segments(word="stale"))
+    attempts = []
+
+    def unavailable(episode):
+        attempts.append(episode)
+        raise runner.TextsUnavailable("origin unavailable")
+
+    ctx.texts_for_origin = unavailable
+    first = runner.run([ep], ctx)
+    assert first.counts["quote_check_deferred"] > 1
+    assert len(attempts) == 1
+    assert _any_pending(ep)
+    runner.run([ep], ctx)
+    assert len(attempts) == 2
+
+
 def test_the_quote_check_reads_a_bounded_number_of_transcripts_a_pass():
     eps = [_episode(uid=f"ep-{i}", llm=[]) for i in range(3)]
     dispatch = FakeDispatch()
@@ -1625,6 +1722,9 @@ def test_the_quote_check_reads_a_bounded_number_of_transcripts_a_pass():
     dispatch.answer()
     stats = runner.run(eps, _adj_ctx(dispatch, quote_check_reads=1))
     assert stats.counts["quote_check_deferred"] >= 2
+    assert stats.counts["transcript_cache_peak_entries"] > 0
+    assert stats.counts["transcript_cache_peak_estimated_bytes"] > 0
+    assert stats.counts["transcript_cache_misses"] > 0
     finished = runner.run(eps, _adj_ctx(dispatch))
     assert (
         all([r for r in _tag_judgments(ep) if r["judge_role"] == "sibling"] for ep in eps)

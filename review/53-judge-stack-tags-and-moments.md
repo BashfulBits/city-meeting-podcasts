@@ -554,6 +554,19 @@ shows earlier answers, so a contested item and a sampled one read the same.
   rows are kept (the ledger is append-only) and ignored as votes. An answer whose transcript cannot
   be read now, or past `quote_check_reads` (400 transcripts) a pass, keeps its marker and is
   recorded on a later pass. JEV answers are numbers and are not quote-checked.
+- **CDN read follow-up (2026-11-07, implementation under review).** On B2-backed judge runs,
+  transcript bytes are fetched from the configured public URL through the guarded HTTP session
+  before falling back to the authenticated B2 read on HTTP/network failure or a provider-key hash
+  mismatch. If the rebuilt evidence digest still differs, quote checking retries directly from B2
+  before marking the answer unsupported. Per-pass counts record Cloudflare HIT/MISS/other status,
+  bytes and elapsed time, B2 fallback bytes, and run-local parsed-text cache hits/misses plus an
+  estimated peak retained size. The estimate walks parsed structures, excludes shared taxonomy
+  definitions and conservatively counts repeated references; it is not process RSS. The 400-read
+  cap remains unchanged until production measurements establish a safe higher value. A 23-object
+  public VTT preflight found a 1.05 MB median, 2.02 MB p95 and 3.45 MB maximum estimated parsed
+  cache value; all 23 initial requests were CDN `MISS`, and all 23 repeat requests were `HIT`. The
+  sample is a prior chapter-locator holdout set, not a judge-run workload or RSS measurement; see
+  [the dated evidence note](evidence/judge-cdn-transcript-cache-2026-11-07.md).
 - **Stability probe**: `judging.stability_sample_rate` (2%) of subjects, once the first-tier routine
   answer is recorded, are asked again by the same judge with `order "_s"`, `sample "stability"`: the
   evidence first and the question reworded after it. The report counts flips per judge.
