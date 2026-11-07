@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Aggregate lane completions from packed telemetry in /v2/stats.** Read completed job
+  counts per lane from in-memory packed telemetry shards when packed state authority is
+  active, falling back to SQLite `attempt_usage` only when packed state is inactive.
+
 - **Deduplicated lane pending jobs and unified model aliases in /v2/stats.**
   Expose deduplicated queued job counts per lane in `ingress.by_purpose[].pending` when
   requested via `?pending=1` or `?lanes=1`. Queries leverage the partial covering index
