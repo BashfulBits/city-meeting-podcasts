@@ -1206,16 +1206,34 @@ def test_explicit_high_max_controls_preserve_default_request_parameters():
         assert route["request_params"] is None
 
 
-def test_kimi_max_controls_match_python_worker_without_changing_defaults():
+@pytest.mark.parametrize("retire_kimi", [False, True])
+def test_max_controls_match_python_worker_without_changing_defaults(monkeypatch, retire_kimi):
+    raw = _raw_provider_limits()
+    if retire_kimi:
+        raw["routes"] = [r for r in raw["routes"] if r["route_id"] != "nvidia_kimi_k3_free"]
+    # Exercise compilation independently of any particular live route, which may be retired.
+    route = dict(raw["routes"][0])
+    route.update(
+        route_id="test_max_controls",
+        upstream_model="test-max-controls",
+        reasoning_controls={"max": {"reasoning_effort": "max"}},
+    )
+    route.pop("request_params", None)
+    route.pop("yields_to", None)
+    raw["routes"].append(route)
+    monkeypatch.setattr(compile_llm_limits.yaml, "safe_load", lambda *_: raw)
     compiled = compile_llm_limits.compile_limits()
     worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
     python = {
         route["route_id"]: route for route in compile_llm_limits._python_routes(compiled)["routes"]
     }
     for routes in (worker, python):
-        route = routes["nvidia_kimi_k3_free"]
-        assert route["reasoning_controls"] == {"max": {"reasoning_effort": "max"}}
-        assert route.get("request_params") is None
+        for route_id in ("test_max_controls", "nvidia_kimi_k3_free"):
+            if route_id in routes:
+                assert routes[route_id]["reasoning_controls"] == {
+                    "max": {"reasoning_effort": "max"}
+                }
+                assert routes[route_id].get("request_params") is None
 
 
 def test_review51_gemini_free_route_is_exact_and_keeps_account_controls():
