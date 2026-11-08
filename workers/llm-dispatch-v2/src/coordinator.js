@@ -3499,6 +3499,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         scheduler.utc_day
       )];
       const completedByPurpose = new Map();
+      const callsByPurpose = new Map();
+      let totalCallsFromCells = 0;
       const packed = this._packed();
       if (packed) {
         const today = scheduler.utc_day;
@@ -3506,21 +3508,43 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const shardUsage = packed.shard(i)?.usage || {};
           for (const cell of Object.values(shardUsage)) {
             if (cell.utc_day === today && cell.purpose) {
-              const prev = completedByPurpose.get(cell.purpose) || 0;
-              completedByPurpose.set(cell.purpose, prev + (Number(cell.calls) || 0));
+              const calls = Number(cell.calls) || 0;
+              callsByPurpose.set(cell.purpose, (callsByPurpose.get(cell.purpose) || 0) + calls);
+              totalCallsFromCells += calls;
             }
           }
         }
       } else {
         try {
           for (const row of sql.exec(
-            "SELECT purpose, SUM(calls) AS completed FROM attempt_usage WHERE utc_day = ? GROUP BY purpose",
+            "SELECT purpose, SUM(calls) AS calls FROM attempt_usage WHERE utc_day = ? GROUP BY purpose",
             scheduler.utc_day
           )) {
-            completedByPurpose.set(row.purpose, Number(row.completed) || 0);
+            const calls = Number(row.calls) || 0;
+            callsByPurpose.set(row.purpose, calls);
+            totalCallsFromCells += calls;
           }
         } catch {
           // Table or columns may be empty in mock storage
+        }
+      }
+
+      // Reconcile with scheduler.completed_today:
+      // Ingress lanes display successful job completions (matching models and providers views).
+      // Attempt usage telemetry tracks raw execution calls (including retried attempts), so distribute
+      // scheduler.completed_today across lanes in proportion to their call throughput.
+      const authoritativeCompleted = Number(scheduler.completed_today) || 0;
+      if (authoritativeCompleted > 0 && totalCallsFromCells > 0) {
+        for (const [purpose, calls] of callsByPurpose.entries()) {
+          completedByPurpose.set(
+            purpose,
+            Math.round((calls / totalCallsFromCells) * authoritativeCompleted)
+          );
+        }
+      } else {
+        // Fallback when scheduler completed_today is 0 or unset (e.g. test fixtures without scheduler stats)
+        for (const [purpose, calls] of callsByPurpose.entries()) {
+          completedByPurpose.set(purpose, calls);
         }
       }
 

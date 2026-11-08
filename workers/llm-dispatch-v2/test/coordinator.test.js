@@ -4542,6 +4542,14 @@ test("stats aggregates lane completed counts from packed usage cells and fallbac
   snap = await coordinator.stats(now);
   assert.equal(snap.ingress.by_purpose.find((r) => r.purpose === "chapter-agenda")?.completed, 30);
   assert.equal(snap.ingress.by_purpose.find((r) => r.purpose === "judge:sibling")?.completed, 42);
+
+  // 3. Apportions completed_today across lanes when scheduler.completed_today is set
+  sql.exec("UPDATE scheduler SET completed_today = 48 WHERE id = 1");
+  coordinator._readView = undefined;
+
+  snap = await coordinator.stats(now);
+  assert.equal(snap.ingress.by_purpose.find((r) => r.purpose === "chapter-agenda")?.completed, 20);
+  assert.equal(snap.ingress.by_purpose.find((r) => r.purpose === "judge:sibling")?.completed, 28);
 });
 
 
