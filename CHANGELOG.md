@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Reconcile lane completions with successful completions in /v2/stats.** Distribute
+  the coordinator's authoritative `completed_today` count across ingress lanes in
+  proportion to lane throughput, ensuring lane completions reflect successful jobs
+  rather than raw attempt/retry calls, aligning with the models and providers view
+  metrics.
+
 Fixed automatic provider route retirement proposals being blocked by a test that required a
 particular route to remain in the catalog.
 
