@@ -14,10 +14,27 @@ PACKET = ROOT / "evals/remedy/holdout/feed-context-2026-10-14/packet.json"
 @pytest.fixture
 def probe(monkeypatch):
     from citypods.compute import llm, llm_policy
+    from citypods.compute.llm_policy import LLMRoute, PricingPolicy, QuotaPolicy
 
     registries = [llm_policy.ROUTE_REGISTRY, llm_policy.ROUTE_CANDIDATES, llm_policy.ROUTES]
     originals = [dict(registry) for registry in registries]
-    monkeypatch.setattr(llm, "SUPPORTED_MODELS", llm.SUPPORTED_MODELS)
+    # The historical evaluation remains testable after its physical route is retired.
+    kimi = LLMRoute(
+        model="moonshotai/kimi-k3",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=4, concurrency=1),
+        pricing=PricingPolicy(),
+        route_id="nvidia_kimi_k3_free",
+        provider="nvidia",
+        upstream_model="moonshotai/kimi-k3",
+        direct_model="openai/moonshotai/kimi-k3",
+        input_context_limit=1048576,
+        output_context_limit=65536,
+        reasoning_controls_json='{"max": {"reasoning_effort": "max"}}',
+    )
+    llm_policy.ROUTE_REGISTRY[kimi.route_id] = kimi
+    monkeypatch.setattr(llm, "SUPPORTED_MODELS", llm.SUPPORTED_MODELS | {kimi.model})
     body = ROOT / "evals/remedy/results/body-selection-2026-10-13"
     monkeypatch.syspath_prepend(str(body))
     path = ROOT / "evals/remedy/results/feed-context-2026-10-14/run.py"
