@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Fixed automatic provider route retirement proposals being blocked by a test that required a
+particular route to remain in the catalog.
+
 Fixed provider catalog reconciliation failing workflow validation because of a duplicate
 environment variable, and added a check for duplicate keys across GitHub Actions workflows.
 
