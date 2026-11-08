@@ -28,13 +28,13 @@ MOMENTS_PIPELINE_VERSION = "2"
 # Council feeds run on full-meeting transcripts, which can exceed the Gemini free tier's real
 # per-request ceiling well before its 1M-token context window (confirmed live -- see
 # `hard_input_ceiling` in config/provider_limits.yml). `deepseek/deepseek-v4-flash` (OrcaRouter,
-# 1M context) and `moonshotai/kimi-k3` (NVIDIA) have no such hard cap, added as overflow so an
-# oversized council job has somewhere to go instead of a guaranteed 429. Order matters only for
-# tie-breaking (the caller's own model is still preferred when multiple routes are eligible), not
-# correctness -- the Gemini entries stay first.
+# 1M context) provides overflow so an
+# oversized council job has somewhere to go instead of a guaranteed 429. Order matters for
+# tie-breaking when multiple routes are eligible.
 #
-# THIS TUPLE IS PART OF THE MOMENTS RECIPE HASH (`recipe_hash(route_models=...)`): changing it
-# re-runs moments for every council episode. 2026-09-24 (approved backfill): gemini-3.8/3.7-flash
+# The historical primary model tuple is part of the recipe hash. Retired Kimi remains in the
+# large-packet recipe identity but not dispatch policy, preserving existing results. 2026-09-24:
+# gemini-3.8/3.7-flash
 # added for capacity (independent 20/day pools, AA 40.9/39.1), and the retired
 # `deepseek/deepseek-v4-pro` alias (which pointed at NVIDIA's v4.1) replaced by OrcaRouter's v4:
 # NVIDIA's v4.1 returns empty content to any `response_format` (verified live 2026-09-24). GLM 5.3
@@ -49,7 +49,6 @@ MOMENT_SHORT_PRIMARY_MODELS = ("gemini/gemini-3.5-flash-lite",)
 MOMENT_SHORT_BACKUP_MODELS = (
     "zai/glm-5.3-flash",
     "deepseek/deepseek-v4-flash",
-    "moonshotai/kimi-k3",
     "gemini/gemini-3.8-flash",
     "gemini/gemini-3.7-flash",
     "gemini/gemini-3.6-flash",
@@ -57,11 +56,10 @@ MOMENT_SHORT_BACKUP_MODELS = (
 )
 
 # 2. Large Packets (> 45,000 input tokens)
-# Top 3 highest-capacity models with low external contention:
+# High-capacity models with low external contention:
 MOMENT_LARGE_PRIMARY_MODELS = (
     "zai/glm-5.3-flash",
     "deepseek/deepseek-v4-flash",
-    "moonshotai/kimi-k3",
 )
 # Backup models: remaining high-context models
 MOMENT_LARGE_BACKUP_MODELS = (
@@ -80,13 +78,20 @@ def select_moment_models(
 
     Packets <= 45,000 tokens use the shortest models that fit (Gemini 3.5 Flash Lite)
     with high-capacity routes in backup.
-    Packets > 45,000 tokens prioritize the top 3 high-capacity models with low external
-    lane contention (GLM 5.3 Flash, DeepSeek V4 Flash, Kimi K3) with the remaining
+    Packets > 45,000 tokens prioritize GLM 5.3 Flash and DeepSeek V4 Flash with the remaining
     high-context models in backup.
     """
     if input_tokens <= MOMENT_SIZE_THRESHOLD_TOKENS:
         return MOMENT_SHORT_PRIMARY_MODELS, MOMENT_SHORT_BACKUP_MODELS
     return MOMENT_LARGE_PRIMARY_MODELS, MOMENT_LARGE_BACKUP_MODELS
+
+
+def moment_recipe_models(input_tokens: int) -> tuple[str, ...]:
+    """Keep the historical large-packet identity when a retired route is removed."""
+    primary, _ = select_moment_models(input_tokens)
+    if input_tokens > MOMENT_SIZE_THRESHOLD_TOKENS:
+        return (*primary, "moonshotai/kimi-k3")
+    return primary
 
 
 # Backward-compatible aliases
