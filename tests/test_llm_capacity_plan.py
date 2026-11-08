@@ -3,7 +3,33 @@
 from scripts.llm_capacity_plan import consensus_plan, judging_demand, project
 
 
-def test_full_plan_is_not_800_jobs_per_lane():
+def test_full_plan_is_not_800_jobs_per_lane(tmp_path, monkeypatch):
+    import shutil
+
+    import yaml
+
+    from scripts import llm_capacity_plan as calculator
+
+    source_root = calculator.ROOT
+    config = tmp_path / "config"
+    config.mkdir()
+    lanes = {
+        "chapter-agenda": {"models": ["a", "b", "c"], "daily_write_units": 4800},
+        "chapter-locator": {
+            "models": ["a", "b"],
+            "dispatch_shape": "per_model",
+            "daily_write_units": 7200,
+        },
+        "topic-tags:tagger": {"models": ["a", "b", "c", "d"], "daily_write_units": 14400},
+        "r6-moments": {"models": ["a", "b", "c"], "daily_write_units": 7200},
+    }
+    (config / "site_config.yml").write_text(yaml.safe_dump({"llm_lanes": lanes}))
+    shutil.copyfile(source_root / "config/dispatch_tuning.yml", config / "dispatch_tuning.yml")
+    worker = tmp_path / "workers/llm-dispatch-v2/src"
+    worker.mkdir(parents=True)
+    for name in ("write_budget.js", "coordinator.js"):
+        shutil.copyfile(source_root / "workers/llm-dispatch-v2/src" / name, worker / name)
+    monkeypatch.setattr(calculator, "ROOT", tmp_path)
     report = project()
     assert report["new_jobs"] == 4000
     assert report["provider_attempts"] == 4400
