@@ -881,22 +881,6 @@ routes:
   # ==========================================
   # KILO CODE ROUTES (Kilo Gateway)
   # ==========================================
-  - route_id: kilo_stepfun_step_3_7_flash_free
-    model: kilo/stepfun/step-3.7-flash:free
-    provider: kilo
-    upstream_model: stepfun/step-3.7-flash:free
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    rpd: 200
-    hard_input_ceiling: 249027
-    free: true
-    observed_on: "2026-09-12"
-    observed_input_ceiling: 249027
-    input_per_token: 0.0
-    output_per_token: 0.0
 
   - route_id: kilo_nvidia_nemotron_3_ultra_550b_a55b_free
     model: kilo/nvidia/nemotron-3-ultra-550b-a55b:free
@@ -1011,65 +995,6 @@ routes:
   # NVIDIA becomes an additional, independent free capacity source for that same logical model
   # rather than a new one, exactly like the existing SambaNova+SiliconFlow / OpenRouter+Kilo+
   # OpenCode poolings above.
-  - route_id: nvidia_kimi_k3_free
-    model: moonshotai/kimi-k3
-    provider: nvidia
-    upstream_model: moonshotai/kimi-k3
-    # 2.8T MoE (104B active), 1,048,576-token context per NVIDIA's own model card
-    # (docs.api.nvidia.com/nim/reference/moonshotai-kimi-k3). No comparable free frontier model
-    # exists elsewhere in this pool.
-    input_context_limit: 1048576
-    output_context_limit: 65536
-    account_id: primary
-    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
-    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
-    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
-    # showed up immediately as a drop in dispatched jobs.
-    rpm: 4
-    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
-    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
-    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
-    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
-    # formula, not measured or published. Input-ceiling (max size of one request, measured
-    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
-    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
-    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
-    # developer forums: "limits vary by model and are not published"). This tpm value remains
-    # exactly what it was before this session -- an unverified inherited placeholder, not a
-    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
-    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
-    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
-    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
-    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
-    # request this size, exactly the behavior this route's real ~6x ratio calls for.
-    tpm: 40000
-    hard_input_ceiling: 234437
-    # Raised back to 4 on 2026-08-30. The ceiling of 1 was set the day before on the
-    # theory that NVIDIA rejects any overlapping request with a fast ~8.3s 429. Gateway
-    # logs since the routing fix landed at 14Z say otherwise: nemotron-3-super ran 39
-    # calls with 39 successes and no 429 at all. The rejections were deepseek-v4-pro's
-    # account-level lockout, which that route still carries its own ceiling for -- the
-    # same over-generalisation that scoped its rate to all nine routes (PR #1336).
-    #
-    # Concurrency, not rpm/tpm, was the binding constraint: with a ceiling of 1 the
-    # dispatcher never came close to either limit, because nothing was allowed in
-    # flight to consume them.
-    #
-    # Lowered 4 -> 1 on 2026-09-23. This route carries only full-transcript overflow for the
-    # locator/moments lanes, and those calls ran ~590s. NVIDIA's provider-wide concurrency is
-    # shared with Nemotron 3 Ultra (the chapter-agenda lane's elastic route), so a few of these
-    # overflow calls could otherwise hold every NVIDIA slot for ten minutes at a time.
-    concurrency: 1
-    free: true
-    # Explicit evaluation only; default production requests remain unchanged.
-    reasoning_controls:
-      max:
-        reasoning_effort: max
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-12"
-    observed_burst: 2
-    observed_input_ceiling: 234437
 
   # NVIDIA retired both `deepseek-ai/deepseek-v4-pro-0813` and `deepseek-ai/deepseek-v4-flash-0731`
   # (HTTP 410 Gone; 22-28 locator/moments jobs a day failed terminally against the pro route on

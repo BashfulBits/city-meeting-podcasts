@@ -29,8 +29,7 @@
       "max_queued_jobs": 3200,
       "models": [
         "deepseek/deepseek-v4-flash",
-        "deepseek/deepseek-v4.1-flash",
-        "moonshotai/kimi-k3"
+        "deepseek/deepseek-v4.1-flash"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
@@ -85,8 +84,7 @@
       "max_queued_jobs": 3200,
       "models": [
         "zai/glm-5.3-flash",
-        "deepseek/deepseek-v4-flash",
-        "moonshotai/kimi-k3"
+        "deepseek/deepseek-v4-flash"
       ],
       "backup_models": [
         "gemini/gemini-3.5-flash-lite",
@@ -98,7 +96,7 @@
       "backup_after_attempts": 2,
       "dispatch_shape": "pooled",
       "reasoning": {},
-      "write_units_per_job": 6
+      "write_units_per_job": 5
     },
     "remedy:p3": {
       "reserved_write_units": 0,

@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 53,
+    "routes_count": 51,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -1012,40 +1012,6 @@
       "reset_timezone": "UTC"
     },
     {
-      "route_id": "kilo_stepfun_step_3_7_flash_free",
-      "model": "kilo/stepfun/step-3.7-flash:free",
-      "provider": "kilo",
-      "upstream_model": "stepfun/step-3.7-flash:free",
-      "input_context_limit": 262144,
-      "output_context_limit": 262144,
-      "account_id": "primary",
-      "concurrency": 1,
-      "rpm": 20,
-      "rpd": 200,
-      "hard_input_ceiling": 249027,
-      "free": true,
-      "observed_on": "2026-09-12",
-      "observed_input_ceiling": 249027,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "structured_output_method": "json_schema",
-      "structured_output_method_source": "provider",
-      "structured_output_verified_on": null,
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct"
-      ],
-      "direct_model": "openai/stepfun/step-3.7-flash:free",
-      "api_base": "https://api.kilo.ai/api/gateway",
-      "ai_gateway_slug": "custom-kilo",
-      "ai_gateway_chat_path": "/chat/completions",
-      "chat_path": "/chat/completions",
-      "api_key_env": "KILO_API_KEY",
-      "reset_timezone": "UTC"
-    },
-    {
       "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
       "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "provider": "kilo",
@@ -1182,49 +1148,6 @@
       "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
-    },
-    {
-      "route_id": "nvidia_kimi_k3_free",
-      "model": "moonshotai/kimi-k3",
-      "provider": "nvidia",
-      "upstream_model": "moonshotai/kimi-k3",
-      "input_context_limit": 1048576,
-      "output_context_limit": 65536,
-      "account_id": "primary",
-      "rpm": 4,
-      "tpm": 36000,
-      "hard_input_ceiling": 234437,
-      "concurrency": 1,
-      "free": true,
-      "reasoning_controls": {
-        "max": {
-          "reasoning_effort": "max"
-        }
-      },
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "observed_on": "2026-09-12",
-      "observed_burst": 2,
-      "observed_input_ceiling": 234437,
-      "structured_output_method": "json_schema",
-      "structured_output_method_source": "provider",
-      "structured_output_verified_on": null,
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct"
-      ],
-      "direct_model": "openai/moonshotai/kimi-k3",
-      "api_base": "https://integrate.api.nvidia.com/v1",
-      "ai_gateway_slug": "custom-nvidia",
-      "ai_gateway_chat_path": "/chat/completions",
-      "chat_path": "/chat/completions",
-      "api_key_env": "NVIDIA_API_KEY",
-      "reset_timezone": "UTC",
-      "provider_rpm": 35,
-      "provider_tpm": 90000,
-      "provider_concurrency": 4
     },
     {
       "route_id": "nvidia_deepseek_v4_1_flash_free",

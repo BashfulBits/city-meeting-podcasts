@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 53,
+    "routes_count": 51,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -1388,49 +1388,6 @@
       "request_params": null,
       "reasoning_controls": null
     },
-    "kilo_stepfun_step_3_7_flash_free": {
-      "route_id": "kilo_stepfun_step_3_7_flash_free",
-      "stream_response": null,
-      "ai_gateway_max_attempts": null,
-      "model": "kilo/stepfun/step-3.7-flash:free",
-      "provider": "kilo",
-      "upstream_model": "stepfun/step-3.7-flash:free",
-      "input_context_limit": 262144,
-      "output_context_limit": 262144,
-      "hard_input_ceiling": 249027,
-      "hard_input_ceiling_tolerance": null,
-      "input_token_ratio": null,
-      "account_id": "primary",
-      "rpm": 20,
-      "rpd": 200,
-      "tpd": null,
-      "tpm": null,
-      "concurrency": 1,
-      "request_start_margin_seconds": null,
-      "tpm_window_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-12",
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": 249027,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "tier": null,
-      "api_shape": null,
-      "request_path": null,
-      "yields_to": null,
-      "structured_output_method": "json_schema",
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "request_params": null,
-      "reasoning_controls": null
-    },
     "kilo_nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
       "stream_response": null,
@@ -1602,53 +1559,6 @@
       "structured_output_schema_strip_keys": [],
       "request_params": null,
       "reasoning_controls": null
-    },
-    "nvidia_kimi_k3_free": {
-      "route_id": "nvidia_kimi_k3_free",
-      "stream_response": null,
-      "ai_gateway_max_attempts": null,
-      "model": "moonshotai/kimi-k3",
-      "provider": "nvidia",
-      "upstream_model": "moonshotai/kimi-k3",
-      "input_context_limit": 1048576,
-      "output_context_limit": 65536,
-      "hard_input_ceiling": 234437,
-      "hard_input_ceiling_tolerance": null,
-      "input_token_ratio": null,
-      "account_id": "primary",
-      "rpm": 4,
-      "rpd": null,
-      "tpd": null,
-      "tpm": 36000,
-      "concurrency": 1,
-      "request_start_margin_seconds": null,
-      "tpm_window_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-12",
-      "observed_rpm": null,
-      "observed_burst": 2,
-      "observed_input_ceiling": 234437,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "tier": null,
-      "api_shape": null,
-      "request_path": null,
-      "yields_to": null,
-      "structured_output_method": "json_schema",
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "request_params": null,
-      "reasoning_controls": {
-        "max": {
-          "reasoning_effort": "max"
-        }
-      }
     },
     "nvidia_deepseek_v4_1_flash_free": {
       "route_id": "nvidia_deepseek_v4_1_flash_free",
@@ -2712,9 +2622,6 @@
     "zai/glm-4.7-flash": [
       "zai_glm_4_7_flash_primary"
     ],
-    "kilo/stepfun/step-3.7-flash:free": [
-      "kilo_stepfun_step_3_7_flash_free"
-    ],
     "nvidia/nemotron-3-ultra-550b-a55b:free": [
       "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
       "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -2724,9 +2631,6 @@
       "kilo_nemotron_3_5_super_vl_free",
       "openrouter_nvidia_nemotron_3_5_super_vl_free",
       "nvidia_nemotron_3_5_super_vl_120b_a12b_free"
-    ],
-    "moonshotai/kimi-k3": [
-      "nvidia_kimi_k3_free"
     ],
     "deepseek/deepseek-v4.1-flash": [
       "nvidia_deepseek_v4_1_flash_free",
@@ -2828,12 +2732,8 @@
     "openrouter/google/gemma-4-31b-it:free": "google/gemma-4-31b-it",
     "google/gemma-4-26b-a4b-it:free": "google/gemma-4-26b-a4b-it",
     "openrouter/google/gemma-4-26b-a4b-it:free": "google/gemma-4-26b-a4b-it",
-    "stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
-    "kilo/stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "openrouter/nvidia/nemotron-3.5-super-vl:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
-    "moonshotai/kimi-k3": "moonshotai/kimi-k3",
-    "nvidia/moonshotai/kimi-k3": "moonshotai/kimi-k3",
     "deepseek-ai/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "nvidia/deepseek-ai/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "google/gemma-4-31b-it": "google/gemma-4-31b-it",

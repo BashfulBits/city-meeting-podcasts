@@ -142,9 +142,7 @@ llm_lanes:
     # boundary (81,301). GLM 5.3 Flash is documented as optional small-context capacity and is not
     # wired into production.
     models:
-      - "deepseek/deepseek-v4-flash"
-      - "deepseek/deepseek-v4.1-flash"
-      - "moonshotai/kimi-k3"
+      [deepseek/deepseek-v4-flash, deepseek/deepseek-v4.1-flash]
     # Each request is pinned to its size band: V4 Flash alone (one model index) or, above 76,000
     # tokens, the V4.1 Flash + Kimi K3 pair (two indexes, so five write units). Kimi K3 was retired
     # upstream on 2026-10-15; the Worker skips its blocked route and V4.1 takes the work.
@@ -179,9 +177,7 @@ llm_lanes:
     # backup. Gemini 3.1 Flash Lite is removed to eliminate contention with chapter-agenda.
     # Ingress write units drop to 6 units per job (3 base + 3 primary models).
     models:
-      - "zai/glm-5.3-flash"
-      - "deepseek/deepseek-v4-flash"
-      - "moonshotai/kimi-k3"
+      [zai/glm-5.3-flash, deepseek/deepseek-v4-flash]
     backup_models:
       - "gemini/gemini-3.5-flash-lite"
       - "gemini/gemini-3.8-flash"
