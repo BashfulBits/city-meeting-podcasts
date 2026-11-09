@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Dispatched replies that fail local validation now carry a text-free diagnostic (JSON versus schema
+  stage, finish reason, completion tokens, content length, schema-field error locations), saved on
+  the terminal-failure marker as `diagnostic`. The old message lumped truncated or unparsable JSON
+  under "failed Pydantic validation", so a lane's 3-attempt exhaustions could not be classified.
+
 - **Tag batches are now split to the primary route's tested capacity, and the oversize gate uses
   tested ceilings.** The chapter-batch splitter grew batches until they stopped fitting any route,
   so routes advertising 1M context produced 212k-715k-token batches that no measured route can
