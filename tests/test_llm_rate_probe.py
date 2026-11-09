@@ -238,6 +238,53 @@ def test_phase_2_records_only_a_size_that_actually_returned_200():
     assert result["observed_input_ceiling"] == 8000
 
 
+def test_phase_2_searches_above_the_old_250k_cap_for_a_large_context_route():
+    """The search cap was a hard-coded 250,000, so a 1M-context route could never be shown to
+    accept more than ~250k and every higher ceiling stayed untested."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+    result = run_phase_2(_ScriptedRunner([ok]), _route(input_context_limit=1_000_000))
+
+    assert result["observed_input_ceiling"] > 250_000
+    assert result["search_upper_bound"] == 1_000_000
+
+
+def test_phase_2_max_search_tokens_still_bounds_the_search():
+    from citypods.llm_rate_probe import run_phase_2
+
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+    result = run_phase_2(
+        _ScriptedRunner([ok]), _route(input_context_limit=1_000_000), max_search_tokens=250_000
+    )
+
+    assert result["observed_input_ceiling"] <= 250_000
+    assert result["search_upper_bound"] == 250_000
+
+
+def test_phase_2_gives_large_probes_a_longer_timeout_and_restores_it():
+    from citypods.llm_rate_probe import run_phase_2
+
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+
+    class TimeoutRunner(_ScriptedRunner):
+        request_timeout_seconds = 15.0
+
+        def __init__(self):
+            super().__init__([ok])
+            self.timeouts = []
+
+        def send_request(self, route, prompt, *, max_tokens=1):
+            self.timeouts.append(self.request_timeout_seconds)
+            return super().send_request(route, prompt, max_tokens=max_tokens)
+
+    runner = TimeoutRunner()
+    run_phase_2(runner, _route(input_context_limit=1_000_000))
+
+    assert max(runner.timeouts) > 100  # the ~500k-token first probe is not cut off at 15s
+    assert runner.request_timeout_seconds == 15.0
+
+
 def test_phase_2_retries_through_a_throttle_before_giving_up():
     """Endurance semantics: a throttle is waited out and the SAME size re-probed, so a busy route
     still yields a real measurement instead of being written off."""
@@ -422,6 +469,43 @@ def test_endurance_uses_a_timeout_long_enough_for_slow_providers(monkeypatch):
     monkeypatch.setattr(probe, "RateProbeRunner", _Runner)
     probe.run_endurance([], apply=False, hours=0.001, interval_seconds=1)
     assert captured["timeout"] >= 60
+
+
+def test_endurance_passes_max_search_tokens_to_the_ceiling_phase(monkeypatch):
+    """`--endurance --max-search-tokens N` must bound the ceiling search the same way the
+    one-shot path does, not silently use the 1,000,000 default."""
+    import citypods.llm_rate_probe as probe
+
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+    monkeypatch.setattr(probe.RateProbeRunner, "send_request", lambda self, r, p, **kw: ok)
+    seen = {}
+
+    def _fake_phase_2(runner, route, **kwargs):
+        seen.update(kwargs)
+        return {"phase": "2"}
+
+    monkeypatch.setattr(probe, "run_phase_2", _fake_phase_2)
+    monkeypatch.setenv("FAKE_KEY", "sk-test")
+    route = {"route_id": "r", "provider": "sambanova", "api_key_env": "FAKE_KEY"}
+    probe.run_endurance(
+        [route], apply=True, hours=0.001, interval_seconds=0.05, max_search_tokens=123_000
+    )
+    assert seen["max_search_tokens"] == 123_000
+
+
+def test_main_forwards_max_search_tokens_in_endurance_mode(monkeypatch, tmp_path):
+    import citypods.llm_rate_probe as probe
+
+    seen = {}
+
+    def _fake_endurance(routes, **kwargs):
+        seen.update(kwargs)
+        return {"routes": []}
+
+    monkeypatch.setattr(probe, "run_endurance", _fake_endurance)
+    monkeypatch.setattr(probe, "load_route_catalog", lambda: [])
+    probe.main(["--endurance", "--max-search-tokens", "250000", "--out", str(tmp_path / "o.json")])
+    assert seen["max_search_tokens"] == 250_000
 
 
 def test_a_200_without_a_completion_labels_as_upstream_capacity_not_unknown():

@@ -29,6 +29,14 @@ HEADER_REGEX = re.compile(
     re.IGNORECASE,
 )
 ROUTES_FILE = Path(__file__).resolve().parent / "compute" / "llm_routes.json"
+# Phase 2's search never goes above this many (chars/4) tokens, whatever a route advertises. It
+# was 250,000, which meant a 1M-context route could never be shown to accept more than ~250k and
+# every ceiling above that stayed "untested". It is a probe-cost guard, not a claim about any
+# provider; raise it per run with --max-search-tokens.
+PHASE2_MAX_SEARCH_TOKENS = 1_000_000
+# A big request takes a while to upload and process: the default 15s request timeout turns any
+# probe past ~75k tokens into a transport failure, which is not evidence about size.
+PHASE2_SECONDS_PER_1K_TOKENS = 0.25
 
 
 def load_route_catalog() -> list[dict[str, Any]]:
@@ -441,6 +449,7 @@ def run_phase_2(
     provider_reported_tpm: int | None = None,
     confirm_rounds: int = 2,
     confirm_wait_seconds: float = 25.0,
+    max_search_tokens: int = PHASE2_MAX_SEARCH_TOKENS,
 ) -> dict[str, Any]:
     """Phase 2: enforced input ceiling by binary search.
 
@@ -466,7 +475,7 @@ def run_phase_2(
     # only reveals its budget in an error still gets a correctly-bounded search. The 250,000 cap
     # is a probe-cost guard, not a claim about any provider.
     provider_tpm = provider_reported_tpm
-    high = min(context_limit, 250000)
+    high = min(context_limit, max_search_tokens)
     if provider_tpm:
         high = min(high, provider_tpm)
     observed_ceiling: int | None = None
@@ -480,7 +489,18 @@ def run_phase_2(
     def _probe(size: int) -> dict[str, Any]:
         char_count = size * chars_per_token
         multiplier = max(1, char_count // len(filler_sentence))
-        return runner.send_request(route, (filler_sentence * multiplier)[:char_count], max_tokens=1)
+        prompt = (filler_sentence * multiplier)[:char_count]
+        # Give a large probe time to upload and be processed, then restore the runner's timeout.
+        base_timeout = getattr(runner, "request_timeout_seconds", None)
+        if base_timeout is not None:
+            runner.request_timeout_seconds = max(
+                base_timeout, size / 1000 * PHASE2_SECONDS_PER_1K_TOKENS
+            )
+        try:
+            return runner.send_request(route, prompt, max_tokens=1)
+        finally:
+            if base_timeout is not None:
+                runner.request_timeout_seconds = base_timeout
 
     probes = 0
     while probes < max_probes and low < high - 1000:
@@ -571,7 +591,7 @@ def run_phase_2(
             contention_detected = True
             observed_ceiling = largest_rejected
             low = largest_rejected
-            high = min(context_limit, 250000)
+            high = min(context_limit, max_search_tokens)
             if provider_tpm:
                 high = min(high, provider_tpm)
             largest_rejected = None
@@ -687,6 +707,7 @@ def run_endurance(
     interval_seconds: float = 60.0,
     session: requests.Session | None = None,
     log=print,
+    max_search_tokens: int = PHASE2_MAX_SEARCH_TOKENS,
 ) -> dict[str, Any]:
     """Persist against every route for up to ``hours``, never giving up on a throttle.
 
@@ -833,6 +854,7 @@ def run_endurance(
                     throttle_retries=3,
                     throttle_wait_seconds=20.0,
                     provider_reported_tpm=state[rid].get("provider_reported_tpm"),
+                    max_search_tokens=max_search_tokens,
                 )
             except (ProbeBudgetExceeded, RouteBudgetExceeded) as exc:
                 # run_endurance's own runner.max_wall_seconds (hours*3600 + 3600) can be reached
@@ -874,6 +896,8 @@ def run_probes(
     routes: list[dict[str, Any]],
     phases: list[str],
     runner: RateProbeRunner,
+    *,
+    max_search_tokens: int = PHASE2_MAX_SEARCH_TOKENS,
 ) -> dict[str, Any]:
     """Run specified phases across target routes and collect report data."""
     results: list[dict[str, Any]] = []
@@ -918,7 +942,9 @@ def run_probes(
                 route_record["observations"]["phase_1b"] = run_phase_1b(runner, route)
 
             if "2" in phases:
-                route_record["observations"]["phase_2"] = run_phase_2(runner, route)
+                route_record["observations"]["phase_2"] = run_phase_2(
+                    runner, route, max_search_tokens=max_search_tokens
+                )
 
             if "3" in phases:
                 route_record["observations"]["phase_3"] = run_phase_3(
@@ -1032,6 +1058,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Probe phase to run (repeatable; default: 0)",
     )
     parser.add_argument(
+        "--max-search-tokens",
+        type=int,
+        default=PHASE2_MAX_SEARCH_TOKENS,
+        help=(
+            "Phase 2 upper bound for the input-ceiling search, in chars/4 tokens, still capped at "
+            f"each route's advertised context (default: {PHASE2_MAX_SEARCH_TOKENS})"
+        ),
+    )
+    parser.add_argument(
         "--include-paid",
         action="store_true",
         default=False,
@@ -1092,6 +1127,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+    if args.max_search_tokens < 2000:
+        parser.error("--max-search-tokens must be at least 2000")
     phases = args.phases or ["0"]
 
     catalog = load_route_catalog()
@@ -1122,6 +1159,7 @@ def main(argv: list[str] | None = None) -> int:
             apply=args.apply,
             hours=args.endurance_hours,
             interval_seconds=args.endurance_interval,
+            max_search_tokens=args.max_search_tokens,
         )
     else:
         runner = RateProbeRunner(
@@ -1130,7 +1168,7 @@ def main(argv: list[str] | None = None) -> int:
             max_requests_total=args.max_requests_total,
             max_wall_seconds=args.max_wall_seconds,
         )
-        report = run_probes(selected, phases, runner)
+        report = run_probes(selected, phases, runner, max_search_tokens=args.max_search_tokens)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
