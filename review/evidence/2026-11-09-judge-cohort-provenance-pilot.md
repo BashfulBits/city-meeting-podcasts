@@ -68,3 +68,29 @@ or its recipe revision, and an object write time does not establish a provider r
 time. The 11 JEV response bodies did not have a provider creation timestamp; the inspected prior
 pending and completed records did not supply actual physical route IDs. No selected triple is
 claimed to meet the existing strict provider-creation-time rule on this evidence alone.
+
+### Maintainer-approved JEV timestamp surrogate and replay
+
+On November 9 the maintainer approved using the matching archived Worker result-object write time
+as a **labeled, weaker substitute** for the absent JEV provider creation time when the registry
+and request were also created after the fix. A provider could have returned an older cached
+response. This does not establish actual physical route identity or independent qualification.
+
+A follow-up replay checked the 20 triples on 18 distinct subjects described above, using the 34
+unique retained packets. It reconstructed all 34 packet recipe hashes from the archived request
+items, their evidence digests and prompt versions, using chat request revision 3. The archived chat
+system messages matched the current sibling and adjudicator messages. For all 60 selected role
+rows, the saved request's evidence digest and parsed answer matched the stored judgment; all 20
+adjudicator quotes passed a fresh quote check. Eighteen of 20 sibling quotes passed; sibling
+quote validity is not gating. All matching archived result writes were after the fix, all chat
+provider creation timestamps were after it, and the JEV result writes use the approved surrogate.
+
+The selected records matched candidates for all 18 subjects. All 20 triples had independent
+logical producer, sibling and adjudicator families. Nineteen used the maintainer's agreed sibling
+family: Gemma for the sampled non-Google producers. One rule-tag triple used independent Nemotron
+instead, and is excluded from the agreed-panel subset. Actual provider route IDs remained unknown
+in the inspected records; do not infer them from model names or response shape. These checks yield
+19 **candidate triples under the approved surrogate**, not a representative calibration set:
+they are chosen from 12 convenience-sampled sources, favor recent rows, contain only 18 subjects
+before the panel exclusion, and share packets. They cannot support population estimates or a
+threshold proposal. The existing JEV escalation band and combined rule must still be measured.
