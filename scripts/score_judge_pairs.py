@@ -121,15 +121,16 @@ def replay(directory, manifest):
                         raise ValueError(f"Duplicate scored subject: {subject}")
                     decisions[subject] = None
             if evaluation["contract_pass"]:
+                by_key = {}
+                for item in packet.items:
+                    if item.subjects and item.question.kind == "validate":
+                        by_key.setdefault((item.subjects[0].subject_id, item.question_id), item)
                 for row in evaluation["parsed_rows"]:
                     if row["kind"] == "validate" and row["question_id"] == "supported":
                         decisions[row["subject_id"]] = row["value"]
-                        item = next(
-                            item
-                            for item in packet.items
-                            if item.subjects[0].subject_id == row["subject_id"]
-                            and item.question_id == row["question_id"]
-                        )
+                        item = by_key.get((row["subject_id"], row["question_id"]))
+                        if item is None:
+                            raise ValueError("Parsed answer does not match a submitted packet item")
                         evidence_valid[row["subject_id"]] = quote_valid(
                             row.get("reason"), item.evidence.text
                         )
@@ -219,6 +220,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.out.exists():
         parser.error("Output already exists; preserve previous scoring results")
+    if not args.out.parent.is_dir():
+        parser.error("Output parent directory does not exist")
     if args.observations:
         observations = json.loads(args.observations.read_text())["observations"]
     elif args.archive:

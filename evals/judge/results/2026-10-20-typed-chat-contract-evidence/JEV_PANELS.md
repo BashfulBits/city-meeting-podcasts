@@ -4,6 +4,8 @@ Both agreed panels retain useful positive coverage with zero false accepts on th
 labels at the descriptive JEV `p >= 0.5` cutoff. Keep JEV + Gemma / JEV + Nemotron, selected by
 producer-family independence. Every result without two positive votes goes to human review.
 This report changes no production threshold, rejection behavior, model assignment, or gold label.
+Its human-review routing describes this frozen comparison; the later maintainer-approved workflow
+uses independent adjudicator resolution with small audit sampling and remains shadow-only.
 
 ## Inputs and compatibility
 

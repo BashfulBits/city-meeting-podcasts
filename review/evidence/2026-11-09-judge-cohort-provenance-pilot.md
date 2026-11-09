@@ -156,3 +156,17 @@ The weighted contested/random estimator, cluster-aware uncertainty, treatment of
 and the retired-gate baseline still require a separate PR7 analysis. In particular, adjudicator
 agreement is not human ground truth, and decisions resolved by the adjudicator agree with it by
 construction. This replay must not be reported as an independent accuracy improvement.
+
+In the four tag calibration disagreements, the current transcript and candidate records
+reconstructed the exact saved T1 and T2 evidence digests in every case. For one of the two
+cross-context quote mismatches, the candidate's stored evidence time precedes its assigned
+chapter start. For the other, the candidate time lies inside its assigned chapter but occurs
+after the segment where the chapter-first T2 window reaches 1,800 words. The latter is a
+concrete truncation risk; the former requires a chapter/evidence assignment check. These are
+different mechanisms and neither establishes a human truth label. A diagnostic packet showing
+model answers is not a blind audit and its judgments must not be treated as independent gold.
+
+The maintainer's approved timestamp substitute applies only to the labeled JEV provenance
+analysis above. Changing the evidence builder could change evidence digests and trigger new JEV
+or chat work, so any proposed implementation must include an explicit versioning and backfill
+story and must not silently re-ask preserved judgments.

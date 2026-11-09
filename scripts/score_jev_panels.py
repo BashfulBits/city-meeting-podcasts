@@ -8,9 +8,13 @@ import argparse
 import hashlib
 import json
 import math
+from collections.abc import Mapping
 from pathlib import Path
 
 from scripts import score_judge_pairs as pairs
+
+# This is the historical comparison boundary, independent of the admission sensitivity sweep.
+DISAGREEMENT_REFERENCE = 0.5
 
 
 def probabilities(bundling, context, layout):
@@ -45,7 +49,8 @@ def evaluate(observations, gold, anchor, threshold):
         contested = [
             key
             for key in truth
-            if isinstance(decisions.get(key), bool) and (anchor[key] >= 0.5) != decisions[key]
+            if isinstance(decisions.get(key), bool)
+            and (anchor[key] >= DISAGREEMENT_REFERENCE) != decisions[key]
         ]
         adjudicators = []
         for judge in observations:
@@ -54,11 +59,13 @@ def evaluate(observations, gold, anchor, threshold):
                 "nvidia_deepseek_v4_1_flash_free",
             }:
                 continue
+            evidence_valid = judge.get("evidence_valid")
+            if not isinstance(evidence_valid, Mapping):
+                evidence_valid = {}
             usable = {
                 key: judge["decisions"].get(key)
                 for key in contested
-                if judge.get("evidence_valid", {}).get(key) is True
-                and isinstance(judge["decisions"].get(key), bool)
+                if evidence_valid.get(key) is True and isinstance(judge["decisions"].get(key), bool)
             }
             positive = [key for key, value in usable.items() if value]
             adjudicators.append(
@@ -70,6 +77,12 @@ def evaluate(observations, gold, anchor, threshold):
                     "positive_ids": positive,
                     "false_positive_ids": [key for key in positive if not truth[key]],
                     "unusable_ids": [key for key in contested if key not in usable],
+                    "missing_quote_metadata_ids": [
+                        key
+                        for key in contested
+                        if isinstance(judge["decisions"].get(key), bool)
+                        and not isinstance(evidence_valid.get(key), bool)
+                    ],
                     "decisions": usable,
                 }
             )
@@ -108,6 +121,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.out.exists():
         parser.error("Output already exists; preserve previous results")
+    if not args.out.parent.is_dir():
+        parser.error("Output parent directory does not exist")
     manifest = json.loads(args.manifest.read_text())
     observations = (
         pairs.replay_archive(args.archive, manifest)

@@ -46,8 +46,38 @@ def test_contested_adjudication_requires_quote_and_never_overrides_panel():
     assert adjudicator["usable"] == 1
     assert adjudicator["false_positive_ids"] == ["eval-a"]
     assert adjudicator["unusable_ids"] == ["eval-b"]
+    assert adjudicator["missing_quote_metadata_ids"] == []
     # Admission sensitivity must not redefine the production binary disagreement boundary.
     higher = scorer.evaluate(observations, gold, anchor, 0.9)["panels"][0]
     assert higher["contested_ids"] == panel["contested_ids"]
     with pytest.raises(ValueError, match="Missing JEV"):
         scorer.evaluate(observations, gold, {}, 0.5)
+
+
+def test_missing_quote_metadata_is_reported_and_remains_unusable():
+    gold = {"bundling": {"a": True}, "context_ladder": {"controls": [], "adjudicated": {}}}
+    observations = [
+        {"id": "sibling", "model": "google/gemma-4-31b-it", "decisions": {"eval-a": True}},
+        {"id": "orcarouter_zai_glm_5_3_flash_free", "model": "glm", "decisions": {"eval-a": True}},
+    ]
+    result = scorer.evaluate(observations, gold, {"eval-a": 0.4}, 0.5)
+    adjudicator = result["panels"][0]["adjudicators"][0]
+    assert adjudicator["usable"] == 0
+    assert adjudicator["missing_quote_metadata_ids"] == ["eval-a"]
+
+
+def test_missing_output_directory_fails_before_reading_inputs(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        scorer.main(
+            [
+                "--observations",
+                "missing.json",
+                "--jev-bundling",
+                "missing.json",
+                "--jev-context",
+                "missing.json",
+                "--out",
+                str(tmp_path / "absent" / "out.json"),
+            ]
+        )
+    assert "Output parent directory does not exist" in capsys.readouterr().err

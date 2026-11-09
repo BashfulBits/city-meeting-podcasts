@@ -2359,12 +2359,13 @@ adjudicator evidence remains required. See review/53 and evals/judge for the sco
 No task graduation, production recovery, or calibration thresholds are implied.
 
 [PR #2514](https://github.com/BashfulBits/city-meeting-podcasts/pull/2514) contains this
-judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel analysis is now recorded in the
+judge-contract prerequisite and compact first-200 evaluation results. Matched JEV-panel analysis
+is recorded in the
 [panel report](../evals/judge/results/2026-10-20-typed-chat-contract-evidence/JEV_PANELS.md):
 both retained panels accept 16 positives and zero negatives on 53 definite selection-set labels
 at the 0.5 reference cutoff. Independent adjudicator counterfactuals retain an observed false
-positive, so disputes remain for human review. PR7 population calibration remains separate;
-terminal schema/ID failures are retained rather than resampled.
+positive. The maintainer-approved automatic-resolution workflow remains shadow-only and separate
+from PR7 population calibration; terminal schema/ID failures are retained rather than resampled.
 
 
 ### FFmpeg host ABI repair (2026-10-21)
@@ -2377,11 +2378,12 @@ Workflow contract tests guard the build/consumer alignment. The FFmpeg URL/check
 digest and pipeline versions stay unchanged; stored artifacts are retained without backfill.
 
 Judge recovery step 3 (2026-10-23): [fresh bounded revalidation](evidence/2026-10-23-judge-recovery-revalidation.md)
-rebuilds the local proposal from 32 changed sources. The maintainer approved and the agent completed archive/removal of 6,665 stale or
-stale-dependent judgments and 42 pending references, with zero skips and verified readbacks.
+rebuilt the proposal from 32 changed sources. The maintainer approved and the agent completed
+archive/removal of 6,665 stale or stale-dependent judgments and 42 pending references, with zero
+skips and verified readbacks.
 JEV rows, original calibration rows, six newer paired cases and unknown-provenance pointers
 were preserved; all workflow states were restored after the approved maintenance window.
-Fresh scheduled shadow collection and PR7 measurement remain next; authority is unchanged.
+Scheduled shadow collection has resumed; PR7 measurement remains separate and authority unchanged.
 
 Maintainer-directed judge recovery (October 26, 2026 Central): calendar finalization defers
 only the affected source after exhausted transient remote reads, preserving the remote catalog
