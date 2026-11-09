@@ -568,6 +568,11 @@ shows earlier answers, so a contested item and a sampled one read the same.
   cache value; all 23 initial requests were CDN `MISS`, and all 23 repeat requests were `HIT`. The
   sample is a prior chapter-locator holdout set, not a judge-run workload or RSS measurement; see
   [the dated evidence note](evidence/judge-cdn-transcript-cache-2026-11-07.md).
+- The run-local parsed-transcript cache retains up to eight episode snapshots in memory and spills
+  evicted snapshots to a private temporary SQLite file. It removes the file when the pass ends,
+  retains failed-read and origin-refresh semantics, and reports spill and rehydration counters.
+  The configured 2,000-episode quote-check read budget is unchanged; cache measurements do not
+  establish a safe larger budget until observed in a normal run.
 - **Stability probe**: `judging.stability_sample_rate` (2%) of subjects, once the first-tier routine
   answer is recorded, are asked again by the same judge with `order "_s"`, `sample "stability"`: the
   evidence first and the question reworded after it. The report counts flips per judge.

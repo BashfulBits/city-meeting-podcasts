@@ -69,6 +69,7 @@ from citypods.judging.tasks import (
     make_evidence,
     transcript_identity,
 )
+from citypods.judging.text_cache import TextCache
 from citypods.storage.base import StorageReadUnavailable
 
 ANCHOR_PURPOSE = "judge:anchor"
@@ -1232,51 +1233,62 @@ def run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     # reads that failed in this pass.
     texts_for = ctx.texts_for
     texts_for_origin = ctx.texts_for_origin
+    cache = TextCache()
     try:
-        return _run(episodes, ctx)
+        return _run(episodes, ctx, cache)
     finally:
         ctx.texts_for = texts_for
         ctx.texts_for_origin = texts_for_origin
+        cache.close()
 
 
-def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
+def _run(episodes: Sequence[Any], ctx: JudgingContext, texts_cache: TextCache) -> JudgingStats:
     stats = JudgingStats()
     # Evidence is rebuilt when planning and again when deciding completeness; read each episode's
     # transcript once per pass. A read that failed stays failed for the pass (no second attempt).
-    texts_cache: dict[int, EpisodeTexts | TextsUnavailable] = {}
+    failures: dict[int, TextsUnavailable] = {}
     texts_for = ctx.texts_for
     texts_for_origin = ctx.texts_for_origin
     cache_value_bytes = 0
+    cache_entry_sizes: dict[int, int] = {}
     cache_observations: Counter = Counter()
     origin_refreshed: set[int] = set()
     origin_failed: dict[int, StorageReadUnavailable | TextsUnavailable] = {}
 
-    def remember_texts(ep: Any, value: EpisodeTexts | TextsUnavailable) -> None:
+    def measure_memory() -> None:
         nonlocal cache_value_bytes
-        measure_started = time.perf_counter()
-        cache_value_bytes += _estimate_text_cache_value_bytes(value)
-        cache_observations["transcript_cache_measure_ms"] += int(
-            (time.perf_counter() - measure_started) * 1000
-        )
-        texts_cache[id(ep)] = value
-        cache_observations["transcript_cache_entries"] = len(texts_cache)
+        cache_value_bytes = sum(cache_entry_sizes.get(key, 0) for key in texts_cache.memory)
+        cache_observations["transcript_cache_entries"] = len(texts_cache.memory)
         cache_observations["transcript_cache_peak_entries"] = max(
-            cache_observations["transcript_cache_peak_entries"], len(texts_cache)
+            cache_observations["transcript_cache_peak_entries"], len(texts_cache.memory)
         )
         cache_observations["transcript_cache_estimated_bytes"] = cache_value_bytes
         cache_observations["transcript_cache_peak_estimated_bytes"] = max(
             cache_observations["transcript_cache_peak_estimated_bytes"],
-            cache_value_bytes + sys.getsizeof(texts_cache),
+            cache_value_bytes + sys.getsizeof(texts_cache.memory),
+        )
+
+    def remember_texts(ep: Any, value: EpisodeTexts | TextsUnavailable) -> None:
+        measure_started = time.perf_counter()
+        if isinstance(value, TextsUnavailable):
+            failures[id(ep)] = value
+        else:
+            failures.pop(id(ep), None)
+            texts_cache.put(id(ep), value)
+            cache_entry_sizes[id(ep)] = _estimate_text_cache_value_bytes(value)
+        measure_memory()
+        cache_observations["transcript_cache_measure_ms"] += int(
+            (time.perf_counter() - measure_started) * 1000
         )
 
     def cache_origin_texts(ep: Any) -> EpisodeTexts:
         """Refresh a stale CDN entry from origin and replace its run-local cached value."""
-        nonlocal cache_value_bytes
         if texts_for_origin is None:
             raise TextsUnavailable("origin transcript fallback is not configured")
         if id(ep) in origin_refreshed:
             cached = texts_cache.get(id(ep))
             if isinstance(cached, EpisodeTexts):
+                measure_memory()
                 return cached
         if id(ep) in origin_failed:
             raise origin_failed[id(ep)]
@@ -1285,17 +1297,19 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
         except (StorageReadUnavailable, TextsUnavailable) as exc:
             origin_failed[id(ep)] = exc
             raise
-        old = texts_cache.get(id(ep))
-        if old is not None:
-            cache_value_bytes -= _estimate_text_cache_value_bytes(old)
         remember_texts(ep, value)
         origin_refreshed.add(id(ep))
         cache_observations["transcript_cache_origin_fallbacks"] += 1
         return value
 
     def cached_texts(ep: Any) -> EpisodeTexts:
-        if id(ep) in texts_cache:
+        if id(ep) in failures:
+            raise failures[id(ep)]
+        cached = texts_cache.get(id(ep))
+        measure_memory()
+        if cached is not None:
             cache_observations["transcript_cache_hits"] += 1
+            return cached
         else:
             cache_observations["transcript_cache_misses"] += 1
             try:
@@ -1303,10 +1317,9 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
             except TextsUnavailable as exc:
                 value = exc
             remember_texts(ep, value)
-        cached = texts_cache[id(ep)]
-        if isinstance(cached, TextsUnavailable):
-            raise cached
-        return cached
+        if isinstance(value, TextsUnavailable):
+            raise value
+        return value
 
     ctx.texts_for = cached_texts
     if texts_for_origin is not None:
@@ -1314,6 +1327,10 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
 
     def finish() -> JudgingStats:
         completed = _finish(ordered, ctx, stats)
+        measure_memory()
+        cache_observations["transcript_cache_spills"] = texts_cache.spills
+        cache_observations["transcript_cache_rehydrates"] = texts_cache.rehydrates
+        cache_observations["transcript_cache_spill_bytes"] = texts_cache.spill_bytes
         cache_observations["transcript_cache_estimated_bytes"] = cache_value_bytes
         stats.counts.update(cache_observations)
         return completed

@@ -1540,7 +1540,9 @@ A pass submits only into the room left under `judging.max_outstanding_packets` p
 lane the Worker's ingress preflight reports closed starts with no packets. Adjudication (review/53 PR5,
 `judging.adjudication.enabled`) puts contested subject-questions and a 3% calibration sample to a
 third, independent judge at the largest context tier, and a chat judge's or adjudicator's quoted
-evidence is checked mechanically (`quote_valid`; false rows are kept but ignored as votes); 2% of
+evidence is checked mechanically (`quote_valid`; false rows are kept but ignored as votes). The
+per-pass parsed transcript cache retains eight episodes in memory and spills older snapshots to
+private temporary storage; the existing quote-check read budget remains unchanged. 2% of
 subjects are also re-asked, worded differently, as stability probes. New chat packets request the typed `judge-answers-v3` reply contract: each kind requires its own
 answer field and duplicate IDs are rejected. Historical v1/v2 replies remain readable. Chat packet
 request revision 3 prevents a newly planned packet from reusing an older completed result; it does
