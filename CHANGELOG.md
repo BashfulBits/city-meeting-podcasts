@@ -15,6 +15,46 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Provider-wide daily request pool.** A provider whose free tier is one account-level daily limit,
+  not a per-model one, can now declare `rpd` on the provider in `config/provider_limits.yml`; all
+  of its routes then share that pool. OrcaRouter is the first: its free 800/day was modelled as
+  800 per route, so DeepSeek, GLM and HY3 could together be planned for 2,400/day against a real
+  800 (on 2026-11-09 all three answered the same 429 with the same Retry-After while HY3 had no
+  recorded usage). The compiler validates the pool (positive whole number, no route `rpd` above it,
+  scaled with `split_cap_multiplier`) and passes it to the Worker and to every Python route. The
+  Worker derives the pool's usage by summing the routes' own daily counts (no new stored counter),
+  gates dispatch pacing and capacity ranking on it, reports `provider_pools` and pool-capped
+  `rpd_remaining` in `/v2/dispatch:pause-status`, and treats a daily-window 429 from a pooled
+  provider as the pool being spent, standing every route down until the reset. The Python direct
+  ledger keeps the same pool in its provider ledger, with release/settle refunds and rollover.
+
+- **LLM rate probe phase 2 now searches past 250k tokens.** The input-ceiling search was capped
+  at a hard-coded 250,000, so 1M-context routes (OrcaRouter DeepSeek and GLM, Nemotron Ultra) could
+  never be shown to accept more. The cap is now `--max-search-tokens` (default 1,000,000, still
+  bounded by each route's advertised context), probes scale their request timeout with size
+  instead of failing at 15s, and `llm-rate-probe.yml` gains `route` and `max_search_tokens`
+  inputs. The weekly provider-catalog context scan uses its own search (524,288 tokens per call)
+  and is unchanged.
+- **Probe workflow inputs can no longer add CLI arguments, and endurance mode honours the cap.**
+  `llm-rate-probe.yml` now builds its command as a Bash array (a value such as
+  `1000000 --apply` could previously turn a dry run live), validates `max_search_tokens` as a whole
+  number, and allows 25 minutes of probing inside the job's 30-minute timeout. `--endurance` now
+  passes `--max-search-tokens` to its ceiling phase.
+
+- **Tag lane no longer queues episodes that can never need an LLM tag.** `episode_needs_tagging`
+  counted every chapterless episode as "LLM pending" forever (it can never resolve a recipe hash),
+  so the lane's global queue held ~19k of ~20.5k candidates that `stage_is_dirty` then skipped as
+  `completion-cache` (2026-11-08 run). The pre-filter now mirrors the stage's trigger (an LLM tag
+  is pending only when the episode has chapters), so the candidate window and run budget go to
+  real work.
+- **Fixed the tag oversize gate rejecting batches the splitter had built for uncapped routes.**
+  The chapter-batch splitter counted routes with no per-minute token cap (OrcaRouter DeepSeek V4
+  Flash, 1M context; the Kilo/OpenRouter Nemotron routes) as able to fit, but the later "exceeds
+  every tpm-capped route" gate looked only at capped routes, so 212k-715k-token batches were
+  deferred as `tag-llm-oversized` forever (353 of them on 2026-11-08). Both now share one
+  `_tag_route_fits` predicate (input context, output context, and a whole per-minute cap when the
+  route has one).
+
 Fixed Moments submissions rejected after Kimi was retired. Existing Moments recipe identities
 are preserved, so removing the route does not reissue completed work; pending stale policies can
 still be retired and replanned by the deferred sweep.
