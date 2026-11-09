@@ -170,3 +170,29 @@ The maintainer's approved timestamp substitute applies only to the labeled JEV p
 analysis above. Changing the evidence builder could change evidence digests and trigger new JEV
 or chat work, so any proposed implementation must include an explicit versioning and backfill
 story and must not silently re-ask preserved judgments.
+
+## Local cache experiment (not a production run)
+
+The November 9 judge run cached 3,388 parsed transcripts across planning and collection, with a
+conservative estimated peak of 4,031,863,950 bytes. The estimate is not process RSS. The
+400-episode quote-check budget does not bound the separate planning and completeness accesses.
+
+A local experiment used 23 public holdout VTTs (4,910,484 raw bytes), parsed their transcript
+segments, and replayed two sequential passes. The timing includes `tracemalloc` and per-access
+serialization for output checking; it excludes HTTP transfer. Peak RSS is from independent local
+processes and includes their baseline, not GitHub runner measurements. Only parsed segments were
+modeled; production chapters, identity, shared definitions, failures and origin refresh semantics
+were not modeled.
+
+| Strategy | VTT parses | Disk rehydrates | Peak process RSS | Wall time |
+|---|---:|---:|---:|---:|
+| Unbounded memory | 23 | 0 | 105.03 MiB | 2.28 s |
+| Eight-entry memory LRU | 46 | 0 | 87.91 MiB | 3.83 s |
+| Eight-entry memory LRU plus temporary JSON spill | 23 | 23 | 86.98 MiB | 2.83 s |
+
+All strategies produced identical outputs for the same access order. The spill wrote 5,783,533
+bytes of temporary parsed data. A grouped-access run had more cache hits, showing why actual
+access order matters. This is evidence for testing a bounded memory cache with a per-pass disk
+backing, not a forecast of production throughput or a proposed quote-check limit. Any implementation
+must preserve transcript snapshots, failure memoization and origin-refresh behavior, bound disk
+use, clean up temporary files, and measure actual runner RSS and I/O before increasing the cap.
