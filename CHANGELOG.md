@@ -15,6 +15,18 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Replay agreed JEV panels.** Compare JEV + Gemma and JEV + Nemotron against frozen definite
+  tag labels, with offline scoring and quote-gated GLM/NVIDIA DeepSeek disagreement analysis.
+  Keep raw responses external, preserve gold labels, and change no production admission policy.
+  Record the approved automatic-resolution follow-up and operational archive/removal of stale
+  chat judgments under a temporary maintenance window. JEV judgments and unrelated state are
+  preserved; normal shadow collection can re-plan chat cells. No admission authority changes.
+
+Fix tag judge T2 evidence to retain the T1 passage within its context budget and reject a candidate
+timestamp outside its assigned chapter. Preserve reconstruction of older pending T2 replies. Changed
+T2 evidence digests create new judgment identities and can trigger gradual re-judging after
+deployment; old judgment rows remain stored and must be analyzed separately.
+
 - Judge lane: the per-pass quote-check read budget was a fixed 400 transcripts, so on 2026-11-09 a
   pass deferred 15,390 collected answers and left them counting against the outstanding-packet
   room. It is now `judging.quote_check_reads` in `site_config.yml` (2000).
