@@ -379,16 +379,59 @@ def tag_input_fingerprint(
     ).hexdigest()[:16]
 
 
+# Share of the primary route's tested capacity one tag batch may fill. ``input_token_ratio`` is a
+# measurement, not a guarantee, so batches leave this much headroom under the tested ceiling.
+TAG_BATCH_CAPACITY_FRACTION = 0.93
+
+
 def _tag_route_fits(route: Any, input_tokens: int) -> bool:
-    """Whether one tag request of ``input_tokens`` (plus the output budget) can ever fit ``route``:
-    within its input and output context and, when the route has one, a whole per-minute token cap.
-    Shared by the batch splitter and the oversize gate so the two can never disagree."""
-    total_tokens = input_tokens + TAG_OUTPUT_TOKEN_BUDGET
+    """Whether one tag request of ``input_tokens`` (raw chars/4 units, plus the output budget) fits
+    ``route``. A route with a measured ``hard_input_ceiling`` is held to it, in the route's own
+    token units (``route_input_tokens`` applies the measured ratio); a route without one is held
+    to its advertised context. Routes carrying a ceiling are the only ones whose size is proven."""
+    from citypods.compute.llm_policy import route_input_tokens
+
+    scaled = route_input_tokens(input_tokens, route)
+    limit = route.input_context_limit
+    if route.hard_input_ceiling is not None:
+        limit = min(limit, route.hard_input_ceiling)
     return (
-        input_tokens <= route.input_context_limit
+        scaled <= limit
         and TAG_OUTPUT_TOKEN_BUDGET <= route.output_context_limit
-        and (route.quota.tpm is None or total_tokens <= int(route.quota.tpm))
+        and (route.quota.tpm is None or scaled + TAG_OUTPUT_TOKEN_BUDGET <= int(route.quota.tpm))
     )
+
+
+def _tag_provable_routes(routes: Any) -> list[Any]:
+    """The routes whose input size has been measured (a ``hard_input_ceiling``), or, when none of
+    the candidates has been, every candidate so an unmeasured configuration still works. An
+    unmeasured route (OrcaRouter, no published free prompt cap) never widens what may be sent."""
+    routes = list(routes)
+    return [route for route in routes if route.hard_input_ceiling is not None] or routes
+
+
+def _tag_route_capacity(route: Any) -> int:
+    """Largest raw tag input (chars/4 units) ``_tag_route_fits`` accepts for ``route``'s size
+    limits, found by search because the fit also depends on the tpm cap."""
+    low, high = 0, int(route.input_context_limit) + 1
+    while low < high - 1:
+        mid = (low + high) // 2
+        if _tag_route_fits(route, mid):
+            low = mid
+        else:
+            high = mid
+    return low
+
+
+def tag_batch_target(primary_routes: Any) -> int | None:
+    """Raw input size a split batch aims for: ``TAG_BATCH_CAPACITY_FRACTION`` of the smallest
+    capacity among the primary model's measured routes, so a batch fits the lane's best-quota
+    route instead of being grown to whatever the largest route could take. ``None`` when the
+    primary has no measured route (the caller then falls back to the largest provable route)."""
+    measured = [r for r in primary_routes if r.hard_input_ceiling is not None]
+    if not measured:
+        return None
+    return int(min(_tag_route_capacity(r) for r in measured) * TAG_BATCH_CAPACITY_FRACTION)
 
 
 def episode_needs_tagging(
@@ -1027,12 +1070,28 @@ def llm_tag_suggestions(
         # deterministically against both model context and serialized JSON bytes. Child recipes
         # are durable, so a later pass only polls batches the Worker already accepted.
         if chapter_mode and not _batched and compact_chapters:
+            provable_routes = _tag_provable_routes(candidate_routes)
+            primary_routes = [
+                route
+                for route in ROUTE_CANDIDATES.get(backend_model, (ROUTES.get(backend_model),))
+                if route is not None
+            ]
+            batch_target = tag_batch_target(primary_routes)
 
             def fits_any_allowed_route(candidate_messages: list[dict[str, str]], size: int) -> bool:
                 if size > TAGGER_MAX_REQUEST_BYTES:
                     return False
                 input_tokens = estimate_tokens(candidate_messages)
-                return any(_tag_route_fits(route, input_tokens) for route in candidate_routes)
+                return any(_tag_route_fits(route, input_tokens) for route in provable_routes)
+
+            def fits_batch_target(candidate_messages: list[dict[str, str]], size: int) -> bool:
+                """Grow a batch only while it still fits the primary route's tested capacity."""
+                if batch_target is None:
+                    return fits_any_allowed_route(candidate_messages, size)
+                return (
+                    size <= TAGGER_MAX_REQUEST_BYTES
+                    and estimate_tokens(candidate_messages) <= batch_target
+                )
 
             batches: list[list[dict[str, Any]]] = []
             current: list[dict[str, Any]] = []
@@ -1050,7 +1109,7 @@ def llm_tag_suggestions(
                         separators=(",", ":"),
                     ).encode()
                 )
-                if current and not fits_any_allowed_route(proposed_messages, proposed_bytes):
+                if current and not fits_batch_target(proposed_messages, proposed_bytes):
                     batches.append(current)
                     current = [chapter]
                 else:
@@ -1148,25 +1207,23 @@ def llm_tag_suggestions(
         # batch that cannot fit a whole route minute at all, not the old direct-path's two-attempt
         # reservation threshold.
         token_estimate = input_tokens_estimate
-        route_limits = {
-            route.route_id or route.model: {
-                "context": route.input_context_limit,
-                "tpm": route.quota.tpm,
-            }
-            for route in candidate_routes
-        }
-        # Same predicate the batch splitter used to size this batch. A route with no per-minute
-        # cap (OrcaRouter DeepSeek, the Kilo/OpenRouter Nemotron routes) fits any batch within its
-        # context; judging only the tpm-capped routes rejected 212k-715k-token batches that the
-        # splitter had built for exactly those routes (353 "oversized" deferrals on 2026-11-08).
+        # Same predicate (and the same set of routes) the batch splitter sized this batch with.
+        # Only routes with a measured ``hard_input_ceiling`` can prove a batch fits: an unmeasured
+        # route (OrcaRouter's free prompt cap is unpublished) must not widen what is sent, or an
+        # oversized batch is just dispatched to a route that may reject it. Limits are shown in the
+        # raw chars/4 units of ``token_estimate``.
+        provable_routes = _tag_provable_routes(candidate_routes)
         if candidate_routes and not any(
-            _tag_route_fits(route, token_estimate) for route in candidate_routes
+            _tag_route_fits(route, token_estimate) for route in provable_routes
         ):
+            capacities = {
+                route.route_id or route.model: _tag_route_capacity(route)
+                for route in provable_routes
+            }
             print(
                 f"llm tag budget: material estimate={token_estimate} tokens exceeds every "
-                f"allowed route's context or per-minute token limit ({route_limits}) for "
-                f"recipe_hash={recipe_hash} -- this would never fit any window as-is, not just "
-                "this minute. "
+                f"measured allowed route's capacity ({capacities}) for recipe_hash="
+                f"{recipe_hash} -- this would never fit any window as-is, not just this minute. "
                 "Deferring because one chapter batch cannot fit any configured route.",
                 flush=True,
             )
