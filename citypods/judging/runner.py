@@ -319,6 +319,20 @@ def _choose_text(spec: TaskSpec, group: Sequence[Subject], options) -> str | Non
         return None
 
 
+def _tag_evidence_for_quote(subject, item, texts, evidence):
+    if (
+        subject.task == "tag"
+        and item.tier == "T2"
+        and (evidence is None or evidence.digest != item.evidence.digest)
+    ):
+        from citypods.judging.tag_task import _evidence as tag_evidence
+
+        old = tag_evidence(subject, item.tier, texts, legacy=True)
+        if old is not None and old.digest == item.evidence.digest:
+            return old
+    return evidence
+
+
 def _evidence_text(
     subject: Subject,
     item: Item,
@@ -356,6 +370,7 @@ def _evidence_text(
         evidence = make_evidence(item.tier, text) if text is not None else None
     else:
         evidence = spec.evidence(subject, item.tier, texts)
+        evidence = _tag_evidence_for_quote(subject, item, texts, evidence)
     if evidence is None or evidence.digest != item.evidence.digest:
         if item.question.kind != "choose" and ctx.texts_for_origin is not None:
             try:
@@ -363,6 +378,7 @@ def _evidence_text(
             except (StorageReadUnavailable, TextsUnavailable):
                 return DEFER
             evidence = spec.evidence(subject, item.tier, origin_texts)
+            evidence = _tag_evidence_for_quote(subject, item, origin_texts, evidence)
         if evidence is None or evidence.digest != item.evidence.digest:
             return None
     return evidence.text
@@ -1070,6 +1086,8 @@ def _largest_tier_evidence(spec: TaskSpec, subject: Subject, texts: EpisodeTexts
         evidence = spec.evidence(subject, tier, texts)
         if evidence is not None:
             return tier, evidence
+        if spec.name == "tag" and tier == "T2":
+            return None
     return None
 
 

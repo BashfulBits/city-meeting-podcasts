@@ -361,7 +361,8 @@ judged at that tier.
 **Tag task** (`tag_task.py`): subjects from `Episode.tags` (rule) and `Episode.llm_tag_candidates`
 (LLM), episode- and chapter-scope; question `supported` (validate) with the section 4b rubric plus
 the tag definition from `config/taxonomy.yml`; T0 matched spans, T1 plus or minus 45 s capped at 400
-words, T2 the chapter capped at 1,800 words (episode scope: 1,800 words around the first evidence
+words, T2 the T1 passage followed by chapter context, together capped at 1,800 words (episode scope:
+the T1 passage followed by context around the first evidence
 `t`); `first_tier="T1"`, `escalation=("T2", 0.3, 0.7)` applied to JEV only;
 `selection_policy="all_admitted"`.
 
@@ -884,3 +885,47 @@ change to the earlier automatic rejection/suppression behavior require a separat
 PR #2514 retains frozen inputs/gold, runnable eval/scoring tools, compact observations and
 regression fixtures. Bulk raw attempts and review logs are archived outside Git with a checksum;
 see the dated evals/judge evidence README. This does not change the panel assignments or labels.
+
+Matched-candidate panel follow-up: the [JEV panel report](../evals/judge/results/2026-10-20-typed-chat-contract-evidence/JEV_PANELS.md)
+joins historical JEV T1 probabilities to frozen typed-chat decisions. Both retained panels accept
+16 positive and zero negative labels at the 0.5 evaluation reference; every other outcome is for
+human review. Adjudicator disagreement counts require quotes and expose the retained `i2` error.
+Historical prompt/context differences and small selection-set uncertainty preclude a production
+false-accept guarantee. No production policy or labels change; population PR7 remains separate.
+
+### Maintainer-approved automatic resolution follow-up (2026-10-23)
+
+The maintainer accepted the matched-panel results and approved retaining JEV + Gemma /
+JEV + Nemotron, using longer-context JEV on disagreements, and trusting the selected independent
+GLM or NVIDIA DeepSeek adjudicator to resolve contested cases without mandatory human review
+for every admission. Preserve a small audit sample. This supersedes the blanket human-review
+intention recorded above; it does not silently activate authority mode or remove validation gates.
+Missing or invalid adjudicator answers remain unresolved, not confident negative judgments.
+
+Measure the combined context-escalation/adjudication rule before claiming improved counts.
+The existing tag task already escalates JEV probabilities in [0.3, 0.7] to T2, including
+agreement cases; disagreement-triggered escalation must not accidentally remove that behavior.
+The adjudicator must remain independent of producer and sibling families and retain quote checks.
+
+Step 2's matched-candidate analysis is complete; PR #2528 records its replayable evidence.
+The approved recovery was completed and normal shadow collection has resumed.
+PR7 policy implementation and task graduation retain their separately documented gates.
+
+Approved recovery completed (2026-10-23): the [revalidation outcome](evidence/2026-10-23-judge-recovery-revalidation.md)
+records verified removal of 6,665 stale/stale-dependent chat judgments and 42 pending
+adjudicator references across 32 sources, with exact-removal archives and no skipped entries.
+All 128,695 JEV judgments, two original calibration judgments, six newer paired cases,
+unknown-provenance pointers and unrelated state were preserved. Because B2 lacks CAS, the
+maintainer explicitly approved a temporary source-writer maintenance window; all workflow states
+were restored. CF v2 payload/result processing remained independent and running. Normal shadow
+collection resumes; no manual dispatch, JEV backfill, quota change or authority-mode flip occurred.
+
+A [November 9 read-only provenance pilot](evidence/2026-11-09-judge-cohort-provenance-pilot.md)
+found additional candidate pairs and retained historical payload/result versions. JEV response
+creation time and actual route identity remain unresolved in the sampled completed records; the
+pilot does not qualify pairs or change thresholds.
+
+The same November 9 pilot found valid sibling quotations absent from some adjudicator tag T2
+windows, frequently when the 1,800-word cap was reached. T1 is centered on candidate evidence;
+a chapter-based T2 starts at the chapter boundary, so containment is not guaranteed. Review
+evidence comparability and the retired-gate baseline before using these cases for PR7 thresholds.
