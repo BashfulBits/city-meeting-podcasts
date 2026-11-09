@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Judge lane: the per-pass quote-check read budget was a fixed 400 transcripts, so on 2026-11-09 a
+  pass deferred 15,390 collected answers and left them counting against the outstanding-packet
+  room. It is now `judging.quote_check_reads` in `site_config.yml` (2000).
+
 - Dispatched replies that fail local validation now carry a text-free diagnostic (JSON versus schema
   stage, finish reason, completion tokens, content length, schema-field error locations), saved on
   the terminal-failure marker as `diagnostic`. The old message lumped truncated or unparsable JSON
