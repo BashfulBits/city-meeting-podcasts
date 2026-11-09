@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Fixed Moments submissions rejected after Kimi was retired. Existing Moments recipe identities
+are preserved, so removing the route does not reissue completed work; pending stale policies can
+still be retired and replanned by the deferred sweep.
+
 - **Reconcile lane completions with successful completions in /v2/stats.** Distribute
   the coordinator's authoritative `completed_today` count across ingress lanes in
   proportion to lane throughput, ensuring lane completions reflect successful jobs
