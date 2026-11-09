@@ -307,6 +307,10 @@ judging:
   # room left (raised sibling 480 -> 800 to buffer against DO cap 2000), so a backlog the
   # providers drain slowly cannot grow the Worker queue without bound.
   max_outstanding_packets: {anchor: 240, sibling: 800, adjudicator: 66}
+  # Transcripts one pass may read to quote-check answers it collects; an answer past the limit waits
+  # for a later pass. The old fixed 400 deferred 15,390 answers on 2026-11-09 (all 400 reads used),
+  # which kept their markers pending and their packets counted against the room above.
+  quote_check_reads: 2000
   # Review/53 PR5: the adjudicator judges contested items and the calibration sample; data only.
   adjudication: {enabled: true}
   # Review/53 PR6: human-verified probes (evals/judge/<task>/gold.json, empty at first) mixed invisibly
