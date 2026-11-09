@@ -1165,7 +1165,8 @@ def llm_tag_suggestions(
             print(
                 f"llm tag budget: material estimate={token_estimate} tokens exceeds every "
                 f"allowed route's context or per-minute token limit ({route_limits}) for "
-                f"recipe_hash={recipe_hash} -- this would never fit any window as-is, not just this minute. "
+                f"recipe_hash={recipe_hash} -- this would never fit any window as-is, not just "
+                "this minute. "
                 "Deferring because one chapter batch cannot fit any configured route.",
                 flush=True,
             )
