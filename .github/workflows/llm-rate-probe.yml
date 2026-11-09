@@ -72,27 +72,36 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
         run: |
-          ARGS=""
+          # One array element per value: a dispatch input must never be able to add arguments
+          # (for example "1000000 --apply" turning a dry run live).
+          ARGS=()
           if [ "$INPUT_APPLY" = "true" ]; then
-            ARGS="$ARGS --apply"
+            ARGS+=(--apply)
           fi
           if [ -n "$INPUT_PROVIDER" ]; then
-            ARGS="$ARGS --provider $INPUT_PROVIDER"
+            ARGS+=(--provider "$INPUT_PROVIDER")
           fi
           if [ -n "$INPUT_ROUTE" ]; then
-            ARGS="$ARGS --route $INPUT_ROUTE"
+            ARGS+=(--route "$INPUT_ROUTE")
           fi
           if [ -n "$INPUT_MAX_SEARCH_TOKENS" ]; then
-            ARGS="$ARGS --max-search-tokens $INPUT_MAX_SEARCH_TOKENS"
+            if ! [[ "$INPUT_MAX_SEARCH_TOKENS" =~ ^[0-9]+$ ]]; then
+              echo "max_search_tokens must be a whole number" >&2
+              exit 1
+            fi
+            ARGS+=(--max-search-tokens "$INPUT_MAX_SEARCH_TOKENS")
           fi
           IFS=',' read -ra PHASE_LIST <<< "$INPUT_PHASES"
           for p in "${PHASE_LIST[@]}"; do
             p_trimmed="$(echo "$p" | tr -d ' ')"
             if [ -n "$p_trimmed" ]; then
-              ARGS="$ARGS --phase $p_trimmed"
+              ARGS+=(--phase "$p_trimmed")
             fi
           done
-          python -m citypods.llm_rate_probe $ARGS --out llm_route_characterization.json
+          # 25 minutes of probing inside the job's 30-minute timeout; the 900s default cannot cover
+          # several routes' large-size ceiling searches.
+          python -m citypods.llm_rate_probe "${ARGS[@]}" --max-wall-seconds 1500 \
+            --out llm_route_characterization.json
       - name: Upload probe report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

@@ -1567,6 +1567,17 @@ def test_llm_rate_probe_workflow_contract():
             assert _PINNED_SHA.search(uses), f"Unpinned action: {uses}"
 
 
+def test_llm_rate_probe_workflow_passes_inputs_as_single_arguments():
+    """A dispatch input must never be able to add CLI arguments (e.g. `1000000 --apply`)."""
+    _wf, job = _job("llm-rate-probe.yml", "probe")
+    script = next(step["run"] for step in job["steps"] if "llm_rate_probe" in step.get("run", ""))
+    assert 'ARGS=""' not in script and 'ARGS="$ARGS' not in script
+    assert "ARGS=()" in script
+    assert '"${ARGS[@]}"' in script
+    assert '--route "$INPUT_ROUTE"' in script
+    assert '--max-search-tokens "$INPUT_MAX_SEARCH_TOKENS"' in script
+
+
 def test_deferred_llm_producers_run_at_least_three_times_daily():
     """Producer cadence must give each production deferred lane repeated quota opportunities."""
     expected_minimums = {

@@ -471,6 +471,43 @@ def test_endurance_uses_a_timeout_long_enough_for_slow_providers(monkeypatch):
     assert captured["timeout"] >= 60
 
 
+def test_endurance_passes_max_search_tokens_to_the_ceiling_phase(monkeypatch):
+    """`--endurance --max-search-tokens N` must bound the ceiling search the same way the
+    one-shot path does, not silently use the 1,000,000 default."""
+    import citypods.llm_rate_probe as probe
+
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+    monkeypatch.setattr(probe.RateProbeRunner, "send_request", lambda self, r, p, **kw: ok)
+    seen = {}
+
+    def _fake_phase_2(runner, route, **kwargs):
+        seen.update(kwargs)
+        return {"phase": "2"}
+
+    monkeypatch.setattr(probe, "run_phase_2", _fake_phase_2)
+    monkeypatch.setenv("FAKE_KEY", "sk-test")
+    route = {"route_id": "r", "provider": "sambanova", "api_key_env": "FAKE_KEY"}
+    probe.run_endurance(
+        [route], apply=True, hours=0.001, interval_seconds=0.05, max_search_tokens=123_000
+    )
+    assert seen["max_search_tokens"] == 123_000
+
+
+def test_main_forwards_max_search_tokens_in_endurance_mode(monkeypatch, tmp_path):
+    import citypods.llm_rate_probe as probe
+
+    seen = {}
+
+    def _fake_endurance(routes, **kwargs):
+        seen.update(kwargs)
+        return {"routes": []}
+
+    monkeypatch.setattr(probe, "run_endurance", _fake_endurance)
+    monkeypatch.setattr(probe, "load_route_catalog", lambda: [])
+    probe.main(["--endurance", "--max-search-tokens", "250000", "--out", str(tmp_path / "o.json")])
+    assert seen["max_search_tokens"] == 250_000
+
+
 def test_a_200_without_a_completion_labels_as_upstream_capacity_not_unknown():
     """Airforce logged 43 of these in one 3-hour run, all labelled "unknown" -- which hid the
     single most important fact about that route. A 2xx with no completion is the provider having

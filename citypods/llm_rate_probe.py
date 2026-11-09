@@ -707,6 +707,7 @@ def run_endurance(
     interval_seconds: float = 60.0,
     session: requests.Session | None = None,
     log=print,
+    max_search_tokens: int = PHASE2_MAX_SEARCH_TOKENS,
 ) -> dict[str, Any]:
     """Persist against every route for up to ``hours``, never giving up on a throttle.
 
@@ -853,6 +854,7 @@ def run_endurance(
                     throttle_retries=3,
                     throttle_wait_seconds=20.0,
                     provider_reported_tpm=state[rid].get("provider_reported_tpm"),
+                    max_search_tokens=max_search_tokens,
                 )
             except (ProbeBudgetExceeded, RouteBudgetExceeded) as exc:
                 # run_endurance's own runner.max_wall_seconds (hours*3600 + 3600) can be reached
@@ -1157,6 +1159,7 @@ def main(argv: list[str] | None = None) -> int:
             apply=args.apply,
             hours=args.endurance_hours,
             interval_seconds=args.endurance_interval,
+            max_search_tokens=args.max_search_tokens,
         )
     else:
         runner = RateProbeRunner(
