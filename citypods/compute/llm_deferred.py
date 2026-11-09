@@ -534,6 +534,33 @@ def prune_expired_failure_markers(
     return deleted
 
 
+def _marker_diagnostic(error: BaseException) -> dict[str, Any] | None:
+    """The allowlisted, text-free diagnostic an error carries, shaped for a durable marker."""
+    raw = getattr(error, "diagnostic", None)
+    if not isinstance(raw, Mapping):
+        return None
+    out: dict[str, Any] = {}
+    for key in ("stage", "finish_reason", "error_type"):
+        if isinstance(raw.get(key), str):
+            out[key] = raw[key][:60]
+    for key in ("completion_tokens", "content_chars"):
+        if isinstance(raw.get(key), int) and not isinstance(raw.get(key), bool):
+            out[key] = raw[key]
+    if isinstance(raw.get("ends_closed"), bool):
+        out["ends_closed"] = raw["ends_closed"]
+    errors = raw.get("validation_errors")
+    if isinstance(errors, list):
+        out["validation_errors"] = [
+            {
+                "loc": [p if isinstance(p, int) else str(p)[:60] for p in item.get("loc", [])][:8],
+                "type": str(item.get("type"))[:60],
+            }
+            for item in errors[:5]
+            if isinstance(item, Mapping) and isinstance(item.get("loc"), list)
+        ]
+    return out or None
+
+
 def record_schema_correction(storage, handle: JobHandle, error: BaseException, *, now=None) -> None:
     """Record the one schema-correction attempt without blocking its new handle."""
     now = now or datetime.now(UTC)
@@ -553,6 +580,8 @@ def record_schema_correction(storage, handle: JobHandle, error: BaseException, *
         "schema_correction_attempted": True,
         "status": "corrective_retry_submitted",
     }
+    if diagnostic := _marker_diagnostic(error):
+        marker["diagnostic"] = diagnostic
     _write_json(
         storage,
         deferred_failure_key(handle.recipe_hash),
@@ -651,6 +680,8 @@ def _discard_terminal_failure_locked(
             "exhausted" if exhausted or count >= MAX_TERMINAL_FAILURE_RETRIES else "retryable"
         ),
     }
+    if diagnostic := _marker_diagnostic(error):
+        marker["diagnostic"] = diagnostic
     if structural:
         recovery = entry.data.get("recovery_context")
         if not isinstance(recovery, Mapping):

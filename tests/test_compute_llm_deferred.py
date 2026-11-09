@@ -285,6 +285,38 @@ def test_schema_correction_marker_is_retryable_until_a_second_malformed_reply_ex
     assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is True
 
 
+def test_failure_markers_keep_only_the_allowlisted_text_free_diagnostic():
+    from citypods.compute.llm import LLMStructuredOutputError
+
+    storage = MemStorage()
+    handle = _pending_handle("recipe-diagnostic")
+    error = LLMStructuredOutputError(
+        "structured dispatched response failed Pydantic validation",
+        diagnostic={
+            "stage": "json",
+            "finish_reason": "length",
+            "completion_tokens": 900,
+            "content_chars": 4000,
+            "ends_closed": False,
+            "validation_errors": [{"loc": ["tags", 0, "id"], "type": "missing"}],
+            "model_text": "must not be stored",
+        },
+    )
+    record_schema_correction(storage, handle, error, now=NOW)
+    marker = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert marker["diagnostic"] == {
+        "stage": "json",
+        "finish_reason": "length",
+        "completion_tokens": 900,
+        "content_chars": 4000,
+        "ends_closed": False,
+        "validation_errors": [{"loc": ["tags", 0, "id"], "type": "missing"}],
+    }
+    plain = _pending_handle("recipe-plain")
+    record_schema_correction(storage, plain, RuntimeError("no diagnostic"), now=NOW)
+    assert "diagnostic" not in _read_json(storage, deferred_failure_key(plain.recipe_hash))
+
+
 def test_repair_prunes_only_expired_terminal_failure_markers():
     storage = MemStorage()
     old_handle = _pending_handle("old-failure")

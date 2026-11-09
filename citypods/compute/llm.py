@@ -412,6 +412,58 @@ class _NativeStructuredRetryExhausted(RuntimeError):
         self.n_attempts = len(self.failed_attempts)
 
 
+def _dispatched_failure_diagnostic(
+    output: Mapping[str, Any], content: str, model: ResponseModel, stage: str, exc: BaseException
+) -> dict[str, Any]:
+    """Non-sensitive metadata for a dispatched reply that failed local validation.
+
+    ``stage`` is ``json`` (unparsable, often truncated) or ``schema`` (parsed, wrong shape). Only
+    counts, finish reason, error types and schema-owned field names are kept -- never model text.
+    """
+    choices = output.get("choices")
+    first = choices[0] if isinstance(choices, list) and choices else {}
+    finish = first.get("finish_reason") if isinstance(first, Mapping) else None
+    usage = output.get("usage")
+    completion = usage.get("completion_tokens") if isinstance(usage, Mapping) else None
+    diagnostic: dict[str, Any] = {
+        "stage": stage,
+        "finish_reason": finish if isinstance(finish, str) else None,
+        "completion_tokens": completion if isinstance(completion, int) else None,
+        "content_chars": len(content),
+        "error_type": type(exc).__name__,
+    }
+    if stage == "json":
+        diagnostic["ends_closed"] = content.rstrip().endswith(("}", "]", "```"))
+    from pydantic import ValidationError
+
+    if isinstance(exc, ValidationError):
+        fields: set[str] = set()
+
+        def collect(node: Any) -> None:
+            if isinstance(node, dict):
+                fields.update(node.get("properties", {}))
+                for child in node.values():
+                    collect(child)
+            elif isinstance(node, list):
+                for child in node:
+                    collect(child)
+
+        collect(model.model_json_schema())
+        diagnostic["validation_errors"] = [
+            {
+                "loc": [
+                    part if isinstance(part, int) or part in fields else "<field>"
+                    for part in error["loc"]
+                ],
+                "type": error["type"],
+            }
+            for error in exc.errors(include_input=False, include_context=False, include_url=False)[
+                :5
+            ]
+        ]
+    return diagnostic
+
+
 def _safe_structured_failure_diagnostic(
     exc: BaseException, job: InferenceJob, model: ResponseModel, resolved_model: str
 ) -> dict[str, Any]:
@@ -1435,15 +1487,18 @@ class LiteLLMBackend(Backend):
         if not structured_output:
             return
         model = response_model(structured_output)
+        content = self._structured_content(output)
+        stage = "json"
         try:
-            model.model_validate(
-                parse_structured_json(
-                    self._structured_content(output), context="dispatched structured response"
-                )
-            )
-        except (ValueError, TypeError):
+            parsed = parse_structured_json(content, context="dispatched structured response")
+            stage = "schema"
+            model.model_validate(parsed)
+        except (ValueError, TypeError) as exc:
+            # The message stays fixed (markers and tests key on it); the diagnostic says which
+            # stage failed -- unparsable/truncated JSON versus a schema mismatch -- without text.
             raise LLMStructuredOutputError(
-                "structured dispatched response failed Pydantic validation"
+                "structured dispatched response failed Pydantic validation",
+                diagnostic=_dispatched_failure_diagnostic(output, content, model, stage, exc),
             ) from None
 
     def _completed_dispatch_result(
