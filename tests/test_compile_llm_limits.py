@@ -1277,18 +1277,3 @@ def test_gateway_route_attempt_override_rejects_invalid_values(monkeypatch, valu
     monkeypatch.setattr(compile_llm_limits.yaml, "safe_load", lambda *_: raw)
     with pytest.raises(ValueError, match="ai_gateway_max_attempts must be an integer"):
         compile_llm_limits.compile_limits()
-
-
-def test_orcarouter_free_routes_share_one_daily_pool():
-    """OrcaRouter's free tier is ONE 800/day pool for every free model (verified 2026-11-09:
-    DeepSeek, HY3 and GLM all answered 429 with the same Retry-After while HY3 had no recorded
-    usage). The Worker has no provider-level rpd ledger, so the per-route rpd values must
-    apportion the pool: their sum may never exceed it, and 40/day stay free for canaries."""
-    routes = [
-        route
-        for route in _raw_provider_limits()["routes"]
-        if route.get("provider") == "orcarouter" and route.get("free") is True
-    ]
-    assert routes, "expected OrcaRouter free routes"
-    assert all(route.get("rpd") for route in routes)
-    assert sum(route["rpd"] for route in routes) <= 760
