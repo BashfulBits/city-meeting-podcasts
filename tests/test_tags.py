@@ -853,7 +853,7 @@ def test_llm_tag_suggestions_oversize_gate_counts_routes_without_a_tpm_cap():
             "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
         }
     )
-    _tags, _chapter_tags, _dispatched, resolved_model = llm_tag_suggestions(
+    _tags, _chapter_tags, dispatched, resolved_model = llm_tag_suggestions(
         Backend(),
         taxonomy=taxonomy,
         agenda_item_titles="Housing plan",
@@ -862,6 +862,7 @@ def test_llm_tag_suggestions_oversize_gate_counts_routes_without_a_tpm_cap():
         recipe_hash="recipe",
     )
     assert resolved_model != "payload-too-large"
+    assert dispatched is False  # the backend actually ran
 
 
 def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route():

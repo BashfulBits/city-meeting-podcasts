@@ -1148,10 +1148,12 @@ def llm_tag_suggestions(
         # batch that cannot fit a whole route minute at all, not the old direct-path's two-attempt
         # reservation threshold.
         token_estimate = input_tokens_estimate
-        capped_tpm = {
-            route.route_id or route.model: route.quota.tpm
+        route_limits = {
+            route.route_id or route.model: {
+                "context": route.input_context_limit,
+                "tpm": route.quota.tpm,
+            }
             for route in candidate_routes
-            if route.quota.tpm is not None
         }
         # Same predicate the batch splitter used to size this batch. A route with no per-minute
         # cap (OrcaRouter DeepSeek, the Kilo/OpenRouter Nemotron routes) fits any batch within its
@@ -1162,8 +1164,8 @@ def llm_tag_suggestions(
         ):
             print(
                 f"llm tag budget: material estimate={token_estimate} tokens exceeds every "
-                f"tpm-capped allowed route's budget ({capped_tpm}) for recipe_hash="
-                f"{recipe_hash} -- this would never fit any window as-is, not just this minute. "
+                f"allowed route's context or per-minute token limit ({route_limits}) for "
+                f"recipe_hash={recipe_hash} -- this would never fit any window as-is, not just this minute. "
                 "Deferring because one chapter batch cannot fit any configured route.",
                 flush=True,
             )
