@@ -888,7 +888,8 @@ def test_tag_batch_target_is_a_fraction_of_the_primary_routes_measured_capacity(
     assert target == int(capacity * TAG_BATCH_CAPACITY_FRACTION)
     assert 91_500 <= target <= 92_500  # ~98.9k capacity x 0.93
     # No measured primary route: no target, so the splitter falls back to the provable routes.
-    deepseek = ROUTE_CANDIDATES.get("deepseek/deepseek-v4-flash", ())
+    deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]  # KeyError if the route is renamed
+    assert deepseek and all(route.hard_input_ceiling is None for route in deepseek)
     assert tag_batch_target(deepseek) is None
 
 
@@ -956,6 +957,81 @@ def test_chapter_tagger_splits_large_meetings_to_the_primary_routes_target():
     sizes = [estimate_tokens(job.inputs["messages"]) for job in backend.jobs]
     assert len(sizes) > 5
     assert max(sizes) <= target
+
+
+def test_a_single_chapter_above_the_target_goes_alone_to_a_larger_measured_route():
+    """One chapter bigger than the primary route's target (~92k) but within Nemotron's measured
+    ~249k must be admitted as its own batch, not dropped as payload-too-large."""
+    from citypods.compute.base import JobResult
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, estimate_tokens
+    from citypods.tags import tag_batch_target
+
+    class Config:
+        model = "gemini/gemini-3.5-flash-lite"
+        additional_models = ("openrouter/nvidia/nemotron-3.5-super-vl:free",)
+
+    class Storage:
+        cas_capable = True
+
+    class Backend:
+        storage = Storage()
+        config = Config()
+
+        def __init__(self):
+            self.jobs = []
+
+        def run_inference(self, job):
+            self.jobs.append(job)
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": '{"tags":[]}'}}]},
+                model="openrouter/nvidia/nemotron-3.5-super-vl:free",
+            )
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+
+    def chapter(chapter_id, title, words):
+        return {
+            "chapter_id": chapter_id,
+            "title": title,
+            "agenda_text": "mapped agenda evidence",
+            "transcript_text": "housing " * words,
+            "transcript_segments": [],
+        }
+
+    chapters = [
+        chapter("c0", "Chapter SMALL one", 1_000),
+        chapter("c1", "Chapter BIG", 75_000),  # ~150k tokens: over the target, under ~249k
+        chapter("c2", "Chapter SMALL two", 1_000),
+    ]
+    backend = Backend()
+    _tags, _chapter_tags, pending, resolved_model = llm_tag_suggestions(
+        backend,
+        taxonomy=taxonomy,
+        agenda_item_titles="",
+        agenda_text="",
+        transcript_text="",
+        recipe_hash="one-big-chapter",
+        chapter_inputs=chapters,
+    )
+    target = tag_batch_target(
+        ROUTE_CANDIDATES.get(
+            "gemini/gemini-3.5-flash-lite", (ROUTES["gemini/gemini-3.5-flash-lite"],)
+        )
+    )
+    assert resolved_model != "payload-too-large"
+    assert pending is False
+    big = [job for job in backend.jobs if "Chapter BIG" in job.inputs["messages"][1]["content"]]
+    assert len(big) == 1
+    assert estimate_tokens(big[0].inputs["messages"]) > target
+    assert "Chapter SMALL" not in big[0].inputs["messages"][1]["content"]
 
 
 def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route():
