@@ -50,3 +50,21 @@ provider creation timestamp, document and obtain the maintainer's decision on th
 standard. Do not re-ask JEV, change sample rates or authority, or infer production accuracy from
 this pilot. PR7 still needs its population-weighted contested and random strata, uncertainty
 intervals, policy fingerprint, and a clearly defined baseline after the old gates' retirement.
+
+### Follow-up: distinct-subject sampling and retained versions
+
+A second selection, deduplicated within each task/sample/question cell by subject ID, produced
+20 candidate triples on 18 distinct subjects across the four cells. Those triples referenced
+34 unique packets: 11 JEV, 12 sibling, and 11 adjudicator. This remains a recency-favored
+convenience sample; subjects can appear in multiple cells and are not population weights.
+
+For each of those 34 packets, a prior pending registry version supplied one job reference; one
+archived request payload and one archived Worker result matched the completed registry output.
+Every referenced registry creation, payload write, and matching result-object write was after the
+October 23 fix. All 23 recovered chat payload schemas matched the current typed-v3 schema, and
+all 23 chat responses carried provider creation timestamps after the fix. These checks establish
+only what the retained artifacts show: matching a schema does not by itself prove the entire prompt
+or its recipe revision, and an object write time does not establish a provider response creation
+time. The 11 JEV response bodies did not have a provider creation timestamp; the inspected prior
+pending and completed records did not supply actual physical route IDs. No selected triple is
+claimed to meet the existing strict provider-creation-time rule on this evidence alone.
