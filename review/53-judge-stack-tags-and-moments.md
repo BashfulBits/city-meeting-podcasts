@@ -361,7 +361,8 @@ judged at that tier.
 **Tag task** (`tag_task.py`): subjects from `Episode.tags` (rule) and `Episode.llm_tag_candidates`
 (LLM), episode- and chapter-scope; question `supported` (validate) with the section 4b rubric plus
 the tag definition from `config/taxonomy.yml`; T0 matched spans, T1 plus or minus 45 s capped at 400
-words, T2 the chapter capped at 1,800 words (episode scope: 1,800 words around the first evidence
+words, T2 the T1 passage followed by chapter context, together capped at 1,800 words (episode scope:
+the T1 passage followed by context around the first evidence
 `t`); `first_tier="T1"`, `escalation=("T2", 0.3, 0.7)` applied to JEV only;
 `selection_policy="all_admitted"`.
 

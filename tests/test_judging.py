@@ -203,6 +203,21 @@ def test_tag_evidence_tiers_and_caps():
     assert spec.evidence(subject, "T1", EpisodeTexts()) is None
 
 
+def test_tag_t2_keeps_late_t1_and_rejects_wrong_chapter():
+    spec = task("tag")
+    candidate = _rule_tag(evidence=[{"where": "transcript", "span": "late", "t": 1900}])
+    [subject] = spec.subjects(_episode(tags=[], llm=[candidate]))
+    texts = EpisodeTexts(
+        segments=_segments(300, word="word " * 30), chapters=[("ch-1", "Long chapter", 0, 2500)]
+    )
+    t1 = spec.evidence(subject, "T1", texts)
+    t2 = spec.evidence(subject, "T2", texts)
+    assert t1.text.split("Transcript:\n", 1)[1] in t2.text
+    assert len(t2.text.split("Transcript:\n", 1)[1].split()) <= 1800
+    wrong = EpisodeTexts(segments=texts.segments, chapters=[("ch-1", "Other", 0, 1000)])
+    assert spec.evidence(subject, "T2", wrong) is None
+
+
 def test_moment_evidence_is_the_quote_with_context():
     spec = task("moment")
     ep = _episode(moments=[_moment("We will fix the bridge", 600)])
@@ -560,6 +575,21 @@ def _ctx(dispatch, tasks=("tag",), **extra):
         submit=dispatch.submit,
         all_tiers_sample_rate=0.0,
         **extra,
+    )
+
+
+def test_pending_tag_t2_rebuilds_legacy_evidence():
+    from citypods.judging.tag_task import _evidence
+
+    ep = _episode()
+    subject = task("tag").subjects(ep)[0]
+    old = _evidence(subject, "T2", TEXTS, legacy=True)
+    current = task("tag").evidence(subject, "T2", TEXTS)
+    assert old.digest != current.digest
+    item = Item(task("tag").questions[0], "T2", old, (subject,))
+    ctx = _ctx(FakeDispatch())
+    assert (
+        runner._evidence_text(subject, item, {}, ctx, {subject.episode_uid: ep}, set()) == old.text
     )
 
 

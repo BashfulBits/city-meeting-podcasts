@@ -166,6 +166,13 @@ concrete truncation risk; the former requires a chapter/evidence assignment chec
 different mechanisms and neither establishes a human truth label. A diagnostic packet showing
 model answers is not a blind audit and its judgments must not be treated as independent gold.
 
+The proposed T2 builder includes the T1 excerpt before its capped context. A chapter-scoped T2
+is unbuildable if the candidate timestamp falls outside the assigned chapter; adjudication must
+not fall back to T1 in that case. Old pending T2 replies are checked against their original digest
+using the legacy builder. Existing rows remain stored, but changed T2 digests are new judgment
+identities and can cause new JEV and adjudicator requests after deployment. Old and new evidence
+revisions must be separated in calibration. This PR does not itself deploy or dispatch them.
+
 On November 9 the maintainer reviewed these four disclosed cases in packet order and marked them
 not supported, uncertain, not supported, and supported. These diagnostic judgments support
 investigating the chapter assignment and truncated context; they do not establish population

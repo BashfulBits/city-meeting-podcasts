@@ -100,7 +100,9 @@ def _chapter(texts: EpisodeTexts, chapter_id: Any):
     return next((c for c in texts.chapters if c[0] == chapter_id), None)
 
 
-def _evidence(subject: Subject, tier: ContextTier, texts: EpisodeTexts) -> Evidence | None:
+def _evidence(
+    subject: Subject, tier: ContextTier, texts: EpisodeTexts, *, legacy: bool = False
+) -> Evidence | None:
     candidate = subject.payload
     tag_id = str(candidate.get("id") or "")
     chapter = _chapter(texts, candidate.get("chapter_id"))
@@ -131,15 +133,46 @@ def _evidence(subject: Subject, tier: ContextTier, texts: EpisodeTexts) -> Evide
     elif tier == "T2":
         if not texts.segments:
             return None
-        if chapter:
+        if chapter and legacy:
             end = chapter[3] if chapter[3] is not None else float("inf")
             body = _window(texts.segments, chapter[2], end, T2_WORD_CAP)
+        elif chapter:
+            center = _first_time(candidate)
+            if center is None:
+                center = chapter[2]
+            end = chapter[3] if chapter[3] is not None else float("inf")
+            if not chapter[2] <= center < end:
+                # A different chapter must not be silently presented as support for this one.
+                return None
+            focus = _window(
+                texts.segments,
+                center - T1_HALF_WINDOW_SECONDS,
+                center + T1_HALF_WINDOW_SECONDS,
+                T1_WORD_CAP,
+            )
+            context = _window(texts.segments, chapter[2], end, T2_WORD_CAP - len(focus.split()))
+            body = f"{focus} {context}".strip()
         else:
             center = _first_time(candidate)
             if center is None:
                 return None
             # About 1,800 words around the first evidence time (roughly 12 minutes of speech).
-            body = _window(texts.segments, center - 360.0, center + 360.0, T2_WORD_CAP)
+            if legacy:
+                body = _window(texts.segments, center - 360.0, center + 360.0, T2_WORD_CAP)
+            else:
+                focus = _window(
+                    texts.segments,
+                    center - T1_HALF_WINDOW_SECONDS,
+                    center + T1_HALF_WINDOW_SECONDS,
+                    T1_WORD_CAP,
+                )
+                context = _window(
+                    texts.segments,
+                    center - 360.0,
+                    center + 360.0,
+                    T2_WORD_CAP - len(focus.split()),
+                )
+                body = f"{focus} {context}".strip()
     else:
         return None
     if not body.strip():
