@@ -828,5 +828,5 @@ def test_reviewed_policy_approval_type_errors_have_config_context(approval):
 def test_judge_quote_check_reads_is_configured_above_the_old_fixed_400():
     from citypods.judging import runner
 
-    judging = load_site_config(Path("config/site_config.yml")).judging
+    judging = load_site_config(Path("config/site_config.yml"))["judging"]
     assert int(judging["quote_check_reads"]) > runner.DEFAULT_QUOTE_CHECK_READS
