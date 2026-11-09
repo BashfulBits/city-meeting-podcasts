@@ -94,3 +94,65 @@ in the inspected records; do not infer them from model names or response shape. 
 they are chosen from 12 convenience-sampled sources, favor recent rows, contain only 18 subjects
 before the panel exclusion, and share packets. They cannot support population estimates or a
 threshold proposal. The existing JEV escalation band and combined rule must still be measured.
+
+## Expanded audit and context check
+
+The same 12 source files produced 559 deduplicated candidate questions on 475 subjects after
+initial date, current candidate, logical-family, agreed-panel, and quote-validity filters. Their
+441 packet references were traced against registry records and archived request/result versions.
+Applying the approved JEV timestamp surrogate, exact packet recipe and evidence reconstruction,
+typed-v3 chat reply parsing, independent adjudicator quote checks, and matching recorded values
+left 505 candidate triples on 438 subjects. Fifty-four candidate triples could not be verified;
+their exclusion reasons overlap and include missing archived request payloads, one invalid chat
+contract, and an old JEV registry lineage. No failed HTTP-200 reply was resampled. Sibling quote
+validity remained non-gating.
+
+Four moment triples had the selected T1 anchor or sibling collected after the adjudicator request
+was created, so they were excluded from the time-ordered cohort. The remaining 501 triples cover
+435 distinct subjects: 285 tag validation questions, 74 moment validation questions, and 142
+moment gate or grade questions. These numbers still describe the 12-source convenience sample,
+not a population or independently sampled set. Across both samples below, 442 unique packets had
+resolved registry model identities matching the stored logical model; no physical route IDs were
+established by that comparison.
+
+For a separate bounded source check, B2 listed 48 source episode objects totaling 2,167,020,792
+bytes. A SHA-256 ranking of source keys using seed `review49-source-sample-2026-11-09-v1` selected
+the first six; the sample size was chosen after object-size inspection and before reading those
+sources' judgments. The listed universe's sorted-key SHA-256 was
+`ded11cf07e7bbce9d4c8cfcdf3265c4e148b18eb0d5119826b64efb5f308a5c4`. The six objects totaled
+462,339,390 bytes and were read one at a time; before/after ETags matched. Four had no qualifying
+triples. The other two contributed 475 time-ordered, traced triples on 427 subjects. Two sampled
+objects also belonged to the initial 12; deduplicating both sets by task, subject, question and
+sample yielded 546 triples on 472 subjects, including 45 questions not in the first cohort. These
+non-atomic, partially overlapping reads are not a catalog census and cannot support a general
+population estimate or threshold on their own. Full key lists and raw request data stay outside Git.
+
+### Evidence-window comparison
+
+For the 501 time-ordered triples in the 12-source cohort, archived chat requests and responses
+were replayed to check each sibling reason against its own evidence and the adjudicator's evidence.
+Among 285 tag triples, 256 sibling reasons had a valid quote in their own evidence. For 113 of
+those 256, no qualifying quote from the sibling reason was found in the adjudicator's evidence:
+six calibration and 107 contested cases from two sources. In 101 of the 113, the adjudicator's
+T2 transcript was at the 1,800-word cap. A cap being reached does not by itself prove why a
+passage was absent. The code's T1 window is centered on candidate evidence while its chapter-based
+T2 window begins at the chapter start and is capped; T2 is therefore not guaranteed to contain
+T1. Sibling quotes remain non-gating. This is an evidence-comparability signal requiring review,
+not proof that either judge was right or an estimated population error rate.
+
+A descriptive replay of the combined rule used 0.5 solely as the frozen evaluation reference,
+preserved T1 band escalation, used available verified T2 votes collected before adjudication,
+and sent final disagreement or an in-band final JEV score to the adjudicator. It treated the
+approved longer-context-on-disagreement behavior as a proposed scenario and left missing T2
+results unresolved. Of 359 validation questions in the 12-source cohort, 312 had enough recorded
+context for this replay and 47 remained unresolved. The 16 tag calibration questions came from
+one source; in four, the panel agreed to support while the adjudicator opposed. Both model answers
+are unverified against human truth; two sibling citations were absent from adjudicator evidence.
+These four cases use four separate packets per role but share the source and logical GLM
+adjudicator. No threshold is proposed from this small clustered subset. A local human-review
+packet can be prepared from the retained requests; the underlying meeting text stays outside Git.
+
+The weighted contested/random estimator, cluster-aware uncertainty, treatment of missing evidence,
+and the retired-gate baseline still require a separate PR7 analysis. In particular, adjudicator
+agreement is not human ground truth, and decisions resolved by the adjudicator agree with it by
+construction. This replay must not be reported as an independent accuracy improvement.

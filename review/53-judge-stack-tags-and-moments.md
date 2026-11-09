@@ -923,3 +923,8 @@ A [November 9 read-only provenance pilot](evidence/2026-11-09-judge-cohort-prove
 found additional candidate pairs and retained historical payload/result versions. JEV response
 creation time and actual route identity remain unresolved in the sampled completed records; the
 pilot does not qualify pairs or change thresholds.
+
+The same November 9 pilot found valid sibling quotations absent from some adjudicator tag T2
+windows, frequently when the 1,800-word cap was reached. T1 is centered on candidate evidence;
+a chapter-based T2 starts at the chapter boundary, so containment is not guaranteed. Review
+evidence comparability and the retired-gate baseline before using these cases for PR7 thresholds.
