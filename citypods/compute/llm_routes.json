@@ -1377,6 +1377,7 @@
       "api_key_env": "ORCAROUTER_API_KEY",
       "reset_timezone": "UTC",
       "provider_rpm": 10,
+      "provider_rpd": 800,
       "provider_concurrency": 2
     },
     {
@@ -1413,6 +1414,7 @@
       "api_key_env": "ORCAROUTER_API_KEY",
       "reset_timezone": "UTC",
       "provider_rpm": 10,
+      "provider_rpd": 800,
       "provider_concurrency": 2
     },
     {
@@ -1449,6 +1451,7 @@
       "api_key_env": "ORCAROUTER_API_KEY",
       "reset_timezone": "UTC",
       "provider_rpm": 10,
+      "provider_rpd": 800,
       "provider_concurrency": 2
     },
     {

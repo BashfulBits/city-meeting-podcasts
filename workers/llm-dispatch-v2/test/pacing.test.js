@@ -16,6 +16,9 @@ import {
   paymentRequiredBackoffUntil,
   FULL_TOKEN_BUDGET_WINDOWS,
   effectiveBufferSeconds,
+  providerDailyPoolLimit,
+  providerDailyQuotaReadyAt,
+  providerDailyUsed,
 } from "../src/pacing.js";
 
 const NOW = 1_700_000_000_000;
@@ -537,4 +540,56 @@ test("pending Google input survives slow starts until lease plus window", () => 
     NOW + 375_000);
   assert.equal(earliestSafeStart(route, next, NOW + 375_000, NOW + 375_000).notBeforeAt,
     NOW + 375_000, "a lost executor cannot block the route forever");
+});
+
+test("providerDailyPoolLimit reads a positive provider rpd and treats anything else as no pool", () => {
+  assert.equal(providerDailyPoolLimit({ rpd: 800 }), 800);
+  assert.equal(providerDailyPoolLimit(undefined, { provider_rpd: 50 }), 50);
+  assert.equal(providerDailyPoolLimit({ rpd: 800 }, { provider_rpd: 50 }), 800);
+  for (const bad of [undefined, null, 0, -5, "x", NaN]) {
+    assert.equal(providerDailyPoolLimit({ rpd: bad }), null, String(bad));
+  }
+  assert.equal(providerDailyPoolLimit(undefined, undefined), null);
+});
+
+test("providerDailyUsed sums only today's route counts in the provider's timezone", () => {
+  const day = zonedDateKey(NOW, "UTC");
+  const ledgers = [
+    { rpd_day_key: day, rpd_count: 5 },
+    { rpd_day_key: day, rpd_count: 7 },
+    { rpd_day_key: "1999-01-01", rpd_count: 900 }, // a previous day: already rolled over
+    null,
+    { rpd_day_key: day, rpd_count: -3 }, // never subtracts
+  ];
+  assert.equal(providerDailyUsed(ledgers, NOW, "UTC"), 12);
+  // The same instant is a different calendar day in another timezone.
+  const la = zonedDateKey(NOW, "Pacific/Kiritimati");
+  assert.equal(providerDailyUsed([{ rpd_day_key: la, rpd_count: 4 }], NOW, "Pacific/Kiritimati"), 4);
+  assert.equal(providerDailyUsed([{ rpd_day_key: day, rpd_count: 4 }], NOW, "Pacific/Kiritimati"), 0);
+});
+
+test("providerDailyQuotaReadyAt admits while the pool has room and waits for midnight when spent", () => {
+  const route = { reset_timezone: "UTC" };
+  assert.equal(providerDailyQuotaReadyAt({ limit: 10, used: 9 }, route, NOW), NOW);
+  assert.equal(providerDailyQuotaReadyAt({ limit: 10, used: 10 }, route, NOW), nextZonedMidnightMs(NOW, "UTC"));
+  assert.equal(providerDailyQuotaReadyAt({ limit: 10, used: 11 }, route, NOW), nextZonedMidnightMs(NOW, "UTC"));
+  assert.equal(providerDailyQuotaReadyAt(null, route, NOW), NOW);
+  assert.equal(providerDailyQuotaReadyAt({ limit: 0, used: 5 }, route, NOW), NOW);
+});
+
+test("earliestSafeStart waits for the reset when the provider's shared pool is spent", () => {
+  const route = freshRoute({ reset_timezone: "UTC" });
+  const job = { input_token_estimate: 100, max_output_token_estimate: 50 };
+  const open = earliestSafeStart(route, job, NOW, NOW, { providerDaily: { limit: 800, used: 799 } });
+  assert.equal(open.notBeforeAt, NOW);
+  const gate = {};
+  const spent = earliestSafeStart(route, job, NOW, NOW, { providerDaily: { limit: 800, used: 800 }, gate });
+  assert.equal(spent.notBeforeAt, nextZonedMidnightMs(NOW, "UTC"));
+  assert.equal(gate.binding, "provider_requests_per_day");
+  // The route's own ceiling is still honoured independently of the pool.
+  const own = earliestSafeStart(
+    freshRoute({ reset_timezone: "UTC", rpd: 1, rpd_count: 1, rpd_day_key: zonedDateKey(NOW, "UTC") }),
+    job, NOW, NOW, { providerDaily: { limit: 800, used: 1 } }
+  );
+  assert.equal(own.notBeforeAt, nextZonedMidnightMs(NOW, "UTC"));
 });

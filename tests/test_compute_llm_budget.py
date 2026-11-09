@@ -767,3 +767,98 @@ def test_old_day_token_settlement_does_not_change_new_day():
     budget.reserve("new", route.model, route=route, requests=1, tokens=1500, cost=0, now=tomorrow)
     budget.settle("old", route.model, route=route, now=tomorrow, actual_tokens=500)
     assert budget.routes[route.model].tokens_day == 1500
+
+
+def _pooled_route(name: str, *, pool: int | None = 2, rpd: int | None = 100) -> LLMRoute:
+    return LLMRoute(
+        model=f"pool/{name}",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpd=rpd, reset_timezone="UTC"),
+        pricing=PricingPolicy(),
+        provider="pool",
+        provider_rpd=pool,
+    )
+
+
+def test_provider_rpd_is_one_daily_pool_shared_across_routes():
+    first, second = _pooled_route("first"), _pooled_route("second")
+    budget = LLMBudget()
+    for owner, route in (("a", first), ("b", second)):
+        assert budget.available(route.model, route=route, requests=1, tokens=0, cost=0, now=NOW)
+        budget.reserve(owner, route.model, route=route, requests=1, tokens=0, cost=0, now=NOW)
+    # Each route has 99 of its own requests left, but the 2-request pool is spent.
+    for route in (first, second):
+        assert not budget.available(route.model, route=route, requests=1, tokens=0, cost=0, now=NOW)
+    assert budget.providers["pool"].requests_day == 2
+    # The provider's next calendar day opens a fresh pool.
+    tomorrow = NOW + timedelta(days=1)
+    assert budget.available(first.model, route=first, requests=1, tokens=0, cost=0, now=tomorrow)
+
+
+def test_provider_rpd_absent_leaves_routes_independent():
+    first, second = _pooled_route("first", pool=None), _pooled_route("second", pool=None)
+    budget = LLMBudget()
+    for owner, route in (("a", first), ("b", second), ("c", first)):
+        assert budget.available(route.model, route=route, requests=1, tokens=0, cost=0, now=NOW)
+        budget.reserve(owner, route.model, route=route, requests=1, tokens=0, cost=0, now=NOW)
+    assert "pool" not in budget.providers
+
+
+def test_provider_rpd_release_and_settle_return_unspent_pool_requests():
+    first, second = _pooled_route("first"), _pooled_route("second")
+    budget = LLMBudget()
+    budget.reserve("a", first.model, route=first, requests=1, tokens=0, cost=0, now=NOW)
+    budget.reserve("b", second.model, route=second, requests=1, tokens=0, cost=0, now=NOW)
+    assert not budget.available(first.model, route=first, requests=1, tokens=0, cost=0, now=NOW)
+    # A request that never reached the provider is released and its pool slot returns.
+    budget.release("b", second.model, route=second, now=NOW)
+    assert budget.providers["pool"].requests_day == 1
+    assert budget.available(first.model, route=first, requests=1, tokens=0, cost=0, now=NOW)
+    # A settle that reports fewer actual requests than reserved gives the difference back.
+    budget.settle("a", first.model, route=first, now=NOW, actual_requests=0)
+    assert budget.providers["pool"].requests_day == 0
+
+
+def test_provider_rpd_release_after_rollover_does_not_corrupt_the_new_day():
+    first = _pooled_route("first")
+    budget = LLMBudget()
+    budget.reserve("a", first.model, route=first, requests=1, tokens=0, cost=0, now=NOW)
+    tomorrow = NOW + timedelta(days=1)
+    budget.reserve("b", first.model, route=first, requests=1, tokens=0, cost=0, now=tomorrow)
+    budget.release("a", first.model, route=first, now=tomorrow)  # yesterday's reservation
+    assert budget.providers["pool"].requests_day == 1
+
+
+def test_exhaust_provider_daily_pool_stops_every_route_until_the_reset():
+    first, second = _pooled_route("first", pool=800), _pooled_route("second", pool=800)
+    budget = LLMBudget()
+    budget.reserve("a", first.model, route=first, requests=1, tokens=0, cost=0, now=NOW)
+    budget.exhaust_provider_daily_pool(route=first, now=NOW)
+    assert budget.providers["pool"].requests_day == 800
+    assert not budget.available(second.model, route=second, requests=1, tokens=0, cost=0, now=NOW)
+    assert budget.available(
+        second.model, route=second, requests=1, tokens=0, cost=0, now=NOW + timedelta(days=1)
+    )
+    # A provider without a pool is untouched.
+    plain = _pooled_route("plain", pool=None)
+    other = LLMBudget()
+    other.exhaust_provider_daily_pool(route=plain, now=NOW)
+    assert other.providers == {}
+
+
+def test_provider_rpd_ledger_round_trips_through_serialization():
+    first = _pooled_route("first")
+    budget = LLMBudget()
+    budget.reserve("a", first.model, route=first, requests=1, tokens=0, cost=0, now=NOW)
+    restored = LLMBudget.from_dict(budget.to_dict())
+    assert restored.providers["pool"].requests_day == 1
+    assert restored.providers["pool"].requests_day_key == daily_reset_key(NOW, "UTC")
+    assert restored.routes[first.model].inflight["a"].provider_day_key == daily_reset_key(
+        NOW, "UTC"
+    )
+    # Old state without the new fields still loads.
+    legacy = budget.to_dict()
+    for ledger in legacy["providers"].values():
+        ledger.pop("requests_day"), ledger.pop("requests_day_key")
+    assert LLMBudget.from_dict(legacy).providers["pool"].requests_day == 0

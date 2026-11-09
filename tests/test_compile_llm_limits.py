@@ -1277,3 +1277,84 @@ def test_gateway_route_attempt_override_rejects_invalid_values(monkeypatch, valu
     monkeypatch.setattr(compile_llm_limits.yaml, "safe_load", lambda *_: raw)
     with pytest.raises(ValueError, match="ai_gateway_max_attempts must be an integer"):
         compile_llm_limits.compile_limits()
+
+
+def _compile_pooled(raw):
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        return compile_llm_limits.compile_limits()
+
+
+def _pooled_raw(provider_rpd, route_rpd=100, **top):
+    return {
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
+        **top,
+        "providers": {
+            "pool": {
+                "api_base": "https://pool.example.com",
+                "structured_output_method": "json_schema",
+                "rpd": provider_rpd,
+                "accounts": [{"id": "primary", "api_key_env": "POOL_KEY"}],
+            }
+        },
+        "routes": [
+            {
+                "route_id": f"pool_{name}",
+                "model": f"pool/{name}",
+                "provider": "pool",
+                "upstream_model": name,
+                "input_context_limit": 1000,
+                "output_context_limit": 500,
+                "rpd": route_rpd,
+            }
+            for name in ("a", "b")
+        ],
+    }
+
+
+def test_provider_rpd_reaches_the_worker_catalog_and_every_python_route():
+    compiled = _compile_pooled(_pooled_raw(800))
+    assert compiled["providers"]["pool"]["rpd"] == 800
+    python_routes = compile_llm_limits._python_routes(compiled)["routes"]
+    assert {r["provider_rpd"] for r in python_routes} == {800}
+
+
+def test_a_provider_without_rpd_compiles_no_pool():
+    raw = _pooled_raw(800)
+    del raw["providers"]["pool"]["rpd"]
+    compiled = _compile_pooled(raw)
+    assert "rpd" not in compiled["providers"]["pool"]
+    python_routes = compile_llm_limits._python_routes(compiled)["routes"]
+    assert all("provider_rpd" not in r for r in python_routes)
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, "800", True])
+def test_rejects_invalid_provider_wide_rpd(bad):
+    with pytest.raises(ValueError, match="invalid provider-wide rpd"):
+        _compile_pooled(_pooled_raw(bad))
+
+
+def test_rejects_a_route_rpd_above_its_providers_shared_pool():
+    with pytest.raises(ValueError, match="above its provider's shared daily pool"):
+        _compile_pooled(_pooled_raw(800, route_rpd=801))
+    _compile_pooled(_pooled_raw(800, route_rpd=800))  # equal is fine: one route may take it all
+
+
+def test_split_cap_multiplier_scales_the_provider_pool_with_its_routes():
+    compiled = _compile_pooled(_pooled_raw(800, route_rpd=400, split_cap_multiplier=0.5))
+    assert compiled["providers"]["pool"]["rpd"] == 400
+    assert {r["rpd"] for r in compiled["routes_by_id"].values()} == {200}
+    python_routes = compile_llm_limits._python_routes(compiled)["routes"]
+    assert {r["provider_rpd"] for r in python_routes} == {400}
+
+
+def test_orcarouter_declares_its_one_shared_800_per_day_pool():
+    """Verified 2026-11-09: DeepSeek, HY3 and GLM answered the same 429 with the same Retry-After
+    while HY3 had no recorded usage, so OrcaRouter's free tier is one account-level pool."""
+    raw = _raw_provider_limits()
+    assert raw["providers"]["orcarouter"]["rpd"] == 800
+    for route in raw["routes"]:
+        if route.get("provider") == "orcarouter":
+            assert route["rpd"] <= 800

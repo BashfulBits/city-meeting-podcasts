@@ -148,6 +148,42 @@ export function dailyQuotaReadyAt(route, now) {
   return nextZonedMidnightMs(now, tz);
 }
 
+/**
+ * A provider-wide daily request pool (provider `rpd` in provider_limits.yml): one allowance shared
+ * by EVERY route of the provider, for providers whose free tier is a single account-level limit
+ * rather than a per-model one (OrcaRouter's 800/day). Returns the positive limit, or null when the
+ * provider declares no pool. A provider `rpd` of 0 is not the per-route "paused" convention and is
+ * rejected at compile time, so anything not a positive finite number means "no pool" here.
+ */
+export function providerDailyPoolLimit(providerConfig, route) {
+  const limit = Number(providerConfig?.rpd ?? route?.provider_rpd);
+  return Number.isFinite(limit) && limit > 0 ? limit : null;
+}
+
+/**
+ * Requests already counted today against the shared pool: the sum of every route ledger's
+ * rpd_count whose day key is today in the provider's reset timezone. Derived from the per-route
+ * ledgers rather than stored separately, so every existing way a route's daily count moves
+ * (admission, refunds, out-of-band reservations, a provider 429) moves the pool with it, and there
+ * is no second counter to drift or migrate.
+ */
+export function providerDailyUsed(routeLedgers, now, timeZone = "UTC") {
+  const day = zonedDateKey(now, timeZone);
+  let used = 0;
+  for (const ledger of routeLedgers) {
+    if (ledger?.rpd_day_key === day) used += Math.max(0, Number(ledger.rpd_count) || 0);
+  }
+  return used;
+}
+
+/** When the shared pool next admits a request: now while it has room, else the next midnight. */
+export function providerDailyQuotaReadyAt(pool, route, now) {
+  const limit = Number(pool?.limit);
+  if (!Number.isFinite(limit) || limit <= 0) return now;
+  if ((Number(pool?.used) || 0) < limit) return now;
+  return nextZonedMidnightMs(now, routeResetTimezone(route));
+}
+
 /** Epoch ms of the next midnight in `timeZone`, found by probing forward one hour at a time. */
 export function nextZonedMidnightMs(now, timeZone = "UTC") {
   const today = zonedDateKey(now, timeZone);
@@ -395,6 +431,14 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
 
   // RPD: the provider's calendar day in its own reset timezone, not a rolling 24h window.
   push("requests_per_day", dailyQuotaReadyAt(route, now));
+  // Provider-wide RPD: one daily pool shared by all of the provider's routes. `options.providerDaily`
+  // ({ limit, used }) is supplied by the coordinator only for providers that declare a pool.
+  if (options?.providerDaily) {
+    push(
+      "provider_requests_per_day",
+      providerDailyQuotaReadyAt(options.providerDaily, route, now)
+    );
+  }
 
   // TPM: refillable token bucket. Reservations at or under one window's tpm allowance are also
   // gated by the ordinary rolling reservation (tpm_reserved/tpm_window_start) so a burst of

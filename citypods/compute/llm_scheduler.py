@@ -233,6 +233,12 @@ def _next_quota_reset(
         resets.append(now.astimezone(UTC) + timedelta(seconds=deficit * 86400 / quota.tpd))
     if quota.rpd is not None and ledger.requests_day + requests > quota.rpd:
         resets.append(_next_local_midnight(quota.reset_timezone, now))
+    if (
+        route.provider_rpd is not None
+        and provider_ledger is not None
+        and provider_ledger.requests_day + requests > route.provider_rpd
+    ):
+        resets.append(_next_local_midnight(quota.reset_timezone, now))
     if pricing.daily_cost_cap is not None and ledger.cost_day_used + cost > pricing.daily_cost_cap:
         resets.append(_next_local_midnight(quota.reset_timezone, now))
     if ledger.blocked_until:

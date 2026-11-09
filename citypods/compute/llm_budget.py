@@ -44,6 +44,9 @@ class LLMReservation:
     provider_requests_available_at_after: str = ""
     provider_tokens_available_at_before: str = ""
     provider_tokens_available_at_after: str = ""
+    # The provider daily-pool window this reservation was charged to (empty when the provider
+    # declares no shared pool), compared on settle/release exactly like ``day_key``.
+    provider_day_key: str = ""
     reserved_at: str = ""
     expires_at: str = ""
 
@@ -86,6 +89,10 @@ class ProviderLedger:
 
     requests_available_at: str = ""
     tokens_available_at: str = ""
+    # Requests made today against the provider's shared daily pool (``provider_rpd``), keyed on
+    # the provider's reset-timezone calendar day like a route's ``requests_day``.
+    requests_day: int = 0
+    requests_day_key: str = ""
 
 
 @dataclass
@@ -102,6 +109,7 @@ class LLMBudget:
         if not route.provider or (
             route.provider_rpm is None
             and route.provider_tpm is None
+            and route.provider_rpd is None
             and route.provider_concurrency is None
         ):
             return None
@@ -110,6 +118,18 @@ class LLMBudget:
             led = ProviderLedger()
             self.providers[route.provider] = led
         return led
+
+    @staticmethod
+    def _roll_provider_day(
+        provider_led: ProviderLedger | None, route: LLMRoute, now: datetime
+    ) -> None:
+        """Zero the provider's shared daily count when its calendar day has rolled over."""
+        if provider_led is None or route.provider_rpd is None:
+            return
+        day_key = daily_reset_key(now, route.quota.reset_timezone)
+        if provider_led.requests_day_key != day_key:
+            provider_led.requests_day = 0
+            provider_led.requests_day_key = day_key
 
     @staticmethod
     def _request_schedule_after(before: str, rpm: int | None, requests: int, now: datetime) -> str:
@@ -237,6 +257,12 @@ class LLMBudget:
                     )
         if reservation.day_key and led.requests_day_key == reservation.day_key:
             led.requests_day = max(0, led.requests_day - reservation.requests)
+        if reservation.provider_key and reservation.provider_day_key:
+            provider_led = self.providers.get(reservation.provider_key)
+            if provider_led is not None and provider_led.requests_day_key == (
+                reservation.provider_day_key
+            ):
+                provider_led.requests_day = max(0, provider_led.requests_day - reservation.requests)
 
     def available(
         self,
@@ -273,6 +299,12 @@ class LLMBudget:
             if provider_inflight >= route.provider_concurrency:
                 return False
         if provider_led is not None:
+            self._roll_provider_day(provider_led, route, now)
+            if (
+                route.provider_rpd is not None
+                and provider_led.requests_day + requests > route.provider_rpd
+            ):
+                return False
             if provider_led.requests_available_at and now.astimezone(UTC) < datetime.fromisoformat(
                 provider_led.requests_available_at
             ):
@@ -333,6 +365,18 @@ class LLMBudget:
         if current is None or until > current:
             led.blocked_until = until.astimezone(UTC).isoformat()
 
+    def exhaust_provider_daily_pool(self, *, route: LLMRoute, now: datetime) -> None:
+        """Mark the provider's shared daily pool spent for today.
+
+        Called after a daily-window 429 from a provider that declares a shared pool
+        (``provider_rpd``): the provider is saying the POOL is gone, so every route of the provider
+        must stop until the reset, not just the one that heard it. No-op without a pool."""
+        provider_led = self._provider_ledger(route)
+        if provider_led is None or route.provider_rpd is None:
+            return
+        self._roll_provider_day(provider_led, route, now)
+        provider_led.requests_day = max(provider_led.requests_day, route.provider_rpd)
+
     def find_inflight_owner(self, owner: str) -> str | None:
         """The physical route key ``owner`` currently has a reservation under, if any.
         A dispatch-mode retry under the same (deterministic, recipe_hash-derived) owner must
@@ -392,6 +436,11 @@ class LLMBudget:
         )
         led.requests_available_at = request_schedule_after
         provider_led = self._provider_ledger(route)
+        provider_day_key = ""
+        if provider_led is not None and route.provider_rpd is not None:
+            self._roll_provider_day(provider_led, route, now)
+            provider_led.requests_day += requests
+            provider_day_key = provider_led.requests_day_key
         provider_schedule_before = provider_led.requests_available_at if provider_led else ""
         provider_schedule_after = self._request_schedule_after(
             provider_schedule_before, route.provider_rpm, requests, now
@@ -430,6 +479,7 @@ class LLMBudget:
             provider_requests_available_at_after=provider_schedule_after,
             provider_tokens_available_at_before=provider_token_schedule_before,
             provider_tokens_available_at_after=provider_token_schedule_after,
+            provider_day_key=provider_day_key,
             reserved_at=reserved_at.isoformat(),
             expires_at=(
                 (now + timedelta(seconds=LLM_RESERVATION_TTL_SECONDS)).astimezone(UTC).isoformat()
@@ -466,6 +516,19 @@ class LLMBudget:
             and led.requests_day_key == reservation.day_key
         ):
             led.requests_day = max(0, led.requests_day + actual_requests - reservation.requests)
+        if (
+            actual_requests is not None
+            and reservation.provider_key
+            and reservation.provider_day_key
+        ):
+            provider_led = self.providers.get(reservation.provider_key)
+            if (
+                provider_led is not None
+                and provider_led.requests_day_key == reservation.provider_day_key
+            ):
+                provider_led.requests_day = max(
+                    0, provider_led.requests_day + actual_requests - reservation.requests
+                )
         if (
             actual_requests is not None
             and route.quota.rpm is not None
@@ -601,6 +664,7 @@ class LLMBudget:
                             "provider_tokens_available_at_after": (
                                 reservation.provider_tokens_available_at_after or None
                             ),
+                            "provider_day_key": reservation.provider_day_key or None,
                             "reserved_at": reservation.reserved_at or None,
                             "expires_at": reservation.expires_at or None,
                         }
@@ -613,6 +677,8 @@ class LLMBudget:
                 provider: {
                     "requests_available_at": ledger.requests_available_at or None,
                     "tokens_available_at": ledger.tokens_available_at or None,
+                    "requests_day": ledger.requests_day,
+                    "requests_day_key": ledger.requests_day_key,
                 }
                 for provider, ledger in self.providers.items()
             },
@@ -659,6 +725,7 @@ class LLMBudget:
                         provider_tokens_available_at_after=str(
                             value.get("provider_tokens_available_at_after") or ""
                         ),
+                        provider_day_key=str(value.get("provider_day_key") or ""),
                         reserved_at=str(value.get("reserved_at") or ""),
                         expires_at=str(value.get("expires_at") or ""),
                     )
@@ -683,6 +750,8 @@ class LLMBudget:
             str(provider): ProviderLedger(
                 requests_available_at=str(raw.get("requests_available_at") or ""),
                 tokens_available_at=str(raw.get("tokens_available_at") or ""),
+                requests_day=int(raw.get("requests_day", 0)),
+                requests_day_key=str(raw.get("requests_day_key") or ""),
             )
             for provider, raw in (data.get("providers") or {}).items()
             if isinstance(raw, dict)
@@ -822,6 +891,31 @@ def release_route_reservation(
     return mutate_llm_budget(
         storage,
         lambda budget, attempt_now: budget.release(owner, model, route=route, now=attempt_now),
+        now=now,
+        max_attempts=max_attempts,
+        base_sleep=base_sleep,
+        max_sleep=max_sleep,
+        sleep=sleep,
+        rng=rng,
+    )
+
+
+def exhaust_provider_daily_pool(
+    storage,
+    *,
+    route: LLMRoute,
+    now: datetime | None = None,
+    max_attempts: int = 8,
+    base_sleep: float = 0.05,
+    max_sleep: float = 1.0,
+    sleep=time.sleep,
+    rng: random.Random | None = None,
+) -> LLMBudget:
+    return mutate_llm_budget(
+        storage,
+        lambda budget, attempt_now: budget.exhaust_provider_daily_pool(
+            route=route, now=attempt_now
+        ),
         now=now,
         max_attempts=max_attempts,
         base_sleep=base_sleep,

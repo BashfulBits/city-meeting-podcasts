@@ -184,6 +184,9 @@ class LLMRoute:
     provider: str = ""
     provider_rpm: int | None = None
     provider_tpm: int | None = None
+    # One daily request pool shared by every route of the provider (provider `rpd`): for providers
+    # whose free tier is a single account-level limit, not a per-model one.
+    provider_rpd: int | None = None
     provider_concurrency: int | None = None
     upstream_model: str = ""
     direct_model: str = ""
@@ -333,6 +336,7 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 provider=provider,
                 provider_rpm=item.get("provider_rpm"),
                 provider_tpm=item.get("provider_tpm"),
+                provider_rpd=item.get("provider_rpd"),
                 provider_concurrency=item.get("provider_concurrency"),
                 upstream_model=str(item.get("upstream_model", "")),
                 direct_model=str(item.get("direct_model", "")),

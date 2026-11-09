@@ -159,6 +159,14 @@ def _scale_rate_limit(value: Any, multiplier: float) -> Any:
     return value
 
 
+def _validate_provider_rpd(provider_name: str, value: Any) -> None:
+    """A provider-level `rpd` is ONE daily request pool shared by all of the provider's routes
+    (for example OrcaRouter's 800/day free tier, which is not per model). It must be a positive
+    whole number: 0 is the per-route "paused" convention and has no provider-wide meaning here."""
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"provider {provider_name} has invalid provider-wide rpd: {value!r}")
+
+
 def _validate_ai_gateway_max_attempts(value: Any, provider: str) -> int | None:
     """Validate an AI Gateway retry override.
 
@@ -396,6 +404,8 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
             route["provider_rpm"] = provider_cfg["rpm"]
         if provider_cfg.get("tpm") is not None:
             route["provider_tpm"] = provider_cfg["tpm"]
+        if provider_cfg.get("rpd") is not None:
+            route["provider_rpd"] = provider_cfg["rpd"]
         if provider_cfg.get("concurrency") is not None:
             route["provider_concurrency"] = provider_cfg["concurrency"]
         routes.append(route)
@@ -480,6 +490,8 @@ _WORKER_PROVIDER_FIELDS = (
     "ai_gateway_max_attempts",
     "rpm",
     "tpm",
+    # A daily request pool shared by EVERY route of the provider (see `_validate_provider_rpd`).
+    "rpd",
     "concurrency",
     "reset_timezone",
     "accounts",
@@ -996,12 +1008,19 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     raise ValueError(
                         f"provider {provider_name} has invalid non-positive tpm: {tpm_val!r}"
                     )
+            if "rpd" in provider_cfg and provider_cfg["rpd"] is not None:
+                _validate_provider_rpd(provider_name, provider_cfg["rpd"])
     if token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0:
         for provider_cfg in providers.values():
             if isinstance(provider_cfg, dict):
                 if provider_cfg.get("rpm") is not None and split_cap_multiplier != 1.0:
                     provider_cfg["rpm"] = _scale_rate_limit(
                         provider_cfg["rpm"], split_cap_multiplier
+                    )
+                if provider_cfg.get("rpd") is not None and split_cap_multiplier != 1.0:
+                    # Scaled like every route's rpd, so the pool never exceeds what its routes get.
+                    provider_cfg["rpd"] = _scale_rate_limit(
+                        provider_cfg["rpd"], split_cap_multiplier
                     )
                 if provider_cfg.get("monthly_tpm") is not None:
                     provider_cfg["monthly_tpm"] = _scale_rate_limit(
@@ -1056,6 +1075,18 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                 route["tpm"], token_estimate_buffer * split_cap_multiplier
             )
         provider_cfg = providers.get(route.get("provider"), {})
+        provider_rpd = provider_cfg.get("rpd") if isinstance(provider_cfg, dict) else None
+        route_rpd = route.get("rpd")
+        if (
+            provider_rpd is not None
+            and isinstance(route_rpd, (int, float))
+            and not isinstance(route_rpd, bool)
+            and route_rpd > provider_rpd
+        ):
+            raise ValueError(
+                f"route {route.get('route_id', route.get('model'))!r} declares rpd {route_rpd}, "
+                f"above its provider's shared daily pool ({provider_rpd}); it could never be used"
+            )
         for limit_name in ("input_context_limit", "output_context_limit"):
             value = route.get(limit_name)
             if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 1:
