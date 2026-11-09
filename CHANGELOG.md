@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Bound the judge's in-memory parsed transcript cache and spill older snapshots to private temporary
+storage, preserving quote-check read limits and origin-refresh behavior. Report spill and rehydrate
+counts to inform later tuning of the per-pass quote-check budget.
+
 - **Replay agreed JEV panels.** Compare JEV + Gemma and JEV + Nemotron against frozen definite
   tag labels, with offline scoring and quote-gated GLM/NVIDIA DeepSeek disagreement analysis.
   Keep raw responses external, preserve gold labels, and change no production admission policy.
