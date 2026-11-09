@@ -1499,6 +1499,40 @@ def test_validate_reconciled_propagates_upstream_passthrough_uncaught():
         backend._validate_reconciled(airforce_524, "test-output")
 
 
+def _dispatched(content: str, finish: str = "stop", completion_tokens: int = 7) -> dict:
+    return {
+        "choices": [{"finish_reason": finish, "message": {"content": content}}],
+        "usage": {"completion_tokens": completion_tokens},
+    }
+
+
+def test_a_truncated_dispatched_reply_is_classified_as_json_without_leaking_text():
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    secret = "private-meeting-words"
+    output = _dispatched('{"value": 1, "note": "' + secret, finish="length", completion_tokens=900)
+    with pytest.raises(LLMStructuredOutputError, match="failed Pydantic validation") as raised:
+        backend._validate_reconciled(output, "test-output")
+    diagnostic = raised.value.diagnostic
+    assert diagnostic["stage"] == "json"
+    assert diagnostic["finish_reason"] == "length"
+    assert diagnostic["completion_tokens"] == 900
+    assert diagnostic["ends_closed"] is False
+    assert secret not in repr(diagnostic)
+
+
+def test_a_schema_mismatch_is_classified_with_field_locations_only():
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    secret = "private-meeting-words"
+    output = _dispatched('{"value": "' + secret + '", "' + secret + '": 1}')
+    with pytest.raises(LLMStructuredOutputError) as raised:
+        backend._validate_reconciled(output, "test-output")
+    diagnostic = raised.value.diagnostic
+    assert diagnostic["stage"] == "schema"
+    assert diagnostic["validation_errors"]
+    assert all(set(item) == {"loc", "type"} for item in diagnostic["validation_errors"])
+    assert secret not in repr(diagnostic)
+
+
 @pytest.mark.parametrize("raw", ["0", "-5", "nan", "inf"])
 def test_the_direct_timeout_must_be_a_finite_positive_number(monkeypatch, raw):
     monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", raw)
