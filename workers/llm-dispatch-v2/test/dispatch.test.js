@@ -4356,3 +4356,136 @@ test("feedback ignores malformed model entries just like quota recovery", async 
   assert.equal((await coordinator.packingCeiling(GEMMA_MODEL, "tags")).size_feedback
     .resolved_packets, 1);
 });
+
+// A provider-wide daily request pool (provider `rpd`): one allowance shared by every route of the
+// provider, as OrcaRouter's 800/day free tier is. Each route keeps its own, larger, ceiling.
+function poolCatalog(poolRpd) {
+  return {
+    model_aliases: {},
+    model_routes_map: { "pool/m-a": ["pool-a"], "pool/m-b": ["pool-b"] },
+    providers: {
+      poolprov: { ...(poolRpd === null ? {} : { rpd: poolRpd }), reset_timezone: "UTC" },
+    },
+    routes_by_id: {
+      "pool-a": {
+        route_id: "pool-a", provider: "poolprov", upstream_model: "m-a", rpm: 1000, rpd: 100,
+        free: true, input_context_limit: 100000, output_context_limit: 10000,
+      },
+      "pool-b": {
+        route_id: "pool-b", provider: "poolprov", upstream_model: "m-b", rpm: 1000, rpd: 100,
+        free: true, input_context_limit: 100000, output_context_limit: 10000,
+      },
+    },
+  };
+}
+
+function poolFixture(catalog) {
+  const { sql, storage } = createMockSqlStorage();
+  const env = {
+    MAX_JOBS_PER_UTC_DAY: "10000", MAX_BUNDLE_JOBS: "1", MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1",
+    MAX_CONCURRENT_ROUTE_LANES: "5", MAX_ACTIVE_BUNDLES: "2", MAX_IN_FLIGHT_LLM_CALLS: "8",
+    MAX_BUNDLES_PER_UTC_DAY: "1000", MAX_QUEUE_WAIT_SECONDS: "3600",
+    LEASE_DURATION_SECONDS: "840", MAX_429_RETRIES: "1", MAX_429_BACKOFF_SECONDS: "5",
+    ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5", DISPATCH_LIMITS_OVERRIDE: catalog,
+  };
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(env));
+  const enqueue = (id, model) => coordinator.enqueueBatch([{
+    id, idempotency_key: `key-${id}`, request_digest: `digest-${id}`,
+    policy_json: JSON.stringify({ allowed_models: [model] }), prompt_family: "tags",
+    input_token_estimate: 500, max_output_token_estimate: 200, payload_key: `payloads/${id}.json`,
+  }]);
+  const complete = (plan, id, at) => coordinator.completeBatch(plan.bundle_id, plan.execution_token, [{
+    job_id: id, lease_token: plan.jobs[0].lease_token, attempt_id: `${id}-attempt`,
+    planned_at: plan.jobs[0].not_before_at, actual_start_at: at, actual_end_at: at + 500,
+    observed_input_tokens: 500, observed_output_tokens: 200, outcome: "success",
+    provider_status_code: 200, result_key: `results/${id}.json`,
+  }]);
+  // All claims in one UTC day: the pool resets at midnight UTC.
+  const now = Date.now();
+  const msToMidnight = 86_400_000 - (now % 86_400_000);
+  const t0 = msToMidnight < 600_000 ? now + msToMidnight + 1_000 : now;
+  return { coordinator, sql, enqueue, complete, t0 };
+}
+
+test("a provider-wide daily pool is shared across the provider's routes", async () => {
+  const { coordinator, enqueue, complete, t0 } = poolFixture(poolCatalog(3));
+  const runOne = async (id, model, at) => {
+    await enqueue(id, model);
+    const plan = await coordinator.claimDispatchWindow(at, 25);
+    if (plan.jobs.length) await complete(plan, id, at);
+    return plan.jobs[0]?.route_id ?? null;
+  };
+  // Two requests on route B and one on route A spend the 3-request pool, though each route's own
+  // ceiling is 100.
+  assert.equal(await runOne("b1", "pool/m-b", t0), "pool-b");
+  assert.equal(await runOne("b2", "pool/m-b", t0 + 60_000), "pool-b");
+  assert.equal(await runOne("a1", "pool/m-a", t0 + 120_000), "pool-a");
+  // Route A has 99 of its own requests left, but the pool is spent: it must wait, not dispatch.
+  assert.equal(await runOne("a2", "pool/m-a", t0 + 180_000), null);
+  // The reset rolls the pool over (next UTC midnight): the held job dispatches then.
+  const tomorrow = t0 - (t0 % 86_400_000) + 86_400_000 + 5_000;
+  const resumed = await coordinator.claimDispatchWindow(tomorrow, 25);
+  assert.equal(resumed.jobs[0]?.route_id, "pool-a");
+});
+
+test("without a provider-wide pool the same routes dispatch independently", async () => {
+  const { coordinator, enqueue, complete, t0 } = poolFixture(poolCatalog(null));
+  const runOne = async (id, model, at) => {
+    await enqueue(id, model);
+    const plan = await coordinator.claimDispatchWindow(at, 25);
+    if (plan.jobs.length) await complete(plan, id, at);
+    return plan.jobs[0]?.route_id ?? null;
+  };
+  assert.equal(await runOne("b1", "pool/m-b", t0), "pool-b");
+  assert.equal(await runOne("b2", "pool/m-b", t0 + 60_000), "pool-b");
+  assert.equal(await runOne("a1", "pool/m-a", t0 + 120_000), "pool-a");
+  assert.equal(await runOne("a2", "pool/m-a", t0 + 180_000), "pool-a");
+});
+
+test("pause-status reports the shared pool and caps each route's remaining requests by it", async () => {
+  const { coordinator, enqueue, complete, t0 } = poolFixture(poolCatalog(3));
+  for (const [id, model, at] of [
+    ["b1", "pool/m-b", t0], ["b2", "pool/m-b", t0 + 60_000], ["a1", "pool/m-a", t0 + 120_000],
+  ]) {
+    await enqueue(id, model);
+    const plan = await coordinator.claimDispatchWindow(at, 25);
+    await complete(plan, id, at);
+  }
+  // Asked about ONE route, the status still sums every route of its provider.
+  const status = await coordinator.dispatchPauseStatus({ scope: "route", target: "pool-a" }, t0 + 200_000);
+  assert.deepEqual(
+    { ...status.provider_pools.poolprov, rpd_resets_at: undefined },
+    { rpd_limit: 3, rpd_used: 3, rpd_remaining: 0, rpd_resets_at: undefined }
+  );
+  assert.equal(status.routes["pool-a"].rpd_used, 1);
+  assert.equal(status.routes["pool-a"].rpd_limit, 100);
+  assert.equal(status.routes["pool-a"].rpd_remaining, 0, "the pool, not the route ceiling, binds");
+  const provider = await coordinator.dispatchPauseStatus({ scope: "provider", target: "poolprov" }, t0 + 200_000);
+  assert.equal(provider.routes["pool-b"].rpd_remaining, 0);
+});
+
+test("pause-status of a provider without a pool has no provider_pools and keeps route limits", async () => {
+  const { coordinator, t0 } = poolFixture(poolCatalog(null));
+  const status = await coordinator.dispatchPauseStatus({ scope: "provider", target: "poolprov" }, t0);
+  assert.equal(status.provider_pools, undefined);
+  assert.equal(status.routes["pool-a"].rpd_remaining, 100);
+});
+
+test("a daily-window 429 on one route exhausts the provider's shared pool for every route", async () => {
+  const { coordinator, enqueue, t0 } = poolFixture(poolCatalog(800));
+  await enqueue("a1", "pool/m-a");
+  const plan = await coordinator.claimDispatchWindow(t0, 25);
+  assert.equal(plan.jobs[0].route_id, "pool-a");
+  await coordinator.attemptStarted("a1", plan.jobs[0].lease_token);
+  const verdict = await coordinator.authorizeRetry(
+    "a1", plan.jobs[0].lease_token, "a1-attempt", t0 + 1_000, 29_000, "own_rpd"
+  );
+  assert.equal(verdict.authorized, false);
+  // The pool is spent although the other route never ran and the pool is far from 800 by count.
+  const status = await coordinator.dispatchPauseStatus({ scope: "provider", target: "poolprov" }, t0 + 2_000);
+  assert.equal(status.provider_pools.poolprov.rpd_remaining, 0);
+  assert.equal(status.routes["pool-b"].rpd_remaining, 0);
+  await enqueue("b1", "pool/m-b");
+  const blocked = await coordinator.claimDispatchWindow(t0 + 3_000, 25);
+  assert.equal(blocked.jobs.length, 0);
+});

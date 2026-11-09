@@ -66,6 +66,8 @@ import {
   routeResetTimezone,
   nextZonedMidnightMs,
   effectiveBufferSeconds,
+  providerDailyPoolLimit,
+  providerDailyUsed,
 } from "./pacing.js";
 import {
   CALIBRATION_FULL_SAMPLES,
@@ -2251,16 +2253,39 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Daily quota per route is reported only for a provider/route selection: a global status
     // would read every routes row for no caller that needs it.
     const routes = {};
+    const providerPools = {};
     if (scope !== "global") {
+      // A provider with a shared daily pool needs every one of its routes' counts, not just the
+      // selected route's, to report what is left.
+      const pooledProviders = new Set(
+        selectedRouteIds
+          .map((id) => catalog.routes_by_id[id].provider)
+          .filter((name) => providerDailyPoolLimit(catalog?.providers?.[name]) !== null)
+      );
+      const ledgerRouteIds = Object.keys(catalog?.routes_by_id || {}).filter(
+        (id) => selectedRouteIds.includes(id) || pooledProviders.has(catalog.routes_by_id[id].provider)
+      );
       const ledgers = new Map(
         (this._packed()
-          ? selectedRouteIds.map(id => this._routeRow(id)).filter(Boolean)
+          ? ledgerRouteIds.map(id => this._routeRow(id)).filter(Boolean)
           : [...this._getSql().exec(
             `SELECT route_id, rpd_count, rpd_day_key FROM routes
-              WHERE route_id IN (${selectedRouteIds.map(() => "?").join(",") || "''"})`,
-            ...selectedRouteIds
+              WHERE route_id IN (${ledgerRouteIds.map(() => "?").join(",") || "''"})`,
+            ...ledgerRouteIds
           )]).map((row) => [row.route_id, row])
       );
+      for (const providerName of pooledProviders) {
+        const pool = this._providerDailyPool(providerName, now, catalog, (catalogRoute) =>
+          ledgers.get(catalogRoute.route_id) || null
+        );
+        const timeZone = catalog.providers[providerName].reset_timezone || "UTC";
+        providerPools[providerName] = {
+          rpd_limit: pool.limit,
+          rpd_used: pool.used,
+          rpd_remaining: Math.max(0, pool.limit - pool.used),
+          rpd_resets_at: nextZonedMidnightMs(now, timeZone),
+        };
+      }
       for (const routeId of selectedRouteIds) {
         const catalogRoute = catalog.routes_by_id[routeId];
         const timeZone = catalog?.providers?.[catalogRoute.provider]?.reset_timezone || "UTC";
@@ -2270,12 +2295,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ledger && ledger.rpd_day_key === zonedDateKey(now, timeZone)
             ? Number(ledger.rpd_count) || 0
             : 0;
+        // The route can serve no more than the smaller of its own ceiling and what is left of its
+        // provider's shared pool.
+        const poolRemaining = providerPools[catalogRoute.provider]?.rpd_remaining ?? null;
+        const routeRemaining = rpdLimit === null ? null : Math.max(0, rpdLimit - usedToday);
         routes[routeId] = {
           provider: catalogRoute.provider,
           in_flight: inFlight.by_route[routeId] || 0,
           rpd_limit: rpdLimit,
           rpd_used: usedToday,
-          rpd_remaining: rpdLimit === null ? null : Math.max(0, rpdLimit - usedToday),
+          rpd_remaining:
+            routeRemaining === null
+              ? poolRemaining
+              : poolRemaining === null
+                ? routeRemaining
+                : Math.min(routeRemaining, poolRemaining),
           rpd_resets_at: nextZonedMidnightMs(now, timeZone),
         };
       }
@@ -2288,6 +2322,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       in_flight: selectionInFlight,
       pauses: this._activePauses(now),
       routes,
+      ...(Object.keys(providerPools).length ? { provider_pools: providerPools } : {}),
     };
   }
 
@@ -3941,6 +3976,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const provider = catalog?.routes_by_id?.[routeId]?.provider;
       if (provider) leasedByProvider.set(provider, (leasedByProvider.get(provider) || 0) + count);
     }
+    const poolFractions = this._providerDailyFractions(routeRows, now, catalog);
     const routes = routeRows.map((row) => {
       const catalogRoute = catalog?.routes_by_id?.[row.route_id];
       const merged = catalogRoute ? { ...catalogRoute, ...row } : row;
@@ -3951,7 +3987,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       );
       return {
         route_id: row.route_id,
-        capacity: catalogRoute ? this._capacityFraction(merged, now, windowSeconds) : null,
+        capacity: catalogRoute
+          ? this._capacityFraction(
+              merged,
+              now,
+              windowSeconds,
+              poolFractions.get(catalogRoute.provider) ?? 1
+            )
+          : null,
         provider: catalogRoute?.provider || null,
         in_flight: leasedByRoute.get(row.route_id) || 0,
         route_concurrency: Number.isFinite(routeConcurrency) ? routeConcurrency : null,
@@ -5387,7 +5430,36 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return Boolean(this.env?.[envName]);
   }
 
-  _capacityFraction(route, now, windowSeconds) {
+  /**
+   * The shared daily pool of a provider that declares one (provider `rpd`): `{ limit, used }`, or
+   * null. `used` sums every route ledger's count for today, so it reflects each way a route's
+   * daily count moves. `ledgerFor(catalogRoute)` returns a route's live ledger (a claim passes its
+   * merged, in-progress ledgers so it sees its own earlier admissions).
+   */
+  _providerDailyPool(providerName, now, dispatchLimits, ledgerFor) {
+    const providerCfg = dispatchLimits?.providers?.[providerName];
+    const limit = providerDailyPoolLimit(providerCfg);
+    if (limit === null) return null;
+    const ledgers = Object.values(dispatchLimits?.routes_by_id || {})
+      .filter((candidate) => candidate.provider === providerName)
+      .map(ledgerFor);
+    return { limit, used: providerDailyUsed(ledgers, now, providerCfg?.reset_timezone || "UTC") };
+  }
+
+  /** Remaining share (0..1) of each pooled provider's daily request pool, for ranking and stats. */
+  _providerDailyFractions(ledgerRows, now, dispatchLimits) {
+    const byRoute = new Map(ledgerRows.map((row) => [row.route_id, row]));
+    const fractions = new Map();
+    for (const providerName of Object.keys(dispatchLimits?.providers || {})) {
+      const pool = this._providerDailyPool(providerName, now, dispatchLimits, (catalogRoute) =>
+        byRoute.get(catalogRoute.route_id) || null
+      );
+      if (pool) fractions.set(providerName, Math.max(0, Math.min(1, (pool.limit - pool.used) / pool.limit)));
+    }
+    return fractions;
+  }
+
+  _capacityFraction(route, now, windowSeconds, providerDailyFraction = 1) {
     if (Number(route.blocked_until) > now) return 0;
     // Decayed, not stored: a stored buffer never expires on its own, and the only code that
     // cleared it required a success this very check makes unreachable (see effectiveBufferSeconds).
@@ -5435,7 +5507,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         : 1;
     const tpd = Number(route.tpd);
     const tpdFraction = tpd > 0 ? Math.max(0, (tpd - dailyTokenDebt(route, now)) / tpd) : 1;
-    return Math.min(rpmFraction, rpdFraction, tokenFraction, tpdFraction);
+    return Math.min(rpmFraction, rpdFraction, tokenFraction, tpdFraction, providerDailyFraction);
   }
 
   /** Read the small route ledger once, rank model pools by their aggregate free fraction, and
@@ -5445,6 +5517,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ? new Map(this._routeRows().map(row => [row.route_id, row]))
       : readRouteLedgers(this._getSql());
     const catalog = dispatchLimits?.routes_by_id || {};
+    const poolFractions = this._providerDailyFractions([...ledgers.values()], now, dispatchLimits);
     return Object.entries(dispatchLimits?.model_routes_map || {})
       .map(([model, routeIds]) => {
         const routes = routeIds
@@ -5461,7 +5534,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
               reset_timezone:
                 dispatchLimits?.providers?.[catalogRoute.provider]?.reset_timezone || "UTC",
             };
-            return { route, score: this._capacityFraction(route, now, windowSeconds) };
+            return {
+              route,
+              score: this._capacityFraction(
+                route,
+                now,
+                windowSeconds,
+                poolFractions.get(catalogRoute.provider) ?? 1
+              ),
+            };
           })
           .filter(Boolean)
           .sort(
@@ -6237,6 +6318,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           callDurationCeilingMs,
           providerConfig: providerCfg,
           providerLedger,
+          providerDaily: route.provider
+            ? this._providerDailyPool(route.provider, now, dispatchLimits, getMergedRoute)
+            : null,
         };
       };
 
@@ -6648,6 +6732,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             outputForecast,
             providerConfig: providerCfg,
             providerLedger,
+            providerDaily: route.provider
+              ? this._providerDailyPool(route.provider, now, dispatchLimits, getMergedRoute)
+              : null,
             ceilingTolerance: drainedJobIds.has(job.id),
           });
           if (waitResult === null) {
@@ -6842,7 +6929,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
           return { authorized: false, retry_not_before: null };
         }
         case "own_rpd": {
-          const rpd = route?.rpd || 0;
+          // A provider that declares a shared daily pool (provider `rpd`) is telling us the POOL
+          // is spent when it answers a daily-window 429, so the route's count is raised to the
+          // pool size: the derived pool total then blocks every sibling route until the reset.
+          const rpd = Math.max(
+            route?.rpd || 0,
+            providerDailyPoolLimit(dispatchLimits?.providers?.[route?.provider]) || 0
+          );
           const tz = routeResetTimezone(route);
           const dayKey = zonedDateKey(now, tz);
           const midnightMs = nextZonedMidnightMs(now, tz);

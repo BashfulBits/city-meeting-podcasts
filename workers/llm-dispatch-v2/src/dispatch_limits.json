@@ -187,6 +187,7 @@
       "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "rpm": 10,
+      "rpd": 800,
       "concurrency": 2,
       "reset_timezone": "UTC",
       "accounts": [

@@ -37,6 +37,7 @@ import requests
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult, Task
 from citypods.compute.llm_budget import (
     block_route_until,
+    exhaust_provider_daily_pool,
     load_llm_budget_cas,
     release_route_reservation,
     settle_route_reservation,
@@ -1767,6 +1768,9 @@ class LiteLLMBackend(Backend):
                 flush=True,
             )
             block_route_until(self.storage, resolved_model, until, route=route)
+            if classification.failure_class == "own_rpd" and route.provider_rpd is not None:
+                # The provider's daily window is shared by all of its routes: stand them all down.
+                exhaust_provider_daily_pool(self.storage, route=route)
             settle_route_reservation(
                 self.storage,
                 owner,
