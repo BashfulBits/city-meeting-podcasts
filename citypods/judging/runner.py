@@ -95,6 +95,9 @@ SIBLING_CEILINGS: dict[str, tuple[int, int]] = {
     "openrouter/nvidia/nemotron-3.5-super-vl:free": (24_000, 25),
 }
 DEFAULT_SIBLING_CEILING = (10_000, 20)
+# Transcripts one pass may read to quote-check collected answers
+# (overridden by site_config judging.quote_check_reads).
+DEFAULT_QUOTE_CHECK_READS = 400
 
 
 @dataclass
@@ -130,7 +133,7 @@ class JudgingContext:
     stability_sample_rate: float = 0.0
     # Transcripts one pass may read to check the quotes of answers it collects; an answer whose
     # evidence cannot be read yet waits (its marker stays) for a later pass.
-    quote_check_reads: int = 400
+    quote_check_reads: int = DEFAULT_QUOTE_CHECK_READS
     # Direct-storage retry when a CDN transcript rebuilds a different evidence digest.
     texts_for_origin: Callable[[Any], EpisodeTexts] | None = None
     # PR6: human-verified probes asked invisibly of each judge that has live work this pass, up to

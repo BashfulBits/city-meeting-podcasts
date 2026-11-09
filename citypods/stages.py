@@ -1631,6 +1631,9 @@ class JudgeStage(LLMProducerStage):
             stability_sample_rate=float(config.get("stability_sample_rate", 0.02)),
             probes=probes,
             probes_per_pass=probes_per_pass,
+            quote_check_reads=max(
+                1, int(config.get("quote_check_reads", runner.DEFAULT_QUOTE_CHECK_READS))
+            ),
             audit_rows=ctx.judge_audit_rows,
         )
         try:
