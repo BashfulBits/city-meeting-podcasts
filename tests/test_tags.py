@@ -823,6 +823,48 @@ def test_llm_tag_suggestions_admits_material_larger_than_one_tpm_minute():
     assert resolved_model == "payload-too-large"
 
 
+def test_llm_tag_suggestions_oversize_gate_counts_routes_without_a_tpm_cap():
+    """A batch past every tpm-capped route must still dispatch when an uncapped route's context
+    fits it: the oversize gate and the batch splitter share one predicate."""
+    from citypods.compute.base import JobResult
+
+    class Config:
+        model = "gemini/gemini-3.1-flash-lite"
+        additional_models = ("deepseek/deepseek-v4-flash",)
+
+    class Storage:
+        cas_capable = True
+
+    class Backend:
+        storage = Storage()
+        config = Config()
+
+        def run_inference(self, job):
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": '{"tags": []}'}}]},
+            )
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    _tags, _chapter_tags, dispatched, resolved_model = llm_tag_suggestions(
+        Backend(),
+        taxonomy=taxonomy,
+        agenda_item_titles="Housing plan",
+        agenda_text="housing " * 200_000,  # ~400k tokens: past Gemini's 225k, inside DeepSeek's 1M
+        transcript_text="housing supply",
+        recipe_hash="recipe",
+    )
+    assert resolved_model != "payload-too-large"
+    assert dispatched is False  # the backend actually ran
+
+
 def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route():
     """A payload that fits within the configured provider context can dispatch normally."""
     from citypods.compute.base import JobResult
@@ -1104,9 +1146,19 @@ def test_episode_needs_tagging_evaluates_correctly():
     ep.tags_spec_hash = "spec-hash-1"
     assert episode_needs_tagging(ep, taxonomy, llm_enabled=False) is False
 
-    # 3. Episode with rules done but LLM enabled and tags_llm_recipe_hash is None DOES need tagging
+    # 3. A chapterless episode can never resolve an LLM recipe (the tagger works on chapter
+    # batches), so a missing tags_llm_recipe_hash must NOT keep it in the tag queue. This is the
+    # predicate stage_is_dirty uses; a mismatch queued ~19k no-op episodes per run.
     fp_llm = tag_input_fingerprint(ep, taxonomy, llm_enabled=True, llm_route="test:model")
     ep.tags_input_fingerprint = fp_llm
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is False
+
+    # 3b. With chapters, rules done but LLM enabled and tags_llm_recipe_hash None DOES need tagging
+    ep.chapters = [{"start": 0, "title": "Intro"}]
+    ep.chapter_tags = {"ch-1": [{"id": "housing"}]}
+    ep.tags_input_fingerprint = tag_input_fingerprint(
+        ep, taxonomy, llm_enabled=True, llm_route="test:model"
+    )
     assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is True
 
     # 4. Episode with both rules and LLM resolved does NOT need tagging
@@ -1114,6 +1166,8 @@ def test_episode_needs_tagging_evaluates_correctly():
     assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is False
 
     # 5. Episode with chapter added needs tagging if chapter_tags is empty
+    ep.chapters = []
+    ep.chapter_tags = {}
     ep.source_chapters = [{"start": 0, "title": "Intro"}]
     assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is True
     ep.chapter_tags = {"ch-1": [{"id": "housing"}]}

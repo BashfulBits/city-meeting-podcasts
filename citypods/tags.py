@@ -379,6 +379,18 @@ def tag_input_fingerprint(
     ).hexdigest()[:16]
 
 
+def _tag_route_fits(route: Any, input_tokens: int) -> bool:
+    """Whether one tag request of ``input_tokens`` (plus the output budget) can ever fit ``route``:
+    within its input and output context and, when the route has one, a whole per-minute token cap.
+    Shared by the batch splitter and the oversize gate so the two can never disagree."""
+    total_tokens = input_tokens + TAG_OUTPUT_TOKEN_BUDGET
+    return (
+        input_tokens <= route.input_context_limit
+        and TAG_OUTPUT_TOKEN_BUDGET <= route.output_context_limit
+        and (route.quota.tpm is None or total_tokens <= int(route.quota.tpm))
+    )
+
+
 def episode_needs_tagging(
     ep: Any,
     taxonomy: Taxonomy,
@@ -410,7 +422,12 @@ def episode_needs_tagging(
         and ep.tags_spec_hash is not None
         and (not has_chapters or ep.chapter_tags)
     )
-    llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
+    # The LLM tagger works on chapter batches, so an episode with no chapters can never resolve a
+    # recipe hash. Counting it as "LLM pending" forever kept every chapterless episode in the tag
+    # lane's global queue, where ``stage_is_dirty`` (which only treats the LLM as pending when
+    # ``ep.chapters`` exist) then skipped it as ``completion-cache``: ~19k of a run's ~20.5k
+    # candidates on 2026-11-08. Keep this predicate in lockstep with that stage-level trigger.
+    llm_pending = llm_enabled and bool(ep.chapters) and ep.tags_llm_recipe_hash is None
     return not (inputs_unchanged and not llm_pending)
 
 
@@ -1015,13 +1032,7 @@ def llm_tag_suggestions(
                 if size > TAGGER_MAX_REQUEST_BYTES:
                     return False
                 input_tokens = estimate_tokens(candidate_messages)
-                total_tokens = input_tokens + TAG_OUTPUT_TOKEN_BUDGET
-                return any(
-                    input_tokens <= route.input_context_limit
-                    and TAG_OUTPUT_TOKEN_BUDGET <= route.output_context_limit
-                    and (route.quota.tpm is None or total_tokens <= int(route.quota.tpm))
-                    for route in candidate_routes
-                )
+                return any(_tag_route_fits(route, input_tokens) for route in candidate_routes)
 
             batches: list[list[dict[str, Any]]] = []
             current: list[dict[str, Any]] = []
@@ -1137,18 +1148,25 @@ def llm_tag_suggestions(
         # batch that cannot fit a whole route minute at all, not the old direct-path's two-attempt
         # reservation threshold.
         token_estimate = input_tokens_estimate
-        capped_tpm = {
-            route.route_id or route.model: route.quota.tpm
+        route_limits = {
+            route.route_id or route.model: {
+                "context": route.input_context_limit,
+                "tpm": route.quota.tpm,
+            }
             for route in candidate_routes
-            if route.quota.tpm is not None
         }
-        if capped_tpm and all(
-            token_estimate + TAG_OUTPUT_TOKEN_BUDGET > tpm for tpm in capped_tpm.values()
+        # Same predicate the batch splitter used to size this batch. A route with no per-minute
+        # cap (OrcaRouter DeepSeek, the Kilo/OpenRouter Nemotron routes) fits any batch within its
+        # context; judging only the tpm-capped routes rejected 212k-715k-token batches that the
+        # splitter had built for exactly those routes (353 "oversized" deferrals on 2026-11-08).
+        if candidate_routes and not any(
+            _tag_route_fits(route, token_estimate) for route in candidate_routes
         ):
             print(
                 f"llm tag budget: material estimate={token_estimate} tokens exceeds every "
-                f"tpm-capped allowed route's budget ({capped_tpm}) for recipe_hash="
-                f"{recipe_hash} -- this would never fit any window as-is, not just this minute. "
+                f"allowed route's context or per-minute token limit ({route_limits}) for "
+                f"recipe_hash={recipe_hash} -- this would never fit any window as-is, not just "
+                "this minute. "
                 "Deferring because one chapter batch cannot fit any configured route.",
                 flush=True,
             )
