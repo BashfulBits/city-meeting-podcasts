@@ -269,6 +269,8 @@ def test_v2_schema_correction_stages_corrected_payload_and_acks_source():
     assert corrected.ref == "corrected-v2"
     retry_request = mock_session.post.call_args_list[0].kwargs["json"]
     corrected_payload = json.loads(storage.files[retry_request["corrected_payload_key"]])
+    assert corrected_payload["structured_output"]["name"] == "dispatch-v2-test-pong"
+    assert "properties" in corrected_payload["structured_output"]["schema"]
     assert corrected_payload["messages"][-1]["role"] == "user"
     assert "failed local schema validation" in corrected_payload["messages"][-1]["content"]
     assert len(mock_session.post.call_args_list) == 1
@@ -1221,7 +1223,7 @@ def test_poll_batch_classifies_an_upstream_error_passthrough_distinctly():
     )
 
     config = LLMBackendConfig(
-        model="mistral/codestral-2508",
+        model="openai/gpt-oss-120b",
         dispatch_v2_url="https://dispatch-v2.example.com",
     )
     backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
@@ -1566,7 +1568,9 @@ def test_collector_keeps_accepted_job_durable_for_failure_reconciliation(poll_er
     assert PerModelBatchingBackends.submission_errors(outcomes) == []
     handle = outcomes[0].result
     assert isinstance(handle, JobHandle)
-    assert look_up_deferred(storage, job.recipe_hash) == handle
+    restored = look_up_deferred(storage, job.recipe_hash)
+    assert restored.ref == handle.ref
+    assert restored.structured_output == "moment-extraction"
     backend.poll_batch.assert_not_called()
     # The same error remains observable by the existing reconciliation path.
     assert isinstance(backend.poll_batch([handle])[handle.ref], poll_error)
@@ -2656,3 +2660,135 @@ def test_poll_batch_rejects_invalid_absence_proofs(body):
     handle = JobHandle(task="tag", recipe_hash="r", ref="gone", backend="llm-dispatch-v2")
     assert isinstance(backend.poll_batch([handle])["gone"], _LLMBatchItemError)
     assert not storage.files
+
+
+@pytest.mark.parametrize("refusal", ["http429", "purpose_write_budget_exceeded"])
+def test_quota_deferral_preserves_structured_contract_through_sweep(refusal):
+    from citypods.compute.llm_deferred import look_up_deferred
+    from scripts.llm_deferred_sweep import _job_from_deferred_handle
+
+    storage = MockStorage()
+    session = MagicMock()
+
+    def post(url, json=None, **kwargs):
+        if refusal == "http429":
+            return _mock_response(status_code=429)
+        return _mock_response(
+            json_data={
+                "accepted": [],
+                "rejected": [{"id": row["id"], "reason": refusal} for row in json["jobs"]],
+            }
+        )
+
+    session.post.side_effect = post
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        storage=storage,
+        http_session=session,
+    )
+    job = InferenceJob(
+        task="tag",
+        recipe_hash="schema-deferral",
+        inputs={
+            "messages": [{"role": "user", "content": "hello"}],
+            "structured_output": "dispatch-v2-test-pong",
+            "llm_policy": LLMRequestPolicy(
+                allowed_models=("gemini/gemini-3-flash-preview",),
+                queue_only=True,
+                purpose="r6-moments",
+            ),
+        },
+    )
+    handle = backend.enqueue_batch([job])[0]
+    assert handle.structured_output == "dispatch-v2-test-pong"
+    write_deferred(storage, job.recipe_hash, handle)
+    restored = look_up_deferred(storage, job.recipe_hash)
+    rebuilt = _job_from_deferred_handle(restored)
+    assert rebuilt.inputs["structured_output"] == "dispatch-v2-test-pong"
+
+
+def test_refusal_persist_sweep_submit_preserves_output_mode_and_backup_routes():
+    from datetime import UTC, datetime, timedelta
+
+    from citypods.compute.llm_deferred import look_up_deferred
+    from scripts.llm_deferred_sweep import _job_from_deferred_handle, _with_sweep_deadline
+
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = lambda url, json=None, **kwargs: _mock_response(
+        json_data={
+            "accepted": [],
+            "rejected": [
+                {"id": row["id"], "reason": "purpose_write_budget_exceeded"} for row in json["jobs"]
+            ],
+        }
+    )
+    config = LLMBackendConfig(
+        model="gemini/gemini-3.5-flash-lite", dispatch_v2_url="https://dispatch-v2.example.com"
+    )
+    backend = LiteLLMBackend(config, storage=storage, http_session=session)
+    policy = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3.5-flash-lite",),
+        backup_models=("zai/glm-5.3-flash",),
+        backup_after_attempts=2,
+        priority=0,
+        purpose="r6-moments",
+        queue_only=True,
+    )
+    job = InferenceJob(
+        task="moment-extraction",
+        recipe_hash="fidelity",
+        inputs={
+            "messages": [{"role": "user", "content": "meeting"}],
+            "max_tokens": 36864,
+            "max_tokens_mode": "route_max",
+            "timeout": 720,
+            "structured_output": "dispatch-v2-test-pong",
+            "llm_policy": policy,
+        },
+    )
+    backend.enqueue_batch([job])
+    restored = look_up_deferred(storage, job.recipe_hash)
+    updated = _with_sweep_deadline(restored, datetime.now(UTC) + timedelta(minutes=90))
+    rebuilt = _job_from_deferred_handle(updated)
+    # A new sweep backend is not carrying the prior process's purpose-closed cache.
+    session.post.side_effect = _accept_all
+    fresh = LiteLLMBackend(config, storage=storage, http_session=session)
+    assert isinstance(fresh.enqueue_batch([rebuilt])[0], JobHandle)
+    request = session.post.call_args.kwargs["json"]["jobs"][0]
+    sent_policy = json.loads(request["policy_json"])
+    assert sent_policy["backup_models"] == ["zai/glm-5.3-flash"]
+    assert sent_policy["backup_after_attempts"] == 2
+    assert request["priority"] == 0
+    assert request["max_output_token_estimate"] == 36864
+    payload = json.loads(storage.files[request["payload_key"]])
+    assert payload["max_tokens_mode"] == "route_max"
+    assert rebuilt.inputs["timeout"] == 720
+    assert rebuilt.inputs["structured_output"] == "dispatch-v2-test-pong"
+
+
+def test_singleton_reconciliation_holds_legacy_unsubmitted_moments():
+    from citypods.compute.llm_policy import DeferredLLMRequest
+
+    session = MagicMock()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.5-flash-lite", dispatch_v2_url="https://dispatch-v2.example.com"
+        ),
+        storage=MockStorage(),
+        http_session=session,
+    )
+    legacy = JobHandle(
+        task="moment-extraction",
+        recipe_hash="old-capsule",
+        backend="llm-dispatch-v2",
+        ref="deferred:old",
+        deferred_request=DeferredLLMRequest(
+            messages=(), policy=LLMRequestPolicy(), metadata_version=0
+        ),
+    )
+    assert backend.reconcile(legacy) is None
+    session.post.assert_not_called()

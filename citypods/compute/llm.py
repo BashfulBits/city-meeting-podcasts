@@ -43,6 +43,7 @@ from citypods.compute.llm_budget import (
 )
 from citypods.compute.llm_deferred import (
     look_up_deferred,
+    needs_moments_replan,
     structural_recovery_context,
     terminal_failure_retry_allowed,
     terminal_recovery_generation,
@@ -1981,6 +1982,8 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
         deferred = handle.deferred_request
         assert deferred is not None
+        if needs_moments_replan(handle):
+            return None
         messages = [dict(message) for message in deferred.messages]
         inputs: dict[str, Any] = {"messages": messages, "max_tokens": deferred.output_token_budget}
         if deferred.timeout is not None:
@@ -2356,6 +2359,7 @@ class LiteLLMBackend(Backend):
                     recipe_hash=job.recipe_hash,
                     backend="llm-dispatch-v2",
                     ref=f"deferred-429-{job.recipe_hash}",
+                    structured_output=self._structured_output(job),
                     deferred_request=DeferredLLMRequest(
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
@@ -2499,6 +2503,7 @@ class LiteLLMBackend(Backend):
                         recipe_hash=job.recipe_hash,
                         backend="llm-dispatch-v2",
                         ref=f"deferred-{reason}-{job.recipe_hash}",
+                        structured_output=self._structured_output(job),
                         deferred_request=DeferredLLMRequest(
                             messages=tuple(_messages(job)),
                             policy=policy or LLMRequestPolicy(),
@@ -3322,6 +3327,12 @@ class LiteLLMBackend(Backend):
             )
         corrected_payload = dict(payload)
         corrected_payload["messages"] = corrected_messages
+        if handle.structured_output and not corrected_payload.get("structured_output"):
+            # Legacy quota deferrals lost the contract before the original payload was staged.
+            corrected_payload["structured_output"] = {
+                "name": handle.structured_output,
+                "schema": response_model(handle.structured_output).model_json_schema(),
+            }
         canonical_payload = json.dumps(corrected_payload, sort_keys=True)
         # Keep this key stable across a lost HTTP response and a client retry. The corrected
         # payload is deterministic, so overwriting this one source-specific object cannot change

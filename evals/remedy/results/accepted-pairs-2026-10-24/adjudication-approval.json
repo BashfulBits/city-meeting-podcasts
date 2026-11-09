@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "decision_date": "2026-10-24",
+  "authority": "Maintainer explicit approval in chat",
+  "instruction": "Approve both adjudication runs",
+  "planned_completed_judgments": 24,
+  "judge_mapping": {
+    "glm_flash-deepseek": [
+      "gemini",
+      "jev"
+    ],
+    "glm_flash-glm_full": [
+      "deepseek",
+      "jev"
+    ]
+  },
+  "packets": {
+    "glm_flash-glm_full": {
+      "path": "evals/remedy/results/accepted-pairs-2026-10-24/glm_flash-glm_full/adjudication/packet.json",
+      "sha256": "649e30d818da20ddea0c583ba117137f8166c69486e1522440a5c2e4f3cce4cc"
+    },
+    "glm_flash-deepseek": {
+      "path": "evals/remedy/results/accepted-pairs-2026-10-24/glm_flash-deepseek/adjudication/packet.json",
+      "sha256": "5ab5dbd81ed9335ef9f7cf70e193e78e3e81575a0db6594d9fb8cba92dce836b"
+    }
+  },
+  "settings": {
+    "chat_max_tokens": 16384,
+    "timeout_seconds": 720,
+    "reasoning": "provider-default",
+    "temperature_override": null,
+    "client_retries": 0,
+    "spacing_seconds": 65,
+    "account": "primary"
+  },
+  "scope": "Local task-specific adjudication evidence; no production admission/deployment/merge. Transient-only retries follow existing approval."
+}

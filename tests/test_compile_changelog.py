@@ -200,3 +200,8 @@ def test_check_fragments(tmp_path: Path) -> None:
 
     (frag_dir / "03-invalid-empty.md").write_text("   \n", encoding="utf-8")
     assert check_fragments(frag_dir) == 1
+
+
+def test_repo_changelog_fragments_are_valid() -> None:
+    repo_fragments_dir = Path(__file__).resolve().parent.parent / "changelog.d"
+    assert check_fragments(repo_fragments_dir) == 0

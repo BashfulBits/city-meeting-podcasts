@@ -5,7 +5,7 @@ on:
     # Agenda extraction and deferred finalization are independent; this lane picks up completed
     # agenda artifacts one hour after the agenda lane and never waits synchronously for Gemini.
     # Run on odd UTC hours; chapter-agenda uses the alternating even-hour slots.
-    - cron: "0 1-23/2 * * *"
+    - cron: "17 1-23/2 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -25,7 +25,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version-file: .python-version
           cache: pip

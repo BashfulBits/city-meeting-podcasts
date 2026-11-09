@@ -24,7 +24,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -423,10 +423,40 @@ def terminal_failure_retry_allowed(
         return True
 
 
+def terminal_failure_budget_exhausted(storage, recipe_hash: str) -> bool:
+    """Check only the retry ceiling before a producer reserves a new-work slot.
+
+    Structural eligibility still belongs to the backend with its full current request context.
+    """
+    data = _read_json(storage, deferred_failure_key(recipe_hash))
+    if not isinstance(data, Mapping):
+        return False
+    if data.get("status") == "exhausted":
+        return True
+    try:
+        return int(data.get("failure_count", 0)) >= MAX_TERMINAL_FAILURE_RETRIES
+    except (TypeError, ValueError):
+        return False
+
+
 def schema_correction_attempted(storage, recipe_hash: str) -> bool:
     """Whether this exact recipe has already received its one corrective retry."""
     data = _read_json(storage, deferred_failure_key(recipe_hash))
     return bool(isinstance(data, Mapping) and data.get("schema_correction_attempted"))
+
+
+def clear_terminal_failure(storage, recipe_hash: str) -> bool:
+    """Delete a terminal-failure marker so the recipe lineage may be retried cleanly."""
+    if storage is None:
+        return False
+    key = deferred_failure_key(recipe_hash)
+    try:
+        if hasattr(storage, "delete"):
+            storage.delete(key)
+            return True
+    except Exception:
+        return False
+    return False
 
 
 def _record_structural_recovery(recipe_hash: str, marker: Mapping[str, Any], **fields: Any) -> None:
@@ -685,29 +715,43 @@ def _index_ready(storage) -> bool:
 
 
 def _serialize_policy(policy: LLMRequestPolicy) -> dict[str, Any]:
-    return {
-        "allowed_models": (
-            list(policy.allowed_models) if policy.allowed_models is not None else None
-        ),
-        "allow_paid": policy.allow_paid,
-        "deadline_at": policy.deadline_at.isoformat() if policy.deadline_at is not None else None,
-        "purpose": policy.purpose,
-        "timeout_class": policy.timeout_class,
-        "queue_only": policy.queue_only,
-    }
+    data = asdict(policy)
+    data["deadline_at"] = policy.deadline_at.isoformat() if policy.deadline_at is not None else None
+    return data
 
 
 def _deserialize_policy(data: Mapping[str, Any]) -> LLMRequestPolicy:
-    allowed = data.get("allowed_models")
-    deadline = data.get("deadline_at")
-    return LLMRequestPolicy(
-        allowed_models=tuple(allowed) if allowed is not None else None,
-        allow_paid=bool(data.get("allow_paid", False)),
-        deadline_at=datetime.fromisoformat(deadline) if deadline else None,
-        purpose=str(data.get("purpose", "")),
-        timeout_class=("fast" if data.get("timeout_class") == "fast" else "long"),
-        queue_only=bool(data.get("queue_only", False)),
-    )
+    values = {
+        field.name: data[field.name] for field in fields(LLMRequestPolicy) if field.name in data
+    }
+    for name in ("allowed_models", "backup_models", "allowed_route_ids"):
+        if name not in values:
+            continue
+        if values[name] is None and name != "backup_models":
+            continue
+        value = values[name]
+        if not isinstance(value, (list, tuple)) or any(not isinstance(v, str) for v in value):
+            raise ValueError(f"invalid deferred policy {name}")
+        values[name] = tuple(value)
+    defaults = LLMRequestPolicy()
+    for field in fields(LLMRequestPolicy):
+        if isinstance(getattr(defaults, field.name), bool) and field.name in values:
+            if not isinstance(values[field.name], bool):
+                raise ValueError(f"invalid deferred policy {field.name}")
+    if "priority" in values and (
+        type(values["priority"]) is not int or values["priority"] not in (0, 1)
+    ):
+        raise ValueError("invalid deferred policy priority")
+    threshold = values.get("backup_after_attempts")
+    if threshold is not None and (type(threshold) is not int or threshold < 0):
+        raise ValueError("invalid deferred backup threshold")
+    if "timeout_class" in values and values["timeout_class"] not in ("fast", "long"):
+        raise ValueError("invalid deferred timeout class")
+    if "purpose" in values and not isinstance(values["purpose"], str):
+        raise ValueError("invalid deferred purpose")
+    deadline = values.get("deadline_at")
+    values["deadline_at"] = datetime.fromisoformat(deadline) if deadline else None
+    return LLMRequestPolicy(**values)
 
 
 def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
@@ -740,6 +784,7 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
         # Without these a rebuilt job fell back to the 1,024-token default margin and the
         # direct-call default timeout, dropping the job's own budget and deadline.
         record["output_token_budget"] = deferred.output_token_budget
+        record["request_metadata_version"] = deferred.metadata_version
         if deferred.timeout is not None:
             record["timeout"] = deferred.timeout
         if deferred.max_tokens_mode is not None:
@@ -776,7 +821,11 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
             if "messages" in data and "policy" in data:
                 budget = data.get("output_token_budget")
                 timeout = data.get("timeout")
+                version = data.get("request_metadata_version", 0)
+                if type(version) is not int or version < 0:
+                    return None
                 deferred = DeferredLLMRequest(
+                    metadata_version=version,
                     messages=tuple(data["messages"]),
                     policy=_deserialize_policy(data["policy"]),
                     # Records written before these fields existed keep the old defaults.
@@ -792,12 +841,19 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                     if data.get("max_tokens_mode") == "route_max"
                     else None,
                 )
+            structured_output = data.get("structured_output")
+            if not structured_output and data["task"] == "moment-extraction":
+                # This task has always used this contract. Quota-deferral handles written by
+                # older batch clients omitted it; repair both submitted and unsubmitted reads.
+                from citypods.moments import MOMENTS_CONTRACT
+
+                structured_output = MOMENTS_CONTRACT
             return JobHandle(
                 task=data["task"],
                 recipe_hash=data["recipe_hash"],
                 backend=data.get("backend", ""),
                 ref=data.get("ref", ""),
-                structured_output=data.get("structured_output"),
+                structured_output=structured_output,
                 model=data.get("model"),
                 route_id=data.get("route_id"),
                 owner=data.get("owner"),
@@ -905,6 +961,29 @@ def look_up_deferred(
     return _decode_record(_read_json(storage, deferred_key(recipe_hash), deadline_at=deadline_at))
 
 
+def needs_moments_replan(handle: JobHandle) -> bool:
+    """Only proven-unsubmitted moments capsules may be rebuilt by their current producer."""
+    return (
+        handle.task == "moment-extraction"
+        and handle.deferred_request is not None
+        and handle.deferred_request.metadata_version < 1
+    )
+
+
+def discard_legacy_moments_request(storage, expected: JobHandle) -> bool:
+    """Under the shared record lock, remove only the exact unsubmitted legacy capsule."""
+    if not needs_moments_replan(expected):
+        return False
+    with _deferred_record_lock(storage, expected.recipe_hash):
+        key = deferred_key(expected.recipe_hash)
+        data = _read_json(storage, key)
+        if _decode_record(data) != expected:
+            return False
+        storage.delete(key)
+        _best_effort_delete_index(storage, data, expected.recipe_hash)
+        return True
+
+
 def discard_deferred(storage, recipe_hash: str, *, expected_ref: str | None = None) -> bool:
     """Remove an obsolete pending record after its v2 queue entry was cancelled.
 
@@ -923,7 +1002,9 @@ def discard_deferred(storage, recipe_hash: str, *, expected_ref: str | None = No
         return True
 
 
-def discard_completed_result(storage, recipe_hash: str, expected_result: JobResult) -> bool:
+def discard_completed_result(
+    storage, recipe_hash: str, expected_result: JobResult, *, error: BaseException | None = None
+) -> bool:
     """Remove a completed record whose content failed the caller's own local validation.
 
     ``write_deferred`` never downgrades a completed record, and ``enqueue_batch`` short-circuits
@@ -938,7 +1019,9 @@ def discard_completed_result(storage, recipe_hash: str, expected_result: JobResu
     Only deletes when the stored record still decodes to exactly ``expected_result`` -- if a
     different completed record is present (e.g. a concurrent writer already replaced it, or a
     caller reads a stale copy), this is a no-op: a caller's validation of an old read must never
-    clobber a newer write for the same recipe.
+    clobber a newer write for the same recipe. When ``error`` is supplied, audit the rejected
+    generation against the existing terminal retry budget before deleting it. A failed deletion
+    can safely be retried without charging the same stored generation again.
     """
     with _deferred_record_lock(storage, recipe_hash):
         key = deferred_key(recipe_hash)
@@ -947,6 +1030,32 @@ def discard_completed_result(storage, recipe_hash: str, expected_result: JobResu
             return False
         if _decode_record(data) != expected_result:
             return False
+        if error is not None:
+            # Audit before deletion. A failed delete may replay this same object, but must not
+            # charge it twice; a newly generated result has a new canonical record timestamp.
+            digest = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+            failure_key = deferred_failure_key(recipe_hash)
+            prior = _read_json(storage, failure_key)
+            prior = prior if isinstance(prior, Mapping) else {}
+            if prior.get("invalid_completed_digest") != digest:
+                try:
+                    count = max(0, int(prior.get("failure_count", 0))) + 1
+                except (TypeError, ValueError):
+                    count = 1
+                now = datetime.now(UTC).isoformat()
+                marker = {
+                    **prior,
+                    "recipe_hash": recipe_hash,
+                    "task": expected_result.task,
+                    "failure_count": count,
+                    "first_failed_at": prior.get("first_failed_at") or now,
+                    "last_failed_at": now,
+                    "last_error_type": type(error).__name__,
+                    "last_error": "completed response failed local schema validation",
+                    "invalid_completed_digest": digest,
+                    "status": "exhausted" if count >= MAX_TERMINAL_FAILURE_RETRIES else "retryable",
+                }
+                _write_json(storage, failure_key, json.dumps(marker, sort_keys=True).encode())
         storage.delete(key)
         _best_effort_delete_index(storage, data, recipe_hash)
         return True
@@ -1522,8 +1631,11 @@ __all__ = [
     "DeferredSnapshot",
     "DeferredSnapshotEntry",
     "MAX_TERMINAL_FAILURE_RETRIES",
+    "clear_terminal_failure",
     "discard_terminal_failure",
     "discard_deferred",
+    "needs_moments_replan",
+    "discard_legacy_moments_request",
     "discard_completed_result",
     "deferred_key",
     "deferred_failure_key",
@@ -1543,6 +1655,7 @@ __all__ = [
     "schema_correction_attempted",
     "structural_recovery_context",
     "terminal_failure_retry_allowed",
+    "terminal_failure_budget_exhausted",
     "terminal_recovery_generation",
     "write_deferred",
     "write_v2_terminal_cursor",

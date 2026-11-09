@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-25",
+  "scope": "Local registration and naming evidence; not deployment or serving-weight attestation",
+  "gemini": {
+    "route_id": "beatapi_gemini_3_8_flash_free",
+    "upstream_model": "gemini-3.8-flash-free",
+    "local_registered": true,
+    "worker_deployed": false,
+    "paid_fallback": false,
+    "output_cap": 16384,
+    "input_context_limit": 128000,
+    "input_limit_status": "Conservative unmeasured placeholder; provider publishes no free ID context limit",
+    "rpm": 1,
+    "concurrency": 1,
+    "daily_allowance": "No provider guarantee; no new rpd value authored",
+    "structured_output": "Route-specific prompt_only; verification kept external to avoid compiler model-wide propagation",
+    "public_catalogue_receipt": "Local-only beatapi-models.json; authoritative URL below",
+    "prior_exact_identity_observations": {
+      "original_cohort": 60,
+      "adjudication": 7
+    },
+    "logical_model": "gemini/gemini-3.8-flash-free",
+    "pool_scope": "Separate free logical pool; shared Gemini and discovery route pools unchanged."
+  },
+  "glm_flash": {
+    "request_id": "z-ai/glm-5.3-flash-free",
+    "returned_id": "zai-org/glm-5.3-flash",
+    "route_id": "orcarouter_zai_glm_5_3_flash_free",
+    "receipt": "evals/remedy/results/worker-qualification-2026-10-19/completion-investigation/glm_flash-result.json",
+    "intent": "evals/remedy/results/worker-qualification-2026-10-19/completion-investigation/glm_flash-intent.json",
+    "intent_sha256": "ff4e149dc831dcc7f744680c9559d398986b3029ba369fb8059a65bbc2e8f535",
+    "receipt_sha256": "e417f18f18be35d0860727dce374a9fdafc23c94fdc22cce53b1d805dea04f37",
+    "public_catalogue_receipt": "Local-only orcarouter-models.json; authoritative URL below",
+    "interpretation": "Provider catalogue identifies z-ai/glm-5.3-flash and its free ID as GLM5.3Flash; provider documentation cites zai-org/GLM-5.3-Flash vendor weights. Observed namespace difference is consistent with naming normalization, not independent proof of identical serving weights or an explicit API alias contract.",
+    "disposition": "Superseded October26: maintainer explicitly accepts this exact requested/returned mapping for report-only and production P3 identity checks. No serving-weight attestation or route activation inferred.",
+    "identity_observation": "identity-observation.json",
+    "receipt_storage": "Original run receipts are local-only; extracted observation is tracked.",
+    "acceptance_record": "evals/remedy/results/accepted-pairs-2026-10-24/adoption/glm-alias-acceptance.json"
+  },
+  "official_sources": [
+    {
+      "url": "https://docs.beatapi.io/free-models",
+      "supports": "Exact free ID, response naming, no promised free context/output/daily limits"
+    },
+    {
+      "url": "https://docs.beatapi.io/api-reference/text-api/gemini-chat-completions",
+      "supports": "Chat endpoint and separate free ID"
+    },
+    {
+      "url": "https://www.orcarouter.ai/blog/ox-alpha",
+      "supports": "Provider published GLM5.3Flash naming and vendor zai-org repository namespace; not a free-endpoint attestation"
+    }
+  ],
+  "compiled_artifacts_sha256": {
+    "config/provider_limits.yml": "f5b5f60b41aae29ba7155bb881220aa419c92b5b27ab7e4f053ba7f88ccb81fc",
+    "citypods/compute/llm_routes.json": "1c458d1ee8eec6a5dd28ca7fec6d8952f2ed7471eac201bc7a94fdea60589104",
+    "workers/llm-dispatch-v2/src/dispatch_limits.json": "00ee64186f3ff8df4766dd54afc2d5df4cb87c64da7224ea2c5406612dd3128e"
+  },
+  "preexisting_routes_unchanged": 51,
+  "provider_llm_calls": 0,
+  "credential_access": false
+}

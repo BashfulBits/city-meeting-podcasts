@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "decision_date": "2026-10-26",
+  "authority": "Explicit maintainer approval in chat",
+  "instruction": "These are all confirmed correct and approved (1-12).\n4/5: accept manual fallback, but admitting them automatically is fine too. No adjustment needed now, will adjust if review volume is too high.\n\n7: confirmed this is a new feed expectation.\n\n12: manual control fallback is fine for now.",
+  "scope": "Approval of expected outcomes for RQ01-RQ12 only; not inference spending, production role admission, publication or activation.",
+  "approved_case_ids": [
+    "RQ01",
+    "RQ02",
+    "RQ03",
+    "RQ04",
+    "RQ05",
+    "RQ06",
+    "RQ07",
+    "RQ08",
+    "RQ09",
+    "RQ10",
+    "RQ11",
+    "RQ12"
+  ],
+  "approved_spec_sha256": "7a4da2ec5ad2fca61c230cba442be7d6250eb790f65e901fbbdcf795c36650d4",
+  "reviewed_model_inputs_sha256": "26283c796db49a68de371573bca6f21330e4b1c4755601074baaf5a4508d1df3",
+  "reviewed_expected_draft_sha256": "9daecb29d5620bda19e6a71b3dc16c058b446d308d251779749341aa95451735",
+  "reviewed_review_sha256": "bdfdd6fde2d196618047ae56e31538d8a301f0d233194923e6954b19f4e144cf",
+  "reviewed_plan_sha256": "c56fc52074f87f4b9b8769ba5d88dae06ffbe9ba3c15b1a896b81ddf349e9282",
+  "case_dispositions": {
+    "RQ04": {
+      "manual_fallback_accepted": true,
+      "correct_automatic_resolution_accepted": true,
+      "complete_feed_set_required": true,
+      "exact_recording_scope_required": true,
+      "validator_change_requested": false
+    },
+    "RQ05": {
+      "manual_fallback_accepted": true,
+      "correct_automatic_resolution_accepted": true,
+      "complete_feed_set_required": true,
+      "exact_recording_scope_required": true,
+      "validator_change_requested": false
+    },
+    "RQ07": {
+      "new_feed_expectation_confirmed": true,
+      "feed_creation_or_publication_authorized": false
+    },
+    "RQ12": {
+      "manual_control_fallback_accepted": true
+    }
+  },
+  "validator_policy": "Leave current validator unchanged. Any future reduction in manual review needs a separately reviewed change; this approval is not a runtime guard bypass.",
+  "call_budget_approved": false,
+  "runtime_contract_transfer_approved": false,
+  "production_activation_approved": false
+}

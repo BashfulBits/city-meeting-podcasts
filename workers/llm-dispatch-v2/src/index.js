@@ -20,6 +20,9 @@ import {
 import { B2Client } from "./b2.js";
 import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
 import { apiShapeFor } from "./api_shapes.js";
+import {
+  gatewayNetworkFacts, networkProbeAllowed, observeBundleNetwork,
+} from "./network_diagnostics.js";
 import { classifyProviderFailure, googleQuotaDiagnostics } from "./classify.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
@@ -28,6 +31,9 @@ import {
 } from "./write_budget.js";
 
 export { LLMSchedulerDO };
+
+// Cloudflare: simultaneous connections waiting for response headers per invocation (Free and Paid).
+const MAX_INVOCATION_CONNECTIONS = 6;
 
 function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
@@ -84,6 +90,10 @@ export function validateConfig(env) {
   const maxIngressWriteUnits = Number(env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY || maxJobsPerDay * 4);
   const max5xxRetries = Number(env.MAX_5XX_RETRIES || 1);
   const max5xxBackoffSeconds = Number(env.MAX_5XX_BACKOFF_SECONDS || 300);
+  const recoveryMinutes = Number(env.RECOVERY_INTERVAL_MINUTES ?? 0);
+  if (!Number.isInteger(recoveryMinutes) || recoveryMinutes < 0 || recoveryMinutes > 1440) {
+    throw new Error("Invalid config: RECOVERY_INTERVAL_MINUTES must be an integer from 0 to 1440");
+  }
 
   if (dispatchWindow + maxResponse + finalizationReserve > leaseDuration) {
     throw new Error(
@@ -194,9 +204,9 @@ export function validateConfig(env) {
     );
   }
 
-  if (maxConcurrentLanes > 5) {
+  if (maxConcurrentLanes > MAX_INVOCATION_CONNECTIONS) {
     throw new Error(
-      `Invalid config: MAX_CONCURRENT_ROUTE_LANES (${maxConcurrentLanes}) must leave headroom under Cloudflare's ` +
+      `Invalid config: MAX_CONCURRENT_ROUTE_LANES (${maxConcurrentLanes}) must not exceed Cloudflare's ` +
       "fixed 6-simultaneous-connection-per-invocation limit (same on Free and Paid)"
     );
   }
@@ -401,8 +411,10 @@ export async function handleRequest(request, env) {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
     const detailed = url.searchParams.get("detail") === "1";
     const counterOnly = url.searchParams.get("rate_failures") === "1";
+    const availabilityOnly = url.searchParams.get("availability_failures") === "1";
     const routesOnly = url.searchParams.get("routes") === "1";
-    if (Number(counterOnly) + Number(detailed) + Number(routesOnly) > 1) {
+    const includePending = url.searchParams.get("pending") === "1" || url.searchParams.get("lanes") === "1";
+    if (Number(counterOnly) + Number(availabilityOnly) + Number(detailed) + Number(routesOnly) > 1) {
       return errorResponse(400, "invalid_request", "stats modes conflict");
     }
     // `failure_class=a,b` restricts route_failures to those classes (at most 10 names).
@@ -414,11 +426,13 @@ export async function handleRequest(request, env) {
     try {
       const snapshot = counterOnly
         ? await coordinator.rateFailureStats(Date.now())
+        : availabilityOnly
+        ? await coordinator.availabilityFailureStats(Date.now())
         : routesOnly
         ? await coordinator.routeInventoryStats(Date.now(), limit)
         : detailed
         ? await coordinator.detailedStatsGuarded(Date.now(), limit, { failureClasses })
-        : await coordinator.stats(Date.now());
+        : await coordinator.stats(Date.now(), { includePending });
       if (snapshot?.ok === false) {
         return errorResponse(429, snapshot.error, snapshot.detail);
       }
@@ -444,6 +458,30 @@ export async function handleRequest(request, env) {
     try {
       const result = await coordinator.reconcileRowBudget(body, Date.now());
       return result.ok ? jsonResponse(result) : errorResponse(400, result.error, result.detail);
+    } catch (err) {
+      return errorResponse(500, "coordinator_error", describeError(err));
+    }
+  }
+
+  // Guarded operator moves between legacy and packed authority. The coordinator refuses unless a
+  // drained global pause is in effect; the explicit confirmation guards against a stray request.
+  if (path === "/v2/packed-state" && (request.method === "GET" || request.method === "POST")) {
+    try {
+      if (request.method === "GET") return jsonResponse(await coordinator.packedAuthority());
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+      }
+      if (!body || (body.action !== "cutover" && body.action !== "rollback") ||
+          body.confirm !== `packed-state-${body.action}`) {
+        return errorResponse(400, "bad_request", "action and matching confirm are required");
+      }
+      const result = body.action === "cutover"
+        ? await coordinator.packedCutover(body.limits, Date.now())
+        : await coordinator.packedRollback(body.limits, Date.now());
+      return result.ok ? jsonResponse(result) : errorResponse(409, result.error, result.detail);
     } catch (err) {
       return errorResponse(500, "coordinator_error", describeError(err));
     }
@@ -914,6 +952,10 @@ function logGemmaAttempt({
     : null;
   console.info(JSON.stringify({
     event: "gemma_provider_attempt",
+    bundle_id: job.diagnostic_bundle_id ?? null,
+    provider_account_id: /^[a-zA-Z0-9_-]{1,64}$/.test(route.account_id || "")
+      ? route.account_id : null,
+    ...gatewayNetworkFacts(response),
     job_id: job.id,
     request_digest: job.request_digest ?? null,
     lease_token: job.lease_token,
@@ -1159,6 +1201,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
       provider_status_code: response.status,
       gateway_correlation_id: response.correlationId,
       failure_class: cls.failure_class,
+      retry_after_seconds: cls.retry_after_seconds ?? null,
       rule_id: cls.rule_id,
       scope: cls.scope,
     },
@@ -1208,6 +1251,8 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
     ? job.provider_idempotency_key || null
     : null;
   const jobWithPayload = { ...job, payload };
+  let inWindow5xxRetries = 0;
+  const max5xxInWindowRetries = 4;
 
   for (;;) {
     const attemptId = crypto.randomUUID();
@@ -1223,6 +1268,35 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
     });
 
     if (outcome.result) {
+      const isGoogle5xx =
+        route?.provider === "gemini" &&
+        outcome.result.outcome === "retryable_error" &&
+        Number.isInteger(outcome.result.provider_status_code) &&
+        [500, 503].includes(outcome.result.provider_status_code);
+
+      const routeTpm = Number(route?.tpm || 0);
+      const estimatedInput = Number(
+        job.reserved_input_estimate || job.token_reservation || job.input_token_estimate || 0
+      );
+      // An in-window retry consumes another prompt reservation in the provider's rolling 60s
+      // arrival window. If repeated attempts would exceed the route's TPM allowance, retrying
+      // within the bundle deadline guarantees an immediate HTTP 429 rate limit refusal.
+      const canFitInTpmWindow =
+        routeTpm <= 0 || (inWindow5xxRetries + 2) * estimatedInput <= routeTpm;
+
+      if (isGoogle5xx && inWindow5xxRetries < max5xxInWindowRetries && canFitInTpmWindow) {
+        // Paced backoff capped at 5 seconds per maintainer contract
+        const baseMs = Math.min(5000, 1000 * 2 ** inWindow5xxRetries);
+        const backoffMs = Math.min(5000, Math.round(baseMs * (0.8 + Math.random() * 0.4)));
+        if (Date.now() + backoffMs + 2000 < bundleDeadline) {
+          inWindow5xxRetries += 1;
+          if (jobWithPayload.attempt_ordinal != null) jobWithPayload.attempt_ordinal += 1;
+          laneState.predecessorActualStart = outcome.result.actual_start_at;
+          await sleepUntil(Date.now() + backoffMs);
+          continue;
+        }
+      }
+
       laneState.predecessorActualStart = outcome.result.actual_start_at;
       return outcome.result;
     }
@@ -1265,7 +1339,7 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
  * just-in-time (no B2 access before a job's own wait_ms elapses, no bulk pre-fetch -- see the
  * unit's own "do not" guardrails), and report every attempt in one completeBatch call.
  */
-async function runScheduledDispatch(env) {
+async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {}) {
   const b2 = b2ClientFromEnv(env);
   if (!b2) {
     console.error("scheduled: B2 credentials not configured; cannot execute claimed plan");
@@ -1293,11 +1367,32 @@ async function runScheduledDispatch(env) {
   const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;
   const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
 
+  // The invocation's sixth connection is shared by the Gemma network probe (never on a cleanup
+  // tick) and cleanup (only on one), so at most one of them uses it. With fewer than six lanes it
+  // is free at once; with six it opens when the first lane settles and closes its connection.
+  let openSlot;
+  const slotFree = new Promise((resolve) => { openSlot = resolve; });
+  const releaseSlot = () => { openSlot(); releaseCleanup(); };
+  if (new Set(plan.jobs.map((job) => job.route_id)).size < MAX_INVOCATION_CONNECTIONS) releaseSlot();
+
+  const googleGemmaRoutes = plan.jobs.map(job => routeForId(job.route_id, dispatchLimits))
+    .filter(route => route?.provider === "gemini" && /^gemma-4-/.test(route.upstream_model || ""));
+  // One bounded diagnostic set per qualifying bundle, concurrently with inference. No R2/DO writes.
+  // The probe IP is NOT the AI Gateway-to-Google IP; bundle ID joins it to individual attempts.
+  const networkObservation = googleGemmaRoutes.length === 0 ? Promise.resolve() :
+    (networkProbeAllowed(env, plan.jobs.length, scheduledTime)
+      ? slotFree.then(() => observeBundleNetwork())
+      : Promise.resolve({ probe_status: "skipped_budget" }))
+      .then(facts => console.info(JSON.stringify({
+        event: "gemma_execution_network", bundle_id: plan.bundle_id,
+        observed_at: Date.now(), network_path: "worker_to_cloudflare_trace_and_aws", ...facts,
+      })));
+
   const lanes = new Map();
   const leaseDurationMs = Number(env.LEASE_DURATION_SECONDS || 840) * 1000;
   for (const job of withLeaseDeadlines(plan.jobs, claimNow, leaseDurationMs)) {
     if (!lanes.has(job.route_id)) lanes.set(job.route_id, []);
-    lanes.get(job.route_id).push(job);
+    lanes.get(job.route_id).push({ ...job, diagnostic_bundle_id: plan.bundle_id });
   }
 
   const results = [];
@@ -1307,6 +1402,7 @@ async function runScheduledDispatch(env) {
   await Promise.allSettled(
     [...lanes.entries()].map(async ([, laneJobs]) => {
       const laneState = { receivedAt, predecessorActualStart: null, retryBarrier: null };
+      try {
       for (const job of laneJobs) {
         let result;
         try {
@@ -1331,9 +1427,13 @@ async function runScheduledDispatch(env) {
         }
         if (result !== null) results.push(result);
       }
+      } finally {
+        releaseSlot();
+      }
     })
   );
 
+  await networkObservation;
   try {
     await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results);
   } catch (err) {
@@ -1355,13 +1455,17 @@ async function runScheduledDispatch(env) {
  * COMPLETED_RETENTION_DAYS, so this can never delete a result a client has not had the chance
  * to read.
  */
-async function runScheduledCleanup(env, scheduledTime) {
+async function runScheduledCleanup(env, scheduledTime, dispatchSlotFree = Promise.resolve()) {
   const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 10);
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
   // Cloudflare always supplies scheduledTime for a real cron firing. Without it we cannot know
   // where in the cadence we are, so skip rather than run this on every single tick.
   if (!Number.isFinite(scheduledTime)) return;
   if (new Date(scheduledTime).getUTCMinutes() % intervalMinutes !== 0) return;
+
+  // Every connection cleanup opens (coordinator RPCs included) waits until dispatch has a free
+  // slot -- see runScheduledDispatch.
+  await dispatchSlotFree;
 
   const coordinator = getCoordinator(env);
   // Hourly exact recount of the queued-job counter (maintained by explicit deltas, not triggers).
@@ -1391,7 +1495,8 @@ async function runScheduledCleanup(env, scheduledTime) {
   for (const job of jobs) {
     const keys = [job.payload_key, job.result_key].filter(Boolean);
     try {
-      await Promise.all(keys.map((key) => b2.delete(key)));
+      // Sequential, not Promise.all: cleanup holds one connection at a time (see above).
+      for (const key of keys) await b2.delete(key);
       purgedIds.push(job.id);
     } catch (err) {
       // Leave this job in 'purge_pending' and retry it next run rather than confirming a purge
@@ -1436,13 +1541,17 @@ export default {
     // that log entry). Catch and log with full detail here, matching describeError's existing use
     // everywhere else in this file, rather than adding yet another incident where the actual
     // error was thrown away by the runtime's own reporting.
+    let releaseCleanup;
+    const dispatchSlotFree = new Promise((resolve) => { releaseCleanup = resolve; });
     ctx.waitUntil(
-      runScheduledDispatch(env).catch((err) => {
-        console.error(`scheduled: runScheduledDispatch failed: ${describeError(err)}`);
-      })
+      runScheduledDispatch(env, event?.scheduledTime, releaseCleanup)
+        .catch((err) => {
+          console.error(`scheduled: runScheduledDispatch failed: ${describeError(err)}`);
+        })
+        .finally(releaseCleanup)
     );
     ctx.waitUntil(
-      runScheduledCleanup(env, event?.scheduledTime).catch((err) => {
+      runScheduledCleanup(env, event?.scheduledTime, dispatchSlotFree).catch((err) => {
         console.error(`scheduled: runScheduledCleanup failed: ${describeError(err)}`);
       })
     );

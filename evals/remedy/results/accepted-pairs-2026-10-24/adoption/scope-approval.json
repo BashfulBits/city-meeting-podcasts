@@ -1,0 +1,24 @@
+{
+  "decision_date": "2026-10-24",
+  "authority": "Maintainer explicit chat approval",
+  "instruction": "Approve expanded integration scope",
+  "scope": [
+    "runner",
+    "validator/evidence loader",
+    "observation contracts",
+    "consensus/report contracts",
+    "daily report-only caller"
+  ],
+  "preserve": [
+    "legacy observation bindings and IDs",
+    "original eval gold and raw scores",
+    "production shadow/empty admissions",
+    "ordinary daily CAS guard"
+  ],
+  "not_authorized": [
+    "Worker deployment",
+    "production admission/activation",
+    "R2 bucket creation",
+    "merge"
+  ]
+}

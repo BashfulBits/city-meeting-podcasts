@@ -7,8 +7,8 @@ name: Audio
 
 on:
   schedule:
-    # Offset from the deploy cron (deploy at :00) so audio backfill trails each render.
-    - cron: "30 */4 * * *"
+    # Stagger after the deploy cron so audio backfill trails each render.
+    - cron: "47 */4 * * *"
   workflow_dispatch:
 
 # Own concurrency group, distinct from `pages` and `asr`: one audio run at a time (its shards run
@@ -62,7 +62,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -139,7 +139,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -312,7 +312,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version-file: .python-version
           cache: pip

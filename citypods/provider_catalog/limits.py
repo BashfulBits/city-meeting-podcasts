@@ -332,6 +332,70 @@ def rate_edit_plan(changes, config, *, selected=(), automatic=False, deferred=()
     )
 
 
+def availability_suspect_routes(failures, limits, state, *, today):
+    """Routes the Worker saw retired, forbidden or missing today, for an immediate health check.
+
+    Counters are per status. A 410 or 403 is one demonstration of a retired or unentitled route,
+    so two are enough; a 404 is usually a transient upstream fault, so it needs three. A 401 is an
+    account credential problem, not a route one, and is not exposed. This only schedules an
+    independent probe; the probe, not the counter, decides whether the route is dead.
+    """
+    thresholds = {"route_gone": 2, "route_forbidden": 2, "route_not_found": 3}
+    configured = {r["route_id"] for r in limits.get("routes") or []}
+    checked = state.get("route_checks") or {}
+    return {
+        row["route_id"]
+        for row in failures
+        if isinstance(row, dict)
+        and row.get("route_id") in configured
+        and checked.get(row["route_id"]) != today.isoformat()
+        and row.get("utc_day") == today.isoformat()
+        and type(row.get("count")) is int
+        and row["count"] >= thresholds.get(row.get("failure_class"), 10**9)
+    }
+
+
+def stale_health_routes(limits, state, *, today, days=7):
+    """The least recently health-checked routes, enough that every route is seen within `days`.
+
+    Deterministic and self-correcting: a route never checked, or checked longest ago, goes first,
+    so a missed day or a newly added route is covered by the next run. Routes already checked
+    today are left alone, as are paused (`rpd` 0) and non-chat routes (the health loop skips those).
+    """
+    checks = state.get("route_checks") or {}
+    seen_physical = set()
+    deduped = []
+    for r in limits.get("routes") or []:
+        if not isinstance(r, (dict, Mapping)):
+            continue
+        phys = (r.get("provider"), r.get("account_id"), r.get("upstream_model"))
+        if all(phys):
+            if phys in seen_physical:
+                continue
+            seen_physical.add(phys)
+        deduped.append(r)
+    active = sorted(
+        (r for r in deduped if r.get("rpd") != 0 and route_speaks_chat(r)),
+        key=lambda r: str(r["route_id"]),
+    )
+    batch = max(1, -(-len(active) // days))
+    # Ties (no stored check dates, e.g. before any rolling issue exists) rotate with the date, so
+    # a run that persists nothing still walks through every route instead of repeating the first.
+    start = (today.toordinal() * batch) % max(1, len(active))
+    ranked = sorted(
+        (
+            (
+                str(checks.get(str(r["route_id"])) or ""),
+                (i - start) % len(active),
+                str(r["route_id"]),
+            )
+            for i, r in enumerate(active)
+            if checks.get(str(r["route_id"])) != today.isoformat()
+        )
+    )
+    return {rid for _, _, rid in ranked[:batch]}
+
+
 def early_rate_routes(failures, limits, state, *, today):
     """Today's existing UTC counters schedule observations only, at most once per route/day."""
     configured = {r["route_id"] for r in limits.get("routes") or []}

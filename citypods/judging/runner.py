@@ -13,6 +13,7 @@ themselves are never written, in shadow mode or otherwise.
 from __future__ import annotations
 
 import math
+import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -46,6 +47,7 @@ from citypods.judging.backends import (
     choose_options,
 )
 from citypods.judging.families import (
+    RULE_FAMILY,
     UNKNOWN_FAMILY,
     choose_sibling_candidates,
     family_of,
@@ -129,6 +131,8 @@ class JudgingContext:
     # Transcripts one pass may read to check the quotes of answers it collects; an answer whose
     # evidence cannot be read yet waits (its marker stays) for a later pass.
     quote_check_reads: int = 400
+    # Direct-storage retry when a CDN transcript rebuilds a different evidence digest.
+    texts_for_origin: Callable[[Any], EpisodeTexts] | None = None
     # PR6: human-verified probes asked invisibly of each judge that has live work this pass, up to
     # ``probes_per_pass`` per judge, each probe once per judge and prompt version.
     probes: Sequence[Probe] = ()
@@ -350,7 +354,14 @@ def _evidence_text(
     else:
         evidence = spec.evidence(subject, item.tier, texts)
     if evidence is None or evidence.digest != item.evidence.digest:
-        return None
+        if item.question.kind != "choose" and ctx.texts_for_origin is not None:
+            try:
+                origin_texts = ctx.texts_for_origin(episode)
+            except (StorageReadUnavailable, TextsUnavailable):
+                return DEFER
+            evidence = spec.evidence(subject, item.tier, origin_texts)
+        if evidence is None or evidence.digest != item.evidence.digest:
+            return None
     return evidence.text
 
 
@@ -598,6 +609,7 @@ def _collect(
             if not rows:
                 stats.counts["answer_missing"] += 1
             _record(packet, rows, stats)
+    stats.counts["quote_check_unique_episodes"] += len(read)
     _count_superseded_outstanding(subjects, ctx, stats, outputs)
 
 
@@ -866,8 +878,14 @@ def plan(
             per_question = [q for q in spec.questions if q.kind != "choose"]
             group_units: dict[tuple[str, str], list[Item]] = {}
             for subject in subjects:
+                is_rule = family_of(subject.producer_model, ctx.families) == RULE_FAMILY
                 sibling = _pick_sibling(
-                    sibling_candidates(subject.producer_model, ctx.sibling, ctx.families),
+                    sibling_candidates(
+                        subject.producer_model,
+                        ctx.sibling,
+                        ctx.families,
+                        allow_all_slots=is_rule,
+                    ),
                     _models_used(subject),
                     ctx,
                 )
@@ -1008,8 +1026,15 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
     if not choose or len(subjects) < 2:
         return
     question = choose[0]
+    producer_families = {family_of(s.producer_model, ctx.families) for s in subjects}
+    is_rule_meeting = producer_families == {RULE_FAMILY}
     sibling = _pick_sibling(
-        choose_sibling_candidates([s.producer_model for s in subjects], ctx.sibling, ctx.families),
+        choose_sibling_candidates(
+            [s.producer_model for s in subjects],
+            ctx.sibling,
+            ctx.families,
+            allow_all_slots=is_rule_meeting,
+        ),
         _models_used(subjects[0]),
         ctx,
     )
@@ -1185,10 +1210,12 @@ def run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     # The per-pass texts cache below wraps ctx.texts_for; restore it so a reused context retries
     # reads that failed in this pass.
     texts_for = ctx.texts_for
+    texts_for_origin = ctx.texts_for_origin
     try:
         return _run(episodes, ctx)
     finally:
         ctx.texts_for = texts_for
+        ctx.texts_for_origin = texts_for_origin
 
 
 def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
@@ -1197,19 +1224,79 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     # transcript once per pass. A read that failed stays failed for the pass (no second attempt).
     texts_cache: dict[int, EpisodeTexts | TextsUnavailable] = {}
     texts_for = ctx.texts_for
+    texts_for_origin = ctx.texts_for_origin
+    cache_value_bytes = 0
+    cache_observations: Counter = Counter()
+    origin_refreshed: set[int] = set()
+    origin_failed: dict[int, StorageReadUnavailable | TextsUnavailable] = {}
+
+    def remember_texts(ep: Any, value: EpisodeTexts | TextsUnavailable) -> None:
+        nonlocal cache_value_bytes
+        measure_started = time.perf_counter()
+        cache_value_bytes += _estimate_text_cache_value_bytes(value)
+        cache_observations["transcript_cache_measure_ms"] += int(
+            (time.perf_counter() - measure_started) * 1000
+        )
+        texts_cache[id(ep)] = value
+        cache_observations["transcript_cache_entries"] = len(texts_cache)
+        cache_observations["transcript_cache_peak_entries"] = max(
+            cache_observations["transcript_cache_peak_entries"], len(texts_cache)
+        )
+        cache_observations["transcript_cache_estimated_bytes"] = cache_value_bytes
+        cache_observations["transcript_cache_peak_estimated_bytes"] = max(
+            cache_observations["transcript_cache_peak_estimated_bytes"],
+            cache_value_bytes + sys.getsizeof(texts_cache),
+        )
+
+    def cache_origin_texts(ep: Any) -> EpisodeTexts:
+        """Refresh a stale CDN entry from origin and replace its run-local cached value."""
+        nonlocal cache_value_bytes
+        if texts_for_origin is None:
+            raise TextsUnavailable("origin transcript fallback is not configured")
+        if id(ep) in origin_refreshed:
+            cached = texts_cache.get(id(ep))
+            if isinstance(cached, EpisodeTexts):
+                return cached
+        if id(ep) in origin_failed:
+            raise origin_failed[id(ep)]
+        try:
+            value = texts_for_origin(ep)
+        except (StorageReadUnavailable, TextsUnavailable) as exc:
+            origin_failed[id(ep)] = exc
+            raise
+        old = texts_cache.get(id(ep))
+        if old is not None:
+            cache_value_bytes -= _estimate_text_cache_value_bytes(old)
+        remember_texts(ep, value)
+        origin_refreshed.add(id(ep))
+        cache_observations["transcript_cache_origin_fallbacks"] += 1
+        return value
 
     def cached_texts(ep: Any) -> EpisodeTexts:
-        if id(ep) not in texts_cache:
+        if id(ep) in texts_cache:
+            cache_observations["transcript_cache_hits"] += 1
+        else:
+            cache_observations["transcript_cache_misses"] += 1
             try:
-                texts_cache[id(ep)] = texts_for(ep)
+                value = texts_for(ep)
             except TextsUnavailable as exc:
-                texts_cache[id(ep)] = exc
+                value = exc
+            remember_texts(ep, value)
         cached = texts_cache[id(ep)]
         if isinstance(cached, TextsUnavailable):
             raise cached
         return cached
 
     ctx.texts_for = cached_texts
+    if texts_for_origin is not None:
+        ctx.texts_for_origin = cache_origin_texts
+
+    def finish() -> JudgingStats:
+        completed = _finish(ordered, ctx, stats)
+        cache_observations["transcript_cache_estimated_bytes"] = cache_value_bytes
+        stats.counts.update(cache_observations)
+        return completed
+
     ordered = sorted(episodes, key=lambda ep: str(getattr(ep, "published", "") or ""), reverse=True)
     all_subjects = [s for ep in ordered for spec in ctx.tasks for s in spec.subjects(ep)]
     episodes_by_uid = {_episode_uid(ep): ep for ep in ordered}
@@ -1240,7 +1327,7 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
         for packet in result.packets:
             if ctx.stop is not None and ctx.stop():
                 stats.counts["stopped"] += 1
-                return _finish(ordered, ctx, stats)
+                return finish()
             if role == "sibling" and ctx.sibling_room.get(model, 1) <= 0:
                 stats.counts[f"run_cap_outstanding:{purpose}"] += 1
                 break
@@ -1280,7 +1367,34 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
                         ledger.add_pending(subject, _marker(packet, item, subject))
             else:
                 stats.counts["errored"] += 1
-    return _finish(ordered, ctx, stats)
+    return finish()
+
+
+def _estimate_text_cache_value_bytes(value: EpisodeTexts | TextsUnavailable) -> int:
+    """Conservatively estimate retained parsed transcript bytes, excluding shared definitions.
+
+    This is a deep ``sys.getsizeof`` walk of each cache value, not process RSS. Parsed transcript
+    trees are acyclic JSON-like lists and mappings; repeated references are counted repeatedly,
+    making the estimate conservative without allocating a visited-object set.
+    """
+    stack: list[Any] = [value]
+    total = 0
+    while stack:
+        current = stack.pop()
+        total += sys.getsizeof(current)
+        if isinstance(current, EpisodeTexts):
+            total += sys.getsizeof(vars(current))
+            stack.extend((current.segments, current.chapters, current.identity))
+        elif isinstance(current, Mapping):
+            for key, nested in current.items():
+                stack.extend((key, nested))
+        elif isinstance(current, Sequence) and not isinstance(current, (str, bytes, bytearray)):
+            stack.extend(current)
+        elif isinstance(current, (set, frozenset)):
+            stack.extend(current)
+        elif isinstance(current, BaseException):
+            stack.extend(current.args)
+    return total
 
 
 def _finish(episodes, ctx: JudgingContext, stats: JudgingStats) -> JudgingStats:

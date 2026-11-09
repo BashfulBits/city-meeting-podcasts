@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 
 from citypods.audit_remedy import P3_INITIAL_ROUTES, BodyDecision, BodyProposal, P3Vote
 from citypods.audit_remedy_report import P3ReportInput, build_p3_report
@@ -12,6 +13,13 @@ from citypods.remedy_ledger import load_decisions
 from scripts import remedy_disposition_command, remedy_p3_publish
 from tests.test_remedy_actions import inputs
 from tests.test_remedy_ledger import FakeEventStorage, FakeRemedyLease
+
+
+def _m(route_id):
+    """The logical model a route serves (P3 votes and validators are keyed by model)."""
+    from citypods.audit_remedy import P3_ROLE_PLANS
+
+    return P3_ROLE_PLANS["legacy-sol-v1"].model_for_route(route_id)
 
 
 def binding_for(action):
@@ -289,7 +297,7 @@ def test_binding_uses_source_feeds_if_report_feed_list_is_absent():
             evidence_summary="Unresolved ownership evidence.",
             feeds=[{"slug": "source-council", "title": "City Council"}],
             initial_votes=votes,
-            initial_validators={route: False for route in routes},
+            initial_validators={_m(route): False for route in routes},
         )
     )
     source = {
@@ -312,12 +320,26 @@ def test_binding_uses_source_feeds_if_report_feed_list_is_absent():
     assert binding["feed_slugs"] == ["source-council"]
 
 
-def test_publisher_holds_before_github_or_storage_when_routes_are_not_admitted(tmp_path):
+def test_publisher_holds_before_github_or_storage_when_routes_are_not_admitted(
+    tmp_path, monkeypatch
+):
     report = tmp_path / "report.json"
     evidence = tmp_path / "evidence.json"
     report.write_text(json.dumps({"findings": []}), encoding="utf-8")
     evidence.write_text(json.dumps({"sources": []}), encoding="utf-8")
-    result = remedy_p3_publish.publish(report, evidence, Path.cwd())
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config = yaml.safe_load(Path("config/remedy.yml").read_text())
+    config["admissions"] = []
+    (config_dir / "remedy.yml").write_text(yaml.safe_dump(config))
+    (config_dir / "site_config.yml").write_bytes(Path("config/site_config.yml").read_bytes())
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("an unadmitted publisher must not access storage or GitHub")
+
+    monkeypatch.setattr(remedy_p3_publish, "make_storage", forbidden)
+    monkeypatch.setattr(remedy_p3_publish, "_gh", forbidden)
+    result = remedy_p3_publish.publish(report, evidence, tmp_path)
     assert result == {"status": "policy_hold", "published": []}
 
 

@@ -21,7 +21,7 @@ jobs:
         contains(github.event.issue.body, '<!-- citypods:provider-catalog v=') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
           github.event.comment.author_association) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: write
@@ -34,7 +34,7 @@ jobs:
           ref: main
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -93,7 +93,7 @@ jobs:
         github.event.workflow_run.event == 'schedule' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.head_repository.full_name == github.repository }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
@@ -105,7 +105,7 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -132,10 +132,11 @@ jobs:
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'schedule' &&
         github.event.workflow_run.path == '.github/workflows/provider-catalog-reconcile.yml' &&
-        github.event.workflow_run.display_title == 'Provider catalog reconciliation (weekly-full)' &&
+        (github.event.workflow_run.display_title == 'Provider catalog reconciliation (weekly-full)' ||
+          github.event.workflow_run.display_title == 'Provider catalog reconciliation (daily-incremental)') &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.head_repository.full_name == github.repository }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: write
@@ -147,7 +148,7 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version-file: .python-version
           cache: pip

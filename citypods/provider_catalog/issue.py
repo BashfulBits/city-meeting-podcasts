@@ -38,6 +38,8 @@ def is_catalog_issue(body: str) -> bool:
 _STATE_RE = re.compile(r"<!-- citypods:provider-catalog-state ([A-Za-z0-9+/=]+) -->")
 # Leave room for the state marker after the bounded human-readable part.
 _HUMAN_BODY_LIMIT = 52_000
+# Smallest human-readable share worth keeping before the display-only state is trimmed.
+_MIN_HUMAN_BODY = 12_000
 
 Runner = Callable[[Sequence[str]], str]
 
@@ -71,11 +73,58 @@ def _encode_state(state: Mapping[str, Any]) -> str:
 PAID_ROUTE_VERDICT = "not_entitled"
 
 
+def method_choice(route_id: str, method: str) -> str:
+    return f"`{route_id}`: switch structured-output method to `{method}`"
+
+
+def aa_match_choice(candidate_key: str, match: Mapping[str, Any]) -> str:
+    """Checkbox text that accepts one AA model as a candidate's AA entry (next run uses it)."""
+    label = re.sub(r"[^A-Za-z0-9 ._+-]", "", str(match.get("name") or ""))[:60].strip()
+    score = match.get("score")
+    detail = ", ".join(
+        part
+        for part in (label, f"index {score:g}" if isinstance(score, (int, float)) else "")
+        if part
+    )
+    return f"`{candidate_key}`: AA match `{match['creator']}/{match['slug']}`" + (
+        f" ({detail})" if detail else ""
+    )
+
+
+def accepted_aa_matches(body: str, state: Mapping[str, Any]) -> dict[str, tuple[str, str]]:
+    """Candidate key -> (AA creator, AA slug): matches kept in state plus rows ticked in the issue.
+
+    A ticked row counts only when it is exactly one of the closest matches the last run offered
+    for that candidate, so editing the issue cannot point a model at an arbitrary AA entry.
+    """
+    stored = state.get("aa_matches")
+    accepted = {
+        str(key): (str(value[0]), str(value[1]))
+        for key, value in (stored.items() if isinstance(stored, Mapping) else ())
+        if isinstance(value, (list, tuple)) and len(value) == 2
+    }
+    snapshot = Report()
+    try:
+        _merge_into_last_full(snapshot, state.get("last_full") or {}, set())
+    except (TypeError, ValueError, KeyError):
+        return accepted
+    offered = {
+        aa_match_choice(c.key, m): (c.key, (m["creator"], m["slug"]))
+        for c in snapshot.candidates
+        for m in c.aa_matches or ()
+    }
+    for choice in checked_decisions(body, tuple(offered)):
+        key, target = offered[choice]
+        accepted[key] = target
+    return accepted
+
+
 def decision_choices(report: Report) -> tuple[str, ...]:
     choices: list[str] = []
     for candidate in report.candidates:
         key = f"`{candidate.key}`"
         choices.append(f"{key}: ignore")
+        choices.extend(aa_match_choice(candidate.key, m) for m in candidate.aa_matches or ())
         choices.append(f"{key}: add route only")
         choices.extend(f"{key}: add as backup to `{lane}`" for lane in candidate.lanes)
         if candidate.discovery and candidate.discovery.get("retryable") is True:
@@ -84,6 +133,9 @@ def decision_choices(report: Report) -> tuple[str, ...]:
         if anomaly.verdict == PAID_ROUTE_VERDICT:
             choices.append(f"`{anomaly.route_id}`: remove route")
             choices.append(f"`{anomaly.route_id}`: keep as a paid route")
+    for anomaly in report.anomalies:
+        if anomaly.verdict == "structured_output_invalid" and anomaly.alternative_method:
+            choices.append(method_choice(anomaly.route_id, anomaly.alternative_method))
     choices.extend(c.choice for c in report.rate_changes if c.action == "offer_increase")
     from citypods.provider_catalog.limits import context_choice
 
@@ -91,9 +143,182 @@ def decision_choices(report: Report) -> tuple[str, ...]:
     return tuple(choices)
 
 
-def _render_decision_block(choices: Sequence[str], checked: set[str]) -> str:
-    lines = [f"- [{'x' if c in checked else ' '}] {c}" for c in choices]
-    return "\n".join([DECISION_BLOCK_START, *lines, DECISION_BLOCK_END])
+def _group_key(candidate) -> str:
+    """One section per model: the same model offered by several providers shares a key."""
+    name = candidate.model.lower().rsplit("/", 1)[-1]
+    return re.sub(r"(:free|-free)$", "", name)
+
+
+def _anomaly_next(anomaly) -> str:
+    """What happens to this anomaly, or what the maintainer can do about it."""
+    if anomaly.verdict in {"retired", "not_served"}:
+        from citypods.provider_catalog.retire import RETIREMENTS_ENABLED
+
+        if not RETIREMENTS_ENABLED:
+            return "automatic removal PRs are not enabled; remove the route by hand"
+        stalls = any(not alternates for _lane, alternates in anomaly.lane_usage)
+        if stalls:
+            return (
+                "no automatic removal while a lane would stall; add a replacement model, or "
+                "alias the retired ID, then the next daily run removes the route"
+            )
+        return (
+            "no tick needed -- the next daily run re-probes this route and opens a removal PR "
+            "once two independent checks agree (lanes are repaired in that PR)"
+        )
+    if anomaly.verdict == PAID_ROUTE_VERDICT:
+        return "decide under **Decisions**: remove the route, or keep it as a paid route"
+    if anomaly.verdict == "structured_output_invalid":
+        if anomaly.alternative_method:
+            return (
+                f"tick the switch to `{anomaly.alternative_method}` under **Decisions**; "
+                "`/apply` re-verifies it on the route before proposing the change"
+            )
+        return "no other method verified; fix the route in `config/provider_limits.yml`"
+    return (
+        "fix the route in `config/provider_limits.yml`, or record the state as known under "
+        "`acknowledged:` in `config/provider_catalog_decisions.yml`"
+    )
+
+
+def _facts_line(candidate) -> str:
+    facts = candidate.facts or {}
+    context = f"{candidate.context_limit:,} context" if candidate.context_limit else None
+    parts = [
+        facts.get("params") or facts.get("size"),
+        context,
+        f"released {facts['released']}" if facts.get("released") else None,
+        f"inputs: {facts['inputs']}" if facts.get("inputs") else None,
+        f"license {facts['license']}" if facts.get("license") else None,
+        "AA "
+        + _score_cell(candidate.score, candidate.below_floor)
+        + (
+            " (tick the closest AA entry under **Decisions** if one is the same model)"
+            if candidate.score is None and candidate.aa_matches
+            else ""
+        ),
+    ]
+    line = " · ".join(p for p in parts if p)
+    if facts.get("expires"):
+        line += f" · **free tier ends {facts['expires']}**"
+    return line
+
+
+def _render_decision_block(
+    choices: Sequence[str], checked: set[str], candidates=(), anomalies=()
+) -> str:
+    """Checkboxes grouped by model; the rows are exactly the choices, only prose is added.
+
+    Only the `- [ ] choice` lines are machine-read (checked_decisions/parse_decisions), so any
+    heading or description between them is inert.
+    """
+
+    def row(choice: str) -> str:
+        return f"- [{'x' if choice in checked else ' '}] {choice}"
+
+    out = [DECISION_BLOCK_START]
+    placed: set[str] = set()
+    groups: dict[str, list] = {}
+    for candidate in candidates:
+        groups.setdefault(_group_key(candidate), []).append(candidate)
+    for members in groups.values():
+        rows = {c.key: [x for x in choices if x.startswith(f"`{c.key}`: ")] for c in members}
+        if not any(rows.values()):
+            continue
+        lead = members[0]
+        out += ["", f"### `{lead.model.removesuffix(':free')}`", ""]
+        summary = (lead.facts or {}).get("summary") or next(
+            ((c.facts or {}).get("summary") for c in members if (c.facts or {}).get("summary")),
+            "",
+        )
+        if summary:
+            out += [f"> {_inline(summary)}", ""]
+        out += [_facts_line(lead), ""]
+        for candidate in members:
+            if not rows[candidate.key]:
+                continue
+            method = candidate.structured_output_method or "unverified"
+            label = f"\n**{candidate.provider}** · JSON {method} · proven {candidate.proven_on}"
+            if candidate.other_lanes:
+                label += " · could also fit: " + ", ".join(
+                    f"{lane} (-{gap:g})" for lane, gap in candidate.other_lanes
+                )
+            out.append(label)
+            out.append(f"\n> {_readiness_line(candidate)}\n")
+            out += [row(x) for x in rows[candidate.key]]
+            placed.update(rows[candidate.key])
+        links = [
+            f"[{label}]({url})"
+            for label, url in dict.fromkeys(link for c in members for link in c.links)
+        ]
+        card = (lead.facts or {}).get("card")
+        if card:
+            links.insert(0, f"[model card]({card})")
+        if links:
+            out += ["", "Research: " + " · ".join(links)]
+    leftover = [x for x in choices if x not in placed]
+    if leftover:
+        by_route = {a.route_id: a for a in anomalies}
+        out += ["", "### Route and limit decisions"]
+        current = None
+        for choice in leftover:
+            match = re.match(r"`([^`]+)`: ", choice)
+            route = by_route.get(match.group(1)) if match else None
+            if route is not None and route.route_id != current:
+                current = route.route_id
+                out += ["", f"**`{route.route_id}`** ({route.verdict}): {_inline(route.reason)}"]
+            elif route is None and current is not None:
+                current = None
+                out.append("")
+            out.append(row(choice))
+    out.append(DECISION_BLOCK_END)
+    return "\n".join(out)
+
+
+def _readiness_line(candidate) -> str:
+    from citypods.provider_catalog.readiness import candidate_readiness
+
+    readiness = candidate_readiness(candidate)
+    return f"{readiness.headline} {readiness.next_step}"
+
+
+_STATE_LABEL = {"ready": "READY", "waiting": "WAITING", "action": "YOUR CALL"}
+
+
+def _next_steps_section(candidates) -> list[str]:
+    """The one table a maintainer needs: per new route, its state, tested caps and next step."""
+    if not candidates:
+        return []
+    from citypods.provider_catalog.readiness import candidate_readiness
+
+    lines = [
+        "## Next steps",
+        "",
+        "**READY** = limits tested; tick under **Decisions** and comment `/apply`. "
+        "**WAITING** = the daily run is still testing; nothing to do. "
+        "**YOUR CALL** = needs a decision from you.",
+        "",
+        "| Model | State | Input cap | Output cap | What to do |",
+        "|---|---|---:|---:|---|",
+    ]
+    for candidate in candidates:
+        readiness = candidate_readiness(candidate)
+        input_cap = _discovery_count(readiness.input_cap)
+        output_cap = _discovery_count(readiness.output_cap)
+        if readiness.output_source == "provisional":
+            output_cap += " (provisional)"
+        lines.append(
+            f"| `{candidate.key}` | {_STATE_LABEL[readiness.state]} | {input_cap} | "
+            f"{output_cap} | {readiness.next_step} |"
+        )
+    return [*lines, ""]
+
+
+def _inline(value, limit: int = 240) -> str:
+    """Untrusted one-line text: no markup, links, mentions or line breaks."""
+    text = re.sub(r"[\r\n\t]+", " ", str(value or ""))
+    text = re.sub(r"[<>`|\[\]@*~#]", "", text)
+    return text.strip()[:limit]
 
 
 def _score_cell(score: float | None, below_floor: bool | None) -> str:
@@ -375,7 +600,12 @@ def render_body(
         c
         for c in prior.candidates
         if c.key not in {current.key for current in report.candidates}
-        and any(choice.startswith(f"`{c.key}`: ") for choice in selected)
+        # An accepted AA match is a note for the next run, not a decision to fulfil: it must not
+        # keep a candidate that has since left the list (e.g. auto-ignored by that match) pending.
+        and any(
+            choice.startswith(f"`{c.key}`: ") and not choice.startswith(f"`{c.key}`: AA match ")
+            for choice in selected
+        )
     ]
     pending_paid = [
         a
@@ -405,47 +635,61 @@ def render_body(
         choices += tuple(c for c in pending_choices if c not in choices and c not in fulfilled)
     checked = set(checked_decisions(previous_body, choices)) if previous_body else set()
     floor = f"{report.floor:g}" if report.floor is not None else "unavailable"
+    quality_note = (
+        f"**Quality data unavailable: {_inline(report.quality_error)}.** Every model shows as "
+        "unscored until this is fixed."
+        if report.quality_error
+        else (
+            f"quality bar = {floor} ({report.floor_source}; candidates at or below it are not "
+            "automatically measured)."
+            if report.floor is not None
+            else "no quality bar: AA scores none of the models our lanes run."
+        )
+    )
     lines = [
         MARKER,
         f"Weekly provider-catalog reconciliation, {run_date} (review/48). Quality data: "
-        f"[Artificial Analysis](https://artificialanalysis.ai/) Intelligence Index; floor "
-        f"(lower of GPT-OSS-120B and Nemotron-3 Super) = {floor}.",
-        "",
-        f"## Candidates ({len(report.candidates)})",
+        f"[Artificial Analysis](https://artificialanalysis.ai/) Intelligence Index; "
+        f"{quality_note}",
         "",
     ]
+    lines += _next_steps_section(report.candidates)
+    lines += [f"## Candidates ({len(report.candidates)})", ""]
     if report.candidates:
         lines += [
-            "Free-marked models that completed a canary on our account and are not configured.",
+            "Free-marked models that completed a canary on our account and are not configured. "
+            "Each model has its own section under **Decisions**, with what is known about it.",
             "",
-            "| Model | AA index | Context | JSON method | Proven | "
-            "Other lanes (gap to weakest) | Research |",
-            "|---|---|---|---|---|---|---|",
+            "| Model | AA index | Context | JSON method | Proven |",
+            "|---|---|---|---|---|",
         ]
         for c in report.candidates:
-            links = " · ".join(f"[{label}]({url})" for label, url in c.links)
             context = f"{c.context_limit:,}" if c.context_limit else "unlisted"
-            others = ", ".join(f"{lane} (-{gap:g})" for lane, gap in c.other_lanes) or "-"
             lines.append(
                 f"| `{c.key}` | {_score_cell(c.score, c.below_floor)} | {context} | "
-                f"{c.structured_output_method or 'unverified'} | {c.proven_on} | "
-                f"{others} | {links} |"
+                f"{c.structured_output_method or 'unverified'} | {c.proven_on} |"
             )
         lines += [
             "",
-            "Decide below in **Decisions**. A lane checkbox "
-            "is offered when the candidate scores at least that lane's weakest scored model; "
-            "other eligible lanes are listed with the gap (capacity backups are often weaker by "
-            "design). Promoting a lane's primary model stays a manual edit.",
+            "A lane checkbox is offered when the candidate scores at least that lane's weakest "
+            "scored model; other eligible lanes are noted with the gap (capacity backups are "
+            "often weaker by design). Promoting a lane's primary model stays a manual edit.",
         ]
     else:
         lines.append("None this week.")
     discoveries = [c for c in report.candidates if c.discovery]
     if discoveries:
-        lines += ["", "## Request-cap discovery", ""]
+        lines += [
+            "",
+            "## Request-cap discovery",
+            "",
+            "Evidence behind the **Next steps** above. Open a section only to audit a result.",
+            "",
+        ]
         for candidate in discoveries:
             result = candidate.discovery or {}
-            lines += [f"### `{candidate.key}`", ""]
+            lines += [f"### `{candidate.key}`", "", _readiness_line(candidate), ""]
+            lines += ["<details><summary>Test details and diagnostics</summary>", ""]
             hints = result.get("litellm")
             if isinstance(hints, dict):
                 lines += [
@@ -658,6 +902,7 @@ def render_body(
                         f"{attempt['outcome']} / {attempt['diagnostic']} "
                         f"(attempt `{attempt['attempt_id']}`)"
                     )
+            lines += ["", "</details>", ""]
     if pending:
         names = ", ".join(f"`{c.key}`" for c in pending)
         lines += [
@@ -678,7 +923,8 @@ def render_body(
             flag = "**new** " if a.new else ""
             where = ", absent from catalog" if a.absent_from_catalog else ""
             lines.append(
-                f"- {flag}`{a.route_id}` (`{a.model}`): **{a.verdict}** -- {a.reason}{where}"
+                f"- {flag}`{a.route_id}` (`{a.model}`): **{a.verdict}** -- "
+                f"{_inline(a.reason)}{where}"
             )
             if not a.lane_usage:
                 lines.append("  - used by no LLM lane")
@@ -687,11 +933,7 @@ def render_body(
                     ", ".join(f"`{m}`" for m in alternates) or "**nothing else -- the lane stalls**"
                 )
                 lines.append(f"  - used by `{lane}`; still served by: {still}")
-        lines += [
-            "",
-            "Fix the route in `config/provider_limits.yml`, or record the state as known under "
-            "`acknowledged:` in `config/provider_catalog_decisions.yml`.",
-        ]
+            lines.append(f"  - **Next:** {_anomaly_next(a)}")
     else:
         lines.append("None.")
     if report.rate_changes or pending_rates:
@@ -717,17 +959,22 @@ def render_body(
                 "",
                 "## Decisions",
                 "",
-                "Tick what you want, then comment `/apply` to prepare reviewed catalog/rate PRs "
-                "with those changes (review/48). Ticks are kept across weekly updates. A free "
-                "route that became paid is never removed automatically: remove it, or keep it as "
-                "a paid route. Additions/ignore and keep-paid choices are available; "
-                "removal requires deployed Slice 3 rescue. Partial request-cap discovery can be "
-                "resumed with `test again`; that only queues a later bounded run. "
-                "Unavailable proofs remain ticked. "
-                "An open PR does not fulfill a "
-                "selection until it is merged.",
+                "Tick what you want, then comment `/apply` to prepare a reviewed PR with those "
+                "changes (review/48). Each model's line says whether it is ready. If `/apply` "
+                "cannot do something yet, its reply says why and what to do; your ticks are "
+                "kept, so just comment `/apply` again later. `add route only` adds the route "
+                "with its tested input and output caps and no lane; lane placement needs "
+                "measured evidence. `test again` queues another bounded limit test. A free "
+                "route that became paid is never removed automatically: remove it, or keep it "
+                "as a paid route. Retired routes are removed by their own automatic PR, so "
+                "they need no tick. An open PR does not fulfill a selection until it is merged.",
                 "",
-                _render_decision_block(choices, checked),
+                _render_decision_block(
+                    choices,
+                    checked,
+                    [*report.candidates, *pending],
+                    [*report.anomalies, *pending_paid],
+                ),
             ]
         )
     summary = f"<details><summary>Observations ({len(report.observations)})</summary>"
@@ -745,7 +992,21 @@ def render_body(
         state["last_full"]["rate_changes"] = [
             asdict(c) for c in (*report.rate_changes, *pending_rates)
         ]
+    if state.get("bulk_ref"):
+        # The bulk memory is kept in the run's artifact; the issue holds only what decisions use.
+        from citypods.provider_catalog.state_store import split_bulk
+
+        state = split_bulk(state)[0]
     state_marker = _encode_state(state)
+    if 65_000 - len(state_marker.encode("utf-8")) < _MIN_HUMAN_BODY:
+        # The machine state alone filled the issue body, leaving no room for the report, and the
+        # truncation then dropped the leading MARKER (2026-10-30: #2554 grew to 61 KB of state and
+        # every marker-gated workflow skipped). Observations are carried only to be displayed, so
+        # shed them before anything a decision depends on.
+        last_full = dict(state.get("last_full") or {})
+        if last_full.pop("observations", None) is not None:
+            state["last_full"] = last_full
+            state_marker = _encode_state(state)
     room = min(_HUMAN_BODY_LIMIT, 65_000 - len(state_marker.encode("utf-8")))
     room -= len(decisions.encode("utf-8"))
     if len(observations.encode("utf-8")) > room // 2:
@@ -753,6 +1014,9 @@ def render_body(
     report_text, _ = bounded_body(
         "\n".join(lines) + "\n", limit=max(0, room - len(observations.encode("utf-8")))
     )
+    if MARKER not in report_text:
+        # Truncation must never take the marker: `find_issue` and the /apply workflow key on it.
+        report_text = f"{MARKER}\n{report_text}"
     human = report_text.rstrip("\n") + "\n" + decisions + "\n" + observations
     return f"{human}\n{state_marker}\n"
 

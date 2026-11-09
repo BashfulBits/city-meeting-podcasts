@@ -182,6 +182,33 @@ class RoutingStorage:
     def public_url(self, key: str) -> str:
         return self._route(key).public_url(key)
 
+    def read_immutable_public_bytes(
+        self, key, session, metrics, *, prefer_cdn=True, validate=None, metric_prefix="transcript"
+    ):
+        """Route an explicitly immutable public read to its owning backend."""
+        from citypods.storage.public_read import read_immutable_public_bytes
+
+        backend = self._route(key)
+        read = getattr(backend, "read_immutable_public_bytes", None)
+        if read is not None:
+            return read(
+                key,
+                session,
+                metrics,
+                prefer_cdn=prefer_cdn,
+                validate=validate,
+                metric_prefix=metric_prefix,
+            )
+        return read_immutable_public_bytes(
+            backend,
+            key,
+            session,
+            metrics,
+            prefer_cdn=prefer_cdn,
+            validate=validate,
+            metric_prefix=metric_prefix,
+        )
+
     def get_file(self, key: str, local_path: Path, *, deadline_at: datetime | None = None) -> bool:
         if self._is_coordination(key):
             self._class_b += 1

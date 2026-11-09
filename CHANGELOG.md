@@ -15,6 +15,438 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Fixed Moments submissions rejected after Kimi was retired. Existing Moments recipe identities
+are preserved, so removing the route does not reissue completed work; pending stale policies can
+still be retired and replanned by the deferred sweep.
+
+- **Reconcile lane completions with successful completions in /v2/stats.** Distribute
+  the coordinator's authoritative `completed_today` count across ingress lanes in
+  proportion to lane throughput, ensuring lane completions reflect successful jobs
+  rather than raw attempt/retry calls, aligning with the models and providers view
+  metrics.
+
+Fixed automatic provider route retirement proposals being blocked by a test that required a
+particular route to remain in the catalog.
+
+Fixed provider catalog reconciliation failing workflow validation because of a duplicate
+environment variable, and added a check for duplicate keys across GitHub Actions workflows.
+
+- **Aggregate lane completions from packed telemetry in /v2/stats.** Read completed job
+  counts per lane from in-memory packed telemetry shards when packed state authority is
+  active, falling back to SQLite `attempt_usage` only when packed state is inactive.
+
+- **Deduplicated lane pending jobs and unified model aliases in /v2/stats.**
+  Expose deduplicated queued job counts per lane in `ingress.by_purpose[].pending` when
+  requested via `?pending=1` or `?lanes=1`. Queries leverage the partial covering index
+  `idx_jobs_queued_purpose` with an in-memory 15-second TTL cache, and are skipped completely
+  when the global queue count is zero to avoid query overhead during routine cron or producer ticks.
+  Also expose unified `model_aliases` and per-lane `completed` job counts to simplify widget
+  and dashboard consumers.
+
+Judge quote checks now try the guarded public CDN URL for B2-backed transcripts before reading
+from B2, with hash and evidence-digest fallback checks. Run metrics expose edge cache status,
+transfer volume and time, B2 fallback volume, and the parsed-text cache's estimated peak size.
+The 400-transcript quote-check cap is unchanged until production measurements justify a higher
+limit.
+
+The storage adapter exposes this as an explicit immutable-public read; ordinary reads remain direct.
+
+Scheduled GitHub Actions workflows now use staggered, nonzero UTC minute offsets while preserving
+their existing cadence. The city-request intake retry cron keeps its 15-minute interval at an offset
+from common quarter-hour ticks. This reduces synchronized starts; GitHub may still delay scheduled
+triggers during platform load.
+
+- **Terminal failure cleanup resilience and performance.** Optimize `clear_terminal_failures.py`
+  with `--days` time cutoff (default 7 days) and 8-worker concurrent downloads via
+  `ThreadPoolExecutor`, safe error handling for transient storage exceptions, and real-time progress
+  logging with unbuffered workflow output in `.github/workflows/clear-terminal-failures.yml`.
+
+- **Unblock LLM job submission and judging throughput.**
+  - **Raise DO active bundle limit:** Increase `MAX_ACTIVE_BUNDLES` from 5 to 12 in dispatch tuning
+    so fast worker bundles are not blocked by long-running Gemma/JEV claim bundles.
+  - **Rule candidate judging slot load balancing:** Enable Slot B (`non_google`, e.g. Nemotron)
+    alongside Slot A (`google`) to evaluate rule-candidate subjects in `sibling_candidates`, and
+    raise `max_outstanding_packets.sibling` from 480 to 800 packets.
+  - **Terminal failure recovery:** Add `scripts/clear_terminal_failures.py` CLI, storage helper
+    `clear_terminal_failure()`, and `.github/workflows/clear-terminal-failures.yml` workflow to
+    audit and prune poisoned failure markers for clean lineage retry.
+
+- **Tag structured output array normalization.** Accept bare JSON array responses and single-key
+  wrapped lists from structured LLM outputs in `llm_tag_suggestions`, preventing schema validation
+  failures when models like `gemini-3.1-flash-lite` return top-level tag lists directly.
+
+- **Tagger models update and NVIDIA Nemotron 3.5 Super VL route wiring.** Updated
+  `topic-tags:tagger` lane in `config/site_config.yml` to retire `kilo/stepfun/step-3.7-flash:free`,
+  promote `gemini/gemini-3.5-flash-lite` (AA 11.7, 1,000 RPD) to primary recipe model, add
+  `openrouter/nvidia/nemotron-3.5-super-vl:free` (AA 13.6, 400 RPD, pooled across Kilo, OpenRouter,
+  and NVIDIA) as secondary spill capacity, retain `deepseek/deepseek-v4-flash` (AA 32.6, 1,800 RPD),
+  and demote `gemini/gemini-3.1-flash-lite` to last priority so `chapter-agenda` can more fully
+  utilize Flash-Lite 3.1 quota. Wired model aliases in `config/provider_limits.yml` for
+  `nvidia/nemotron-3.5-super-vl:free`, `nvidia/nemotron-3.5-super-vl`, and
+  `openrouter/nvidia/nemotron-3.5-super-vl` to canonical
+  `openrouter/nvidia/nemotron-3.5-super-vl:free`, and set `upstream_429_default: upstream_capacity`
+  on the direct NVIDIA route. *Backfill story:* Promoting Flash-Lite 3.5 as primary updates
+  `tag_input_fingerprint` and `tag_recipe_hash`, gradually re-tagging catalog episodes on routine
+  runs within the lane's daily ingress and queue caps.
+
+- **Gated Google 5xx in-window retries on TPM capacity and retained 5xx input accounting.** Prevents
+  immediate HTTP 429 rate limit errors on Google AI Studio (`gemma-4-31b-it`) by skipping in-window
+  5xx retries when repeating a prompt's input tokens would exceed the route's rolling 60-second
+  TPM limit (`(inWindow5xxRetries + 2) * tokens <= routeTpm`). Retains input token window
+  accounting on Google 500/503 responses that reached the provider (`actual_start_at != null`)
+  in `settleInputWindow`, preventing subsequent jobs from being admitted before Google's 60-second
+  arrival token quota has refilled.
+
+- **Prioritize Kilo over OpenRouter for Nemotron routes.** Reordered
+  `kilo_nvidia_nemotron_3_ultra_550b_a55b_free` and `kilo_nemotron_3_5_super_vl_free` ahead of their
+  OpenRouter siblings in `config/provider_limits.yml` and recompiled route catalogs. Removed the
+  artificial 100k TPM rate ceiling on Kilo routes to allow large meeting transcripts up to the
+  observed input ceiling.
+
+- **Retired Codestral route.** Removed `mistral_codestral_airforce_primary`
+  (`mistral/codestral-2508`) from `config/provider_limits.yml` and recompiled route catalogs.
+
+- **Raised LLM dispatch ingress limits after the packed-state cutover.** The shared daily guard
+  moves from 4,000 jobs / 25,600 write units to 6,000 / 38,400, and the tagger and moments lane
+  ceilings rise 1.5x (9,600 to 14,400; 4,800 to 7,200), the two lanes whose caps closed ingress on
+  2026-10-23. A full packed-state day used 24,269 billed DO rows; the worst case at the new caps is
+  about 86k, under the 90k safe stop. Reservations and queue caps are unchanged.
+- **Fixed `scripts/llm_capacity_plan.py` crashing** on its default run (`--judging` was passed
+  through to `project()`).
+
+- **Optimized Google AI Studio throughput and rate-limit handling.** Anchored Google input-window
+  accounting to scheduled start/arrival time rather than response completion time, removed the
+  unnecessary 15-second `tpm_window_margin_seconds` buffer on Gemma 4 31B routes, honored exact
+  provider 429 `retryDelay` headers (+1s buffer) globally on `own_tpm` instead of forcing a 60s
+  cooldown, capped Google transient 5xx route backoff at 5 seconds, and added paced in-window
+  retries for transient Google 500/503 errors within the bundle execution deadline.
+
+- **Removed NVIDIA Nemotron 3 Nano Omni and Groq Qwen 3.6 routes.** Retired the unused
+  `nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free` and `groq_qwen_3_6_27b_primary` routes from
+  `config/provider_limits.yml` and recompiled route catalogs.
+
+- **An accepted AA match no longer keeps a dropped candidate listed.** Ticking an AA match for a
+  model that the match then re-scored below the quality bar left it on the provider-catalog issue
+  as a "pending prior selection" indefinitely. The match is a note for the next run, not a
+  decision to fulfil, so it no longer counts as one.
+
+- **A size search no longer repeats a size the provider cannot handle.** An input search that
+  draws HTTP 500 at its first, very large size (muse-glimmer at 500,000 tokens) now halves the
+  size up to four times instead of ending as an outage. An output search with nothing admitted
+  yet that is timed out or dropped (minimax at 16,384 tokens) halves too, instead of retrying the
+  same size five times. Neither is ever recorded as a refused limit.
+- **A one-axis daily session no longer erases the other axes' results.** The output session that
+  followed minimax's input session replaced its measured input limit with a blank placeholder,
+  so the plan flipped back to input each day. A session now merges into the candidate's stored
+  discovery and leaves axes it did not select as they were.
+
+- **Ignored and delisted candidates no longer sit as "WAITING" on the provider-catalog issue.**
+  The daily run carried every candidate from the last full run, even ones the maintainer had since
+  ignored, so they showed "the next daily run tests it" for a test the loop skips by design. They
+  are now dropped when carried, left out of the measurement plan, and a planned model that its
+  provider no longer lists says so.
+
+- **Daily provider-catalog run no longer crashes on its 4th measurement session.** The discovery
+  evidence artifact still enforced the 3-session manual cap while the time-bound daily run may
+  start up to 16; the shared cap is now `MAX_ARTIFACT_SESSIONS`. A failed evidence write no longer
+  relabels a finished session as stopped, and no longer loses the run's state and issue update.
+
+- **AA match suggestions.** An unscored provider-catalog candidate lists the three closest
+  Artificial Analysis models as checkboxes under **Decisions**. Ticking one makes the next daily
+  run score the model from that entry (no PR needed). AA names and separator spellings
+  (`m3.1` / `m3-1`) also match automatically when exactly one model answers to them.
+- **Why a candidate is unmeasured.** Each provider-catalog candidate the daily run has not
+  measured now says why.
+
+- **429 backoff.** A 429 with no `Retry-After` during the size search no longer ends the
+  candidate for the day. The provider's other candidates run first, then the search resumes from
+  its saved bounds after 30 s, doubling to 10 minutes; a 429 after the 10-minute wait gives up
+  until the next run.
+- **Fairer daily measurement.** The daily run serves the candidates with the fewest tries first
+  and visits every planned candidate per provider. A repeated provider-stated context-limit
+  refusal aims 5% lower each time (floor 80%). Carried candidates are re-scored against current
+  AA data.
+
+- Provider catalog: the daily run now measures found candidates for up to two hours (across
+  providers, several per provider) instead of one session per run. Models AA scores at or below
+  our weakest lane model are auto-ignored, and unfinished input searches (outage, stalled) are
+  re-queued up to four times.
+
+- Provider catalog: `/apply` `test again` no longer fails when no saved results exist; discovery
+  evidence is saved after every session so a crashed run keeps it; repeated connection resets at
+  one input size now step the size down.
+
+- **Disable dispatch keep-alive and pin catalog workflows to Ubuntu 24.04.**
+  Send `Connection: close` in `DispatchPauseClient` requests to prevent urllib3 connection
+  pool socket reuse across multi-minute probe spacing and canary intervals, eliminating
+  transient connection resets on Worker reservations. Pin provider catalog reconciliation and
+  command workflows to `ubuntu-24.04` to match runner policy and prevent runner-image drift.
+
+- **Renovate runner upgrade suppression.** Pinned GitHub runner environments (`runs-on`) to
+  prevent Renovate from proposing automated Ubuntu LTS upgrades across workflow files, preserving
+  the ABI alignment required by the self-built static FFmpeg binary (review/22).
+
+- **Review/48 request-cap discovery: typed size limits and slow routes.** A provider's typed
+  `context_length` refusal (NVIDIA `details.limit/actual`) now steers the next input probe to 95%
+  of the stated limit instead of ending as `inconclusive`; it is a hint, so only an admitted,
+  provider-counted request becomes a cap. Input probes that time out, or succeed slower than a
+  600 s budget, are no longer retried at the same size or proposed as caps: the search shrinks
+  until a size fits the Worker's 720 s ceiling. A transient 5xx is retried twice with backoff
+  before an axis is called an outage.
+- **Review/48 issue and `/apply` clarity.** The rolling issue opens with a **Next steps** table
+  (READY / WAITING / YOUR CALL, tested input and output caps, what to do) and repeats the verdict
+  beside each model's checkboxes; probe diagnostics move into collapsible details. Every `/apply`
+  deferral now says what to do, and a failed `/apply` names the failing step and test IDs instead
+  of "verification or publication command failed". After the output search has run with no
+  measurement or published claim, `/apply` uses a flagged provisional 4,096-token output limit
+  rather than deferring forever.
+
+- **Provider reconciliation no longer aborts on one failed dispatch reservation.** The reserve call
+  retries a transient Worker `ConnectionError` and the health-recheck loop skips only that route
+  (no request is sent without a reservation), instead of failing the whole 90-minute run and
+  discarding its state.
+
+- **BeatAPI streaming is switched off again.** In production, assembling a BeatAPI stream in the
+  Worker used 2,050 ms of CPU over a 400 s call, and the cron invocation was killed
+  (`exceededCpu`) along with the other jobs it was running; the Worker's per-invocation CPU budget
+  is about 10 ms (review/43). The streaming code stays behind `stream_response`, now `false` for
+  both BeatAPI accounts.
+
+- **The dispatch Worker streams BeatAPI replies.** BeatAPI's Cloudflare edge ends a non-streaming
+  call at about 125 s with a 524 (3 of 3 long test calls failed; 17 of today's BeatAPI GLM calls
+  did), while streamed calls kept data flowing for 7+ minutes and a 415 s reply completed. A
+  provider with `stream_response: true` (a route can override it) now gets `stream: true`; the
+  Worker rebuilds the single reply (content, reasoning, tool calls, finish reason, usage) so
+  nothing downstream changes, fails a stream that goes quiet for 60 s or ends early, and caps the
+  text it will hold. Enabled for both BeatAPI accounts. To revert, delete the line from the
+  provider block in `config/provider_limits.yml` and run `scripts/compile_llm_limits.py`.
+
+- **Removed the NVIDIA GLM 5.3 Flash route.** NVIDIA's hosted endpoint never answered: a one-token
+  prompt returned 504 after 302 s and all 16 production calls on 2026-11-02 hit the Worker's
+  720 s timeout, each holding an NVIDIA lease that also kept the catalog run's pause from
+  draining. The model stays available through the other GLM 5.3 Flash routes.
+
+- **A provider that cannot drain no longer wastes the daily measurement.** The 2026-11-02 manual
+  run chose MiniMax on NVIDIA, but NVIDIA's dispatch pause never drained: its judge calls hang
+  until the Worker's 720 s timeout, longer than the 600 s drain wait, so the run recorded a
+  misleading "bounded slot unavailable, rechecked next week" and measured nothing. The drain
+  wait is now 780 s, the daily plan names one candidate per provider plus two fallback providers
+  so a contended provider spends no session and the next one is measured, and the deferral now
+  says the pause was contended and that the next daily run retries.
+
+- **Review/48 measures found candidates on the daily run; the quality bar no longer depends on
+  named models.** The bar a candidate must clear (for automatic measurement and the "below floor"
+  flag) is now the weakest Artificial Analysis-scored model our lanes actually run, recomputed
+  from AA's current scores every run, instead of two pinned models AA stopped scoring; the pinned
+  pair is only a fallback. The daily incremental run (scheduled, or repeated by hand) now runs one
+  size-search session per day on an already-found candidate: an input search first, then an
+  output search for a candidate with a measured input and no published output limit; unscored
+  models are measured too (a scored model at or below the bar is skipped). `/apply` takes the
+  route's output limit from a verified output search, a provider claim or LiteLLM, and defers
+  until one exists. The provisional input/output caps for route-only adds are removed: every
+  added route now carries measured limits. The daily job timeout is 180 minutes.
+
+- **Review/48 manual daily-incremental run.** The reconciliation workflow's manual dispatch gains
+  an `incremental` input that runs exactly what the 08:20 UTC schedule runs (deferred checks, the
+  stalest seventh of routes, availability signals and newly listed models), so a failed or
+  skipped daily run can be repeated by hand. A manual run does not trigger the automatic
+  retirement job, which keys on the scheduled run.
+
+- **Provider catalog: filter duplicate physical routes and move legacy Nemotron aliases.** When
+  upgrading routes, legacy model selectors are maintained under `model_aliases` rather than as
+  duplicate route entries. Stale health routing and route health checks now deduplicate by physical
+  tuple (`provider`, `account_id`, `upstream_model`), preventing duplicate probe reservations for
+  uncompiled alias route IDs on the Worker dispatch rate ledger.
+
+- **Review/48 report rework.** The rolling issue no longer carries the bulk reconcile memory
+  (provider catalog snapshots, canary memory, structured-output evidence; 340 KB of JSON that
+  filled GitHub's body limit and pushed the report out): it is written to a
+  `provider-catalog-state-<run id>` artifact and the issue keeps only decision state plus the run
+  ID and SHA-256; a missing or mismatching artifact only costs the next run its memory. The
+  Artificial Analysis fetch now uses its documented endpoint (`/api/v2/data/llms/models`, no
+  pagination), keeps the paginated one as a fallback, reports why
+  at the top of the issue when every model is unscored, and matches `minimaxai` and MoE size tags
+  (`-1t-a52b`). Candidates get short model-card facts (catalog description, size, release date,
+  free-tier expiry, Hugging Face parameters and license, NVIDIA card summary). Decisions are laid
+  out one section per model with its providers' rows underneath, every anomaly says what happens
+  next, and a `structured_output_invalid` route with a verified alternative gets a tick that
+  `/apply` re-verifies and applies. A route-only add with no published context now gets the
+  provisional 16k cap.
+
+- **Review/48 daily run: new-model canaries and Worker availability signals.** The Worker records
+  a per-status telemetry cell (`route_not_found`, `route_gone`, `route_forbidden`) for each 404,
+  410 and 403, alongside the classes that still drive behavior, and serves
+  `GET /v2/stats?availability_failures=1` with the day's per-status counters. The daily
+  incremental run health-checks any route with two 410/403 or three 404 failures today straight
+  away (an older Worker without the endpoint just means no signal), and canaries up to six models
+  newly listed since the last catalog snapshot, only for providers that already have a snapshot.
+  New models the budget cannot cover stay new for the next run.
+
+- **Review/48 daily incremental reconcile.** The daily run (08:20 UTC) now also health-checks the
+  least recently checked seventh of the configured routes (`--incremental`, in addition to
+  quota-deferred checks), so every route is checked within a week and a dead or unentitled one is
+  found within days instead of at the weekly full run. Automatic route-removal PRs now follow the
+  daily run as well as the weekly one, and re-probe only the routes the rolling issue flags as
+  `retired`/`not_served` rather than every route. The weekly full run remains the backstop for new
+  candidates, canaries and discovery. The daily run is renamed `daily-incremental`.
+
+- **Review/48 `/apply` removals and last-route alias proposals.** A ticked `remove route` on a
+  route that became paid is no longer deferred as "requires Slice 3 rescue": with a fresh,
+  uncontended, unchanged `not_entitled` proof it removes the route and repairs the affected lanes,
+  or is rejected when no free replacement would remain. When the removal leaves a model with no
+  route, the PR body lists the lanes that name it, warns that queued jobs naming it fail as
+  `route_retired`, and proposes same-family or lane-sharing alias targets with a `model_aliases`
+  snippet. The alias itself is still a reviewed edit.
+
+- **Review/48 cleaner `/apply` route assignment.** A candidate whose provider name is only a
+  respelling of an existing pool (`z-ai/` vs `zai/`, `:free`/`-free` suffixes, a bare name under a
+  namespaced pool) now resolves to that pool instead of deferring as `identity_required`; no new
+  identity is ever invented. A route-only addition with a provider-published context size no longer
+  needs provider-counted input evidence: it is added with a provisional 16k `hard_input_ceiling`
+  and flagged for a later discovery run, and lane placement still requires measured evidence. Every
+  addition PR body now carries a route to pool table with lane backups.
+
+- **Remedy P3 is model-bound.** The manual two-model plan now requests a logical model and accepts
+  any free direct route of its pool, instead of pinning one physical route. Votes, validators and
+  admissions are keyed by model, the serving route and its reported upstream model are recorded as
+  provenance, and the production authorization binds the model and its prompt/schema/policy hashes
+  rather than a route record. Route changes in a pool no longer invalidate it. See review/51.
+
+- **Modal budget estimates now price the whole bill.** `estimated_dollars_per_runtime_second` for
+  Modal was the bare L4 GPU rate (`0.000222`), omitting CPU and memory (~11% of the Oct 2026
+  cycle). Raised to an all-in `0.000265` (GPU + CPU/RAM + ~7.5% pad), so reservations and the
+  runtime-fallback settlement run conservative. The $30 Modal credit hit its spend limit on
+  Oct 30 and failed the Modal deploy.
+
+- **Declared model aliases.** `config/provider_limits.yml` accepts a `model_aliases` section
+  (`old/id: {to, reason, decided_on}`) that keeps a retired model ID resolving to a newer model
+  with at least one route, so queued and future jobs naming it are served instead of failing as
+  `route_retired` when its last route is removed. The compiler rejects an alias whose source still
+  has routes or whose target has none. The Worker needed no change: it already canonicalizes
+  allowed models through `model_aliases`.
+
+- **Provider catalog route updates (2026-10-31).** Adds BeatAPI GLM 5.3 Flash and MiniMax M3.1
+  Flash, a secondary-account BeatAPI Gemini 3.8 Flash, Kilo Nemotron 3.5 Super VL, and NVIDIA
+  GLM 5.3 Flash and DiffusionGemma routes, each pooled by model key and not yet assigned to any
+  lane. Removes four routes the providers no longer serve on free credit: secondary-account
+  BeatAPI DeepSeek V4 Flash, V4 Pro and GPT-6 Astra, and Z.ai GLM 4.5 Flash. Records NVIDIA
+  Llama 3.2 90B Vision and the Kilo and OpenRouter Nemotron 3.5 Lightning models as ignored.
+
+- **Provider catalog `/apply` no longer defers on unrelated catalog changes.** Selections were
+  compared against a digest of the provider's entire model listing, so any other model appearing or
+  disappearing on a busy provider (Kilo, OpenRouter, NVIDIA, BeatAPI) turned every ticked candidate
+  into "candidate changed". New evidence carries a digest of the model's own entries instead, and
+  the whole-listing digest is no longer compared.
+
+- **Provider catalog issue keeps its marker.** When the machine state filled the issue body, the
+  report truncation dropped the leading marker, so `/apply` and the issue lookup silently skipped.
+  The marker is now always kept and display-only observations are shed from the state first.
+
+- **LLM dispatch packed scheduler state (dormant).** The v2 coordinator can keep its compact
+  queue, provider, route and estimate ledgers, active-lease registry and route-sharded usage and
+  failure telemetry in packed form, cutting measured writes per cron tick by about 56% in replay.
+  Legacy tables stay authoritative until an operator runs the guarded `POST /v2/packed-state`
+  cutover under a drained global pause (rollback rebuilds the legacy tables). The coordinator also
+  records recovery sweep statistics (and `RECOVERY_INTERVAL_MINUTES`, 0-1440, to space out
+  expired-lease cleanup), at the cost of one scheduler-row write per idle tick. See review/57.
+
+- **Human-reviewed remedy publication.** Select GLM Flash + DeepSeek as the two initial proposers.
+  Validated exact agreements may create bounded PRs; disagreements and completed contract failures
+  create human-review issue candidates. No automated adjudicators or remedy merging are enabled.
+- **Explicit manual authorization.** Record the maintainer's production approval separately from
+  general model qualification, binding exact routes, prompt, schema, catalog, policy and profiles.
+  Preserve publication budgets, evidence freshness and R2 CAS; automatic alias types remain empty.
+  AA scores and independent holdout qualification are not fabricated by this permission.
+- **Recoverable request state.** Preserve deferred handles and propagate transport, capacity and
+  unknown-request errors without permanent model-failure observations. Persist safe terminal
+  contract failures without fabricated identity/votes. Local JSON receipts use atomic exclusive
+  creation, preventing partial files and preserving completed requests across restarts.
+- **Replay and publication integrity.** Preserve legacy report input hashes and observation IDs.
+  Revalidate the trusted role plan, exact returned-model alias, finding and recipe at publication.
+  Require an exact SHA256 for isolated report-only plans; keep source and feed validation intact.
+- **Repeatable remedy experiments.** Retain Python packet generation, execution, judging, scoring
+  and policy replay instructions for additional models. Keep compact irreproducible outputs and
+  approvals; generated requests, logs, raw frames and receipts remain local and ignored.
+  Historical gold remains unchanged and maintainer exceptions are recorded separately.
+- **Runtime challenge evidence.** Complete the approved concise-prompt twelve-case evaluation:
+  38 judgments in 39 attempts including one approved rate-limit retry. Remove duplicated judge
+  evidence and resolve JEV input-size holds. Matched semantic quality did not improve; the chosen
+  two-model replay yields 4 PR candidates (3 correct, 1 shared error) and 8 human issues.
+- **Operational provenance.** Preserve primary-only provider coordination and exact returned-model
+  evidence, including the maintainer-approved Flash alias. Historical full-GLM measurements retain
+  mixed output-profile and provider provenance; they do not authorize a new production route.
+  No media pipeline version, episode UID, source record or stored audio backfill changes.
+- **Reproducible evidence retention.** Factor expanded judging inputs into original cases,
+  blinded proposal references and unique retrieved evidence; rebuild both approved packets with
+  identical byte hashes. Normalize actual runtime answers with shared profiles and recompute
+  comparisons. Keep dated helpers and generated artifacts locally, excluded from Git. Update
+  manual authorization references to equivalent retained evidence without changing its scope.
+
+- Defer a source calendar upload after exhausted transient storage reads instead of aborting
+  judge finalization. Preserve both local and remote calendars and continue other sources;
+  permission and programming errors still propagate. No artifact invalidation or backfill.
+
+- LLM dispatch: `MAX_BUNDLE_JOBS` 5 -> 6 (and `MAX_JOBS_PER_MODEL_CLAIM` 5 -> 6, which must not
+  trail it) to use all six outbound connections a Worker invocation allows;
+  `MAX_JOBS_PER_ROUTE_PER_BUNDLE` 3 -> 1. The per-route cap already counts each `route_id`
+  separately, so AI Studio's primary and secondary routes each get 1 lease per cron. Daily
+  `MAX_LEASES_PER_UTC_DAY` (7,000) is unchanged and stays under 1,400 x 6.
+- `PURGE_BATCH_LIMIT` 15 -> 14: the larger bundle (12 dispatch B2 calls) plus cleanup's two deletes
+  per job must stay within `validateConfig`'s 40-subrequest budget (28 + 12 = 40). Cleanup drains
+  2,016 jobs/day instead of 2,160.
+- `MAX_CONCURRENT_ROUTE_LANES` 5 -> 6 so a six-job bundle at one lease per route spans six
+  routes (non-Flash-Lite beside Flash-Lite). `validateConfig` now rejects only more than 6. To
+  stay within Cloudflare's six simultaneous connections, the same-invocation cleanup now waits
+  until dispatch has fewer than six lanes open (the first lane settling) and deletes a job's two
+  B2 objects one at a time instead of together. Cleanup on a six-lane tick starts later, never
+  concurrently with a sixth connection.
+- The Gemma network probe (diagnostics) shares that one slot: on a six-lane bundle it starts only
+  after the first lane settles. It is never run on a cleanup tick, so the two do not overlap.
+
+- **Google Gemma availability recovery.** recognized INTERNAL 500s now use the bounded upstream
+  retry budget. Google 500/503 availability failures get three early cron retry opportunities and
+  a five-minute cooldown cap, honoring provider Retry-After. Other routes and all quota/concurrency
+  limits remain unchanged. Existing persisted cooldowns require operational reconciliation after
+  deployment. No pipeline version bump or stored artifact invalidation occurs.
+- **Google Gemma network diagnostics.** Attempts log the account alias, Gateway Ray/colo and fixed
+  provider-error signature. A bounded diagnostic set compares Cloudflare trace facts with an
+  AWS-observed public IP and IP.SB country/ASN lookup of that exact address. Synthetic Worker IPs
+  are labeled; observations remain distinct from Google's incoming connection. Cleanup ticks skip
+  probes and all three requests fit the Free subrequest budget. No R2/DO writes, credentials,
+  prompts or output text are added to logs.
+
+- **Preserve LLM request policy through deferred sweeps.** Retain backup models and thresholds,
+  route pins, priority, remaining policy flags, explicit timeout, and output mode across durable
+  storage and reconstruction. Version incomplete legacy moments capsules as needing producer
+  replanning; hold them in the sweep and rebuild matching unsubmitted work from current inputs
+  within normal producer caps. Keep submitted jobs, newer records, and valid results intact.
+  No pipeline-version bump, quota increase, catalog-wide invalidation, or bulk backfill occurs;
+  recovery is gradual and remains subject to existing ingress and provider budgets.
+
+- **Recover moments from invalid cached LLM answers.** Preserve response schemas across batch
+  quota refusals, restore the known moments contract on legacy handles, and include missing
+  schemas in corrective requests. Moments rejects and conditionally evicts invalid completed
+  answers after durable failure accounting, using the existing three-failure recipe limit.
+  Exhausted recipes do not consume producer slots. Storage interruptions remain recoverable.
+  No pipeline-version bump or catalog-wide backfill occurs; affected recipes retry gradually
+  within normal producer and provider budgets.
+
+- **Fill bounded LLM dispatch windows more effectively.** Match the stale four-job per-model
+  allowance to the existing five-job bundle cap so one healthy model can fill every slot.
+  Partially filled model heads can use their existing bounded queue extension, and coordinator
+  restarts resume from scan frontiers checkpointed in existing claim accounting. Empty diagnostics
+  include their event time. The 32-row lookahead, provider quotas, producer ceilings, concurrency,
+  and free-tier row guards stay unchanged; idle-write coalescing still applies. No pipeline-version
+  bump or backfill is needed.
+
+- **H16 availability review: operator-overridden candidates now ingest.** The weekly digest
+  publishes a candidate's *effective* verdict (`operator_override or state`), but `ingest` compared
+  the issue marker against the raw `state` field. Every child whose recording had already been
+  confirmed in an earlier review was therefore rejected as a stale candidate: the decision was not
+  stored, the child never closed, and the batch stayed open with no visible error (#2315). Ingest
+  now validates against the same effective verdict the digest rendered, while still rejecting a
+  changed source fingerprint, detector version, or verdict.
+
 - **Typed judge answers and live contract evaluation.** New chat packets require per-kind
   answer fields, including a choose letter; legacy replies remain readable. Add a direct frozen
   evaluation harness that records raw responses, schema/parser coverage and quote support by route.

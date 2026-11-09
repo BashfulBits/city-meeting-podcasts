@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "authority": "Explicit maintainer instruction in chat",
+  "instruction": "Well, 4 and 5 are unfortunate. I\u2019m ok with the decision on 6. Were the others correct? What error rate did we have for each optional adjudicator?",
+  "scope": "Accept the observed RQ06 union into both Denton Council and Library Board feeds for this measured case only. No acceptance of RQ04/RQ05, general union policy, production activation or additional calls.",
+  "case_id": "RQ06",
+  "original_score": "wrong",
+  "maintainer_disposition": "accepted_exception",
+  "original_observations_sha256": "c26ee64382041a424fd2a9ccbffb22fd651c54737e1b7a3b1987d708757c7ec9",
+  "original_gold_and_scores_preserved": true,
+  "adjudicator_semantic_error_rates_after_acceptance": {
+    "gemini": {
+      "wrong": 3,
+      "completed": 6,
+      "error_rate": 0.5,
+      "wrong_case_ids": [
+        "RQ04",
+        "RQ09",
+        "RQ10"
+      ]
+    },
+    "jev": {
+      "wrong_selected_proposal": 1,
+      "completed": 4,
+      "error_rate": 0.25,
+      "wrong_case_ids": [
+        "RQ04"
+      ],
+      "pre_send_profile_holds": 1,
+      "http_input_length_failures": 1
+    }
+  },
+  "limitation": "Conditional small samples with different answered-case sets; not a head-to-head accuracy ranking. JEV measures semantic correctness of its selected proposal, not exact agreement with Gemini."
+}

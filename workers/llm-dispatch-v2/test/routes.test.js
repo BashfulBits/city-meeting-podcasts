@@ -308,15 +308,12 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
     "beatapi_deepseek_v4_1_flash_free",
     "beatapi_secondary_deepseek_v4_1_flash_free",
   ]);
+  // The secondary BeatAPI account lost its free V4 Flash and V4 Pro routes 2026-10-31.
   assert.deepEqual(map["deepseek/deepseek-v4-flash"], [
     "orcarouter_deepseek_v4_flash_free",
     "beatapi_deepseek_v4_flash_free",
-    "beatapi_secondary_deepseek_v4_flash_free",
   ]);
-  assert.deepEqual(map["deepseek/deepseek-v4-pro"], [
-    "beatapi_deepseek_v4_pro_free",
-    "beatapi_secondary_deepseek_v4_pro_free",
-  ]);
+  assert.deepEqual(map["deepseek/deepseek-v4-pro"], ["beatapi_deepseek_v4_pro_free"]);
   assert.equal(
     modelForRouteId("nvidia_deepseek_v4_1_flash_free", DISPATCH_LIMITS),
     "deepseek/deepseek-v4.1-flash"
@@ -503,4 +500,24 @@ test("timeout counts exclude only routes with two deadlines without widening pol
   assert.deepEqual(ids(JSON.stringify({ slow: -1, sibling: 1.5 })), ["slow", "sibling"]);
   assert.deepEqual(routesEligibleFor({ ...job, response_timeout_routes: '{"slow":2}',
     policy_json: { ...job.policy_json, allowed_route_ids: ["slow"] } }, catalog), []);
+});
+
+test("a declared alias keeps a job naming a retired model routable to the newer model's routes", () => {
+  // The retired ID has no routes of its own; only the alias carries it to the newer pool.
+  const catalog = {
+    model_aliases: { "old/model": "new/model" },
+    model_routes_map: { "new/model": ["new-route"] },
+    routes_by_id: {
+      "new-route": {
+        route_id: "new-route", free: true, input_context_limit: 10000, output_context_limit: 500,
+      },
+    },
+  };
+  const job = {
+    policy_json: { allowed_models: ["old/model"], allow_paid: false },
+    attempts: 0, schema_retry_count: 0, input_token_estimate: 100, max_output_token_estimate: 100,
+  };
+  assert.deepEqual(routesEligibleFor(job, catalog).map((r) => r.route_id), ["new-route"]);
+  // Without the alias the same job has nowhere to go.
+  assert.deepEqual(routesEligibleFor(job, { ...catalog, model_aliases: {} }), []);
 });

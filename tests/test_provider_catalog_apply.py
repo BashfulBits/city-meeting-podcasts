@@ -15,6 +15,7 @@ from citypods.provider_catalog.apply import (
     EditPlan,
     parse_decisions,
     plan_apply,
+    proposal_body,
 )
 from citypods.provider_catalog.evidence import RouteEvidence, candidate_digest
 from citypods.provider_catalog.issue import MARKER, _discovery_attempt_diagnostics, render_body
@@ -132,7 +133,6 @@ def test_selected_addition_preserves_primary_and_records_route_method():
         {"structured_output_verified_on": "2026-10-07"},
         {"structured_output_method": None},
         {"verdict": "inconclusive"},
-        {"catalog_digest": "changed"},
         {"input_context_limit": 20000},
         {"model_key": "other"},
         {"account_id": "other"},
@@ -143,10 +143,79 @@ def test_incomplete_stale_changed_or_deferred_proof_cannot_write(changes):
     assert not result.routes and result.deferred
 
 
+def test_an_unrelated_catalog_change_does_not_defer_a_selection():
+    # Stored evidence predates a listing change elsewhere; this model itself is unchanged.
+    stored = replace(PROOF, catalog_digest="older-listing")
+    result = plan(
+        PROOF,
+        Decision(
+            "host",
+            "creator/new",
+            "add",
+            ("lane",),
+            stored,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        ),
+    )
+    assert len(result.routes) == 1 and not result.deferred
+
+
+def test_a_changed_entry_for_the_model_itself_still_defers():
+    stored = replace(PROOF, model_digest="a" * 64)
+    fresh = replace(PROOF, model_digest="b" * 64)
+    result = plan(
+        fresh,
+        Decision(
+            "host",
+            "creator/new",
+            "add",
+            ("lane",),
+            stored,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        ),
+    )
+    assert not result.routes and "limits or identity changed" in result.deferred[0]
+    # Evidence recorded before the per-model digest existed is compared on its other fields only.
+    legacy = replace(PROOF, model_digest="")
+    ok = plan(
+        fresh,
+        Decision(
+            "host",
+            "creator/new",
+            "add",
+            ("lane",),
+            legacy,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        ),
+    )
+    assert len(ok.routes) == 1
+
+
+def test_model_digest_ignores_other_models_and_old_evidence_keeps_its_candidate_digest():
+    from citypods.provider_catalog.evidence import (
+        CatalogEvidence,
+        candidate_digest,
+        digest,
+        model_catalog_digest,
+    )
+
+    def entry(name, free=True):
+        return (name, True, free, 1000, 100, None)
+
+    one = CatalogEvidence("host", "t", True, (entry("a"), entry("b")))
+    two = CatalogEvidence("host", "t", True, (entry("a"), entry("c"), entry("b")))
+    assert model_catalog_digest(one, "a") == model_catalog_digest(two, "a")
+    changed = CatalogEvidence("host", "t", True, (entry("a", free=False), entry("b")))
+    assert model_catalog_digest(one, "a") != model_catalog_digest(changed, "a")
+    # Without a model digest the hash is byte-for-byte what it was before the field existed.
+    legacy = {k: v for k, v in PROOF.to_dict().items() if k != "model_digest"}
+    assert candidate_digest(PROOF, ("lane",)) == digest({"evidence": legacy, "lanes": ["lane"]})
+
+
 def test_unknown_identity_is_deferred_and_legacy_state_is_advisory():
     unknown = replace(PROOF, model_key=None)
     result = plan(unknown, Decision("host", "creator/new", "add", evidence=unknown))
-    assert "identity_required" in result.deferred[0]
+    assert "no model_key" in result.deferred[0]
     assert plan(decision=Decision("host", "creator/new", "add")).deferred
 
 
@@ -179,7 +248,7 @@ def test_stale_or_missing_discovery_evidence_cannot_prepare_an_addition():
     decision = Decision("host", "creator/new", "add", ("lane",), PROOF)
     result = plan_apply(report, (decision,), config())
     assert not result.routes
-    assert "authenticated provider-counted input evidence" in result.deferred[0]
+    assert "input limit not tested" in result.deferred[0]
 
 
 def test_non_provider_counted_or_stale_discovery_cap_is_not_accepted():
@@ -418,16 +487,87 @@ def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():
         parse_decisions(body, report)
 
 
-def test_explicit_removal_is_parsed_but_deferred_until_rescue():
+def test_explicit_removal_is_parsed_and_needs_a_fresh_proof():
     report = Report(anomalies=[Anomaly("host", "route", "model", "not_entitled", "paid", False)])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
         "- [ ] `route`: remove route", "- [x] `route`: remove route"
     )
     [decision] = parse_decisions(body, report)
     assert decision.action == "remove" and decision.route_id == "route"
-    result = plan_apply(Report(), (decision,), config())
-    assert result.deferred and "Slice 3 rescue" in result.deferred[0]
-    assert not result.routes and not result.paid_routes
+    configured = [{"route_id": "route", "provider": "host", "upstream_model": "model"}]
+    result = plan_apply(Report(), (decision,), config(configured))
+    assert result.deferred and "not_entitled proof" in result.deferred[0]
+    assert not result.removed_routes and not result.routes and not result.paid_routes
+
+
+def test_remove_decision_drops_a_route_that_has_a_sibling_and_repairs_nothing():
+    conf, proof, _ = paid_fixture()
+    decision = Decision(
+        "host", "creator/old", "remove", route_id="paid", route_digest=proof.config_digest
+    )
+    result = plan_apply(Report(anomalies=[proof]), (decision,), conf)
+    assert result.removed_routes == ("paid",) and not result.last_routes
+
+
+def test_removing_a_models_last_route_flags_it_with_alias_targets():
+    from citypods.provider_catalog.evidence import digest
+
+    conf, proof, _ = paid_fixture()
+    newer = {**conf.limits["routes"][0], "route_id": "newer", "model": "old-2", "provider": "host"}
+    paid = {**conf.limits["routes"][0], "route_id": "paid"}
+    limits = {**conf.limits, "routes": [paid, newer]}
+    lanes = {"lane": LaneConfig("lane", ("old",), 1, 1, 1, backup_models=("old-2",))}
+    proof = replace(proof, config_digest=digest(paid))
+    decision = Decision("host", "creator/old", "remove", route_id="paid", route_digest=digest(paid))
+    result = plan_apply(
+        Report(anomalies=[proof]), (decision,), replace(conf, limits=limits, lanes=lanes)
+    )
+    assert result.removed_routes == ("paid",)
+    assert result.last_routes == (("old", ("lane",), ("old-2",)),)
+    body = proposal_body(result)
+    assert "Last route for `old` removed" in body and "`old` → `old-2`" in body
+
+
+def test_removal_is_rejected_deferred_or_counts_routes_added_in_the_same_plan():
+    from citypods.provider_catalog.evidence import digest
+
+    conf, proof, _ = paid_fixture()
+    paid = {**conf.limits["routes"][0], "route_id": "paid"}
+    proof = replace(proof, config_digest=digest(paid))
+    decision = Decision("host", "creator/old", "remove", route_id="paid", route_digest=digest(paid))
+    only = replace(conf, limits={**conf.limits, "routes": [paid]})
+    result = plan_apply(Report(anomalies=[proof]), (decision,), only)
+    assert not result.removed_routes and "no safe replacement" in result.rejected[0]
+    # A lane addition or paid decision in the same /apply defers the removal to its own PR.
+    keep = Decision("host", "creator/old", "keep_paid", route_id="paid", route_digest=digest(paid))
+    mixed = plan_apply(Report(anomalies=[proof]), (keep, decision), conf)
+    assert not mixed.removed_routes and "separate /apply" in mixed.deferred[0]
+    # A route-only addition for the same pool is replacement capacity, so it is not a last route.
+    added = replace(PROOF, model_key="old")
+    add = Decision("host", "creator/new", "add", (), added)
+    report = Report(
+        anomalies=[proof], candidates=[replace(CANDIDATE, discovery=DISCOVERY, lanes=("lane",))]
+    )
+    report.candidates[0] = replace(report.candidates[0], evidence=added.to_dict())
+    add = replace(add, discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"])
+    result = plan_apply(report, (add, decision), only)
+    assert result.removed_routes == ("paid",) and not result.last_routes
+    assert "No primary changes" not in proposal_body(result)
+
+
+def test_alias_candidates_prefer_same_family_then_shared_lanes():
+    from citypods.provider_catalog.apply import alias_candidates
+
+    routes = [
+        {"model": "zai/glm-5.3-flash", "free": True},
+        {"model": "deepseek/v4", "free": True},
+        {"model": "zai/glm-4.5-flash", "free": True, "rpd": 0},
+    ]
+    lanes = {"a": LaneConfig("a", ("zai/glm-4.5-flash", "deepseek/v4"), 1, 1, 1)}
+    assert alias_candidates("zai/glm-4.5-flash", routes, lanes) == (
+        "zai/glm-5.3-flash",
+        "deepseek/v4",
+    )
 
 
 def event(**changes):
@@ -597,7 +737,7 @@ def test_unknown_compiler_required_bound_defers_only_that_candidate(field):
         assert dict(result.routes[0])["input_context_limit"] == 12234
     else:
         assert result.deferred and not result.routes
-        assert "output-context value" in result.deferred[0]
+        assert "output limit is not" in result.deferred[0]
 
 
 def test_old_selection_cannot_place_an_already_configured_task_plugin_in_a_chat_lane():
@@ -1268,3 +1408,279 @@ def test_input_priority_supporting_counts_do_not_claim_full_requested_output():
     assert "reported input 130,463, generated output 609, requested output 2,444" in body
     assert "input plus generated output 131,072" in body
     assert "Consumed totals are separate from requested-output capacity proof" in body
+
+
+def test_route_only_addition_waits_for_the_daily_measurement_then_lists_its_pool():
+    report = Report(candidates=[replace(CANDIDATE, discovery=None)])
+    decision = Decision("host", "creator/new", "add", (), PROOF)
+    result = plan_apply(report, (decision,), config())
+    assert not result.routes and "the daily run measures" in result.deferred[0]
+    measured = Report(candidates=[replace(CANDIDATE, discovery=DISCOVERY)])
+    decision = replace(
+        decision, discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"]
+    )
+    result = plan_apply(measured, (decision,), config())
+    body = proposal_body(result)
+    assert "| `host_creator_new` | `creator/new` | `primary` | `creator/new` | none |" in body
+
+
+def test_lane_addition_still_requires_measured_input():
+    report = Report(candidates=[replace(CANDIDATE, discovery=None)])
+    decision = Decision("host", "creator/new", "add", ("lane",), PROOF)
+    result = plan_apply(report, (decision,), config())
+    assert not result.routes and "input limit not tested" in result.deferred[0]
+
+
+def test_failed_apply_command_names_the_step_without_echoing_output():
+    import subprocess
+    import sys
+
+    from scripts.provider_catalog_commands import describe_failed_command
+
+    stdout = (
+        "FAILED tests/test_provider_catalog_apply.py::test_x[a-b] - AssertionError: "
+        "key sk-secret-123\nFAILED tests/test_llm_lanes.py::test_y - boom\n"
+    )
+    exc = subprocess.CalledProcessError(
+        1,
+        [sys.executable, "-m", "pytest", "-q", "tests/test_llm_lanes.py"],
+        output=stdout,
+        stderr="TOKEN=abc",
+    )
+    text = describe_failed_command(exc)
+    assert "tests (pytest -q) failed with exit code 1" in text
+    assert "`tests/test_provider_catalog_apply.py::test_x[a-b]`" in text
+    assert "`tests/test_llm_lanes.py::test_y`" in text
+    assert "sk-secret" not in text and "TOKEN" not in text and "AssertionError" not in text
+    assert "comment `/apply` again" in text
+
+    script = subprocess.CalledProcessError(2, [sys.executable, "scripts/compile_llm_limits.py"])
+    assert "validation script compile_llm_limits.py failed with exit code 2" in (
+        describe_failed_command(script)
+    )
+
+
+def _finished_output_axis(reason="stalled"):
+    return {**DISCOVERY, "axes": [*DISCOVERY["axes"], {"axis": "output", "reason": reason}]}
+
+
+def test_finished_output_search_without_a_value_uses_a_flagged_provisional_default():
+    from citypods.provider_catalog.readiness import PROVISIONAL_OUTPUT_CONTEXT_LIMIT
+
+    proof = replace(PROOF, output_context_limit=None)
+    report = Report(
+        candidates=[replace(CANDIDATE, evidence=proof.to_dict(), discovery=_finished_output_axis())]
+    )
+    decision = Decision(
+        "host",
+        "creator/new",
+        "add",
+        evidence=proof,
+        discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+    )
+    result = plan_apply(report, (decision,), config())
+    assert result.routes and not result.deferred
+    route = dict(result.routes[0])
+    assert route["output_context_limit"] == PROVISIONAL_OUTPUT_CONTEXT_LIMIT
+    notes = " ".join(" ".join(lines) for _rid, lines in result.route_notes)
+    assert "provisional default" in notes and "subject to this PR's review" in notes
+
+
+def test_readiness_states_tell_the_maintainer_what_happens_next():
+    from citypods.provider_catalog.readiness import ACTION, READY, WAITING, candidate_readiness
+
+    proof = replace(PROOF, output_context_limit=None)
+    waiting = candidate_readiness(replace(CANDIDATE, evidence=proof.to_dict(), discovery=DISCOVERY))
+    assert waiting.state == WAITING and waiting.input_cap == 12000 and waiting.output_cap is None
+    assert "/apply" in waiting.next_step
+
+    ready = candidate_readiness(
+        replace(CANDIDATE, evidence=proof.to_dict(), discovery=_finished_output_axis())
+    )
+    assert ready.state == READY and ready.output_source == "provisional"
+    assert "Ready to add" in ready.headline and "`add route only`" in ready.next_step
+
+    slow_input = {**DISCOVERY["axes"][0], "reason": "input_time_limited_lower_bound"}
+    slow = candidate_readiness(
+        replace(
+            CANDIDATE,
+            evidence=PROOF.to_dict(),
+            discovery={**DISCOVERY, "axes": [slow_input]},
+        )
+    )
+    assert slow.state == READY and "720 s" in slow.headline
+
+    untested = candidate_readiness(replace(CANDIDATE, discovery=None, below_floor=True))
+    assert untested.state == ACTION
+    pending = candidate_readiness(replace(CANDIDATE, discovery=None, below_floor=False))
+    assert pending.state == WAITING
+
+    outage = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={"axes": [{"axis": "input", "reason": "outage"}], "reason": "outage"},
+        )
+    )
+    assert outage.state == WAITING and "server errors" in outage.headline
+
+    retry = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={"axes": [{"axis": "input", "reason": "stalled"}], "retryable": True},
+        )
+    )
+    assert retry.state == WAITING and "try 1 of 4" in retry.next_step
+    exhausted = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={
+                "axes": [{"axis": "input", "reason": "stalled"}],
+                "retryable": True,
+                "auto_attempts": 4,
+            },
+        )
+    )
+    assert exhausted.state == ACTION and "`test again`" in exhausted.next_step
+
+
+def test_issue_leads_with_next_steps_and_hides_diagnostics_in_details():
+    proof = replace(PROOF, output_context_limit=None)
+    candidate = replace(CANDIDATE, evidence=proof.to_dict(), discovery=_finished_output_axis())
+    body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
+    assert body.index("## Next steps") < body.index("## Candidates")
+    row = next(
+        line for line in body.splitlines() if line.startswith("| `host/creator/new` | READY")
+    )
+    assert "12,000" in row and "4,096 (provisional)" in row and "`/apply`" in row
+    # The same verdict sits beside the checkboxes, so the tick and its meaning are together.
+    decisions = body[body.index("## Decisions") :]
+    assert "Ready to add." in decisions and "- [ ] `host/creator/new`: add route only" in decisions
+    details = body[body.index("## Request-cap discovery") :]
+    assert details.count("<details>") == details.count("</details>") >= 1
+
+
+@pytest.mark.parametrize(
+    "reason", ["outage", "quota_deferred", "access_deferred", "pause_lost", "budget_exhausted"]
+)
+def test_interrupted_output_search_is_not_finished_so_no_provisional_default(reason):
+    from citypods.provider_catalog.readiness import output_cap_for
+
+    assert output_cap_for(_finished_output_axis(reason)) == (None, None)
+    assert output_cap_for(_finished_output_axis("stalled"))[1] == "provisional"
+
+
+@pytest.mark.parametrize(
+    "reason", ["below_automatic_quality_floor", "automatic_discovery_already_recorded"]
+)
+def test_candidates_automatic_discovery_skips_need_a_decision_not_a_wait(reason):
+    from citypods.provider_catalog.readiness import ACTION, candidate_readiness
+
+    stub = {"axes": [], "retryable": False, "reason": reason}
+    assert candidate_readiness(replace(CANDIDATE, discovery=stub)).state == ACTION
+
+
+def test_publication_failure_does_not_claim_the_checks_failed():
+    import subprocess
+
+    from scripts.provider_catalog_commands import describe_failed_command
+
+    text = describe_failed_command(subprocess.CalledProcessError(128, ["git", "push", "origin"]))
+    assert "Publication failed and main is unchanged" in text
+    assert "repository checks" not in text
+
+
+def test_test_again_with_no_saved_results_explains_instead_of_failing(monkeypatch):
+    from datetime import UTC, datetime
+
+    import scripts.provider_catalog_commands as commands
+    from citypods.provider_catalog.apply import Decision
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(commands, "discover_discovery_references", lambda **kwargs: [])
+    monkeypatch.setattr(commands, "verified_discovery_history", lambda *a, **k: ((), (), ()))
+
+    receipt = commands.prepare_discovery_retry(
+        Decision("nvidia", "minimaxai/minimax-m3.1-flash", "test_again"),
+        event={},
+        issue_number=2554,
+        now=datetime.now(UTC),
+    )
+
+    # No saved evidence (the measuring run crashed before saving): nothing to retry, no error.
+    assert receipt is None
+
+
+def _unscored_with_matches():
+    matches = [
+        {"creator": "meta", "slug": "muse-spark", "name": "Muse Spark", "score": 40.0},
+        {"creator": "meta", "slug": "llama-4", "name": "Llama 4", "score": 10.0},
+    ]
+    return replace(CANDIDATE, score=None, below_floor=None, aa_matches=matches)
+
+
+def test_closest_aa_matches_are_checkboxes_and_a_ticked_one_is_read_back_next_run():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import accepted_aa_matches, decode_state
+
+    candidate = _unscored_with_matches()
+    report = Report(candidates=[candidate])
+    report.state = {"version": 3, "last_full": {"candidates": [asdict(candidate)]}}
+    body = render_body(report, run_date=TODAY.isoformat())
+    row = "- [ ] `host/creator/new`: AA match `meta/muse-spark` (Muse Spark, index 40)"
+    assert row in body and "AA match `meta/llama-4`" in body
+    ticked = body.replace(row, row.replace("[ ]", "[x]"))
+
+    decisions = parse_decisions(ticked, report)
+    assert [d.action for d in decisions] == ["aa_match"]
+    assert accepted_aa_matches(ticked, decode_state(ticked)) == {
+        "host/creator/new": ("meta", "muse-spark")
+    }
+    # Nothing ticked: nothing accepted. A row that was not offered is never accepted.
+    assert accepted_aa_matches(body, decode_state(body)) == {}
+    forged = ticked.replace("`meta/muse-spark`", "`openai/gpt-oss-120b`")
+    assert accepted_aa_matches(forged, decode_state(body)) == {}
+
+
+def test_a_stored_aa_match_survives_without_the_checkbox():
+    from citypods.provider_catalog.issue import accepted_aa_matches
+
+    state = {"aa_matches": {"host/creator/new": ["meta", "muse-spark"]}}
+    assert accepted_aa_matches("", state) == {"host/creator/new": ("meta", "muse-spark")}
+    # Editable state in the wrong shape must not stop a scheduled run.
+    assert accepted_aa_matches("", {"aa_matches": ["meta", "muse-spark"]}) == {}
+    assert accepted_aa_matches("", {"aa_matches": "x"}) == {}
+
+
+def test_readiness_explains_a_429_wait_and_why_a_candidate_was_not_measured():
+    from citypods.provider_catalog.readiness import WAITING, candidate_readiness
+
+    limited = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={
+                "axes": [{"axis": "input", "reason": "quota_deferred"}],
+                "retryable": True,
+                "quota_waits": 3,
+                "auto_attempts": 1,
+            },
+        )
+    )
+    assert (
+        limited.state == WAITING and "429" in limited.headline and "3 time(s)" in limited.headline
+    )
+    gave_up = candidate_readiness(
+        replace(
+            CANDIDATE,
+            discovery={
+                "axes": [{"axis": "input", "reason": "quota_deferred"}],
+                "quota_gave_up": True,
+                "auto_attempts": 1,
+            },
+        )
+    )
+    assert "10 minutes" in gave_up.headline and "try 2 of 4" in gave_up.next_step
+    noted = candidate_readiness(
+        replace(CANDIDATE, discovery=None, below_floor=False, measure_note="it waited")
+    )
+    assert noted.state == WAITING and "it waited" in noted.headline

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "scope": "Historical completed measurement facts, not model qualification",
+  "original_summary_sha256": "cd50d270f65eb4e550d23c6ee63d5da9108df9e3a4da019737742b5ae5b82aa9",
+  "status": "completed",
+  "completed_cases": 12,
+  "total_cases": 12,
+  "provider_attempts": 39,
+  "max_provider_attempts": 48,
+  "completed_judgments": 38,
+  "transport_failures": {
+    "original_orcarouter_429": 1,
+    "approved_retry_succeeded": true
+  },
+  "input_profile_or_contract_holds": 0,
+  "unknown_requests": 0,
+  "owned_pauses_restored": true,
+  "automation_deleted": "complete-concise-remedy-evaluation",
+  "identity_checks_all_completed_passed": true,
+  "known_shared_error_case": "RQ05",
+  "quality_tables": "Recompute from retained answers; original gold and RQ06 exception separate."
+}

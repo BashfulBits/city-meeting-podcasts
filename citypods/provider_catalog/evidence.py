@@ -123,6 +123,21 @@ def catalog_digest(evidence: CatalogEvidence) -> str:
     )
 
 
+def model_catalog_digest(evidence: CatalogEvidence, model_id: str) -> str:
+    """Digest of this model's own catalog entries only.
+
+    `catalog_digest` covers the whole provider listing, so any unrelated model that appears or
+    disappears changes it; a decision about one model must not go stale because of that.
+    """
+    return digest(
+        {
+            "provider": evidence.provider,
+            "model": model_id,
+            "entries": sorted(entry for entry in evidence.models if entry[0] == model_id),
+        }
+    )
+
+
 @dataclass(frozen=True)
 class RouteEvidence:
     provider: str
@@ -142,6 +157,8 @@ class RouteEvidence:
     # Method, outcome, first-byte and completion latency; no untrusted response body.
     methods: tuple[tuple[str, str, float | None, float | None], ...] = ()
     contended: bool = False
+    # Digest of this model's own catalog entries; empty on evidence recorded before it existed.
+    model_digest: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -155,7 +172,11 @@ class RouteEvidence:
 
 
 def candidate_digest(evidence: RouteEvidence, lanes: tuple[str, ...]) -> str:
-    return digest({"evidence": evidence.to_dict(), "lanes": sorted(lanes)})
+    payload = evidence.to_dict()
+    if not payload.get("model_digest"):
+        # Evidence recorded before the field existed must keep hashing exactly as it did.
+        payload.pop("model_digest", None)
+    return digest({"evidence": payload, "lanes": sorted(lanes)})
 
 
 def positive_bound(record, keys) -> int | None:
@@ -493,7 +514,33 @@ def logical_identity(provider, upstream_model, rules, record, routes) -> str | N
     canonical = rules.model_identity(upstream_model, record)
     if len(exact) > 1 or (exact and canonical and canonical not in exact):
         return None
-    return next(iter(exact)) if exact else canonical
+    if exact or canonical:
+        return next(iter(exact)) if exact else canonical
+    return _matching_pool(upstream_model, routes)
+
+
+def _pool_form(name: str) -> str:
+    """Spelling-insensitive form of a model name: case, vendor aliases and free decorations."""
+    value = name.lower().removeprefix("openrouter/").removeprefix("kilo/")
+    value = re.sub(r"(:free|-free)$", "", value)
+    return re.sub(r"^z-ai/", "zai/", value)
+
+
+def _matching_pool(upstream_model: str, routes) -> str | None:
+    """Return the one existing pool this upstream name is only a respelling of, else None.
+
+    Only a pool that already exists qualifies, so a suggestion can never invent a new model
+    identity; a name that matches zero or several pools stays unknown for human review.
+    """
+    form = _pool_form(upstream_model)
+    pools = {str(r.get("model_key") or r["model"]) for r in routes}
+    full = {p for p in pools if _pool_form(p) == form}
+    if len(full) == 1:
+        return next(iter(full))
+    if full or "/" in form:
+        return None
+    bare = {p for p in pools if _pool_form(p).rsplit("/", 1)[-1] == form}
+    return next(iter(bare)) if len(bare) == 1 else None
 
 
 @dataclass(frozen=True)
@@ -1598,12 +1645,12 @@ def discovery_artifact(sessions, *, repository, run_id, head_sha, now):
     """A separate namespace: discovery results cannot authorize configured-route cap edits."""
     from citypods.provider_catalog.discovery import (
         MAX_ARTIFACT_BYTES,
-        MAX_RUN_SESSIONS,
+        MAX_ARTIFACT_SESSIONS,
         MAX_SESSION_CALLS,
         DiscoveryObservation,
     )
 
-    if len(sessions) > MAX_RUN_SESSIONS:
+    if len(sessions) > MAX_ARTIFACT_SESSIONS:
         raise ValueError("too many discovery sessions")
     normalized = []
     for session in sessions:

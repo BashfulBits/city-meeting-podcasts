@@ -411,6 +411,7 @@ API_SHAPES = ("chat", "systemone")
 
 _WORKER_ROUTE_FIELDS = (
     "route_id",
+    "stream_response",
     "ai_gateway_max_attempts",
     # The route's PRIMARY logical model. A route listed in several pools via `also_serves`
     # appears in several model_routes_map entries, so the Worker must not infer its identity from
@@ -469,6 +470,9 @@ _WORKER_ROUTE_FIELDS = (
 )
 
 _WORKER_PROVIDER_FIELDS = (
+    # true: the Worker streams this provider's chat replies and rebuilds the single reply (route
+    # `stream_response` overrides). Remove it to go back to plain request/response.
+    "stream_response",
     "api_base",
     "ai_gateway_slug",
     "ai_gateway_chat_path",
@@ -804,6 +808,67 @@ def _validated_routes(
     return normalized_routes, routes_by_id, model_routes_map, model_aliases
 
 
+def _validated_declared_aliases(
+    raw_aliases: Any,
+    *,
+    route_aliases: dict[str, str],
+    canonical_models: set[str],
+) -> dict[str, str]:
+    """Validate the optional ``model_aliases`` section: retired model IDs that stay callable.
+
+    A route's own ``model`` selector already becomes an alias of its ``model_key``, but that alias
+    disappears with the route. When a model's last route is removed, a declared alias keeps its ID
+    resolving to a newer model that is at least as good, so queued and future jobs naming it are
+    served by the target pool instead of failing as ``route_retired``.
+
+    Each entry is ``old/id: {to, reason, decided_on}``. The source must not be a pool that still
+    has routes (that would hide its routes), the target must be a pool with at least one route
+    (after resolving route-derived aliases, one hop), and the source must not already be an
+    alias of something else.
+    """
+    if raw_aliases is None:
+        return {}
+    if not isinstance(raw_aliases, dict):
+        raise ValueError(
+            f"model_aliases must be a mapping of old IDs to entries, got {raw_aliases!r}"
+        )
+    declared: dict[str, str] = {}
+    for source, entry in raw_aliases.items():
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError(f"model_aliases has an invalid source ID: {source!r}")
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"model_aliases[{source!r}] must be a mapping with to/reason/decided_on"
+            )
+        unknown = set(entry) - {"to", "reason", "decided_on"}
+        if unknown:
+            raise ValueError(f"model_aliases[{source!r}] has unknown keys {sorted(unknown)}")
+        target = entry.get("to")
+        reason = entry.get("reason")
+        decided_on = entry.get("decided_on")
+        if not isinstance(target, str) or not target.strip():
+            raise ValueError(f"model_aliases[{source!r}] needs a target in 'to'")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"model_aliases[{source!r}] needs a reason")
+        if not isinstance(decided_on, str) or not decided_on.strip():
+            raise ValueError(f"model_aliases[{source!r}] needs decided_on (a quoted date)")
+        if source in canonical_models:
+            raise ValueError(
+                f"model_aliases[{source!r}] names a model that still has routes; "
+                "remove or retarget those routes first"
+            )
+        if source in route_aliases:
+            raise ValueError(
+                f"model_aliases[{source!r}] is already an alias of {route_aliases[source]!r} "
+                "through a route"
+            )
+        canonical = route_aliases.get(target, target)
+        if canonical not in canonical_models:
+            raise ValueError(f"model_aliases[{source!r}] points at {target!r}, which has no routes")
+        declared[source] = canonical
+    return declared
+
+
 def _validated_model_routing(
     raw_model_routing: Any,
     *,
@@ -912,6 +977,10 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     providers = raw.get("providers", {})
     for provider_name, provider_cfg in providers.items():
         if isinstance(provider_cfg, dict):
+            if "stream_response" in provider_cfg and not isinstance(
+                provider_cfg["stream_response"], bool
+            ):
+                raise ValueError(f"provider {provider_name} stream_response must be true or false")
             if "ai_gateway_max_attempts" in provider_cfg:
                 provider_cfg["ai_gateway_max_attempts"] = _validate_ai_gateway_max_attempts(
                     provider_cfg["ai_gateway_max_attempts"], provider_name
@@ -950,6 +1019,13 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         raw.get("structured_output_methods")
     )
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
+    model_aliases.update(
+        _validated_declared_aliases(
+            raw.get("model_aliases"),
+            route_aliases=model_aliases,
+            canonical_models=set(model_routes_map),
+        )
+    )
     model_routing = _validated_model_routing(
         raw.get("model_routing"),
         model_aliases=model_aliases,

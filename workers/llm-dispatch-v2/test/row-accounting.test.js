@@ -157,7 +157,7 @@ test("legacy counter seeding includes both idle-tick writes", (t) => {
   assert.ok(row.rows_written_today >= 2 * 12 * 60, `seeded ${row.rows_written_today}`);
 });
 
-test("an unchanged idle claim writes nothing until the refresh interval, then folds its count", async () => {
+test("idle recovery statistics and claim counts share one durable write per sweep", async () => {
   const f = fixture();
   const t0 = Date.UTC(2026, 9, 7, 12, 0, 0);
   const minute = 60_000;
@@ -169,24 +169,25 @@ test("an unchanged idle claim writes nothing until the refresh interval, then fo
   assert.equal(scheduler().last_claim_reason, "no_queued_work");
   assert.equal(scheduler().claim_empty_count_today, 1);
 
-  // Nine more idle ticks inside the interval: no billed row at all.
+  // Each sweep writes recovery telemetry on the scheduler's accounting row.
   for (let i = 1; i <= 9; i++) await f.coordinator.claimDispatchWindow(t0 + i * minute, 30);
-  assert.equal(f.read(), first);
-  assert.equal(scheduler().last_claim_at, t0);
-  // Stats still reports every tick this instance saw.
+  assert.equal(f.read(), first + 9);
+  assert.equal(scheduler().last_claim_at, t0 + 9 * minute);
+  assert.equal(scheduler().claim_empty_count_today, 10);
+  // Stats reports the same durable counts.
   const live = (await f.coordinator.stats(t0 + 9 * minute)).claim;
   assert.equal(live.empty_count_today, 10);
   assert.equal(live.reason_counts_today.no_queued_work, 10);
   assert.equal(live.last_at, t0 + 9 * minute);
-  // The detailed view agrees with the ordinary one while repeats are still buffered.
+  // The detailed view agrees with the ordinary one.
   const detailed = (await f.coordinator.detailedStats(t0 + 9 * minute, 5)).claim;
   assert.equal(detailed.empty_count_today, 10);
   assert.equal(detailed.reason_counts_today.no_queued_work, 10);
   assert.equal(detailed.last_at, t0 + 9 * minute);
 
-  // The tick at the interval persists, carrying the skipped ticks' counts, on the accounting row.
+  // The next tick also uses a single accounting row.
   await f.coordinator.claimDispatchWindow(t0 + 10 * minute, 30);
-  assert.equal(f.read(), first + 1);
+  assert.equal(f.read(), first + 10);
   assert.equal(scheduler().last_claim_at, t0 + 10 * minute);
   assert.equal(scheduler().claim_empty_count_today, 11);
   assert.deepEqual(JSON.parse(scheduler().claim_reason_counts_json), { no_queued_work: 11 });
@@ -232,8 +233,10 @@ test("rate failure snapshot uses bounded primary-key reads and survives exhauste
   const result = await f.coordinator.rateFailureStats(Date.parse(day));
   assert.deepEqual(result.route_failures.map(row => ({ ...row })), [{ utc_day: day, route_id: "route-a",
     failure_class: "own_rpm", count: 3 }]);
-  assert.equal(queries.length, 3);
-  assert.ok(queries.every(q => /WHERE utc_day = \? AND route_id = \? AND failure_class = \?/.test(q)));
+  // One authority read, then one bounded primary-key read per tracked class.
+  assert.equal(queries.length, 4);
+  assert.match(queries[0], /packed_state_active/);
+  assert.ok(queries.slice(1).every(q => /WHERE utc_day = \? AND route_id = \? AND failure_class = \?/.test(q)));
   assert.equal((await f.coordinator.rateFailureStats(Date.parse("2026-10-10"))).route_failures.length, 0);
   f.coordinator._dispatchLimits = () => ({ routes_by_id: Object.fromEntries(
     Array.from({ length: 129 }, (_, i) => [String(i), {}])) });

@@ -1124,6 +1124,7 @@ class MomentsStage(LLMProducerStage):
     ) -> StageStats:
         from citypods.chapters import episode_served_chapters
         from citypods.compute.base import InferenceJob, JobHandle, JobResult
+        from citypods.compute.llm_deferred import discard_completed_result
         from citypods.compute.llm_policy import LLMRequestPolicy
         from citypods.moments import (
             MOMENTS_CONTRACT,
@@ -1132,6 +1133,7 @@ class MomentsStage(LLMProducerStage):
             MOMENTS_SYSTEM_PROMPT,
             candidate_matrix_key,
             ensure_moment_contract,
+            moment_recipe_models,
             normalize_decision_candidate,
             normalize_quote_candidate,
             parse_transcript_segments,
@@ -1215,7 +1217,7 @@ class MomentsStage(LLMProducerStage):
                 transcript_words_key=ep.transcript_words_key,
                 chapters=chapter_rows,
                 agenda_text_key=agenda_key,
-                route_models=allowed_models,
+                route_models=moment_recipe_models(input_tokens),
                 meeting_family=family,
                 evaluation_policy="candidate-generation-v1",
             )
@@ -1239,7 +1241,7 @@ class MomentsStage(LLMProducerStage):
                 timeout_class="long",
             )
             admission = _admit_r6_dispatch(ctx, stats, moments_recipe, ep.uid or ep.guid)
-            if admission in {"pending", "cap"}:
+            if admission in {"pending", "cap", "exhausted"}:
                 work.defer("queued" if admission == "pending" else "policy_held")
                 continue
             try:
@@ -1253,9 +1255,15 @@ class MomentsStage(LLMProducerStage):
                 if isinstance(outcome, JobHandle):
                     stats.defer("llm-pending", sample=ep.uid or ep.guid)
                     continue
-                if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
+                if not isinstance(outcome, JobResult):
                     raise ValueError("moment backend returned an invalid result")
-                payload = response_payload(outcome.output)
+                try:
+                    if not isinstance(outcome.output, dict):
+                        raise ValueError("moment result is not an object")
+                    payload = response_payload(outcome.output)
+                except (ValueError, TypeError) as exc:
+                    discard_completed_result(ctx.storage, moments_recipe, outcome, error=exc)
+                    raise ValueError("moment response failed schema validation") from None
                 model = str(outcome.model or allowed_models[0])
             except Exception as exc:  # noqa: BLE001 - one bad model response cannot stop a feed.
                 work.defer("errored")
@@ -1377,14 +1385,23 @@ def _moment_source(
 def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, sample: str) -> str:
     """Reserve the shared R6 budget only for a genuinely new queue admission."""
     from citypods.compute.base import JobHandle, JobResult
-    from citypods.compute.llm_deferred import look_up_deferred
+    from citypods.compute.llm_deferred import (
+        discard_legacy_moments_request,
+        look_up_deferred,
+        needs_moments_replan,
+        terminal_failure_budget_exhausted,
+    )
 
     existing = look_up_deferred(ctx.storage, recipe_hash)
-    if isinstance(existing, JobHandle):
+    replan = isinstance(existing, JobHandle) and needs_moments_replan(existing)
+    if isinstance(existing, JobHandle) and not replan:
         stats.defer("llm-pending", sample=sample)
         return "pending"
     if isinstance(existing, JobResult):
         return "cached"
+    if terminal_failure_budget_exhausted(ctx.storage, recipe_hash):
+        stats.defer("llm-retry-exhausted", sample=sample)
+        return "exhausted"
     with ctx.moment_dispatch_lock:
         if (
             ctx.moment_max_dispatches is not None
@@ -1393,6 +1410,20 @@ def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, s
             stats.defer("rollout-dispatch-cap", sample=sample)
             return "cap"
         ctx.moment_dispatches += 1
+    if replan:
+        try:
+            removed = discard_legacy_moments_request(ctx.storage, existing)
+        except Exception:  # noqa: BLE001 - unavailable state must not trigger a new submission.
+            with ctx.moment_dispatch_lock:
+                ctx.moment_dispatches -= 1
+            stats.defer("llm-replan-unavailable", sample=sample)
+            return "pending"
+        if not removed:
+            with ctx.moment_dispatch_lock:
+                ctx.moment_dispatches -= 1
+            stats.defer("llm-pending", sample=sample)
+            return "pending"
+        stats.quality("legacy-request-replanned")
     return "admitted"
 
 
@@ -1474,11 +1505,19 @@ class JudgeStage(LLMProducerStage):
         from citypods.judging.texts import build_episode_texts, tag_definitions
 
         definitions = tag_definitions()
+        transcript_read_metrics: collections.Counter = collections.Counter()
+        cdn_session = None
 
-        def texts_for(ep: Episode) -> EpisodeTexts:
+        def build_texts_for(ep: Episode, *, prefer_cdn: bool) -> EpisodeTexts:
             try:
                 raw = (
-                    _read_storage_bytes(ctx.storage, ep.transcript_key or "")
+                    _read_judge_transcript_bytes(
+                        storage,
+                        ep.transcript_key or "",
+                        cdn_session,
+                        transcript_read_metrics,
+                        prefer_cdn=prefer_cdn,
+                    )
                     if ep.transcript_key
                     else None
                 )
@@ -1493,8 +1532,19 @@ class JudgeStage(LLMProducerStage):
                 raise runner.TextsUnavailable(str(exc)) from exc
             return build_episode_texts(ep, raw, definitions)
 
+        def texts_for(ep: Episode) -> EpisodeTexts:
+            return build_texts_for(ep, prefer_cdn=True)
+
+        def texts_for_origin(ep: Episode) -> EpisodeTexts:
+            return build_texts_for(ep, prefer_cdn=False)
+
         backend = ctx.judge_backend
         storage = getattr(getattr(backend, "_backend", backend), "storage", None) or ctx.storage
+        cdn_enabled = _judge_storage_uses_b2_cdn(storage)
+        if cdn_enabled:
+            from citypods.http import make_session
+
+            cdn_session = make_session()
         dry_run = self._dry_run() or backend is None
         uids = {ep.uid or ep.guid for ep in episodes if ep.uid or ep.guid}
 
@@ -1556,6 +1606,7 @@ class JudgeStage(LLMProducerStage):
             sibling=sibling,
             families=load_families(),
             texts_for=texts_for,
+            texts_for_origin=texts_for_origin if cdn_enabled else None,
             look_up=lambda recipe: look_up_deferred(
                 storage,
                 recipe,
@@ -1582,7 +1633,12 @@ class JudgeStage(LLMProducerStage):
             probes_per_pass=probes_per_pass,
             audit_rows=ctx.judge_audit_rows,
         )
-        result = runner.run(episodes, judging)
+        try:
+            result = runner.run(episodes, judging)
+        finally:
+            if cdn_session is not None:
+                cdn_session.close()
+        result.counts.update(transcript_read_metrics)
         for key, count in sorted(result.counts.items()):
             # Restartable leftovers are deferrals (they feed the backlog trend); the rest are
             # quality/volume counters for the run log.
@@ -5184,6 +5240,31 @@ def _read_storage_bytes(storage, key: str) -> bytes | None:
         if not storage.get_file(key, local_path):
             return None
         return local_path.read_bytes()
+
+
+def _judge_storage_uses_b2_cdn(storage) -> bool:
+    from citypods.storage.public_read import supports_public_cdn
+
+    return supports_public_cdn(storage)
+
+
+def _read_judge_transcript_bytes(storage, key, session, metrics, *, prefer_cdn=True):
+    """Read public transcript content and verify provider keys before accepting CDN bytes."""
+    from citypods.storage.public_read import read_immutable_public_bytes
+
+    provider_hash = re.search(r"-provider-([0-9a-f]{12})\.[^.]+$", key.rsplit("/", 1)[-1])
+
+    def validate(data):
+        return not provider_hash or hashlib.sha1(data).hexdigest().startswith(
+            provider_hash.group(1)
+        )
+
+    read = getattr(storage, "read_immutable_public_bytes", None)
+    if read is None:
+        return read_immutable_public_bytes(
+            storage, key, session, metrics, prefer_cdn=prefer_cdn, validate=validate
+        )
+    return read(key, session, metrics, prefer_cdn=prefer_cdn, validate=validate)
 
 
 def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:

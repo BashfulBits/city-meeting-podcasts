@@ -62,7 +62,7 @@ all intervening additions, and use conditional writes. Skip changed/ambiguous en
 a saved source or proposed entry wholesale. Do not delete registry records, cancel Worker jobs,
 re-ask JEV, or dispatch workflows as part of this recovery proposal.
 
-## Approved archive completed; live cleanup awaits writer coordination
+## Historical checkpoint: archive completed before writer coordination
 
 The maintainer approved the cleanup and requested progress notifications for fresh collection
 and calibration. All 6,665 proposed judgments and 42 pending references were archived to 32

@@ -1,0 +1,232 @@
+{
+  "version": 1,
+  "status": "draft_not_approved",
+  "scope": "Bounded real-record runtime-contract challenge. Reused source families and some reused recordings; not an independent admission holdout.",
+  "inputs": {
+    "review/evidence/historical-selector-replay-2026-10-06.csv": "0f0d34555517aedd90d3a1641920453a606a49594a51c09ca5099179aa172d59",
+    "evals/remedy/holdout/body-selection-2026-10-13/manifest.json": "9e998bf153e47ec44b9b7639e1a62fa7307b73ec9863bf21f379764f8a1cd3f8",
+    "evals/remedy/holdout/body-selection-2026-10-13/gold.json": "0b5789c8ea599332e9e2a97fe037fa5813f41ecc42dbd6982ce9bdc6a7271a32"
+  },
+  "cases": [
+    {
+      "id": "RQ01",
+      "city": "arlington-tx",
+      "label": "Community and Neighborhood Development Committee",
+      "source": "cohort",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "union",
+        "target_feeds": [
+          "arlington-tx-community-and-neighborhood-development-committee"
+        ],
+        "rationale": "The complete named recurring committee has its own configured feed; no source-wide sibling reassignment."
+      },
+      "review_rationale": "The complete named recurring committee has its own configured feed; no source-wide sibling reassignment.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ02",
+      "city": "dallas-tx",
+      "label": "Youth Commission",
+      "source": "inventory",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "union",
+        "target_feeds": [
+          "dallas-tx-youth-commission"
+        ],
+        "rationale": "Named recurring commission; current configured feed is an ordinary-match control."
+      },
+      "review_rationale": "Named recurring commission; current configured feed is an ordinary-match control.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ03",
+      "city": "fort-worth-tx",
+      "label": "Local Development Corporation Local Development Corporation",
+      "source": "inventory",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "union",
+        "target_feeds": [
+          "fort-worth-tx-fort-worth-local-development-corporation"
+        ],
+        "rationale": "Repeated provider label names the existing corporation; count distinct native clips, not views."
+      },
+      "review_rationale": "Repeated provider label names the existing corporation; count distinct native clips, not views.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ04",
+      "city": "addison-tx",
+      "label": "Joint P&Z and City Council Meeting #1",
+      "source": "cohort",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "single_uid_inclusion",
+        "target_feeds": [
+          "addison-tx-city-council",
+          "addison-tx-planning-and-zoning-commission"
+        ],
+        "rationale": "One identified joint recording belongs in both feeds; never widen a source-wide selector. Current P&Z taxonomy guard rejects this spelling: review manual fallback versus a separate fix.",
+        "episode_ids": [
+          "e0"
+        ]
+      },
+      "review_rationale": "One identified joint recording belongs in both feeds; never widen a source-wide selector. Current P&Z taxonomy guard rejects this spelling: review manual fallback versus a separate fix.",
+      "runtime_fallback_review_required": true,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ05",
+      "city": "addison-tx",
+      "label": "Joint CPAC, P&Z, and City Council Meeting #1",
+      "source": "cohort",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "single_uid_inclusion",
+        "target_feeds": [
+          "addison-tx-city-council",
+          "addison-tx-planning-and-zoning-commission",
+          "addison-tx-comprehensive-plan-advisory-committee"
+        ],
+        "rationale": "One joint recording has three participants. Current P&Z/CPAC taxonomy checks reject abbreviations: review manual fallback versus a separate fix.",
+        "episode_ids": [
+          "e0"
+        ]
+      },
+      "review_rationale": "One joint recording has three participants. Current P&Z/CPAC taxonomy checks reject abbreviations: review manual fallback versus a separate fix.",
+      "runtime_fallback_review_required": true,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ06",
+      "city": "denton-tx",
+      "label": "Joint Luncheon with Library Board",
+      "source": "cohort",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "single_uid_inclusion",
+        "target_feeds": [
+          "denton-tx-city-council",
+          "denton-tx-library-board"
+        ],
+        "rationale": "Bound the council/library joint event to its actual recording; both owning feeds must remain.",
+        "episode_ids": [
+          "e0"
+        ]
+      },
+      "review_rationale": "Bound the council/library joint event to its actual recording; both owning feeds must remain.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ07",
+      "city": "dallas-tx",
+      "label": "Joint Education Task Force",
+      "source": "inventory",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "new_feed",
+        "target_feeds": [],
+        "rationale": "Four distinct dated native recordings name a recurring task force. Proposed new feed direction needs explicit human review; historical recommendations are not truth.",
+        "new_feed_slug": "dallas-tx-joint-education-task-force",
+        "new_feed_title": "Dallas: Joint Education Task Force",
+        "new_feed_description": "Recordings of the Dallas Joint Education Task Force."
+      },
+      "review_rationale": "Four distinct dated native recordings name a recurring task force. Proposed new feed direction needs explicit human review; historical recommendations are not truth.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": true
+    },
+    {
+      "id": "RQ08",
+      "city": "fort-worth-tx",
+      "label": "Fort Worth Public Improvement District No. 1 Advisory Board Fort Worth Public Improvement District No. 1 Advisory Board",
+      "source": "inventory",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "manual_review",
+        "target_feeds": [],
+        "rationale": "Four inventory rows are two native clips mirrored across views. Do not count mirrors as four meetings or treat PID as TIF; more identity/recurrence proof is needed."
+      },
+      "review_rationale": "Four inventory rows are two native clips mirrored across views. Do not count mirrors as four meetings or treat PID as TIF; more identity/recurrence proof is needed.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ09",
+      "city": "fort-worth-tx",
+      "label": "Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council",
+      "source": "inventory",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "manual_review",
+        "target_feeds": [],
+        "rationale": "The title does not establish a municipal City Council or Minority and Women Business Enterprise committee identity. No approved ownership policy for this distinct group is supplied; require official identity evidence instead of guessing a feed or new municipal body."
+      },
+      "review_rationale": "The title does not establish a municipal City Council or Minority and Women Business Enterprise committee identity. No approved ownership policy for this distinct group is supplied; require official identity evidence instead of guessing a feed or new municipal body.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ10",
+      "city": "fort-worth-tx",
+      "label": "City Page Update City Page Update",
+      "source": "inventory",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "manual_review",
+        "target_feeds": [],
+        "rationale": "A recurring program title does not establish a municipal meeting body; runtime has no archive-program action."
+      },
+      "review_rationale": "A recurring program title does not establish a municipal meeting body; runtime has no archive-program action.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ11",
+      "city": "dallas-tx",
+      "label": "Joint Board of Directors",
+      "source": "inventory",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "manual_review",
+        "target_feeds": [],
+        "rationale": "No board names are identified by the retained title. Require evidence rather than invent a parent or new board."
+      },
+      "review_rationale": "No board names are identified by the retained title. Require evidence rather than invent a parent or new board.",
+      "runtime_fallback_review_required": false,
+      "new_direction_review_required": false
+    },
+    {
+      "id": "RQ12",
+      "city": "denton-tx",
+      "label": "League of Women Voters Candidate Forum",
+      "source": "cohort",
+      "review_status": "pending",
+      "expected_decision": {
+        "finding_id": "f0",
+        "action": "manual_review",
+        "target_feeds": [],
+        "rationale": "Prior comparison treated candidate forums as an archive series. Runtime cannot express archive_series and its prompt omits that policy: explicitly review safe manual fallback or remove/revise this control before calls."
+      },
+      "review_rationale": "Prior comparison treated candidate forums as an archive series. Runtime cannot express archive_series and its prompt omits that policy: explicitly review safe manual fallback or remove/revise this control before calls.",
+      "runtime_fallback_review_required": true,
+      "new_direction_review_required": false
+    }
+  ]
+}

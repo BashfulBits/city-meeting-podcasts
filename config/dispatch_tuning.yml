@@ -17,10 +17,11 @@
 #
 # Keep the values numeric; the Worker reads them with Number().
 
-MAX_BUNDLE_JOBS: 5
-# Read at most this many indexed queue entries for one capacity-ranked model before moving
-# to the next model. Exact token/lane checks still run only on these small candidate sets.
-MAX_JOBS_PER_MODEL_CLAIM: 4
+MAX_BUNDLE_JOBS: 6
+# Match one bundle's allowance so a single healthy model can fill every slot. Non-ceiling
+# models start with this many indexed entries; bounded extensions may read past blocked heads.
+# The route-per-bundle and exact token/lane limits still apply to all selected jobs.
+MAX_JOBS_PER_MODEL_CLAIM: 6
 # When every route of a model that currently has capacity carries a hard_input_ceiling, the
 # claim reads up to this many queue entries (oldest first) to find jobs small enough for one
 # of them, instead of stopping at the first MAX_JOBS_PER_MODEL_CLAIM. Without it a handful of
@@ -30,21 +31,20 @@ MAX_CANDIDATE_LOOKAHEAD: 32
 # A route answering 410 Gone (retired model) is stood down this long. A 404 is treated as a
 # transient upstream fault (escalating 15s-5min cooldown) -- see classify.js rule 8.
 ROUTE_UNAVAILABLE_BLOCK_SECONDS: 21600
-MAX_JOBS_PER_ROUTE_PER_BUNDLE: 3
-MAX_CONCURRENT_ROUTE_LANES: 5
+MAX_JOBS_PER_ROUTE_PER_BUNDLE: 1
+MAX_CONCURRENT_ROUTE_LANES: 6
 # Raised 25 -> 30 on 2026-09-23: the largest value validateConfig's lease identity allows
 # (DISPATCH_WINDOW + MAX_RESPONSE 720 + FINALIZATION_RESERVE 90 <= LEASE_DURATION 840). The
 # window bounds only when a call may START; a started call is bounded separately by
 # MAX_RESPONSE_SECONDS, and waiting on a provider costs no Worker CPU time.
 DISPATCH_WINDOW_SECONDS: 30
 CRON_TICK_SECONDS: 60
-# Raised from 2 on 2026-09-20 to let one additional slow bundle overlap, and from 3 to 5 on
-# 2026-10-17: the claim counter `active_bundle_limit` grew from 8 to 42 in four hours while the
-# Gemma sibling backlog waited, because three slow bundles (NVIDIA calls take 35-170 s, JEV and
-# overflow routes minutes) filled every slot. This changes concurrency only; daily bundle/job/write
-# caps remain unchanged, and MAX_IN_FLIGHT_LLM_CALLS plus the per-provider/per-route concurrency
-# limits remain the admission safety boundaries.
-MAX_ACTIVE_BUNDLES: 5
+# Raised from 2 on 2026-09-20, from 3 to 5 on 2026-10-17, and from 5 to 12 on 2026-11-05:
+# slow bundles (Gemma taking 200-300s, JEV taking minutes) filled every slot and caused 54 empty
+# claims in a single day under active_bundle_limit. This changes concurrency only; daily
+# bundle/job/write caps remain unchanged, and MAX_IN_FLIGHT_LLM_CALLS plus the
+# per-provider/per-route concurrency limits remain the admission safety boundaries.
+MAX_ACTIVE_BUNDLES: 12
 # Raised from 8 to 12 and from 12 to 20 to relieve in_flight_call_limit bottlenecks.
 # Per-provider and per-route limits remain the admission safety boundaries.
 MAX_IN_FLIGHT_LLM_CALLS: 20
@@ -78,11 +78,19 @@ MAX_LEASES_PER_UTC_DAY: 7000
 # before retries. Capacity evidence: review/evidence/2026-10-02-llm-800-meeting-capacity.md
 # Reproduce with scripts/llm_capacity_plan.py.
 # Keep the shared cap bounded near measured drain; raising it alone only grows the queue.
-MAX_JOBS_PER_UTC_DAY: 4000
+# Raised 4,000 -> 6,000 (2026-11-05) after the review/57 packed-state cutover: a full packed day
+# (2026-11-04) wrote 24,269 billed rows for 1,370 jobs ingested and ~800 completed, against
+# 51-72k rows/day under legacy tables. Worst case at the new caps: 6,000 jobs x ~6 enqueue rows
+# (compact queue) = 36k, plus 2,000 drained jobs x 24 lifecycle rows = 48k, plus ~2.4k idle and
+# operational rows, about 86k, under the 90,000-row safe stop. Real drain is ~800/day.
+MAX_JOBS_PER_UTC_DAY: 6000
 # Admission units cover enqueue indexes only, not completion/retry/retirement billed rows.
 # This ceiling remains below the static enqueue-row bound and live row headroom gates ingress.
 # Per-lane ceilings can exceed this envelope; their sum is demand, not guaranteed funding.
-MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 25600
+# Raised 25,600 -> 38,400 (2026-11-05, with MAX_JOBS_PER_UTC_DAY above). validateConfig
+# assumes the legacy 2 rows/unit, so 38,400 x 2 = 76,800 stays under DO_ROWS_ENQUEUE_STOP
+# (90,000) even after a rollback to legacy tables; 45,000 is the static ceiling.
+MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 38400
 # Global cap on queued jobs (MAX_QUEUED_JOBS): past it new work waits in the producer, not in
 # the DO. Left at the coordinator's default of 20,000 (`_maxQueuedJobs`), so not declared --
 # see the variable-limit note above.
@@ -109,8 +117,8 @@ UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS: 300
 # unusable replies keep the 15 s to 300 s ladder above.
 UPSTREAM_CAPACITY_SATURATED_COOLDOWN_SECONDS: 60
 UPSTREAM_CAPACITY_SATURATED_MAX_COOLDOWN_SECONDS: 86400
-# AI Gateway handles the fast five-attempt retry series. A final 5xx gets one durable
-# fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
+# Google Gemma has Gateway attempts=1 and a dedicated availability recovery ladder (review/56).
+# Other generic 5xx errors get one durable fallback on a later cron. The route waits 60 seconds,
 # growing to at most five minutes if this outer retry budget is raised.
 MAX_UPSTREAM_CAPACITY_RETRIES: 8
 # A reply cut off at its output limit on a job pinned to one model (per_model judge lanes) recurs
@@ -138,12 +146,12 @@ MAX_ATTEMPT_PRUNE_PER_TICK: 50
 # the same invocation -- validateConfig enforces this bound against both knobs together.
 #
 # Every 10 minutes since 2026-09-24 (60 -> 12 on 2026-09-23, then 10): 6 runs/hour x
-# PURGE_BATCH_LIMIT 15 = 2,160 jobs/day. Completed jobs the client retires by consumption
+# PURGE_BATCH_LIMIT 14 = 2,016 jobs/day. Completed jobs the client retires by consumption
 # never reach cleanup, so this drains failed jobs, ack fallbacks and the acked backlog; it
 # pauses past DO_ROWS_ENQUEUE_STOP and resumes after the reset. The per-run limit cannot
 # rise (subrequests), so the cadence does.
 CLEANUP_INTERVAL_MINUTES: 10
-PURGE_BATCH_LIMIT: 15
+PURGE_BATCH_LIMIT: 14
 # Admission-time allowance subtracted from the dispatch window: a job is admitted only if its
 # planned start + this value <= the window's end. Lowered 20 -> 2 on 2026-09-23. At 20 it
 # left only the first 5s of a 25s window usable, although nothing downstream needs the CALL to

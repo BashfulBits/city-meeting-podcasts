@@ -1025,6 +1025,17 @@ JEV stays outside chat addition.
 There are no runtime config changes, live probes, pipeline/recipe bumps or episode artifact backfill
 in this implementation. Paid/shadow, retirement, recovery and limit changes remain later slices.
 
+### `/apply` staleness check — 2026-10-30
+
+`plan_apply` compared a candidate's stored evidence with fresh evidence including
+`catalog_digest`, a hash of the provider's whole listing. On providers whose listings churn, a
+selection ticked days earlier almost never matched, so `/apply` deferred it as "candidate changed"
+even though the model and its own entry were unchanged. Evidence now also records
+`model_digest` (that model's own catalog entries); `/apply` compares it when the stored evidence has
+one and no longer compares `catalog_digest`. Older stored evidence is compared on its remaining
+fields (provider, upstream model, account, free flag, context limits, model key), and its
+`candidate_digest` is unchanged. Fresh paused JSON proof dated the same day is still required.
+
 ### Maintainer-directed route reopening — 2026-10-09
 
 The maintainer explicitly approved setting `rpd: 20` on these three previously paused free routes:
@@ -1992,6 +2003,83 @@ exception must not skip the partial artifact, and a cleanup/status failure must 
 the original measurement error. Manual dispatch uploads diagnostic artifacts even after failure;
 records contain only error stage/type, attempted routes, available observations and accounting.
 Failed runs/artifacts remain excluded from accepted measurement and scheduled cap history.
+
+### Model-first routing, retired-model aliases and automatic route upkeep — 2026-10-31
+
+**Status: aliases implemented (declared `model_aliases`); the rest is proposed.** Prompted by the
+2026-10-30/31 `/apply` rounds, in which most ticked changes were deferred (stale comparisons,
+`identity_required`, missing input evidence, hard-coded removal deferral), each `/apply` took
+about 75 minutes, and four retired or unentitled routes were still in the catalog days after the
+reconcile had reported them.
+
+**Principle (maintainer, 2026-10-31).** Callers name a model; routes are interchangeable legs of
+that model's pool, chosen by capacity. No lane, judge or remedy path should depend on which
+provider served a call, and none should stipulate a route. The v2 dispatcher already works this
+way (`model_key` pools, `allowed_models`, capacity ranking). Remedy P3 is the exception: its
+reviewed admissions pin physical route ids and a per-route `catalog_hash`, and it checks returned
+model ids per route. Moving it to model pools is a separate change to its authorization design,
+because the reviewed binding must then name a model (and the evidence it was reviewed on) instead
+of a route record; until then, changing any pinned route's record (including its provider's
+`concurrency`) invalidates the authorization and fails the `test_remedy_*` suites.
+
+**Declared aliases (implemented).** A route's own `model` selector is already an alias of its
+`model_key`, but that alias vanishes with the route. `provider_limits.yml` now accepts
+
+```yaml
+model_aliases:
+  old/id:
+    to: new/model          # a pool with at least one route
+    reason: "AA 31.0 vs 29.4; context >=; JSON verified on every lane that used old/id"
+    decided_on: "2026-10-31"
+```
+
+The compiler rejects a source that still has routes or is already a route-derived alias, a target
+with no routes, and entries missing `reason` or `decided_on`; accepted entries join the compiled
+`model_aliases`, which the Worker and the Python scheduler already apply when they canonicalize
+allowed models, queue-model indexes and `model_routing`. A queued job that names the retired ID is
+therefore routed to the newer pool instead of failing as `route_retired`.
+
+**Last-route flagging (proposed).** When a removal (the retirement path or a `remove` decision)
+would leave a model with no routes, the reconcile run must not just remove it:
+1. Flag it in the removal PR and the rolling issue: the lanes that list the model, the count of
+   queued jobs indexed under it (the Worker's `route_retired` pass would fail them), and that no
+   other route serves it.
+2. Propose alias targets from the live catalog and the quality index, in this order: same vendor
+   and family at a higher version (`glm-4.5-flash` to `glm-5.3-flash`); otherwise the best-scoring
+   pool in the same lanes. A candidate qualifies when its Artificial Analysis index is at least
+   the retired model's, its input and output windows are at least as large, it is free, has a
+   verified structured-output method on every lane that used the old ID, and has a route with
+   headroom. Each candidate shows that evidence.
+3. Offer each qualifying candidate as a decision checkbox (`alias old/id -> new/model`).
+   `/apply` writes the `model_aliases` entry (with the evidence as `reason`) into the same PR as
+   the removal and rewrites the lane lists to the canonical ID, so the alias is a safety net and
+   not the long-term spelling.
+4. With no qualifying candidate, keep today's behavior (lane repair or escalate) but state the
+   number of jobs that will fail so the maintainer sees the cost before merging.
+A single strictly-better same-family candidate may be pre-ticked; a person still merges.
+
+**Faster, more automatic upkeep (proposed).**
+- Identity suggestions: derive a suggested `model_key` by normalizing vendor prefixes (`z-ai/` to
+  `zai/`), stripping `-free` and `:free`, and matching existing pools, and show it beside the
+  checkbox. This turns `identity_required` into a confirmation instead of a hand edit.
+- `/apply` handles `remove`: replace the hard-coded "removal requires deployed Slice 3 rescue"
+  deferral (Slice 3 is deployed) by routing it through the retirement path with fresh
+  confirmation. Propose `retired` and `not_entitled` removals automatically every week.
+- Targeted triggers: the Worker already records `route_unavailable`, 404, 410 and 403
+  "not available on free credit". Feed those to the reconcile so a single route gets an
+  independent confirmation and a removal PR within a day instead of waiting for the weekly run.
+- Route-only additions where the provider lists no context sizes may use the provider template's
+  conservative values and queue a `test again` discovery that amends the limits, instead of being
+  deferred for missing provider-counted input evidence.
+- Run time: do the no-probe rejections (`identity_required`, already configured, lane mismatch)
+  before any provider call; reuse a stored proof for an unchanged model instead of re-proving it
+  on every `/apply`; stop at the first verified structured-output method; probe separate
+  rate-limit domains (the two BeatAPI accounts, other providers) concurrently; skip health checks
+  on routes verified within N days; and log each probe with elapsed time so long steps are not
+  silent.
+- Issue size: keep the marker and decisions independent of the machine state (fixed in #2560), and
+  cap or externalize the state (catalog listings, canary history) so the body cannot fill again.
+- Show each deferral reason beside its checkbox with the next action, not only in a later comment.
 
 ### 8.12 Scope correction — 2026-10-11
 
@@ -3381,6 +3469,11 @@ profile-label/calibration corrections made while the local diagnostics were runn
 
 ### Automatic new-route input discovery — maintainer-approved 2026-10-14
 
+> **Partly superseded by Phase 6 (2026-11-02, maintainer instruction in session):** the bar is now
+> the weakest AA-scored model our lanes run (not GPT-OSS-120B), a scored model *at* the bar is
+> skipped, unscored models are measured, and the daily run adds an isolated output search. The
+> rest of this section (budgets, authenticated history, advisory evidence) still holds.
+
 The maintainer changed the activation target from manual-only discovery to automatic discovery
 when the weekly full catalog run finds a new route that passes the existing free-route,
 reachability and structured-output checks and has an Artificial Analysis score strictly above
@@ -3414,3 +3507,216 @@ timeouts. Tests cover generic parser compatibility, strict AA cutoff, input-only
 reviewed retry-axis preservation, pending deferral/recheck and budget enforcement. Lifecycle docs
 and a changelog fragment record this approved scope. Scheduled discovery remains limited to
 newly discovered routes; the configured-route sweep is a separate request.
+
+#### Phase 1 of the clean-PR work — 2026-10-31
+
+`/apply` no longer dead-ends on naming or missing input evidence for route-only additions:
+
+- `logical_identity` falls back to the single existing pool the upstream name respells (case,
+  `z-ai/`→`zai/`, `:free`/`-free`, bare-name-under-namespace); zero or several matches stay unknown.
+- A route-only add (no lane backups) with a provider-published context size is written with
+  `hard_input_ceiling = min(16000, claim)` and a "Provisional input cap" PR note. Lane placement
+  still requires fresh provider-counted evidence.
+- Addition PR bodies list each route with its provider model, account, pool and lane backups.
+- No-op suppression already existed in `publish()` (nothing staged → no PR); run #615's PR #2566
+  was a race with #2565, not a gap.
+
+Still to build: nothing in phase 1; see the phase 3 note below for the incremental daily run.
+
+#### Phase 2: removals and last-route aliases — 2026-10-31
+
+- A ticked `remove route` (a route that became paid) is planned in `plan_apply`: it needs the same
+  fresh proof as keep-paid (uncontended `not_entitled`, observed today, unchanged route digest),
+  then removes the route and repairs lanes through `retire._repair_lanes`. It is rejected when a
+  lane would lose its free capacity or the catalog would lose its last route, and deferred when the
+  same `/apply` adds lane backups (lane repair cannot share a PR with additions).
+- If the removal leaves a model with no route, `EditPlan.last_routes` carries the model, the lanes
+  that list it and `alias_candidates` (same family at another version first, then pools sharing its
+  lanes, free and unpaused only). The PR body states that queued jobs naming it fail as
+  `route_retired` unless aliased and shows a `model_aliases` snippet. Writing the alias stays a
+  reviewed edit: score, context and JSON-method equivalence are not checked by code.
+- Not done: the weekly automatic `retired` PR still comes only from the retirement path; an
+  alias checkbox that writes `model_aliases` automatically.
+
+#### Phase 3: daily incremental run — 2026-10-31
+
+- The existing daily cron (`20 8 * * *`, run-name `daily-incremental`) passes `--incremental`: on top
+  of quota-deferred checks it health-checks `stale_health_routes` — the least recently checked
+  `ceil(n/7)` routes (never checked first), skipping paused and non-chat routes and routes already
+  checked today. Every route is therefore seen within about a week, deterministically, and a missed
+  day or new route self-corrects. No new provider calls are made when nothing is stale.
+- `retirements` now runs after the daily run too. `prepare_retirements` re-probes only routes the
+  rolling issue's `last_full` flags `retired`/`not_served` (all routes when there is no issue state),
+  then applies the existing fresh-absence, two-probe, all-account proof; with no suspects it makes
+  no provider call. A dead route normally gets a removal PR the day after it is first flagged.
+- The weekly full run still runs discovery and context evidence and canaries every untried
+  candidate; phase 4 adds a bounded daily canary of newly listed models.
+
+#### Phase 4: daily new-model canaries and availability signals — 2026-11-01
+
+- **Availability signals.** `completeBatch` still classes a 404 as `upstream_capacity` (usually a
+  transient upstream fault), but now also counts each 404, 410 and 403 in `route_failures` under a per-status class
+  (`route_not_found`, `route_gone`, `route_forbidden`) so counts are exact.
+  `GET /v2/stats?availability_failures=1` returns those cells (bounded to 128 routes, same shape
+  and mutual exclusion as `rate_failures=1`). `availability_suspect_routes` turns two 410/403 or three 404
+  failures today into an immediate independent health check in the daily run; 401 is excluded as an
+  account credential problem. The counter only schedules a probe; the probe and the existing
+  two-probe retirement proof decide removal. An older Worker returns no counters and the run
+  proceeds without the signal.
+- **New models.** With `--incremental`, a provider whose catalog lists a model absent from its last
+  stored snapshot gets only those models canaried (the usual free-evidence, chat, floor, ignore and
+  alias filters apply), at most `DAILY_NEW_MODEL_LIMIT` (6) per run across providers. A provider
+  with no complete stored snapshot is skipped (first sight is the weekly run's job). The snapshot
+  advances when a provider is processed, except for new models the budget could not cover, which
+  stay new for the next run. Results merge into the rolling issue's last full report.
+
+#### Phase 5: report rework and state in an artifact — 2026-10-31
+
+Run #81 produced an issue that showed every model unscored, only 3 of 5 anomalies and a stale
+"removal requires deployed Slice 3 rescue", because 58 KB of the 64 KB body was the embedded
+machine state.
+
+- **State storage (decision).** `state_store.py` splits the state: `catalogs`, `canaries` and
+  `structured_checks` (about 315 KB uncompressed) go to the run's `provider-catalog-state-<run
+  id>` artifact (90 days, refreshed by every daily run); the issue keeps `last_full` (candidates,
+  anomalies, rate and context changes), rate evidence references, route-check dates and
+  `bulk_ref {run_id, sha256}`. The next run restores the artifact by that run ID and digest.
+  Decisions never read the bulk (parse/plan/retire use `last_full` only), so a missing, expired or
+  tampered artifact only means the next run re-canaries and re-snapshots (daily new-model watching
+  waits for a weekly snapshot). A forged issue edit cannot inject bulk memory: the digest binds it.
+  Alternative considered: everything in the artifact. Rejected, because the tick-validation and
+  `/apply` snapshot must stay readable from the issue alone and the issue is the audit trail.
+- **Scoring.** AA's API reference (read directly 2026-11-01) documents one free language-model
+  endpoint, `GET /api/v2/data/llms/models`: `x-api-key`, no parameters, no pagination, 1,000
+  requests/day, attribution required, `model_creator.slug` and `slug` as stable identifiers and
+  `evaluations.artificial_analysis_intelligence_index` that may be null. `fetch_quality_index` now
+  calls that endpoint first (one parameterless request per run) and falls back to the earlier
+  paginated `/language/models/free` path only on an HTTP error or empty result; malformed data is
+  not retried. Scores are keyed by AA's creator slug (and the slugified display name as an alias).
+  Failures are reported in `Report.quality_error` and shown in the issue header. Matching gains the
+  `minimaxai` publisher alias and strips `-<N>b-a<M>b` MoE size tags from both sides (still
+  exact-or-single-match only).
+- **Model facts.** `model_facts.py`: provider catalog record (description, created, expiry,
+  modalities), NVIDIA Build markdown card, and a single unambiguous Hugging Face match (parameters,
+  license, card). Best effort and display only; all text is reduced to inert one-line text.
+- **Layout.** Decisions are one `###` section per model (providers grouped), with a description,
+  a facts line (size, context, release, inputs, license, AA, free-tier expiry), per-provider rows
+  and research links. Only the `- [ ]` lines are machine-read, so the prose is inert.
+- **Anomalies.** All are listed, each with a **Next** line (retired: automatic removal PR from the
+  next daily run, or why it cannot; paid: decide; structured-output invalid: switch method).
+- **Method switch.** `Anomaly.alternative_method` offers `switch structured-output method to X`;
+  `/apply` re-verifies on the route (fresh, uncontended, unchanged digest, known method, explicit
+  route-level value) and edits `structured_output_method` and `structured_output_verified_on` in
+  place. A route that inherits its method from the provider is deferred.
+
+#### Phase 6: measured limits for every new route — 2026-11-02
+
+Superseded: the provisional 16k input / 4,096 output caps for route-only adds (phase 1 and the
+2026-11-02 follow-up) are removed. A route is added only with measured limits.
+
+- **Quality bar.** `production_floor` = the weakest AA-scored model across the lanes that accept
+  catalog backups (recomputed from AA's current scores each run, so it follows index revisions and
+  never depends on one model staying indexed). The pinned GPT-OSS-120B / Nemotron-3 Super pair is a
+  fallback only when no lane model is scored. The issue header states the bar and its source.
+- **Who gets measured.** Automatic discovery skips only a *scored* model at or below the bar;
+  an unscored model (AA has not indexed it) is measured, since waiting on AA would leave every new
+  model unmeasured while it lags. This applies to the weekly run too.
+- **Daily measurement.** With `--incremental` (scheduled 08:20 UTC, or the manual `incremental`
+  input) `measurement_plan` picks, from the issue's already-found candidates, up to
+  `DAILY_DISCOVERY_SESSIONS` (1) to measure today: a candidate with a measured input but no output
+  limit first (so it becomes addable), then never-measured ones (or ones deferred for budget),
+  best score first, unscored after. The input session is the existing automatic input search; the
+  follow-up is an isolated output search, run only when no provider/catalog/LiteLLM output claim
+  exists. Results rebuild from authenticated history exactly as before (the history summary already
+  merges every compatible session's observations per axis). Job timeout 180 minutes; the evidence
+  artifact is uploaded for scheduled and incremental runs.
+- **`/apply`.** `output_context_limit` = verified output bracket (positive admitted lower bound,
+  recognized output count basis, control) → provider claim → LiteLLM → defer. A lower bound is a
+  verified floor, not a proven maximum; the PR note says so.
+- **Expectation.** One session per day means a backlog of N unmeasured candidates takes about N
+  to 2N days; scored, better models go first. Raise `DAILY_DISCOVERY_SESSIONS` (and the timeout)
+  if that is too slow.
+
+## Addendum 2026-11-02: typed size limits, slow input routes and issue clarity
+
+Evidence: issue #2554 and the 2026-11-02 runs. NVIDIA `minimax-m3.1-flash` answered four 500,000-token
+input probes with HTTP 400 `details: {type: context_length, limit: 262144, actual: 484064}`, which
+the generic path recorded as `http_non_success / inconclusive`, so the axis ended `stalled` with no
+admitted value. The weekly-full run died 90 minutes in on one `v2/dispatch:reserve ConnectionError`
+and uploaded no state. `/apply` failed with an opaque `CalledProcessError`.
+
+Decisions:
+
+- A typed `context_length` 400 (`limit < actual`) on the input axis maps the limit onto the request
+  target scale (`limit * target / actual`) as `target_limit_hint`. It sets the qualitative upper to
+  that value and the next target to 95% of it. It is never a refused boundary; the admitted value
+  still needs the existing two-success provider-counted contract.
+- Input timeouts and verified successes slower than `INPUT_TIME_BUDGET_SECONDS` (600 s, leaving
+  headroom under the Worker's 720 s) are time evidence, not caps: a slow success is stored as
+  `inconclusive / input_too_slow_for_deadline` with `elapsed_seconds`, and the next target is the
+  midpoint below the slow size (or half of it with no lower bound). Last-24-hour history seeds the
+  same hint, so a later run starts below a size that already timed out. This mirrors the existing
+  output rule (`output_time_limited_lower_bound`).
+- A 500/502/503/504 outage is retried twice (15 s, 30 s) inside the search before the axis is
+  reported as an outage. `WorkerDispatchControl.reserve` makes three attempts (5 s, 10 s waits), and the health-recheck
+  loop skips one route when the ledger is unavailable (no reservation, no request).
+- `readiness.py` turns the same evidence `/apply` reads into READY / WAITING / YOUR CALL. After the
+  output search has run with no measurement, provider claim or LiteLLM claim, `/apply` uses a
+  provisional 4,096-token `output_context_limit`, marked provisional in the PR notes, instead of
+  deferring forever. This relaxes the earlier "enter a reviewed value" rule; the PR remains the review.
+
+
+## Addendum 2026-11-03: time-bound daily measurement, auto-ignore, durable evidence
+
+Evidence: issue #2554 after the 2026-11-03 daily run. `/apply` for `minimax-m3.1-flash` / `test again`
+failed with "no authenticated request-cap result exists": the weekly-full run that measured it had
+crashed and the evidence file is written only at the end of a run. `muse-glimmer` and `minimax`
+were never re-measured because `measurement_plan` re-queued only the two `deferred` reasons.
+`nemotron-3.5-lightning` (AA 5.5, bar 11.7) showed WAITING because its stored `below_floor` was
+computed against an older bar.
+
+Decisions:
+
+- The daily run measures found candidates for up to `DAILY_DISCOVERY_SECONDS` (7,200 s) of wall
+  clock, across providers and several per provider (`TIMED_SESSION_CEILING` 16). A session starts
+  only if `MIN_SESSION_SECONDS` (600) remain; the budget is also each session's deadline. The old
+  one-session-per-provider rule remains for the weekly and manual paths. Each timed session gets its
+  own per-session envelope; the clock is the run-level bound.
+- A candidate with an AA score at or below the production bar is auto-ignored: not probed, not
+  listed (the bar and score are re-read every run, so it returns if either moves). Explicit
+  retry/manual keys bypass it. Carried-over candidates are re-judged against the current bar.
+- `measurement_plan` re-queues an unfinished input search (outage, stalled, stopped safely) up to
+  `MAX_AUTO_MEASURE_ATTEMPTS` (4) times, counted in `canaries[key].measure_attempts`; after that the
+  issue says `test again` or `ignore`.
+- Discovery evidence is rewritten after every session (`discovery_sessions_sink`), so a crashed run
+  keeps its authenticated results.
+- `test again` with no saved results is no longer an error: `/apply` says the daily run measures it
+  from scratch and queues nothing.
+- Two connection resets at one input size count as time evidence (like a timeout), so the third
+  attempt is smaller instead of repeating the same oversized body.
+
+## Addendum 2026-11-03 (2): 429 backoff, AA matching, fairer measurement
+
+Evidence: issue #2554 and the two daily runs after PR #2593. Minimax's first session made three calls
+in seven seconds: two 400s that quoted the provider's own `limit 262144` (the estimate and the
+provider's count drifted 6% between probes), then a `429` with no `Retry-After`, which ended the
+session as `quota_deferred`. The run had used 33 of its 120 minutes.
+
+- **429 backoff.** A 429 without `Retry-After` queues the candidate instead of ending it. The provider
+  pause stays held while the provider's other candidates run; the queue then waits 30 s, doubling to
+  600 s, and resumes with this run's earlier observations as history (so the bounds carry over). A 429
+  that follows the 600 s wait gives up until the next run. A 429 that does carry `Retry-After` keeps
+  the old inline wait. Timed (daily) runs only; the weekly full run is unchanged.
+- **Headroom.** After a refusal that quotes the provider's limit the next probe aims at 95% of it; each
+  repeat lowers that by 5 points (floor 80%).
+- **Fairness.** `measurement_plan` ranks by tries first. Root cause of the kilo/openrouter/nvidia
+  backlog: the per-provider canary budget (3) was applied to a list sorted never-tried-first, so
+  newly listed models (kilo: gemma-4-31b-it, inkling, inkling-small) took every slot each run and
+  the planned candidates were cut before they were visited. A timed run now ranks planned
+  candidates first and adds their count to the budget, so new models are still checked.
+- **Why not measured.** `Candidate.measure_note` records the reason a candidate had no session this run.
+- **AA matching.** `QualityIndex` matches AA display names and separator-free spellings, with the
+  Hugging Face repo name as a tiebreaker only among already-ambiguous hits. Similarity is never applied:
+  `near_misses` ranks the three closest AA entries for each unscored candidate, shown as
+  `AA match` checkboxes. A ticked row counts only if it is exactly one that the last run offered; it is
+  stored in state (`aa_matches`) and applied by the next run, which also re-scores carried candidates.

@@ -17,6 +17,63 @@ from citypods.video_clips import caption_text, render_video_clip, video_clip_key
 from tests._cas_fake import MemStorage
 
 
+@pytest.mark.parametrize("tokens", [45000, 45001])
+def test_retired_kimi_is_not_dispatched_and_recipe_identity_is_preserved(tokens):
+    from citypods.compute.llm_lanes import lane_for
+    from citypods.moments import moment_recipe_models, select_moment_models
+
+    primary, backup = select_moment_models(tokens)
+    lane = lane_for("r6-moments")
+    assert set(primary + backup) <= set(lane.models + lane.backup_models)
+    assert "moonshotai/kimi-k3" not in primary + backup
+    previous = (
+        ("gemini/gemini-3.5-flash-lite",)
+        if tokens <= 45000
+        else ("zai/glm-5.3-flash", "deepseek/deepseek-v4-flash", "moonshotai/kimi-k3")
+    )
+    assert moment_recipe_models(tokens) == previous
+
+
+def test_existing_large_moments_are_reused_after_kimi_retirement(monkeypatch):
+    from citypods.moments import recipe_hash
+    from citypods.stages import MomentsStage
+    from tests.test_stages import _city
+
+    storage = MemStorage()
+    storage.put_cas(
+        "transcript.vtt", b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello.\n", "text/vtt"
+    )
+    monkeypatch.setattr("citypods.compute.llm_policy.estimate_tokens", lambda _: 45001)
+    city = _city()
+    old_hash = recipe_hash(
+        transcript_key="transcript.vtt",
+        transcript_words_key=None,
+        chapters=[],
+        agenda_text_key=None,
+        route_models=("zai/glm-5.3-flash", "deepseek/deepseek-v4-flash", "moonshotai/kimi-k3"),
+        meeting_family=str(city.extra.get("meeting_family") or "default"),
+        evaluation_policy="candidate-generation-v1",
+    )
+    ep = Episode(
+        guid="episode",
+        uid="episode",
+        title="Meeting",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        transcript_key="transcript.vtt",
+        video_url="https://example.com/meeting",
+        moments_llm_recipe_hash=old_hash,
+    )
+
+    class Backend:
+        def run_inference(self, job):
+            raise AssertionError("existing moments must not be reissued")
+
+    ctx = StageContext(
+        storage=storage, ffmpeg=None, max_kbps=96, dry_run=False, moment_backend=Backend()
+    )
+    assert MomentsStage().process(None, city, [ep], ctx).reused == 1
+
+
 def _candidate(**overrides):
     value = {
         "candidate_id": "r6-one",
@@ -355,3 +412,206 @@ def test_the_tagger_output_budget_leaves_room_for_reasoning_on_every_route():
         for route_id in catalog["model_routes_map"][model]:
             route = catalog["routes_by_id"][route_id]
             assert route["output_context_limit"] >= TAG_OUTPUT_TOKEN_BUDGET, route_id
+
+
+@pytest.mark.parametrize(
+    "bad_output",
+    [
+        {"choices": [{"message": {"content": '{"summary": []}'}}]},
+        {"choices": [{"message": {"content": "not JSON"}}]},
+        [],
+    ],
+)
+def test_moments_recover_a_bad_cached_answer_under_the_same_recipe(monkeypatch, bad_output):
+
+    from citypods.compute.llm_deferred import look_up_deferred
+    from citypods.stages import MomentsStage
+    from tests.test_stages import _city
+
+    storage = MemStorage()
+    storage.put_cas(
+        "transcript.vtt", b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello.\n", "text/vtt"
+    )
+    monkeypatch.setattr("citypods.moments.recipe_hash", lambda **kwargs: "same-recipe")
+    bad = JobResult(
+        task="moment-extraction",
+        recipe_hash="same-recipe",
+        output=bad_output,
+    )
+    write_deferred(storage, "same-recipe", bad)
+
+    class Backend:
+        name = "fake"
+        new_calls = 0
+
+        def run_inference(self, job):
+            existing = look_up_deferred(storage, job.recipe_hash)
+            if existing is not None:
+                return existing
+            self.new_calls += 1
+            result = JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={
+                    "choices": [{"message": {"content": "{}"}}],
+                },
+            )
+            write_deferred(storage, job.recipe_hash, result)
+            return result
+
+    backend = Backend()
+    ctx = StageContext(
+        storage=storage, ffmpeg=None, max_kbps=96, dry_run=False, moment_backend=backend
+    )
+    ep = Episode(
+        guid="episode",
+        uid="episode",
+        title="Meeting",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        transcript_key="transcript.vtt",
+        video_url="https://example.com/meeting",
+    )
+    stage = MomentsStage()
+    failed = stage.process(None, _city(), [ep], ctx)
+    assert len(failed.errors) == 1
+    assert backend.new_calls == 0
+    assert look_up_deferred(storage, "same-recipe") is None
+    recovered = stage.process(None, _city(), [ep], ctx)
+    assert recovered.ran == 1
+    assert backend.new_calls == 1
+    assert ep.moments_llm_recipe_hash == "same-recipe"
+
+
+@pytest.mark.parametrize(
+    "status,count,expected",
+    [
+        ("exhausted", 3, "exhausted"),
+        ("retryable", 3, "exhausted"),
+        ("structural_blocked", 0, "admitted"),
+    ],
+)
+def test_moments_retry_ceiling_does_not_spend_new_work_slots(status, count, expected):
+    import json
+
+    from citypods.compute.llm_deferred import deferred_failure_key
+
+    storage = MemStorage()
+    storage.put_cas(
+        deferred_failure_key("blocked"),
+        json.dumps(
+            {
+                "status": status,
+                "failure_count": count,
+            }
+        ).encode(),
+        "application/json",
+    )
+    ctx = StageContext(
+        storage=storage, ffmpeg=None, max_kbps=96, dry_run=False, moment_max_dispatches=1
+    )
+    stats = StageStats("moments")
+    assert _admit_r6_dispatch(ctx, stats, "blocked", "episode") == expected
+    if expected == "exhausted":
+        assert ctx.moment_dispatches == 0
+        assert _admit_r6_dispatch(ctx, stats, "fresh", "other") == "admitted"
+    assert ctx.moment_dispatches == 1
+
+
+def _legacy_moments_handle():
+    from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
+
+    return JobHandle(
+        task="moment-extraction",
+        recipe_hash="legacy-recipe",
+        backend="llm-dispatch-v2",
+        ref="deferred:old",
+        structured_output="moment-extraction",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "outdated request"},),
+            policy=LLMRequestPolicy(
+                allowed_models=("gemini/gemini-3.1-flash-lite",),
+                queue_only=True,
+                purpose="r6-moments",
+            ),
+            output_token_budget=16384,
+            metadata_version=0,
+        ),
+    )
+
+
+def test_moments_producer_replans_only_unsubmitted_legacy_work(monkeypatch):
+    from citypods.compute.llm_deferred import look_up_deferred
+    from citypods.moments import MOMENTS_OUTPUT_TOKEN_BUDGET
+    from citypods.stages import MomentsStage
+    from tests.test_stages import _city
+
+    storage = MemStorage()
+    storage.put_cas(
+        "transcript.vtt", b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello.\n", "text/vtt"
+    )
+    legacy = _legacy_moments_handle()
+    write_deferred(storage, legacy.recipe_hash, legacy)
+    monkeypatch.setattr("citypods.moments.recipe_hash", lambda **kwargs: legacy.recipe_hash)
+    submitted = []
+
+    class Backend:
+        name = "fake"
+
+        def run_inference(self, job):
+            assert look_up_deferred(storage, job.recipe_hash) is None
+            submitted.append(job)
+            accepted = JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend="llm-dispatch-v2",
+                ref="accepted",
+            )
+            write_deferred(storage, job.recipe_hash, accepted)
+            return accepted
+
+    ctx = StageContext(
+        storage=storage,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        moment_backend=Backend(),
+        moment_max_dispatches=1,
+    )
+    ep = Episode(
+        guid="episode",
+        uid="episode",
+        title="Meeting",
+        video_url="https://example.com",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        transcript_key="transcript.vtt",
+    )
+    stage = MomentsStage()
+    stage.process(None, _city(), [ep], ctx)
+    assert len(submitted) == 1
+    job = submitted[0]
+    assert job.inputs["max_tokens"] == MOMENTS_OUTPUT_TOKEN_BUDGET
+    assert job.inputs["max_tokens_mode"] == "route_max"
+    assert job.inputs["llm_policy"].allowed_models == ("gemini/gemini-3.5-flash-lite",)
+    assert job.inputs["llm_policy"].backup_models
+    stage.process(None, _city(), [ep], ctx)
+    assert len(submitted) == 1
+    assert look_up_deferred(storage, legacy.recipe_hash).ref == "accepted"
+
+
+def test_moments_replan_respects_cap_and_refunds_slot_on_unavailable_state(monkeypatch):
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    storage = MemStorage()
+    legacy = _legacy_moments_handle()
+    write_deferred(storage, legacy.recipe_hash, legacy)
+    ctx = StageContext(
+        storage=storage, ffmpeg=None, max_kbps=96, dry_run=False, moment_max_dispatches=0
+    )
+    stats = StageStats("moments")
+    assert _admit_r6_dispatch(ctx, stats, legacy.recipe_hash, "ep") == "cap"
+    assert look_up_deferred(storage, legacy.recipe_hash) == legacy
+    ctx.moment_max_dispatches = 1
+    monkeypatch.setattr(storage, "delete", lambda key: (_ for _ in ()).throw(OSError("offline")))
+    assert _admit_r6_dispatch(ctx, stats, legacy.recipe_hash, "ep") == "pending"
+    assert ctx.moment_dispatches == 0
+    assert look_up_deferred(storage, legacy.recipe_hash) == legacy

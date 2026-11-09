@@ -11,6 +11,66 @@
 # `/apply` on the rolling issue (Slice 2) appends to this file in its curated PR; hand edits are
 # fine too. Every entry needs a reason and a date.
 
-ignored: []
+ignored:
+  - provider: groq
+    model: openai/gpt-oss-20b
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-30'
+  - provider: nvidia
+    model: meta/llama-3.2-90b-vision-instruct
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: kilo
+    model: nvidia/nemotron-3.5-lightning:free
+    reason: Maintainer decision; Artificial Analysis index about 6
+    decided_on: '2026-10-31'
+  - provider: openrouter
+    model: nvidia/nemotron-3.5-lightning:free
+    reason: Maintainer decision; Artificial Analysis index about 6
+    decided_on: '2026-10-31'
 
+  - provider: kilo
+    model: cohere/north-mini-code:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: kilo
+    model: dots-studio/dots-3-note-preview:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: kilo
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: nvidia
+    model: nvidia/nemotron-3.5-lightning-30b-a3b
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: nvidia
+    model: nvidia/ising-calibration-1.5-31b
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: nvidia
+    model: nvidia/nemotron-3.5-bolt-e4b
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: openrouter
+    model: cohere/north-mini-code:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: openrouter
+    model: dots-studio/dots-3-note-preview:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-10-31'
+  - provider: kilo
+    model: poolside/laguna-s-2.1:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-04'
+  - provider: openrouter
+    model: poolside/laguna-s-2.1:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-04'
+  - provider: nvidia
+    model: meta/muse-glimmer-30b
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-04'
 acknowledged: []

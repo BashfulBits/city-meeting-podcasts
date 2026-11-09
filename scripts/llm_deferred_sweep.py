@@ -46,6 +46,7 @@ from citypods.compute.llm_deferred import (
     load_pending_audit_snapshot,
     load_v2_terminal_cursor,
     look_up_v2_deferred_ref,
+    needs_moments_replan,
     prune_expired_deferred_snapshot,
     prune_expired_failure_markers,
     record_schema_correction,
@@ -105,18 +106,14 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
     if deferred.policy.purpose.startswith(durable_purposes):
         return replace(
             handle,
-            deferred_request=DeferredLLMRequest(
-                messages=deferred.messages,
-                policy=replace(deferred.policy, deadline_at=None, queue_only=True),
-                output_token_budget=deferred.output_token_budget,
+            deferred_request=replace(
+                deferred, policy=replace(deferred.policy, deadline_at=None, queue_only=True)
             ),
         )
     return replace(
         handle,
-        deferred_request=DeferredLLMRequest(
-            messages=deferred.messages,
-            policy=replace(deferred.policy, deadline_at=deadline_at),
-            output_token_budget=deferred.output_token_budget,
+        deferred_request=replace(
+            deferred, policy=replace(deferred.policy, deadline_at=deadline_at)
         ),
     )
 
@@ -148,6 +145,8 @@ def _job_from_deferred_handle(handle: JobHandle) -> InferenceJob:
     """Rebuild a queue-only policy job without issuing its legacy singleton reconcile call."""
     deferred = handle.deferred_request
     assert isinstance(deferred, DeferredLLMRequest)
+    if needs_moments_replan(handle):
+        raise ValueError("legacy moments request awaits producer replan")
     inputs: dict[str, object] = {
         "messages": [dict(message) for message in deferred.messages],
         "max_tokens": deferred.output_token_budget,
@@ -155,6 +154,10 @@ def _job_from_deferred_handle(handle: JobHandle) -> InferenceJob:
     }
     if handle.structured_output:
         inputs["structured_output"] = handle.structured_output
+    if deferred.timeout is not None:
+        inputs["timeout"] = deferred.timeout
+    if deferred.max_tokens_mode is not None:
+        inputs["max_tokens_mode"] = deferred.max_tokens_mode
     return InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
 
 
@@ -378,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
     # could drift out of sync with the registry itself.
     skipped_by_pool: dict[tuple, int] = {}
     v2_unobserved = 0
+    legacy_replan_required = 0
     missing_cleared = 0
 
     snapshot_started_at = datetime.now(UTC)
@@ -598,6 +602,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not stop_state.requested and datetime.now(UTC) < deadline_at:
         pending_handles = list(snapshot.pending())
+        legacy_replan_required = sum(needs_moments_replan(handle) for handle in pending_handles)
         handled_recipe_hashes: set[str] = set()
         # Queue-only records created before the normal call sites adopted run batching must not
         # turn the sweep into one ingress invocation per record. Their portable policy capsule is
@@ -605,6 +610,10 @@ def main(argv: list[str] | None = None) -> int:
         v2_queue_only: list[tuple[JobHandle, JobHandle]] = []
         if has_v2_dispatch:
             for handle in pending_handles:
+                if needs_moments_replan(handle):
+                    handled_recipe_hashes.add(handle.recipe_hash)
+                    still_pending += 1
+                    continue
                 if not isinstance(handle.deferred_request, DeferredLLMRequest):
                     continue
                 upgraded_handle = _with_sweep_deadline(handle, deadline_at)
@@ -744,7 +753,7 @@ def main(argv: list[str] | None = None) -> int:
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
-            if handle.recipe_hash in handled_recipe_hashes:
+            if handle.recipe_hash in handled_recipe_hashes or needs_moments_replan(handle):
                 continue
             reconciled_handle = _with_sweep_deadline(handle, deadline_at)
             deferred = reconciled_handle.deferred_request
@@ -799,6 +808,7 @@ def main(argv: list[str] | None = None) -> int:
         "failed": failed,
         "submit_failed": submit_failed,
         "retired_unadmissible": retired_unadmissible,
+        "legacy_replan_required": legacy_replan_required,
         "pruned": pruned,
         "remaining": _pending_breakdown(snapshot.pending(), legacy_backend=legacy_backend),
         "snapshot": {

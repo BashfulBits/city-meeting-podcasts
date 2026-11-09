@@ -31,7 +31,7 @@ from citypods.remedy_actions import _p3_generated_section
 from citypods.remedy_evaluation import RemedyConfig, config_fingerprint
 from citypods.remedy_ledger import REMEDY_LEASE_KEY, decision_id, load_decisions
 from citypods.remedy_p3_publication import validated_p3_plan
-from citypods.remedy_p3_runner import admitted_p3_routes, p3_enabled, stable_finding_id
+from citypods.remedy_p3_runner import admitted_p3_models, p3_enabled, stable_finding_id
 from citypods.remedy_policy import canonical_hash
 from citypods.remedy_queue import (
     Candidate,
@@ -863,7 +863,7 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
     config = RemedyConfig.model_validate(
         yaml.safe_load((repo_root / "config/remedy.yml").read_text(encoding="utf-8"))
     )
-    if not p3_enabled(config):
+    if not p3_enabled(config, repo_root=repo_root):
         return {"status": "policy_hold", "published": []}
     collected_at = evidence_payload.get("collected_at")
     if not isinstance(collected_at, str):
@@ -907,7 +907,8 @@ def publish(report_path: Path, evidence_path: Path, repo_root: Path, *, dry_run=
                     p3_report,
                     evidence,
                     repo_root=repo_root,
-                    admitted_routes=admitted_p3_routes(config),
+                    admitted_models=admitted_p3_models(config),
+                    role_plan=config.p3_role_plan,
                 )
             except ValueError as exc:
                 deferred.append({"finding_id": decision["finding_id"], "reason": str(exc)})

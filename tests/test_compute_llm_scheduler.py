@@ -321,14 +321,14 @@ def test_price_gate_precedes_peak_rate_daily_cost_admission():
 
 def test_direct_transport_selects_a_direct_capable_route():
     result = select_route(
-        LLMRequestPolicy(allowed_models=("mistral/codestral-2508",), allow_paid=True),
+        LLMRequestPolicy(allowed_models=("openai/gpt-oss-120b",), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
     )
-    assert result.model == "mistral/codestral-2508"
+    assert result.model == "openai/gpt-oss-120b"
     assert result.transport == "direct"
 
 
@@ -351,16 +351,6 @@ def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
     )
     assert result.model is None
     assert (route.model, "transport gate") in result.rejected
-
-
-def test_codestral_policy_is_paced_at_the_airforce_ceiling():
-    """Codestral is served only by the Airforce route (1 RPM, one request in flight).
-
-    (Native Mistral, this test's former subject, was removed 2026-09-30.)"""
-    route = ROUTES["mistral/codestral-2508"]
-    assert route.transport == "direct"
-    assert set(route.transports) == {"direct"}
-    assert route.quota.rpm == 1
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():
@@ -838,14 +828,14 @@ def test_a_caller_reaching_both_transports_can_select_either():
     what lets a single backend instance service pending records regardless of which provider
     originally claimed them."""
     result = select_route(
-        LLMRequestPolicy(allowed_models=("mistral/codestral-2508",), allow_paid=True),
+        LLMRequestPolicy(allowed_models=("openai/gpt-oss-120b",), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=BOTH_TRANSPORTS,
         estimated_tokens=1024,
         now=NOW,
     )
-    assert result.model == "mistral/codestral-2508"
+    assert result.model == "openai/gpt-oss-120b"
 
 
 def test_select_and_reserve_retries_after_one_cas_conflict():
@@ -951,10 +941,10 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
 
     gemini = ROUTES["gemini/gemini-3-flash-preview"]
     # Compiled routes are direct-only; reuse only applies to a route that advertises dispatch.
-    mistral = replace(ROUTES["mistral/codestral-2508"], transports=("direct", "llm-dispatch-v2"))
+    prior_route = replace(ROUTES["openai/gpt-oss-120b"], transports=("direct", "llm-dispatch-v2"))
     routes = {
         gemini.route_id or gemini.model: gemini,
-        mistral.route_id or mistral.model: mistral,
+        prior_route.route_id or prior_route.model: prior_route,
     }
     storage = MemCAS()
     # Seed an existing in-flight dispatch reservation for "recipe-1" (the deterministic dispatch
@@ -963,8 +953,8 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
         storage,
         lambda budget, attempt_now: budget.reserve(
             "recipe-1",
-            mistral.model,
-            route=mistral,
+            prior_route.model,
+            route=prior_route,
             requests=1,
             tokens=10,
             cost=0.0,
@@ -973,7 +963,7 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
         now=NOW,
     )
     # A fresh selection pass would now pick Gemini (empty ledger, free, no allowlist
-    # restriction) -- but the retry must still resolve to Mistral, the route "recipe-1" is
+    # restriction) -- but the retry must still resolve to the prior route "recipe-1" is
     # already reserved under.
     result = select_and_reserve(
         storage,
@@ -984,11 +974,11 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
         estimated_tokens=10,
         now=NOW,
     )
-    assert result.model == mistral.model
+    assert result.model == prior_route.model
     assert result.owner == "recipe-1"
     budget, _ = load_llm_budget_cas(storage)
     # No new reservation was created -- still exactly the one seeded above.
-    assert budget.routes[mistral.route_id or mistral.model].inflight_count == 1
+    assert budget.routes[prior_route.route_id or prior_route.model].inflight_count == 1
     assert (gemini.route_id or gemini.model) not in budget.routes or budget.routes[
         gemini.route_id or gemini.model
     ].inflight_count == 0

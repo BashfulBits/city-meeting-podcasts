@@ -144,7 +144,7 @@ narwhals==2.24.0
     # via scikit-learn
 networkx==3.6.1
     # via torch
-nltk==3.10.3
+nltk==3.10.4
     # via whisperx
 numpy==2.5.2
     # via
@@ -297,7 +297,7 @@ pygments==2.20.0
     # via rich
 pyparsing==3.3.2
     # via matplotlib
-pypdf==6.21.1
+pypdf==6.21.4
     # via -r constraints/asr.in
 python-dateutil==2.9.0.post0
     # via
@@ -455,7 +455,7 @@ yarl==1.25.1
     # via aiohttp
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==84.0.0
+setuptools==84.1.0
     # via
     #   ctranslate2
     #   torch

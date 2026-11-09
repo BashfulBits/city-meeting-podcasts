@@ -22,6 +22,7 @@ function createMockEnv(overrides = {}) {
     CRON_TICK_SECONDS: "60",
     MAX_BUNDLES_PER_UTC_DAY: "1000",
     MAX_BUNDLE_JOBS: "4",
+    MAX_JOBS_PER_MODEL_CLAIM: "4",
     MAX_LEASES_PER_UTC_DAY: "4000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",
@@ -35,6 +36,13 @@ function createMockEnv(overrides = {}) {
 test("validateConfig accepts valid configuration and rejects invalid", () => {
   const validEnv = createMockEnv();
   assert.doesNotThrow(() => validateConfig(validEnv));
+  for (const value of ["-1", "1.5", "1441", "invalid"]) {
+    assert.throws(() => validateConfig({ ...validEnv, RECOVERY_INTERVAL_MINUTES: value }),
+      /RECOVERY_INTERVAL_MINUTES/);
+  }
+  for (const value of ["0", "10", "1440"]) {
+    assert.doesNotThrow(() => validateConfig({ ...validEnv, RECOVERY_INTERVAL_MINUTES: value }));
+  }
 
   // Lease duration < window + response + reserve
   assert.throws(() =>
@@ -45,11 +53,11 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
-  // MAX_CONCURRENT_ROUTE_LANES > 5
+  // MAX_CONCURRENT_ROUTE_LANES > 6 (Cloudflare's simultaneous-connection limit)
   assert.throws(() =>
     validateConfig(
       createMockEnv({
-        MAX_CONCURRENT_ROUTE_LANES: "6",
+        MAX_CONCURRENT_ROUTE_LANES: "7",
       })
     )
   );
@@ -369,6 +377,21 @@ test("GET /v2/stats requires auth and returns the bounded snapshot by default", 
   assert.ok(body.jobs && typeof body.jobs.by_state === "object");
   assert.ok(body.bundles && body.scheduler);
   assert.equal(body.queued_by_model, undefined);
+  assert.ok(body.model_aliases && typeof body.model_aliases === "object");
+});
+
+test("GET /v2/stats?pending=1 returns lane pending metrics", async () => {
+  const env = createMockEnv();
+  const res = await worker.fetch(
+    new Request("http://localhost/v2/stats?pending=1", {
+      headers: { authorization: "Bearer secret-token" },
+    }),
+    env
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.ok(body.ingress && Array.isArray(body.ingress.by_purpose));
+  assert.ok(body.ingress.by_purpose.every((lane) => typeof lane.pending === "number"));
 });
 
 test("GET /v2/ingress-status requires auth and reports the admission preflight", async () => {
@@ -612,6 +635,31 @@ test("row-budget repair requires authentication and a valid same-day observation
 });
 
 
+test("packed-state moves are authenticated, confirmed, bounded and refused without a drained pause", async () => {
+  const env = createMockEnv();
+  const limits = { maxJobs: 100, maxModelRows: 200, maxGroups: 100, maxProviders: 10, maxStateRows: 100,
+    reserveOtherWrites: 100 };
+  const call = (method, body, auth = true) => handleRequest(new Request("https://worker/v2/packed-state", {
+    method, headers: auth ? { Authorization: "Bearer secret-token" } : {},
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }), env);
+  assert.equal((await call("GET", undefined, false)).status, 401);
+  assert.deepEqual(await (await call("GET")).json(),
+    { compact_queue: false, packed_providers: false, packed_state: false });
+  for (const bad of [null, {}, { action: "cutover" }, { action: "cutover", confirm: "packed-state-rollback", limits },
+    { action: "other", confirm: "packed-state-other" }]) {
+    assert.equal((await call("POST", bad)).status, 400, JSON.stringify(bad));
+  }
+  const unbounded = await call("POST", { action: "cutover", confirm: "packed-state-cutover",
+    limits: { ...limits, maxJobs: 1e9 } });
+  assert.equal(unbounded.status, 409);
+  const refused = await call("POST", { action: "cutover", confirm: "packed-state-cutover", limits });
+  assert.equal(refused.status, 409);
+  assert.match(JSON.stringify(await refused.json()), /drained global pause/);
+  assert.deepEqual(await (await call("GET")).json(),
+    { compact_queue: false, packed_providers: false, packed_state: false });
+});
+
 test("counter-only stats is authenticated, mutually exclusive and never calls historical stats", async () => {
   const env = createMockEnv();
   const coordinator = env.LLM_SCHEDULER.getByName();
@@ -624,6 +672,11 @@ test("counter-only stats is authenticated, mutually exclusive and never calls hi
   assert.equal((await handleRequest(request("rate_failures=1"), env)).status, 200);
   coordinator.rateFailureStats = async () => { throw new Error("storage unavailable"); };
   assert.equal((await handleRequest(request("rate_failures=1"), env)).status, 500);
+  coordinator.availabilityFailureStats = async () => ({ kind: "availability_failures",
+    route_failures: [], truncated: false });
+  assert.equal((await handleRequest(request("availability_failures=1", false), env)).status, 401);
+  assert.equal((await handleRequest(request("availability_failures=1&rate_failures=1"), env)).status, 400);
+  assert.equal((await handleRequest(request("availability_failures=1"), env)).status, 200);
 });
 
 test("routes-only stats is authenticated, exclusive and never touches the detailed snapshot", async () => {

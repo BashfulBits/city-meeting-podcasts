@@ -56,6 +56,7 @@ from citypods.provider_catalog.limits import (  # noqa: E402
 )
 from citypods.provider_catalog.quality import QualityIndex, fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
+    RETIREMENT_VERDICTS,
     NoDispatchControl,
     Report,
     _merge_into_last_full,
@@ -66,6 +67,49 @@ from scripts.reconcile_provider_routes import _control  # noqa: E402
 
 def run(args):
     return subprocess.run(args, cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+
+
+_FAILED_TEST = re.compile(
+    r"^FAILED (tests/[A-Za-z0-9_./-]+(?:::[A-Za-z0-9_\[\].:-]{1,120})?)", re.M
+)
+
+
+def describe_failed_command(exc):
+    """Name the failing step for the public comment without echoing any command output.
+
+    Output can carry provider secrets, so only fixed program/script names, the exit code and
+    pytest node IDs (matched against a strict pattern) are repeated.
+    """
+    cmd = [str(part) for part in (exc.cmd if isinstance(exc.cmd, list | tuple) else [exc.cmd])]
+    if len(cmd) > 1 and cmd[0] == sys.executable and cmd[1] == "-m":
+        step = "tests (" + " ".join(cmd[2:4]) + ")"
+    elif len(cmd) > 1 and cmd[0] == sys.executable:
+        step = f"validation script {Path(cmd[1]).name}"
+    elif cmd and cmd[0] == "git":
+        step = "git " + (cmd[1] if len(cmd) > 1 else "")
+    elif cmd and cmd[0] == "gh":
+        step = "gh " + " ".join(cmd[1:3])
+    else:
+        step = Path(cmd[0]).name if cmd else "a command"
+    detail = f"{step} failed with exit code {exc.returncode}"
+    failed = list(
+        dict.fromkeys(_FAILED_TEST.findall(exc.stdout if isinstance(exc.stdout, str) else ""))
+    )
+    if failed:
+        detail += "; failing tests: " + ", ".join(f"`{item}`" for item in failed[:5])
+        if len(failed) > 5:
+            detail += f" (+{len(failed) - 5} more)"
+    if cmd and cmd[0] in {"git", "gh"}:
+        return (
+            detail + ". Publication failed and main is unchanged. A pull request for another "
+            "proposal kind may already exist. See the workflow run log, then comment `/apply` "
+            "again."
+        )
+    return (
+        detail + ". No pull request was opened and main is unchanged. The proposed change did not "
+        "pass the repository checks; see the workflow run log, fix the cause, then comment "
+        "`/apply` again."
+    )
 
 
 def process_event(event, permission):
@@ -101,7 +145,9 @@ def prepare(body, base_commit, proposal_kind=None):
         for choice in re.findall(r"(?mi)^- \[x\] (.*? \(context [a-f0-9]{64}\))\s*$", body)
     )
     snapshot.context_changes = list(context_selected)
-    decisions = tuple(d for d in parse_decisions(body, snapshot) if d.action != "test_again")
+    decisions = tuple(
+        d for d in parse_decisions(body, snapshot) if d.action not in {"test_again", "aa_match"}
+    )
     context_selections = tuple(d.model for d in decisions if d.action == "context")
     if proposal_kind == "context" or (
         proposal_kind is None
@@ -124,7 +170,11 @@ def prepare(body, base_commit, proposal_kind=None):
     configured = {f"{r['provider']}/{r['upstream_model']}" for r in limits.get("routes") or []}
     selected -= configured
     paid = {
-        d.route_id for d in decisions if d.action == "keep_paid" and not paid_fulfilled(d, config)
+        d.route_id
+        for d in decisions
+        if (d.action == "keep_paid" and not paid_fulfilled(d, config))
+        or (d.action == "remove" and d.route_id in {r["route_id"] for r in limits["routes"]})
+        or d.action == "set_method"
     }
     report = Report()
     if selected or paid:
@@ -260,6 +310,22 @@ def prepare_retirements(base_commit):
     if isinstance(control, NoDispatchControl):
         raise ValueError("removals require a configured exclusive dispatch pause")
     route_ids = {r["route_id"] for r in limits.get("routes") or []}
+    # Re-probe only the routes the rolling issue already reports as retired or not served; a
+    # daily run then confirms and proposes a removal in minutes instead of re-checking the catalog.
+    issue = find_issue()
+    flagged = None
+    if issue and is_catalog_issue(issue.get("body") or ""):
+        flagged = (decode_state(issue["body"]).get("last_full") or {}).get("anomalies")
+    if isinstance(flagged, list):
+        route_ids &= {
+            str(a.get("route_id")) for a in flagged if a.get("verdict") in RETIREMENT_VERDICTS
+        }
+    if not route_ids:
+        plan = plan_retirements(Report(), config)
+        output = apply_config_edits(texts, plan)
+        for path in SOURCE_PATHS:
+            (ROOT / path).write_text(output[path])
+        return plan
     session = requests.Session()
     try:
         report = reconcile(
@@ -485,14 +551,17 @@ def main(argv=None):
                 and source.get("conclusion") == "success"
                 and source.get("event") == "schedule"
                 and source.get("head_branch") == "main"
-                # `name` is the run-name (e.g. "... (daily-due-only)"), so match the workflow file.
+                # `name` is the run-name ("... (daily-incremental)"), so match the workflow file.
                 and source.get("path") == RECONCILE_WORKFLOW_PATH
                 and (source.get("head_repository") or {}).get("full_name")
                 == os.environ.get("GITHUB_REPOSITORY", "")
                 and (
                     not args.automatic_retirements
                     or source.get("display_title")
-                    == "Provider catalog reconciliation (weekly-full)"
+                    in {
+                        "Provider catalog reconciliation (weekly-full)",
+                        "Provider catalog reconciliation (daily-incremental)",
+                    }
                 )
             ),
             "comment": (
@@ -583,7 +652,11 @@ def main(argv=None):
                     now=datetime.now(UTC),
                 )
             kinds = []
-            if any(d.action not in {"increase_rate", "context", "test_again"} for d in decisions):
+            matches = [d for d in decisions if d.action == "aa_match"]
+            if any(
+                d.action not in {"increase_rate", "context", "test_again", "aa_match"}
+                for d in decisions
+            ):
                 kinds.append("additions")
             if any(d.action == "increase_rate" for d in decisions):
                 kinds.append("limits")
@@ -618,6 +691,20 @@ def main(argv=None):
                         break
                 else:
                     raise ValueError("main changed repeatedly; retry /apply")
+            if matches:
+                comments.append(
+                    "AA match accepted for "
+                    + ", ".join(f"`{d.key}`" for d in matches)
+                    + ". No PR is needed: the next daily run reads the ticked row and scores the "
+                    "model from that AA entry. This command makes no provider request."
+                )
+            if retries and retry_receipt is None:
+                comments.append(
+                    f"`{retries[0].key}`: no saved test results exist to retry (the run that "
+                    "measured it ended before its results were saved). Nothing is lost: the "
+                    "daily run measures a candidate with no saved results from scratch, and "
+                    "this command makes no provider request."
+                )
             if retry_receipt:
                 comments.append(
                     "Request-cap discovery queued for the next eligible UTC day. "
@@ -642,7 +729,7 @@ def main(argv=None):
                 exc.diagnostic
                 if isinstance(exc, DispatchPauseError)
                 else (
-                    "verification or publication command failed"
+                    describe_failed_command(exc)
                     if isinstance(exc, subprocess.CalledProcessError)
                     else str(exc)
                 )
@@ -684,7 +771,10 @@ def prepare_discovery_retry(decision, *, event, issue_number, now):
         references, repository=repository, now=now
     )
     if gaps:
-        raise ValueError("authenticated request-cap evidence is unavailable")
+        raise ValueError(
+            "saved request-cap results could not be verified right now (GitHub artifacts "
+            "unavailable); comment `/apply` again later"
+        )
     compatible = [
         item
         for item in observations
@@ -693,7 +783,7 @@ def prepare_discovery_retry(decision, *, event, issue_number, now):
         and item.request.fixture_version == "discovery-v1"
     ]
     if not compatible:
-        raise ValueError("no authenticated request-cap result exists for this candidate")
+        return None
     unresolved = False
     for axis in rules.discovery_axes:
         bracket = Bracket(axis, default_discovery_seed(axis))
@@ -702,7 +792,10 @@ def prepare_discovery_retry(decision, *, event, issue_number, now):
                 bracket.observe(item)
         unresolved |= not bracket.converged
     if not unresolved:
-        raise ValueError("all supported request-cap axes are already converged")
+        raise ValueError(
+            "every request-cap axis is already fully measured, so there is nothing to retry; "
+            "tick `add route only` instead"
+        )
     revision = digest([asdict(item) for item in compatible])
     comment = event.get("comment") or {}
     return discovery_retry_receipt(

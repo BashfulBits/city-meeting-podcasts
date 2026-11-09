@@ -1,8 +1,51 @@
+# Maintainer-authorized PR/issue proposals only; all remedy merges require human review.
 version: 1
-mode: shadow
-# report_only: record the publication plan only; live: execute it (set after inspecting plans)
-publication_mode: report_only
-admissions: []
+mode: manual
+p3_role_plan: flash-deepseek-human-v3
+publication_mode: live
+admissions:
+- status: admitted
+  role: proposer
+  physical_route_ids: []
+  upstream_model: null
+  model_family: glm
+  reasoning_level: provider-default
+  request_params_hash: null
+  aa: null
+  project_evidence: null
+  manifest_hash: null
+  gold_hash: null
+  prompt_hash: e10ce10d4052717ac1741c89413926be6588aee5d795198ec05995817fdc2071
+  schema_hash: e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89
+  catalog_hash: null
+  reviewed_result_paths:
+  - evals/remedy/qualification/human-review-v3/decision.json
+  - evals/remedy/qualification/runtime-v2/answers.json
+  - evals/remedy/qualification/runtime-v2/conclusions.json
+  - evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json
+  reviewed_admission_ref: evals/remedy/qualification/human-review-v3/production-authorization-model-bound.json
+  logical_model: zai/glm-5.3-flash
+- status: admitted
+  role: proposer
+  physical_route_ids: []
+  upstream_model: null
+  model_family: deepseek
+  reasoning_level: provider-default
+  request_params_hash: null
+  aa: null
+  project_evidence: null
+  manifest_hash: null
+  gold_hash: null
+  prompt_hash: e10ce10d4052717ac1741c89413926be6588aee5d795198ec05995817fdc2071
+  schema_hash: e89c4f4e20106ad3649c9fe11bc02e23876bbd749a7ee39387616d66a35a1e89
+  catalog_hash: null
+  reviewed_result_paths:
+  - evals/remedy/qualification/human-review-v3/decision.json
+  - evals/remedy/qualification/runtime-v2/answers.json
+  - evals/remedy/qualification/runtime-v2/conclusions.json
+  - evals/remedy/results/accepted-pairs-2026-10-24/maintainer-acceptance.json
+  reviewed_admission_ref: evals/remedy/qualification/human-review-v3/production-authorization-model-bound.json
+  logical_model: deepseek/deepseek-v4.1-flash
 qualified_alias_types: []
 limits:
   decisions_per_pr: 5
@@ -12,3 +55,6 @@ limits:
   evidence_max_age_hours: 24
 onboarding_exceptions: []
 policy_templates: []
+manual_review_authorization:
+  path: evals/remedy/qualification/human-review-v3/production-authorization-model-bound.json
+  sha256: d02bcd026d7f564d9ae8100011b2e507879a609e05f92633df16d494d6095052

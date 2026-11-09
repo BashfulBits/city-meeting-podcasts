@@ -19,6 +19,7 @@ from citypods.compute.llm_deferred import (
     _load_snapshot_from_keys,
     _read_json,
     _write_json,
+    clear_terminal_failure,
     deferred_failure_key,
     deferred_key,
     discard_completed_result,
@@ -280,6 +281,8 @@ def test_schema_correction_marker_is_retryable_until_a_second_malformed_reply_ex
 
     discard_terminal_failure(storage, snapshot, handle, error, exhausted=True, now=NOW)
     assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is False
+    assert clear_terminal_failure(storage, handle.recipe_hash) is True
+    assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is True
 
 
 def test_repair_prunes_only_expired_terminal_failure_markers():
@@ -747,7 +750,7 @@ def test_list_pending_deferred_returns_only_pending_records():
         recipe_hash="pending-2",
         backend="litellm",
         ref="/v1/requests/chatcmpl-1",
-        model="mistral/codestral-2508",
+        model="openai/gpt-oss-120b",
         owner="pending-2",
         input_per_token=0.0,
         output_per_token=0.0,
@@ -760,7 +763,7 @@ def test_list_pending_deferred_returns_only_pending_records():
     # A genuine in-flight dispatch handle has no deferred_request -- reconcile() must route it
     # through the real URL-polling path, not re-run selection.
     assert pending["pending-2"].deferred_request is None
-    assert pending["pending-2"].model == "mistral/codestral-2508"
+    assert pending["pending-2"].model == "openai/gpt-oss-120b"
     assert pending["pending-2"].owner == "pending-2"
 
 
@@ -871,7 +874,7 @@ def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle()
     from citypods.compute.llm_policy import ROUTES
 
     storage = MemStorage()
-    route = ROUTES["mistral/codestral-2508"]
+    route = ROUTES["openai/gpt-oss-120b"]
     mutate_llm_budget(
         storage,
         lambda budget, attempt_now: budget.reserve(
@@ -1234,3 +1237,155 @@ def test_weekly_pointer_refresh_reaches_handles_with_no_remaining_index():
     assert look_up_v2_deferred_ref(storage, handle.ref) == handle
     audit, _ = llm_deferred.load_pending_audit_snapshot(storage)
     assert list(audit.pending()) == [handle]
+
+
+@pytest.mark.parametrize(
+    "task,expected",
+    [
+        ("moment-extraction", "moment-extraction"),
+        ("tag", None),
+    ],
+)
+def test_legacy_pending_moments_restore_the_known_contract(task, expected):
+    storage = MemStorage()
+    handle = JobHandle(task=task, recipe_hash="legacy", backend="llm-dispatch-v2", ref="old")
+    write_deferred(storage, "legacy", handle)
+    assert look_up_deferred(storage, "legacy").structured_output == expected
+
+
+def test_invalid_completed_results_exhaust_existing_retry_budget():
+    storage = MemStorage()
+    result = JobResult(task="moment-extraction", recipe_hash="bad", output={"wrong": []})
+    for attempt in range(llm_deferred.MAX_TERMINAL_FAILURE_RETRIES):
+        write_deferred(storage, "bad", result, now=NOW + timedelta(seconds=attempt))
+        assert discard_completed_result(storage, "bad", result, error=ValueError("private text"))
+        marker = _read_json(storage, deferred_failure_key("bad"))
+        assert marker["failure_count"] == attempt + 1
+        assert "private text" not in marker["last_error"]
+    assert not terminal_failure_retry_allowed(storage, "bad")
+
+
+def test_invalid_completed_result_failed_delete_is_not_counted_twice(monkeypatch):
+    storage = MemStorage()
+    result = JobResult(task="moment-extraction", recipe_hash="bad", output={"wrong": []})
+    write_deferred(storage, "bad", result)
+    original_delete = storage.delete
+    monkeypatch.setattr(storage, "delete", lambda key: (_ for _ in ()).throw(OSError("offline")))
+    with pytest.raises(OSError):
+        discard_completed_result(storage, "bad", result, error=ValueError())
+    monkeypatch.setattr(storage, "delete", original_delete)
+    assert discard_completed_result(storage, "bad", result, error=ValueError())
+    assert _read_json(storage, deferred_failure_key("bad"))["failure_count"] == 1
+
+
+def test_invalid_completed_result_keeps_cache_if_audit_write_fails(monkeypatch):
+    storage = MemStorage()
+    result = JobResult(task="moment-extraction", recipe_hash="bad", output={"wrong": []})
+    write_deferred(storage, "bad", result)
+    monkeypatch.setattr(
+        storage, "put_file", lambda *args: (_ for _ in ()).throw(OSError("offline"))
+    )
+    with pytest.raises(OSError):
+        discard_completed_result(storage, "bad", result, error=ValueError())
+    assert look_up_deferred(storage, "bad") == result
+
+
+def test_deferred_round_trip_preserves_every_policy_field_and_request_metadata():
+    policy = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3.5-flash-lite",),
+        allow_paid=True,
+        allow_experimental=True,
+        deadline_at=NOW,
+        purpose="r6-moments",
+        require_direct=True,
+        submit_next=True,
+        allow_batch=False,
+        allow_dispatch_overflow=True,
+        queue_only=True,
+        timeout_class="fast",
+        priority=0,
+        backup_models=("zai/glm-5.3-flash",),
+        backup_after_attempts=2,
+        allowed_route_ids=("pinned-route",),
+    )
+    handle = JobHandle(
+        task="moment-extraction",
+        recipe_hash="all-fields",
+        backend="llm-dispatch-v2",
+        ref="deferred:test",
+        structured_output="moment-extraction",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "test"},),
+            policy=policy,
+            timeout=720,
+            max_tokens_mode="route_max",
+            output_token_budget=36864,
+        ),
+    )
+    storage = MemStorage()
+    write_deferred(storage, handle.recipe_hash, handle)
+    assert look_up_deferred(storage, handle.recipe_hash) == handle
+    assert not llm_deferred.needs_moments_replan(look_up_deferred(storage, handle.recipe_hash))
+
+
+def test_legacy_moments_replan_never_deletes_a_newer_submission_or_completion():
+    from dataclasses import replace
+
+    storage = MemStorage()
+    legacy = JobHandle(
+        task="moment-extraction",
+        recipe_hash="legacy",
+        backend="llm-dispatch-v2",
+        ref="deferred:old",
+        structured_output="moment-extraction",
+        deferred_request=DeferredLLMRequest(
+            messages=(), policy=LLMRequestPolicy(), metadata_version=0
+        ),
+    )
+    write_deferred(storage, legacy.recipe_hash, legacy)
+    submitted = replace(legacy, ref="accepted-job", deferred_request=None)
+    write_deferred(storage, legacy.recipe_hash, submitted)
+    assert not llm_deferred.discard_legacy_moments_request(storage, legacy)
+    assert look_up_deferred(storage, legacy.recipe_hash) == submitted
+    completed = JobResult(task=legacy.task, recipe_hash=legacy.recipe_hash, output={})
+    write_deferred(storage, legacy.recipe_hash, completed)
+    assert not llm_deferred.discard_legacy_moments_request(storage, legacy)
+    assert look_up_deferred(storage, legacy.recipe_hash) == completed
+
+
+@pytest.mark.parametrize("routes", [None, ()])
+def test_deferred_route_pin_none_and_empty_are_distinct(routes):
+    storage = MemStorage()
+    handle = _pending_handle("pins")
+    from dataclasses import replace
+
+    handle = replace(
+        handle,
+        deferred_request=replace(
+            handle.deferred_request,
+            policy=replace(handle.deferred_request.policy, allowed_route_ids=routes),
+        ),
+    )
+    write_deferred(storage, "pins", handle)
+    assert look_up_deferred(storage, "pins").deferred_request.policy.allowed_route_ids == routes
+
+
+def test_missing_capsule_version_stays_legacy_across_rewrites():
+    import json
+    from dataclasses import replace
+
+    storage = MemStorage()
+    handle = replace(
+        _pending_handle("legacy-format"),
+        task="moment-extraction",
+        structured_output="moment-extraction",
+    )
+    write_deferred(storage, handle.recipe_hash, handle)
+    raw = _read_json(storage, deferred_key(handle.recipe_hash))
+    raw.pop("request_metadata_version")
+    _write_json(storage, deferred_key(handle.recipe_hash), json.dumps(raw).encode())
+    legacy = look_up_deferred(storage, handle.recipe_hash)
+    assert legacy.deferred_request.metadata_version == 0
+    assert llm_deferred.needs_moments_replan(legacy)
+    write_deferred(storage, handle.recipe_hash, legacy)
+    assert look_up_deferred(storage, handle.recipe_hash).deferred_request.metadata_version == 0

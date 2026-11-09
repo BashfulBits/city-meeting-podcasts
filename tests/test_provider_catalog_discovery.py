@@ -11,6 +11,7 @@ from citypods.provider_catalog.discovery import (
     DEFAULT_OUTPUT_SEED,
     INPUT_OUTPUT_COUNTERPART,
     MAX_ARTIFACT_BYTES,
+    MAX_ARTIFACT_SESSIONS,
     MAX_INPUT,
     MAX_RUN_CALLS,
     MAX_RUN_INPUT,
@@ -88,6 +89,51 @@ def test_discovery_artifact_accepts_full_run_session_and_attempt_budget():
         len(session["attempts"]) == MAX_SESSION_CALLS for session in artifact["payload"]["sessions"]
     )
     assert len(json.dumps(artifact).encode()) < MAX_ARTIFACT_BYTES
+
+
+def test_discovery_artifact_holds_a_whole_daily_timed_run():
+    # 2026-11-03: the daily run started a 4th session and the 3-session manual cap crashed it
+    # at the final evidence write, losing the run's state and issue update.
+    from citypods.provider_catalog.evidence import discovery_artifact
+    from citypods.provider_catalog.reconcile import TIMED_SESSION_CEILING
+
+    assert TIMED_SESSION_CEILING == MAX_ARTIFACT_SESSIONS > MAX_RUN_SESSIONS
+    now = datetime.now(UTC)
+    sessions = []
+    for session_number in range(MAX_ARTIFACT_SESSIONS + 1):
+        session_id = f"session-{session_number}"
+        identity = discovery_identity("kilo", "account", f"model-{session_number}", "https://k")
+        req = replace(request(), session_id=session_id, attempt_id="a", identity=identity)
+        sessions.append(
+            {
+                "session": {
+                    "session_id": session_id,
+                    "identity": identity,
+                    "provider": "kilo",
+                    "account_id": "account",
+                    "upstream_model": f"model-{session_number}",
+                    "endpoint": "https://k",
+                    "catalog_digest": "a" * 64,
+                    "free_evidence_digest": "b" * 64,
+                    "parser_version": "parser-v1",
+                    "fixture_version": "fixture-v1",
+                    "created_at": now.isoformat(),
+                },
+                "attempts": [
+                    {
+                        "request": asdict(req),
+                        "observation": asdict(observation(req, req.input_tokens)),
+                    }
+                ],
+            }
+        )
+    kwargs = {"repository": "owner/repo", "run_id": "1", "head_sha": "c" * 40, "now": now}
+
+    artifact = discovery_artifact(sessions[:MAX_ARTIFACT_SESSIONS], **kwargs)
+
+    assert len(artifact["payload"]["sessions"]) == MAX_ARTIFACT_SESSIONS
+    with pytest.raises(ValueError, match="too many discovery sessions"):
+        discovery_artifact(sessions, **kwargs)
 
 
 def request(axis="input", target=2048, attempt="a"):
@@ -466,7 +512,9 @@ def test_no_response_retries_up_to_five_charged_calls_then_reports_uncertainty(t
 
     assert len(calls) == result.budget["calls"] == 5
     assert len({request.attempt_id for request in calls}) == 5
-    assert {request.target for request in calls} == {calls[0].target}
+    # A timeout means this size is too slow: each retry halves it instead of repeating it.
+    targets = [request.target for request in calls]
+    assert targets == [500_000, 250_000, 125_000, 62_500, 31_250]
     assert result.reason == "uncertain_no_response_after_five_calls"
     assert result.brackets[0]["admitted"] is None
     assert result.brackets[0]["refused"] is None
@@ -474,6 +522,195 @@ def test_no_response_retries_up_to_five_charged_calls_then_reports_uncertainty(t
     assert len(result.transport_retries[0]) == 5
     journal = DiscoveryJournal(tmp_path / "journal.json", {"identity": "physical"})
     assert len(journal.data["attempts"]) == 5
+
+
+def test_slow_input_success_is_not_a_cap_and_search_converges_to_a_time_safe_size(tmp_path):
+    from citypods.provider_catalog.discovery import INPUT_TIME_BUDGET_SECONDS
+
+    now, calls = [0.0], []
+    # Seconds per token such that ~300k tokens fit the budget; larger sizes are too slow.
+    rate = INPUT_TIME_BUDGET_SECONDS / 300_000
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        now[0] += req.input_tokens * rate
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            outcome="admitted",
+            coordinate=req.input_tokens,
+            reported_input=req.input_tokens,
+            count_basis="input",
+            verified=True,
+        )
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        seeds={"input": 500_000},
+        clock=lambda: now[0],
+    )
+    bracket = result.brackets[0]
+    assert calls[0] == 500_000 and calls[1] == 250_000
+    assert bracket["admitted"] is not None and bracket["admitted"] <= 300_000
+    assert bracket["admitted"] >= 290_000
+    slow = [o for o in result.observations if o.diagnostic == "input_too_slow_for_deadline"]
+    assert slow and all(o.outcome == "inconclusive" and not o.verified for o in slow)
+    assert all(o.elapsed_seconds is not None for o in result.observations)
+
+
+def test_input_timeout_from_history_starts_the_next_run_below_the_slow_size(tmp_path):
+    from datetime import UTC, datetime
+
+    calls = []
+    stamp = datetime.now(UTC).isoformat()
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            outcome="admitted",
+            coordinate=req.input_tokens,
+            reported_input=req.input_tokens,
+            count_basis="input",
+            verified=True,
+        )
+
+    first = tmp_path / "first"
+    first.mkdir()
+    timed_out = []
+
+    def timeout_measure(req, admit, timeout):
+        admit()
+        obs = DiscoveryObservation(req, stamp, diagnostic="worker_response_timeout")
+        timed_out.append(obs)
+        return obs
+
+    execute(first, timeout_measure, supported_axes=("input",), seeds={"input": 400_000})
+    history = tuple(timed_out)
+    second = tmp_path / "second"
+    second.mkdir()
+    execute(second, measure, supported_axes=("input",), seeds={"input": 400_000}, history=history)
+    assert calls[0] <= 400_000 // 2
+
+
+def test_transient_5xx_is_retried_before_the_axis_is_called_an_outage(tmp_path):
+    calls, slept = [], []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        if len(calls) == 1:
+            return DiscoveryObservation(
+                req, STAMP, outcome="outage", diagnostic="http_non_success", response_status=500
+            )
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            outcome="admitted",
+            coordinate=req.input_tokens,
+            reported_input=req.input_tokens,
+            count_basis="input",
+            verified=True,
+        )
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        seeds={"input": 4_000},
+        sleep=slept.append,
+    )
+    assert slept == [15] and calls[:2] == [4_000, 4_000]
+    assert result.brackets[0]["admitted"] is not None
+
+
+def test_persistent_5xx_is_an_outage_after_bounded_retries(tmp_path):
+    calls, slept = [], []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        return DiscoveryObservation(
+            req, STAMP, outcome="outage", diagnostic="http_non_success", response_status=503
+        )
+
+    result = execute(tmp_path, measure, supported_axes=("input",), sleep=slept.append)
+    assert len(calls) == 3 and slept == [15, 30]
+    assert result.brackets[0]["reason"] == "outage"
+
+
+def test_a_500_on_a_huge_first_input_request_steps_the_size_down(tmp_path):
+    """Regression (#2554, muse-glimmer): HTTP 500 at 500,000 tokens ended the axis as an outage
+    on every run, so no smaller size was ever tried."""
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        if req.target > 100_000:
+            return DiscoveryObservation(
+                req, STAMP, outcome="outage", diagnostic="http_non_success", response_status=500
+            )
+        return observation(req, req.target, reported_input=req.input_tokens)
+
+    result = execute(
+        tmp_path, measure, supported_axes=("input",), seeds={"input": 500_000}, sleep=lambda s: None
+    )
+    assert calls[:3] == [500_000, 500_000, 500_000]  # the first size keeps its two blip retries
+    assert 250_000 in calls and any(c <= 100_000 for c in calls)
+    bracket = result.brackets[0]
+    assert bracket["admitted"] and bracket["admitted"] <= 100_000
+    assert bracket["refused"] is None  # a 5xx is guidance, never a refused bound
+
+
+def test_a_503_never_steps_the_input_size_down(tmp_path):
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        return DiscoveryObservation(
+            req, STAMP, outcome="outage", diagnostic="http_non_success", response_status=503
+        )
+
+    execute(tmp_path, measure, supported_axes=("input",), sleep=lambda s: None)
+    assert len(set(calls)) == 1
+
+
+def test_first_output_search_that_keeps_getting_dropped_steps_the_size_down(tmp_path):
+    """Regression (#2554, minimax): 16,384 output tokens ran ~270 s and was dropped, seven times,
+    all at the same size."""
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        if req.target > 3_000:
+            return DiscoveryObservation(req, STAMP, diagnostic="transport_connection_error")
+        return observation(req, req.target, reported_input=req.input_tokens)
+
+    result = execute(tmp_path, measure, supported_axes=("output",))
+    assert calls[:3] == [16_384, 8_192, 4_096]
+    bracket = result.brackets[1]
+    assert bracket["axis"] == "output" and bracket["admitted"] and bracket["admitted"] <= 3_000
+
+
+def test_first_output_search_that_never_gets_through_halves_until_the_allowance_ends(tmp_path):
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        return DiscoveryObservation(req, STAMP, diagnostic="transport_connection_error")
+
+    result = execute(tmp_path, measure, supported_axes=("output",))
+    assert calls == [16_384, 8_192, 4_096, 2_048, 1_024]
+    assert result.brackets[1]["reason"] == "uncertain_no_response_after_five_calls"
 
 
 def test_multiple_transport_attempts_are_reported_when_later_call_responds(tmp_path):
@@ -3372,6 +3609,99 @@ def test_unmeasured_refusals_search_down_then_refine_without_claiming_upper(tmp_
     assert result.brackets[0]["reason"] == "size_refusal_unmeasured_upper"
 
 
+def test_typed_context_length_refusal_is_a_limit_hint_not_a_boundary():
+    import json
+
+    from citypods.provider_catalog.rules import Response, general_discovery_rules
+
+    rules, req, transient = _chat_discovery_fixture("nvidia")
+    rules = general_discovery_rules(rules)
+    body = {
+        "message": "Invalid request",
+        "type": "Bad Request",
+        "code": 400,
+        "details": {"type": "context_length", "limit": 262144, "actual": 484064},
+    }
+    result = rules.discovery_observation(Response(400, body=json.dumps(body)), req, transient)
+    assert result.diagnostic == "size_refused_without_exact_counts"
+    assert result.outcome == "inconclusive" and not result.verified and result.coordinate is None
+    assert result.target_limit_hint == 262144 * req.target // 484064
+    # Counts that do not describe an over-limit request supply no hint.
+    for details in (
+        {"type": "context_length", "limit": 484064, "actual": 262144},
+        {"type": "context_length", "limit": "262144", "actual": 484064},
+        {"type": "other", "limit": 262144, "actual": 484064},
+    ):
+        bad = rules.discovery_observation(
+            Response(400, body=json.dumps(body | {"details": details})), req, transient
+        )
+        assert bad.target_limit_hint is None
+
+
+def test_provider_stated_limit_steers_input_search_to_a_verified_cap(tmp_path):
+    limit, calls = 262_144, []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        if req.input_tokens > limit:
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                diagnostic="size_refused_without_exact_counts",
+                target_limit_hint=limit * req.target // req.input_tokens,
+            )
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            outcome="admitted",
+            coordinate=req.input_tokens,
+            reported_input=req.input_tokens,
+            count_basis="input",
+            verified=True,
+        )
+
+    result = execute(tmp_path, measure, supported_axes=("input",), seeds={"input": 500_000})
+    assert calls[0] == 500_000
+    # Aims just under the stated limit, not at half the failed size.
+    assert calls[1] == limit * 95 // 100
+    bracket = result.brackets[0]
+    assert limit * 99 // 100 <= bracket["admitted"] <= limit
+    assert bracket["refused"] is None
+    assert bracket["reason"] == "size_refusal_unmeasured_upper"
+
+
+def test_repeated_provider_limit_refusals_aim_lower_each_time(tmp_path):
+    limit, calls, hints = 262_144, [], []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        # The provider's own count drifts against ours: 3% under at 500k, 3% over below it.
+        counted = int(req.input_tokens * (0.968 if req.input_tokens >= 400_000 else 1.032))
+        if counted > limit:
+            hints.append(limit * req.target // counted)
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                diagnostic="size_refused_without_exact_counts",
+                target_limit_hint=hints[-1],
+            )
+        return DiscoveryObservation(
+            req,
+            STAMP,
+            outcome="admitted",
+            coordinate=counted,
+            reported_input=counted,
+            count_basis="input",
+            verified=True,
+        )
+
+    execute(tmp_path, measure, supported_axes=("input",), seeds={"input": 500_000})
+    assert calls[1] == hints[0] * 95 // 100  # first refusal: normal headroom
+    assert calls[2] == hints[1] * 90 // 100  # it refused again, so leave more room
+
+
 def test_clipped_output_rechecks_actual_count_then_stops_without_upper(tmp_path):
     calls = []
 
@@ -4199,3 +4529,41 @@ def test_input_priority_support_does_not_inherit_tiny_historical_output_allowanc
     )
     combined = next(req for req in seen if req.axis == "total_input_heavy")
     assert combined.control == "total_input_heavy:reservation-v2:opposite=3000"
+
+
+def test_supporting_check_keeps_outage_handling_without_a_wasted_retry(tmp_path):
+    slept = []
+
+    def measure(req, admit, timeout):
+        admit()
+        if req.axis == "input":
+            return DiscoveryObservation(
+                req,
+                STAMP,
+                outcome="admitted",
+                coordinate=req.input_tokens,
+                reported_input=req.input_tokens,
+                count_basis="input",
+                verified=True,
+            )
+        return DiscoveryObservation(
+            req, STAMP, outcome="outage", diagnostic="http_non_success", response_status=500
+        )
+
+    execute(tmp_path, measure, seeds={"input": 4_000}, sleep=slept.append, input_priority=True)
+    assert slept == []
+
+
+def test_repeated_connection_resets_at_one_size_step_down_like_a_timeout(tmp_path):
+    targets = []
+
+    def measure(req, admit, timeout):
+        admit()
+        targets.append(req.target)
+        return DiscoveryObservation(req, STAMP, diagnostic="transport_connection_error")
+
+    result = execute(tmp_path, measure, supported_axes=("input",))
+
+    # Two resets at the first size, then smaller sizes instead of a third identical attempt.
+    assert targets[0] == targets[1] and targets[2] < targets[1]
+    assert result.reason == "uncertain_no_response_after_five_calls"

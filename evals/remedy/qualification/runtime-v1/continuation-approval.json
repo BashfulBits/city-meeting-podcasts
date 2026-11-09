@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "approved": true,
+  "authority": "Explicit maintainer instruction in chat",
+  "instruction": "Continue to evaluate the rest so I can decide whether to accept this error rate and catch it in the PRs issued, or have all of them fall to GH issues.",
+  "allowed_case_ids": [
+    "RQ11",
+    "RQ12"
+  ],
+  "original_authority_path": "evals/remedy/qualification/runtime-v1/budget-approval.json",
+  "original_authority_sha256": "1fc95b46393de08cc8c09e0af5f4ca5e5de38c2c449041afa68be3ff07e4c4a6",
+  "executor_sha256": "bfcf836f5e5e55b5667b654d44ccc0cb991615f8ede37d93f936f107279acbc5",
+  "max_provider_attempts_cumulative": 48,
+  "retry_completed_or_failed_requests": false,
+  "acknowledged_terminal_holds": {
+    "RQ09--jev-result.json": "fa2f43eaa258db36b5f2b9797d1416cb2f656def489dac0871726e28843b27e4",
+    "RQ10--jev-result.json": "1b831ebb0aacfe27c7c2dbc8555cc18bd8897c9bbc51c8b32cec0e2d47ec08f6"
+  },
+  "scope": "Untouched RQ11/RQ12 only, same frozen runtime payloads/profiles and cumulative ledger. Acknowledge known JEV input-length failures without retrying them. No production activation, merge, deployment or creation of PR/issues for remedies."
+}

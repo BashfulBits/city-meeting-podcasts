@@ -1,0 +1,13 @@
+{
+  "scope": "Extracted identity fields only; not provider attestation",
+  "requested_model": "z-ai/glm-5.3-flash-free",
+  "returned_model": "zai-org/glm-5.3-flash",
+  "source_result_sha256": "e417f18f18be35d0860727dce374a9fdafc23c94fdc22cce53b1d805dea04f37",
+  "source_intent_sha256": "ff4e149dc831dcc7f744680c9559d398986b3029ba369fb8059a65bbc2e8f535",
+  "result_identity_fields": {
+    "http_status": 200,
+    "status": "completed",
+    "identity_matches": false
+  },
+  "raw_originals": "Retained locally, untracked; no serving-identity approval inferred."
+}

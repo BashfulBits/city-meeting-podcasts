@@ -42,7 +42,11 @@ def family_of(model: str | None, families: Mapping[str, str]) -> str:
 
 
 def sibling_candidates(
-    producer_model: str | None, sibling: LaneConfig, families: Mapping[str, str]
+    producer_model: str | None,
+    sibling: LaneConfig,
+    families: Mapping[str, str],
+    *,
+    allow_all_slots: bool = False,
 ) -> tuple[str, ...]:
     """Every active sibling of the first slot that has one independent of the producer.
 
@@ -50,11 +54,15 @@ def sibling_candidates(
     lane order. Empty only if no active sibling is independent of the producer (or the producer's
     family is unknown). A slot is a pool of interchangeable judges, so any of them may be chosen
     by load (``runner._pick_sibling``); a later slot is used only when the earlier one has none.
+    When ``allow_all_slots`` is True, all independent active models across all slots are returned,
+    allowing load-balancing across slots (e.g. for rule-produced subjects with no LLM conflict).
     """
     producer = family_of(producer_model, families)
     if producer == UNKNOWN_FAMILY:
         return ()
     slots = sibling.slot_models or {"all": sibling.models}
+    if allow_all_slots:
+        return tuple(model for model in sibling.models if families.get(model) != producer)
     for name in sorted(slots):
         found = tuple(
             model
@@ -75,7 +83,11 @@ def sibling_for(
 
 
 def choose_sibling_candidates(
-    producer_models: Sequence[str | None], sibling: LaneConfig, families: Mapping[str, str]
+    producer_models: Sequence[str | None],
+    sibling: LaneConfig,
+    families: Mapping[str, str],
+    *,
+    allow_all_slots: bool = False,
 ) -> tuple[str, ...]:
     """Siblings independent of every producer in a meeting, from the first slot that has one."""
     producer_families = {family_of(model, families) for model in producer_models}
@@ -84,6 +96,8 @@ def choose_sibling_candidates(
     independent = [m for m in sibling.models if families.get(m) not in producer_families]
     if not independent:
         return ()
+    if allow_all_slots:
+        return tuple(independent)
     slots = sibling.slot_models or {}
 
     def slot_of(model: str) -> str:

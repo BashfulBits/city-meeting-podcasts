@@ -19,6 +19,7 @@ from typing import Any, Protocol
 import requests
 
 from citypods.compute.api_shape import route_speaks_chat
+from citypods.compute.llm_dispatch_pause import DispatchPauseError
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.llm_rate_probe import (
     ProbeBudgetExceeded,
@@ -30,6 +31,7 @@ from citypods.llm_rate_probe import (
 )
 from citypods.provider_catalog.classify import Classification, classify
 from citypods.provider_catalog.decisions import Decisions
+from citypods.provider_catalog.discovery import MAX_ARTIFACT_SESSIONS, MAX_AUTO_MEASURE_ATTEMPTS
 from citypods.provider_catalog.evidence import (
     CatalogEvidence,
     LimitObservation,
@@ -38,8 +40,10 @@ from citypods.provider_catalog.evidence import (
     catalog_digest,
     digest,
     logical_identity,
+    model_catalog_digest,
     positive_bound,
 )
+from citypods.provider_catalog.model_facts import gather_facts
 from citypods.provider_catalog.probe import (
     CANARY_TIMEOUT_SECONDS,
     STRUCTURED_METHODS,
@@ -49,6 +53,7 @@ from citypods.provider_catalog.probe import (
     structured_canary,
 )
 from citypods.provider_catalog.quality import QualityIndex
+from citypods.provider_catalog.readiness import CATALOG_MISSING_NOTE
 from citypods.provider_catalog.registry import all_rules
 from citypods.provider_catalog.rules import ProviderRules, Response
 
@@ -61,6 +66,8 @@ CANARY_MEMORY_DAYS = 28
 # when the Worker reports quota left (review/48 R3).
 SCARCE_RPD = 50
 SCARCE_CHECK_DAYS = 28
+# Most newly listed models a daily incremental run will canary, across all providers.
+DAILY_NEW_MODEL_LIMIT = 6
 # New-route discovery runs on the weekly full scan after the existing route gates pass.
 DISCOVERY_ACTIVATION_ENABLED = True
 DISCOVERY_SCHEDULED_ENABLED = True
@@ -142,6 +149,13 @@ class Candidate:
     evidence_digest: str | None = None
     # Request-cap search is advisory and belongs only to newly discovered candidates.
     discovery: dict[str, Any] | None = None
+    # Display-only model-card facts (summary, size, release, expiry); see model_facts.py.
+    facts: dict[str, str] | None = None
+    # Closest AA models (creator, slug, name, score) for an unscored candidate; each is offered
+    # as a checkbox that accepts it as this model's AA entry on the next run.
+    aa_matches: list[dict[str, Any]] | None = None
+    # Why the daily run has not measured this candidate yet (shown in the issue), if it knows.
+    measure_note: str | None = None
 
     @property
     def key(self) -> str:
@@ -164,6 +178,8 @@ class Anomaly:
     config_digest: str | None = None
     contended: bool = True
     retirement_confirmation: dict[str, Any] | None = None
+    # For structured_output_invalid: the method that did verify, offered as a one-click switch.
+    alternative_method: str | None = None
 
     @property
     def key(self) -> str:
@@ -185,6 +201,9 @@ class Report:
     context_changes: list = field(default_factory=list)
     context_attempted_routes: set[str] = field(default_factory=set)
     discovery_sessions: list[dict[str, Any]] = field(default_factory=list)
+    # Why every model is unscored (the quality fetch failed); shown at the top of the issue.
+    quality_error: str | None = None
+    floor_source: str = ""
 
     @property
     def actionable(self) -> bool:
@@ -240,6 +259,7 @@ def lane_incumbent_scores(
                     str(route.get("upstream_model") or ""),
                     creator=provider_rules.creator if provider_rules else None,
                     free_suffix=provider_rules.free_suffix if provider_rules else "",
+                    key=f"{route.get('provider')}/{route.get('upstream_model')}",
                 )
                 if score is not None and (best is None or score > best):
                     best = score
@@ -247,6 +267,134 @@ def lane_incumbent_scores(
                 scores.append(best)
         out[purpose] = scores
     return out
+
+
+def production_floor(
+    incumbents: Mapping[str, list[float]], quality: QualityIndex
+) -> tuple[float | None, str]:
+    """The quality bar a candidate is held to: the weakest AA-scored model our lanes run.
+
+    Pinning the bar to two named models failed the day AA stopped publishing an index for both
+    (2026-11): no floor, no automatic measurement. The models our lanes actually run are ours to
+    keep current, and the bar moves with every index revision because it is recomputed from AA's
+    current scores each run. The pinned reference models remain only as a fallback.
+    """
+    scores = [score for lane_scores in incumbents.values() for score in lane_scores]
+    if scores:
+        return min(scores), "weakest AA-scored model our lanes run"
+    return quality.floor, "pinned reference models"
+
+
+def _score_at_or_below(score: float | None, floor: float | None) -> bool:
+    """An AA-scored model at or under the bar. Unscored models (AA has not indexed them yet) are
+    measured anyway: skipping them would leave every new model unmeasured for as long as AA lags."""
+    return score is not None and floor is not None and score <= floor
+
+
+def _below_floor(candidate, floor: float | None) -> bool:
+    return _score_at_or_below(candidate.score, floor)
+
+
+# Providers beyond the session limit that a run may try when earlier ones cannot be measured.
+MEASURE_FALLBACK_PROVIDERS = 2
+# Time-bound (daily) runs start another size-search session only while at least this much of the
+# budget remains, and never more than this many in one run.
+MIN_SESSION_SECONDS = 600
+TIMED_SESSION_CEILING = MAX_ARTIFACT_SESSIONS
+# Stubs saved when nothing will be measured automatically; they are never re-queued.
+STUB_DISCOVERY_REASONS = (
+    "below_automatic_quality_floor",
+    "automatic_discovery_already_recorded",
+)
+DEFERRED_DISCOVERY_REASONS = (
+    "automatic_discovery_deferred_run_budget",
+    "automatic_discovery_deferred_pause_contended",
+)
+
+
+def measurement_plan(
+    previous_state,
+    floor: float | None,
+    limit: int,
+    *,
+    per_provider: bool = True,
+    decisions: Decisions | None = None,
+    today: date | None = None,
+) -> dict[str, str]:
+    """Which already-found candidates the next daily sessions should measure, and on what axis.
+
+    A candidate needs an input search until it has one, then an output search unless a provider
+    or LiteLLM claim already supplies the output limit. Best-scored first, unscored after, so a
+    scarce session goes where the model is most likely to be added. `limit` sessions per run.
+    """
+    wanted = []
+    for row in (previous_state.get("last_full") or {}).get("candidates") or []:
+        if not isinstance(row, Mapping) or not row.get("provider") or not row.get("model"):
+            continue
+        score = row.get("score")
+        if score is not None and floor is not None and score <= floor:
+            continue
+        if decisions is not None and today is not None:
+            if decisions.is_ignored(row["provider"], row["model"], today):
+                continue  # decided after it was found; the carried row is stale
+        discovery = row.get("discovery")
+        axes = {
+            a.get("axis"): a for a in (discovery or {}).get("axes") or [] if isinstance(a, Mapping)
+        }
+        attempts = int(
+            (
+                (previous_state.get("canaries") or {}).get(f"{row['provider']}/{row['model']}")
+                or {}
+            ).get("measure_attempts")
+            or 0
+        )
+        if not discovery or discovery.get("reason") in DEFERRED_DISCOVERY_REASONS:
+            axis = "input"
+        elif (
+            not (axes.get("input") or {}).get("admitted")
+            and discovery.get("reason") not in STUB_DISCOVERY_REASONS
+            and attempts < MAX_AUTO_MEASURE_ATTEMPTS
+        ):
+            # Interrupted or inconclusive input search (outage, stalled 400s, ...): try again.
+            axis = "input"
+        elif (axes.get("input") or {}).get("admitted") and not (axes.get("output") or {}).get(
+            "admitted"
+        ):
+            published = (axes.get("output") or {}).get("published")
+            litellm = ((discovery.get("litellm") or {}).get("output")) if discovery else None
+            if published or litellm:
+                continue
+            axis = "output"
+        else:
+            continue
+        wanted.append(
+            (
+                attempts,
+                axis == "input",
+                score is None,
+                -(score or 0.0),
+                f"{row['provider']}/{row['model']}",
+                axis,
+            )
+        )
+    # One entry per provider, plus fallbacks: a provider whose dispatch pause cannot drain
+    # (contended) spends no session, and the next provider's candidate takes the slot instead.
+    plan: dict[str, str] = {}
+    providers: set[str] = set()
+    for *_rest, key, axis in sorted(wanted):
+        provider = key.partition("/")[0]
+        if not per_provider:
+            if len(plan) >= max(0, limit):
+                break
+            plan[key] = axis
+            continue
+        if provider in providers:
+            continue
+        if len(providers) >= max(0, limit) + MEASURE_FALLBACK_PROVIDERS:
+            break
+        providers.add(provider)
+        plan[key] = axis
+    return plan
 
 
 def suggest_lanes(
@@ -364,8 +512,45 @@ def reconcile(
     discovery_receipt_ids: Mapping[str, str] | None = None,
     discovery_run_id: str = "",
     retry_candidate_keys: set[str] | None = None,
+    new_models: bool = False,
+    new_model_limit: int = DAILY_NEW_MODEL_LIMIT,
+    measure_pending: bool = False,
+    discovery_session_limit: int | None = None,
+    discovery_time_budget_seconds: float | None = None,
+    discovery_clock: Callable[[], float] = time.monotonic,
+    discovery_sessions_sink: Callable[[list[dict[str, Any]]], None] | None = None,
 ) -> Report:
-    report = Report(floor=quality.floor)
+    report = Report(floor=quality.floor, floor_source="pinned reference models")
+    new_model_budget = new_model_limit
+    from citypods.provider_catalog.discovery import MAX_RUN_SESSIONS as MAX_SESSIONS
+
+    session_limit = MAX_SESSIONS if discovery_session_limit is None else discovery_session_limit
+    # Time-bound mode (the daily run): sessions start while time remains, across any providers
+    # and several per provider, instead of a fixed count of one per provider.
+    timed = discovery_time_budget_seconds is not None
+    if timed:
+        session_limit = TIMED_SESSION_CEILING
+    run_started = discovery_clock()
+
+    def session_slot_open(provider: str) -> bool:
+        if len(report.discovery_sessions) >= session_limit:
+            return False
+        if timed:
+            spent = discovery_clock() - run_started
+            return spent + MIN_SESSION_SECONDS <= (discovery_time_budget_seconds or 0)
+        return not any(
+            row.get("session", {}).get("provider") == provider for row in report.discovery_sessions
+        )
+
+    def save_sessions() -> None:
+        # A failed evidence write is not a failed measurement: the session already finished, and
+        # raising here would let a caller's handler mislabel it as discovery_stopped_safely.
+        if discovery_sessions_sink is not None:
+            try:
+                discovery_sessions_sink(report.discovery_sessions)
+            except (OSError, ValueError) as exc:
+                print(f"::warning::discovery evidence not saved ({type(exc).__name__}: {exc})")
+
     if not isinstance(discovery_axis, str) or discovery_axis not in {"all", "input", "output"}:
         raise ValueError("invalid discovery axis")
     if type(discovery_automatic) is not bool:
@@ -378,7 +563,6 @@ def reconcile(
             MAX_RUN_CALLS,
             MAX_RUN_INPUT,
             MAX_RUN_OUTPUT,
-            MAX_RUN_SESSIONS,
             DiscoveryBudget,
         )
 
@@ -393,11 +577,13 @@ def reconcile(
     route_checks: dict[str, str] = dict(previous_state.get("route_checks") or {})
     deferred: dict[str, str] = dict(previous_state.get("deferred") or {})
     known_anomalies = set(previous_state.get("anomalies") or [])
+    report.quality_error = quality.error
     if quality.error:
         report.observations.append(f"quality: {quality.error}; every candidate is unscored")
 
     routes = [r for r in limits.get("routes") or [] if isinstance(r, dict)]
     incumbents = lane_incumbent_scores(lanes, routes, quality)
+    report.floor, report.floor_source = production_floor(incumbents, quality)
     # Data-driven usability floor: no candidate smaller than the smallest configured free route.
     min_context = min(
         (
@@ -436,32 +622,95 @@ def reconcile(
                 original_order[provider],
             )
         )
+    measure_plan = (
+        measurement_plan(
+            previous_state,
+            report.floor,
+            session_limit,
+            per_provider=not timed,
+            decisions=decisions,
+            today=today,
+        )
+        if due_only and measure_pending and discovery_automatic
+        else {}
+    )
+    unmeasured_reason: dict[str, str] = {}
+    # What the last run stored per candidate: a daily session measures one axis and must keep the
+    # others it did not touch.
+    carried_discovery = {
+        f"{row.get('provider')}/{row.get('model')}": row["discovery"]
+        for row in (previous_state.get("last_full") or {}).get("candidates") or []
+        if isinstance(row, Mapping) and row.get("discovery")
+    }
     for provider in selected:
         rules = all_rules().get(provider)
         cfg = provider_cfgs.get(provider)
         if rules is None or cfg is None:
             report.observations.append(f"{provider}: no plugin or no config; skipped")
             continue
+        if measure_plan and not session_slot_open(provider):
+            for planned in measure_plan:
+                if planned.partition("/")[0] == provider:
+                    unmeasured_reason[planned] = (
+                        "this run's time budget was spent before it reached the provider"
+                    )
+        measure_names = (
+            {}
+            if not session_slot_open(provider)
+            else {
+                key.partition("/")[2]: axis
+                for key, axis in measure_plan.items()
+                if key.partition("/")[0] == provider
+            }
+        )
         provider_routes = [r for r in routes if r.get("provider") == provider]
-        # A daily run calls only providers with deferred routes or bounded early-check triggers.
-        if (
-            due_only
-            and not any(
+        # A daily run calls only providers with deferred routes, bounded early-check triggers or,
+        # when `new_models` is set, a catalog that lists a model absent from the last snapshot.
+        prior = (previous_state.get("catalogs") or {}).get(provider) or {}
+        # An empty snapshot only counts when it was a complete listing, not a failed fetch.
+        prior_models = prior.get("models")
+        if not prior_models and prior.get("complete") is not True:
+            prior_models = None
+        has_work = (
+            any(
                 str(r.get("route_id")) in deferred
                 or str(r.get("route_id")) in (early_rate_checks or set())
                 for r in provider_routes
             )
-            and not any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
-        ):
+            or any(key.startswith(f"{provider}/") for key in retry_candidate_keys or ())
+            or bool(measure_names)
+        )
+        watch_new = bool(
+            due_only
+            and new_models
+            and new_model_budget > 0
+            and isinstance(prior_models, (list, tuple))
+        )
+        if due_only and not has_work and not watch_new:
             continue
         catalog = fetch_catalog(rules, cfg, session)
+        fresh_names: set[str] | None = None
+        if watch_new:
+            known = {r[0] for r in prior_models if isinstance(r, (list, tuple)) and r}
+            fresh_names = set() if catalog.error else set(catalog.models) - known
+            if not has_work and not fresh_names:
+                continue
+        if measure_names and not catalog.error:
+            # Already-found candidates the plan chose are visited like new models.
+            fresh_names = (fresh_names or set()) | (set(measure_names) & set(catalog.models))
+            if rules.catalog_is_complete:
+                for gone in set(measure_names) - set(catalog.models):
+                    unmeasured_reason[f"{provider}/{gone}"] = CATALOG_MISSING_NOTE
         if catalog.error:
+            for planned in measure_plan:
+                if planned.partition("/")[0] == provider:
+                    unmeasured_reason[planned] = "the provider's model catalog failed to load"
             report.anomalies.append(
                 Anomaly(provider, f"{provider}:catalog", "-", "inconclusive", catalog.error, False)
             )
         else:
             report.observations.append(f"{provider}: catalog lists {len(catalog.models)} models")
-        ctx = rules.prepare(session) if rules.prepare and not due_only else {}
+        ctx = rules.prepare(session) if rules.prepare and (not due_only or fresh_names) else {}
         if ctx and ctx.get("error"):
             report.observations.append(
                 f"{provider}: free-evidence source unavailable: {ctx['error']}"
@@ -521,6 +770,9 @@ def reconcile(
                 proven_on,
                 method=method,
             )
+            candidate.facts = (
+                gather_facts(session, provider, model, record, candidate.links) or None
+            )
             accounts = cfg.get("accounts") or []
             account_id = str(accounts[0].get("id") or "") if accounts else ""
             observations = (
@@ -568,6 +820,7 @@ def reconcile(
                     for m, e in (method_results or {}).items()
                 ),
                 contended,
+                model_digest=model_catalog_digest(catalog_evidence, model),
             ).to_dict()
             candidate.evidence_digest = candidate_digest(
                 RouteEvidence.from_dict(candidate.evidence), candidate.lanes
@@ -590,12 +843,18 @@ def reconcile(
         # --- configured-route health: one live route per upstream model -------------------------
         health: list[dict[str, Any]] = []
         seen_models: set[str] = set()
+        seen_physical: set[tuple[str, str, str]] = set()
         health_routes = provider_routes if candidate_keys is None or route_ids else []
         for route in health_routes:
             rid = str(route["route_id"])
             if route_ids is not None and rid not in route_ids:
                 continue
             model = str(route.get("upstream_model") or "")
+            phys = (str(route.get("provider") or ""), str(route.get("account_id") or ""), model)
+            if all(phys):
+                if phys in seen_physical:
+                    continue
+                seen_physical.add(phys)
             # The health canary is a chat completion; a non-chat route (JEV, review/53 PR2) cannot
             # answer one, and on BeatAPI it would spend the account's single request window.
             if not route_speaks_chat(route):
@@ -622,11 +881,13 @@ def reconcile(
         configured_models = {str(r.get("upstream_model") or "") for r in provider_routes}
         configured_identities = {_identity(m, rules.free_suffix): m for m in configured_models if m}
         if (
-            (not due_only or retry_candidate_keys)
+            (not due_only or retry_candidate_keys or fresh_names)
             and not rules.observation_only
             and not catalog.error
         ):
             retry_models_seen: set[str] = set()
+            auto_ignored: list[tuple[str, float]] = []
+            explicit_keys = (retry_candidate_keys or set()) | (candidate_keys or set())
 
             def terminal_retry(
                 model,
@@ -664,6 +925,7 @@ def reconcile(
                         calls=calls,
                     )
                 )
+                save_sessions()
 
             for model, record in sorted(catalog.models.items()):
                 key = f"{provider}/{model}"
@@ -671,7 +933,14 @@ def reconcile(
                     retry_models_seen.add(key)
                 if candidate_keys is not None and key not in candidate_keys:
                     continue
-                if retry_candidate_keys is not None and key not in retry_candidate_keys:
+                is_fresh = fresh_names is not None and model in fresh_names
+                if (
+                    retry_candidate_keys is not None
+                    and key not in retry_candidate_keys
+                    and not is_fresh
+                ):
+                    continue
+                if fresh_names is not None and retry_candidate_keys is None and not is_fresh:
                     continue
                 if model in configured_models:
                     terminal_retry(model, record, "route_already_configured")
@@ -699,6 +968,7 @@ def reconcile(
                 remembered = (
                     candidate_keys is None
                     and retry_candidate_keys is None
+                    and model not in measure_names
                     and memory
                     and age is not None
                     and age < CANARY_MEMORY_DAYS
@@ -709,8 +979,11 @@ def reconcile(
                 if remembered:
                     if memory.get("verdict") == "proven":
                         score = quality.score(
-                            model, creator=rules.creator, free_suffix=rules.free_suffix
+                            model, creator=rules.creator, free_suffix=rules.free_suffix, key=key
                         )
+                        if key not in explicit_keys and _score_at_or_below(score, report.floor):
+                            auto_ignored.append((model, score))
+                            continue
                         report.candidates.append(
                             evidenced_candidate(
                                 model,
@@ -726,7 +999,15 @@ def reconcile(
                 free = rules.free_evidence(model, record, ctx) if rules.free_evidence else False
                 if not free:
                     continue
-                score = quality.score(model, creator=rules.creator, free_suffix=rules.free_suffix)
+                score = quality.score(
+                    model, creator=rules.creator, free_suffix=rules.free_suffix, key=key
+                )
+                if key not in explicit_keys and _score_at_or_below(score, report.floor):
+                    # Confirmed AA score at or under the weakest model our lanes run: nothing is
+                    # probed or listed. The bar is recomputed each run, so it reappears if the
+                    # bar or AA's score moves.
+                    auto_ignored.append((model, score))
+                    continue
                 candidates.append(
                     (
                         model,
@@ -735,6 +1016,15 @@ def reconcile(
                         memory is not None and not memory.get("discovery_pending"),
                     )
                 )
+            if auto_ignored:
+                shown = ", ".join(f"{m} ({sc:g})" for m, sc in auto_ignored[:5])
+                more = f", +{len(auto_ignored) - 5} more" if len(auto_ignored) > 5 else ""
+                note = (
+                    f"{provider}: auto-ignored {len(auto_ignored)} model(s) scored at or below "
+                    f"the quality bar ({report.floor:g}): {shown}{more}"
+                )
+                if note not in report.observations:
+                    report.observations.append(note)
             for key in (retry_candidate_keys or set()) | (candidate_keys or set()):
                 provider_prefix, separator, model = key.partition("/")
                 if (
@@ -747,13 +1037,46 @@ def reconcile(
                     terminal_retry(model, {}, "route_absent_from_current_catalog")
             # Never-tried first, then retries of inconclusive results; best-scored first within
             # each, unscored last. So a candidate that keeps failing cannot starve new ones.
-            candidates.sort(key=lambda c: (c[3], c[2] is None, -(c[2] or 0), c[0]))
-            if len(candidates) > CANARY_BUDGET_PER_PROVIDER:
-                report.observations.append(
-                    f"{provider}: {len(candidates) - CANARY_BUDGET_PER_PROVIDER} more free "
-                    f"candidate(s) wait for later runs (budget {CANARY_BUDGET_PER_PROVIDER}/run)"
+            # The measurement plan ranks the already-found candidates (fewest tries first), and
+            # a timed run adds them to the usual budget for newly listed models.
+            plan_rank = {name: index for index, name in enumerate(measure_names)}
+            canary_budget = CANARY_BUDGET_PER_PROVIDER + (len(measure_names) if timed else 0)
+            candidates.sort(
+                key=lambda c: (
+                    plan_rank.get(c[0], len(plan_rank)),
+                    c[3],
+                    c[2] is None,
+                    -(c[2] or 0),
+                    c[0],
                 )
-            candidates = candidates[:CANARY_BUDGET_PER_PROVIDER]
+            )
+            if len(candidates) > canary_budget:
+                report.observations.append(
+                    f"{provider}: {len(candidates) - canary_budget} more free "
+                    f"candidate(s) wait for later runs (budget {canary_budget}/run)"
+                )
+            ordered = candidates
+            for waiting in ordered[canary_budget:]:
+                unmeasured_reason[f"{provider}/{waiting[0]}"] = (
+                    f"it waited behind other {provider} candidates "
+                    f"(at most {canary_budget} are visited per run)"
+                )
+            candidates = candidates[:canary_budget]
+            if fresh_names is not None:
+                retries = [c for c in candidates if c[0] not in fresh_names]
+                measured = [c for c in candidates if c[0] in measure_names]
+                fresh = [c for c in candidates if c[0] in fresh_names and c[0] not in measure_names]
+                fresh = fresh[: max(0, new_model_budget)]
+                new_model_budget -= len(fresh)
+                candidates = retries + measured + fresh
+                # A new model this run could not afford to canary stays "new" for the next run.
+                unserved = {
+                    c[0] for c in ordered if c[0] in fresh_names and c[0] not in measure_names
+                } - {c[0] for c in fresh}
+                if unserved:
+                    catalogs[provider]["models"] = tuple(
+                        m for m in catalogs[provider]["models"] if m[0] not in unserved
+                    )
 
         context_ready = bool(context_run) and not due_only and not context_run.get("abandoned")
         if context_ready:
@@ -818,7 +1141,13 @@ def reconcile(
                     pause.renew()  # renew AFTER spacing, immediately before the request
                     first_probe = False
                     if route is not None:
-                        control.reserve(rid)
+                        try:
+                            control.reserve(rid)
+                        except DispatchPauseError as exc:
+                            report.observations.append(
+                                f"{rid}: dispatch ledger unavailable ({exc}); not checked this run"
+                            )
+                            return False
                         report.rate_attempted_routes.add(rid)
                         if remaining is not None:
                             quota[rid] = {**quota[rid], "rpd_remaining": remaining - 1}
@@ -871,7 +1200,14 @@ def reconcile(
                     sleep(rules.canary_interval_seconds)
                 pause.renew()
                 first_probe = False
-                control.reserve(rid)
+                try:
+                    control.reserve(rid)
+                except DispatchPauseError as exc:
+                    # No reservation means no request: skip this route, keep the rest of the run.
+                    report.observations.append(
+                        f"{rid}: dispatch ledger unavailable ({exc}); not checked this run"
+                    )
+                    continue
                 report.rate_attempted_routes.add(rid)
                 count_existing_request(rid)
                 response = canary_fn(rules, cfg, model, api_key, session)
@@ -940,6 +1276,10 @@ def reconcile(
                             f"verified alternative: {method}",
                             False,
                             lane_usage=lane_usage(route, lanes, routes),
+                            observed_on=today.isoformat(),
+                            config_digest=digest(route),
+                            contended=pause.contended,
+                            alternative_method=method if method and method != configured else None,
                         )
                         anomaly.new = anomaly.key not in known_anomalies
                         acknowledged = decisions.acknowledgement(provider, model, anomaly.verdict)
@@ -971,6 +1311,109 @@ def reconcile(
             if not api_key:
                 report.observations.append(f"{provider}: no API key; candidates not checked")
                 continue
+            quota_waits: dict[str, int] = {}
+            resume_queue: list[dict[str, Any]] = []
+
+            def run_session(
+                candidate,
+                record,
+                selected_axes,
+                automatic_candidate,
+                *,
+                first=True,
+                provider=provider,
+                rules=rules,
+                cfg=cfg,
+                quota_waits=quota_waits,
+                resume_queue=resume_queue,
+            ):
+                """One size-search session; a 429 without Retry-After is queued for a retry."""
+                model = candidate.model
+                try:
+                    identity = _candidate_discovery_identity(provider, model, rules, cfg)
+                    session_record = _discover_candidate_caps(
+                        candidate,
+                        record,
+                        provider_cfg=cfg,
+                        rules=rules,
+                        pause=pause,
+                        session=session,
+                        today=today,
+                        run_id=discovery_run_id,
+                        receipt_id=(discovery_receipt_ids or {}).get(
+                            candidate.key, discovery_receipt_id
+                        ),
+                        history=_history_with_run_sessions(
+                            discovery_history, report.discovery_sessions, identity
+                        ),
+                        shared_budget=discovery_shared_budget,
+                        selected_axes=selected_axes,
+                        sleep=sleep,
+                        deadline=(run_started + discovery_time_budget_seconds if timed else None),
+                        fresh_run_budget=timed,
+                    )
+                    carried = carried_discovery.get(candidate.key) or {}
+                    if carried.get("identity") not in (None, identity):
+                        carried = {}  # another account or endpoint: its bounds do not transfer
+                    candidate.discovery = _merge_discovery(
+                        candidate.discovery or carried,
+                        {**session_record["summary"], "identity": identity},
+                    )
+                    report.discovery_sessions.append(session_record["artifact"])
+                    save_sessions()
+                    if automatic_candidate and first:
+                        memory_row = canary_memory.setdefault(f"{provider}/{model}", {})
+                        attempts = int(memory_row.get("measure_attempts") or 0) + 1
+                        memory_row["measure_attempts"] = attempts
+                        candidate.discovery["auto_attempts"] = attempts
+                    elif automatic_candidate:
+                        candidate.discovery["auto_attempts"] = int(
+                            (canary_memory.get(candidate.key) or {}).get("measure_attempts") or 0
+                        )
+                    if timed and _ended_on_unpaced_429(session_record["artifact"]):
+                        _schedule_quota_retry(
+                            candidate,
+                            record,
+                            selected_axes,
+                            automatic_candidate,
+                            quota_waits,
+                            resume_queue,
+                        )
+                except Exception as exc:
+                    # Discovery is advisory; preserve the proven reachability result.
+                    candidate.discovery = {
+                        "retryable": False,
+                        "reason": "discovery_stopped_safely",
+                        "detail": f"Search stopped safely ({type(exc).__name__}).",
+                        "axes": [],
+                        "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                    }
+
+            def _schedule_quota_retry(
+                candidate, record, selected_axes, automatic_candidate, quota_waits, resume_queue
+            ):
+                """Back off after an unpaced 429; give up after one that follows the 10-min wait."""
+                waited = quota_waits.get(candidate.key, 0)
+                last_wait = _quota_wait_seconds(waited - 1) if waited else 0
+                if last_wait >= QUOTA_BACKOFF_MAX_SECONDS:
+                    candidate.discovery["quota_gave_up"] = True
+                    candidate.discovery["quota_waits"] = waited
+                    return
+                wait = _quota_wait_seconds(waited)
+                quota_waits[candidate.key] = waited + 1
+                candidate.discovery["quota_waits"] = waited + 1
+                resume_queue.append(
+                    {
+                        "candidate": candidate,
+                        "record": record,
+                        "axes": selected_axes,
+                        "automatic": automatic_candidate,
+                        "ready_at": discovery_clock() + wait,
+                    }
+                )
+
             for model, record, score, _retry in candidates:
                 pause.renew()
                 if not first_probe and rules.canary_interval_seconds:
@@ -1010,16 +1453,8 @@ def reconcile(
                         )
                     )
                     candidate = report.candidates[-1]
-                    if (
-                        discovery_enabled
-                        and not pause.contended
-                        and len(report.discovery_sessions) < MAX_RUN_SESSIONS
-                        and not any(
-                            row.get("session", {}).get("provider") == provider
-                            for row in report.discovery_sessions
-                        )
-                    ):
-                        discovery_floor = quality.score("openai/gpt-oss-120b", creator="openai")
+                    if discovery_enabled and not pause.contended and session_slot_open(provider):
+                        discovery_floor = report.floor
                         identity = _candidate_discovery_identity(provider, model, rules, cfg)
                         receipt_id = (discovery_receipt_ids or {}).get(
                             candidate.key, discovery_receipt_id
@@ -1029,8 +1464,10 @@ def reconcile(
                             and receipt_id is None
                             and candidate.key not in (retry_candidate_keys or set())
                         )
-                        already_discovered = automatic_candidate and identity in (
-                            discovery_history_calls or {}
+                        already_discovered = (
+                            automatic_candidate
+                            and identity in (discovery_history_calls or {})
+                            and model not in measure_names
                         )
                         if already_discovered:
                             if not candidate.discovery:
@@ -1046,17 +1483,13 @@ def reconcile(
                                     "input_tokens": 0,
                                     "output_tokens": 0,
                                 }
-                        elif automatic_candidate and (
-                            candidate.score is None
-                            or discovery_floor is None
-                            or candidate.score <= discovery_floor
-                        ):
+                        elif automatic_candidate and _below_floor(candidate, discovery_floor):
                             candidate.discovery = {
                                 "retryable": False,
                                 "reason": "below_automatic_quality_floor",
                                 "detail": (
-                                    "Automatic input discovery requires an AA score strictly "
-                                    "above the current GPT-OSS-120B score."
+                                    "Automatic discovery skips a model AA scores at or below "
+                                    "the weakest AA-scored model our lanes run."
                                 ),
                                 "axes": [],
                                 "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
@@ -1065,57 +1498,29 @@ def reconcile(
                             }
                         else:
                             selected_axes = (
-                                ("input",)
+                                (measure_names[model],)
+                                if model in measure_names
+                                else ("input",)
                                 if automatic_candidate
                                 else (discovery_axis,)
                                 if discovery_axis != "all"
                                 else None
                             )
-                            try:
-                                session_record = _discover_candidate_caps(
-                                    candidate,
-                                    record,
-                                    provider_cfg=cfg,
-                                    rules=rules,
-                                    pause=pause,
-                                    session=session,
-                                    today=today,
-                                    run_id=discovery_run_id,
-                                    receipt_id=(discovery_receipt_ids or {}).get(
-                                        candidate.key, discovery_receipt_id
-                                    ),
-                                    history=discovery_history,
-                                    shared_budget=discovery_shared_budget,
-                                    selected_axes=selected_axes,
-                                    sleep=sleep,
-                                )
-                                candidate.discovery = session_record["summary"]
-                                report.discovery_sessions.append(session_record["artifact"])
-                            except Exception as exc:
-                                # Discovery is advisory; preserve the proven reachability result.
-                                candidate.discovery = {
-                                    "retryable": False,
-                                    "reason": "discovery_stopped_safely",
-                                    "detail": f"Search stopped safely ({type(exc).__name__}).",
-                                    "axes": [],
-                                    "calls": 1
-                                    + len((candidate.evidence or {}).get("methods") or ()),
-                                    "input_tokens": 0,
-                                    "output_tokens": 0,
-                                }
+                            run_session(candidate, record, selected_axes, automatic_candidate)
                     elif discovery_automatic:
                         receipt_id = (discovery_receipt_ids or {}).get(
                             candidate.key, discovery_receipt_id
                         )
                         identity = _candidate_discovery_identity(provider, model, rules, cfg)
-                        discovery_floor = quality.score("openai/gpt-oss-120b", creator="openai")
+                        discovery_floor = report.floor
                         if (
                             receipt_id is None
                             and candidate.key not in (retry_candidate_keys or set())
-                            and identity not in (discovery_history_calls or {})
-                            and candidate.score is not None
-                            and discovery_floor is not None
-                            and candidate.score > discovery_floor
+                            and (
+                                identity not in (discovery_history_calls or {})
+                                or model in measure_names
+                            )
+                            and not _below_floor(candidate, discovery_floor)
                         ):
                             canary_memory[f"{provider}/{model}"]["discovery_pending"] = True
                             canary_memory[f"{provider}/{model}"].setdefault(
@@ -1123,11 +1528,19 @@ def reconcile(
                             )
                             candidate.discovery = {
                                 "retryable": False,
-                                "reason": "automatic_discovery_deferred_run_budget",
+                                "reason": (
+                                    "automatic_discovery_deferred_pause_contended"
+                                    if pause.contended
+                                    else "automatic_discovery_deferred_run_budget"
+                                ),
                                 "detail": (
-                                    "Reachability and quality passed, but this run's bounded "
-                                    "discovery slot was unavailable; it will be rechecked "
-                                    "next week."
+                                    f"Reachability and quality passed, but {provider} still had "
+                                    "requests in flight after the drain wait, so nothing was "
+                                    "measured; the next daily run tries again."
+                                    if pause.contended
+                                    else "Reachability and quality passed, but this run's "
+                                    "discovery time budget was already spent; the next daily "
+                                    "run measures it."
                                 ),
                                 "axes": [],
                                 "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
@@ -1137,18 +1550,14 @@ def reconcile(
                         elif (
                             receipt_id is None
                             and candidate.key not in (retry_candidate_keys or set())
-                            and (
-                                candidate.score is None
-                                or discovery_floor is None
-                                or candidate.score <= discovery_floor
-                            )
+                            and _below_floor(candidate, discovery_floor)
                         ):
                             candidate.discovery = {
                                 "retryable": False,
                                 "reason": "below_automatic_quality_floor",
                                 "detail": (
-                                    "Automatic input discovery requires an AA score strictly "
-                                    "above the current GPT-OSS-120B score."
+                                    "Automatic discovery skips a model AA scores at or below "
+                                    "the weakest AA-scored model our lanes run."
                                 ),
                                 "axes": [],
                                 "calls": 1 + len((candidate.evidence or {}).get("methods") or ()),
@@ -1165,6 +1574,28 @@ def reconcile(
                     report.observations.append(
                         f"{provider}/{model}: free-marked but {result.verdict} ({result.reason})"
                     )
+
+            # Candidates whose size search hit a 429 wait out their backoff here, after the other
+            # candidates of this provider have had their turn.
+            while resume_queue and timed:
+                resume_queue.sort(key=lambda row: row["ready_at"])
+                entry = resume_queue.pop(0)
+                until = entry["ready_at"]
+                if until + MIN_SESSION_SECONDS > run_started + (discovery_time_budget_seconds or 0):
+                    continue
+                try:
+                    while discovery_clock() < until:
+                        pause.renew()
+                        sleep(max(0.0, min(30, until - discovery_clock())))
+                except Exception:
+                    break
+                run_session(
+                    entry["candidate"],
+                    entry["record"],
+                    entry["axes"],
+                    entry["automatic"],
+                    first=False,
+                )
 
             if runner is not None and not pause.contended:
                 eligible = {o.route_id for o in report.rate_observations if o.provider == provider}
@@ -1202,7 +1633,12 @@ def reconcile(
                         if not first_probe:
                             sleep(spacing)
                         pause.renew()
-                        control.reserve(rid)
+                        try:
+                            control.reserve(rid)
+                        except DispatchPauseError as exc:
+                            raise ProbeBudgetExceeded(
+                                f"dispatch ledger unavailable ({exc})"
+                            ) from exc
                         report.rate_attempted_routes.add(rid)
                         if remaining is not None:
                             quota[rid]["rpd_remaining"] -= 1
@@ -1294,7 +1730,13 @@ def reconcile(
         if (_days_since(value.get("on"), today) or 0) < CANARY_MEMORY_DAYS
     }
     if due_only:
-        _merge_into_last_full(report, previous_state.get("last_full") or {}, rechecked_routes)
+        _merge_into_last_full(
+            report,
+            previous_state.get("last_full") or {},
+            rechecked_routes,
+            decisions=decisions,
+            today=today,
+        )
     elif context_run is None:
         previous = Report()
         _merge_into_last_full(
@@ -1303,6 +1745,13 @@ def reconcile(
             set(),
         )
         report.context_changes = previous.context_changes
+    _refresh_aa_scores(report, quality, incumbents, candidate_keys or set())
+    _note_unmeasured(
+        report,
+        unmeasured_reason,
+        set(measure_plan),
+        bool(due_only and measure_pending and discovery_automatic),
+    )
     report.state = {
         "version": 3,
         "catalogs": catalogs,
@@ -1338,7 +1787,12 @@ def reconcile(
 
 
 def _merge_into_last_full(
-    report: Report, last_full: Mapping[str, Any], rechecked_routes: set[str]
+    report: Report,
+    last_full: Mapping[str, Any],
+    rechecked_routes: set[str],
+    *,
+    decisions: Decisions | None = None,
+    today: date | None = None,
 ) -> None:
     """A due-only run re-checks a few deferred routes; everything else carries over unchanged.
 
@@ -1383,13 +1837,138 @@ def _merge_into_last_full(
         )
         for c in last_full.get("candidates") or []
         if c.get("structured_output_method")
+        # Re-judged against this run's bar: a model AA scores at or under it is auto-ignored.
+        and not _score_at_or_below(c.get("score"), report.floor)
     ]
+    if decisions is not None and today is not None:
+        # A maintainer decision made after the row was found (the weekly run that would have
+        # rebuilt it may have aborted) retires it; otherwise it waits forever for a test the
+        # candidate loop skips by design.
+        retired = [c for c in candidates if decisions.is_ignored(c.provider, c.model, today)]
+        if retired:
+            candidates = [c for c in candidates if c not in retired]
+            report.observations.append(
+                f"{len(retired)} carried candidate(s) dropped: ignored by maintainer decision "
+                f"({', '.join(sorted(c.key for c in retired)[:8])})"
+            )
     report.anomalies = carried + report.anomalies
     current_candidates = report.candidates
     current_keys = {candidate.key for candidate in current_candidates}
     report.candidates = [candidate for candidate in candidates if candidate.key not in current_keys]
     report.candidates.extend(current_candidates)
     report.observations = list(last_full.get("observations") or []) + report.observations
+
+
+QUOTA_BACKOFF_START_SECONDS = 30
+QUOTA_BACKOFF_MAX_SECONDS = 600
+
+
+def _quota_wait_seconds(step: int) -> int:
+    """Wait before retry number `step` + 1 after a 429: 30 s, doubling, capped at 10 minutes."""
+    return min(QUOTA_BACKOFF_MAX_SECONDS, QUOTA_BACKOFF_START_SECONDS * 2 ** max(0, step))
+
+
+def _ended_on_unpaced_429(artifact: Mapping[str, Any]) -> bool:
+    """The session's last provider answer was a 429 that did not say how long to wait."""
+    attempts = artifact.get("attempts") or []
+    last = (attempts[-1].get("observation") if attempts else None) or {}
+    return last.get("outcome") == "quota" and not last.get("retry_after_seconds")
+
+
+def _history_with_run_sessions(history, sessions, identity):
+    """Authenticated history plus what this run's earlier sessions measured for the same route.
+
+    A session that ended on a 429 resumes from its own bounds instead of probing from scratch.
+    """
+    from citypods.provider_catalog.discovery import DiscoveryObservation
+
+    rows = list(history or ())
+    for artifact in sessions:
+        if (artifact.get("session") or {}).get("identity") != identity:
+            continue
+        for attempt in artifact.get("attempts") or []:
+            if attempt.get("observation"):
+                rows.append(DiscoveryObservation.from_dict(attempt["observation"]))
+    return rows
+
+
+def _note_unmeasured(report, reasons, planned, daily) -> None:
+    """Record, per candidate, why this run did not measure it; clear notes that no longer hold."""
+    measured = set()
+    for row in report.discovery_sessions:
+        meta = row.get("session") or {}
+        measured.add(f"{meta.get('provider')}/{meta.get('upstream_model')}")
+    for candidate in report.candidates:
+        if candidate.key in measured or candidate.discovery:
+            candidate.measure_note = None
+        elif candidate.key in reasons:
+            candidate.measure_note = reasons[candidate.key]
+        elif daily and candidate.key in planned:
+            candidate.measure_note = "it was planned but this run ended before its turn"
+        elif daily:
+            candidate.measure_note = "it was not in this run's measurement plan"
+
+
+def _hf_repo_name(facts: Mapping[str, str] | None) -> str | None:
+    card = (facts or {}).get("card") or ""
+    prefix = "https://huggingface.co/"
+    return card.removeprefix(prefix).rsplit("/", 1)[-1] if card.startswith(prefix) else None
+
+
+def _refresh_aa_scores(report, quality, incumbents, explicit_keys) -> None:
+    """Re-score every listed candidate against this run's AA data and accepted matches.
+
+    A carried candidate keeps the score it had when it was last evaluated; an accepted match or
+    a better AA listing would otherwise wait for its next canary. Newly scored ones get their
+    lane suggestions and evidence digest recomputed; unscored ones get the closest AA names.
+    """
+    if quality.error:
+        return
+    rules_by_provider = all_rules()
+    kept, dropped = [], []
+    for candidate in report.candidates:
+        rules = rules_by_provider.get(candidate.provider)
+        if rules is None:
+            kept.append(candidate)
+            continue
+        hf_name = _hf_repo_name(candidate.facts)
+        score = quality.score(
+            candidate.model,
+            creator=rules.creator,
+            free_suffix=rules.free_suffix,
+            key=candidate.key,
+            hf_name=hf_name,
+        )
+        candidate.aa_matches = None
+        if score is None:
+            candidate.aa_matches = (
+                quality.near_misses(
+                    candidate.model,
+                    creator=rules.creator,
+                    free_suffix=rules.free_suffix,
+                    hf_name=hf_name,
+                )
+                or None
+            )
+        elif score != candidate.score:
+            candidate.score = score
+            candidate.below_floor = None if report.floor is None else score < report.floor
+            candidate.lanes = suggest_lanes(score, incumbents)
+            candidate.other_lanes = other_lanes(score, incumbents)
+            if candidate.evidence:
+                candidate.evidence_digest = candidate_digest(
+                    RouteEvidence.from_dict(candidate.evidence), candidate.lanes
+                )
+            if candidate.key not in explicit_keys and _score_at_or_below(score, report.floor):
+                dropped.append(f"{candidate.key} ({score:g})")
+                continue
+        kept.append(candidate)
+    report.candidates = kept
+    if dropped:
+        report.observations.append(
+            "auto-ignored after re-scoring against current AA data (at or below the quality bar "
+            f"{report.floor:g}): " + ", ".join(dropped)
+        )
 
 
 def _candidate(
@@ -1416,6 +1995,42 @@ def _candidate(
         structured_output_verified_on=proven_on if method else None,
         other_lanes=other_lanes(score, incumbents),
     )
+
+
+def _merge_discovery(previous, new):
+    """Fold a just-run session into what authenticated history already says about the candidate.
+
+    An isolated output search reports only the output axis; replacing the summary with it would
+    drop the measured input (and the characterization `/apply` keys on) until the next run
+    re-reads history. Axes the new session measured replace the old ones; the rest are kept.
+    """
+    if not isinstance(previous, Mapping) or not previous.get("axes"):
+        return new
+    # A placeholder for an axis this session did not select says nothing; it must not erase
+    # what an earlier session measured (minimax lost its input result to a later output session).
+    fresh_axes = {
+        a.get("axis"): a for a in new.get("axes") or [] if a.get("reason") != "not_selected"
+    }
+    unselected = {
+        a.get("axis"): a for a in new.get("axes") or [] if a.get("reason") == "not_selected"
+    }
+    axes = []
+    for old in previous["axes"]:
+        axis = old.get("axis")
+        if axis in fresh_axes:
+            axes.append(fresh_axes.pop(axis))
+        elif axis in unselected and "published" in unselected[axis]:
+            # Keep the measured bounds; the catalog's published claim is today's, not the old one.
+            axes.append({**old, "published": unselected[axis]["published"]})
+        else:
+            axes.append(old)
+    axes += list(fresh_axes.values())
+    axes += [a for axis, a in unselected.items() if axis not in {x.get("axis") for x in axes}]
+    merged = {**new, "axes": axes}
+    for key in ("input_characterization", "litellm"):
+        if not new.get(key) and previous.get(key):
+            merged[key] = previous[key]
+    return merged
 
 
 def _candidate_discovery_identity(provider, model, rules, provider_cfg):
@@ -1776,6 +2391,8 @@ def _discover_candidate_caps(
     shared_budget,
     sleep,
     selected_axes=None,
+    deadline=None,
+    fresh_run_budget=False,
 ):
     """Run the separate, charged size search only after candidate reachability is proven."""
     import secrets
@@ -1850,6 +2467,14 @@ def _discover_candidate_caps(
     # Token reservations below describe the size-search requests, which carry the
     # explicit measured token sizes.
     budget = DiscoveryBudget(calls=reachability_calls)
+    if fresh_run_budget:
+        # Time-bound runs are limited by the clock, not by the three-session shared envelope;
+        # each session still carries the reviewed per-session ceilings.
+        from citypods.provider_catalog.discovery import MAX_RUN_CALLS, MAX_RUN_INPUT, MAX_RUN_OUTPUT
+
+        shared_budget = DiscoveryBudget(
+            max_calls=MAX_RUN_CALLS, max_input=MAX_RUN_INPUT, max_output=MAX_RUN_OUTPUT
+        )
     if shared_budget is not None:
         shared_budget.calls += reachability_calls
     # Reachability/structured-output checks just completed; space the first size probe too.
@@ -1904,6 +2529,7 @@ def _discover_candidate_caps(
                 budget=budget,
                 shared_budget=shared_budget,
                 sleep=sleep,
+                deadline=deadline,
             )
         except Exception as exc:
             # Preserve charged attempts even if orchestration fails after admission.
@@ -2100,7 +2726,13 @@ def confirm_retirement_candidates(
             if rules.canary_interval_seconds:
                 sleep(rules.canary_interval_seconds)
             pause.renew()
-            control.reserve(rid)
+            try:
+                control.reserve(rid)
+            except DispatchPauseError as exc:
+                report.observations.append(
+                    f"{rid}: dispatch ledger unavailable ({exc}); removal confirmation deferred"
+                )
+                continue
             response = canary_fn(rules, provider_cfg, anomaly.model, api_key, session)
             confirmation = classify(response, rules)
             checked_at = datetime.now(UTC).isoformat()

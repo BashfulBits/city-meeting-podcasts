@@ -517,6 +517,10 @@ persists stable `defer_reasons` counters (`insufficient-budget`, `external-requi
 total on `/admin/status`.
 | **Security** | `security.py` — SSRF gate (`validate_source_url`), host allowlists, redirect/size caps; `http.py` retry/backoff; ffmpeg protocol whitelist; defusedxml. |
 
+Moments dispatch excludes the retired Kimi route while its historical large-packet recipe identity
+retains that model name. This preserves completed artifacts and pending recipe identities; it does
+not permit new dispatches to Kimi. Other input or recipe changes retain their normal invalidation.
+
 ### Purpose-bound LLM work telemetry (GH#2001, review/52)
 
 `compute/llm_work.py` provides the run-local middle layer for production stages and research jobs.
@@ -691,7 +695,19 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   cells each completion folds its calls into) -- into one rolling issue that names the lane and the config key to change.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-v2` is a separate Cloudflare Worker whose
   SQLite Durable Object coordinator holds the queue, the per-route/per-account pacing ledger and the
-  lease state ([`review/44`](review/44-bounded-bundled-llm-dispatch.md)). Producers enqueue through
+  lease state ([`review/44`](review/44-bounded-bundled-llm-dispatch.md)). Per-model candidate
+  selection reads the oldest head and at most one bounded extension while allowance remains.
+  Its six-job per-model allowance matches the six-job bundle cap (the Free plan's six
+  simultaneous outbound connections), so a single healthy model can fill the bundle, subject to
+  `MAX_JOBS_PER_ROUTE_PER_BUNDLE` (1), which counts each route (e.g. AI Studio primary and
+  secondary) separately.
+  A bundle may span six route lanes, Cloudflare's six-connection limit per invocation; the
+  same-invocation cleanup waits for the first lane to settle (and deletes sequentially) so it
+  never opens a seventh.
+  Advancing keyset frontiers checkpoint in existing claim diagnostics and resume after eviction;
+  idle-write coalescing can lose up to ten minutes of uncheckpointed progress. Exact route quota
+  checks still decide admission, and diagnostic timestamps distinguish retained empty snapshots
+  from current claims. Producers enqueue through
   its authenticated OpenAI-shaped **asynchronous** API (`LLM_MODE=dispatch` or a `queue_only` lane
   policy) and reconcile completed results into the normal `JobResult` shape. Routes, provider
   configs and multiple accounts of one provider (e.g. `GEMINI_API_KEY`/`GEMINI_API_KEY_SECONDARY`)
@@ -868,8 +884,9 @@ headroom for the reporting gap, since short live-tail samples cannot reconstruct
 There is no working daily lease cap
 (`MAX_LEASES_PER_UTC_DAY` is a 7,000
 backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
-by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 4,000,
-`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 25,600) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
+by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 6,000,
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 38,400; raised from 4,000 / 25,600 after the
+[review/57](review/57-llm-dispatch-row-efficiency.md) packed-state cutover) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
 These are shared free-tier safety ceilings, not capacity for 800 fully enriched meetings.
 Tagging can split meetings into batches. Lane ceilings express an explicit planning scenario
 (two tag batches per eligible meeting); the producer's tag caps count episodes.
@@ -914,9 +931,10 @@ per-attempt journal: each `completeBatch` folds its calls into one `attempt_usag
 route/model/prompt-family window holds 32 samples, then a deterministic 1-in-4 sample by job id;
 and same-row bookkeeping in one transaction (per-purpose ingress counters, a success's route
 settlement, the claim-outcome scheduler row with its bundle/lease/queued counters) is folded into
-one statement. An empty claim whose reason matches the stored last outcome is persisted at most
-every ten minutes, its skipped ticks counted in memory and folded into the next write, so an idle
-queue costs ~0.2 billed rows per cron tick. The executor makes no DO call before a provider call:
+one statement. Each recovery sweep persists cumulative checks and requeued-job counts on that
+scheduler row, and folds the claim outcome into the same write; an idle sweep writes one scheduler
+row. An unchanged empty claim without a recovery sweep can still be coalesced for ten minutes.
+The executor makes no DO call before a provider call:
 the claim counts the attempt in its lease UPDATE (a granted 429 retry counts its own; a result
 that never reached a provider gives it back), and each call starts only if it can finish before
 the claimed `lease_expires_at`, the only point at which the DO may reap the lease. The queued-job counter is maintained by those explicit deltas, not per-row
@@ -939,6 +957,19 @@ override: a `--site-config` chooses site content, but never which purposes
 exist or what each may spend, because the deployed Worker's reservation map is compiled from the
 committed file alone. `llm_lanes` chooses *among* the catalog below; the catalog itself — physical
 routes, quotas, and capabilities — remains `config/provider_limits.yml`'s job.
+
+**Packed scheduler state (dormant until an operator cutover; [review/57](review/57-llm-dispatch-row-efficiency.md)).**
+Durable scheduler flags (`compact_queue_active`, `packed_providers_active`, `packed_state_active`)
+select exactly one authoritative representation per ledger in every committed transaction; all
+default to the legacy tables. Packed authority keeps the compact model-set queue, the provider and
+route ledgers, calibration estimates and the active-lease registry as JSON sections on the scheduler
+row (written by the one accounting `UPDATE` each transaction already issues), and attempt usage and
+failure counters in eight route-hashed `packed_telemetry` shards (oldest days evicted past a size
+cap, never aborting a completion). `POST /v2/packed-state` moves between the two representations in
+one synchronous transaction, only under a drained global pause at least 15 minutes old with a
+sufficient write reserve; rollback rebuilds the legacy tables. Measured in replay, packed authority
+halves mean writes per cron at a modest read increase. Idle ticks now write one scheduler row
+carrying recovery statistics.
 
 A lane may also declare `backup_models`/`backup_after_attempts`: models eligible only once a
 queued job has been dispatched that many times without a successful response, or has already
@@ -1061,6 +1092,9 @@ may serve several logical pools via `also_serves` (one `route_id`, one ledger �
 `deepseek-v4.1-flash` is the only route in `deepseek/deepseek-v4.1-flash` and `deepseek/deepseek-v4-pro`
 and pools with OrcaRouter in `deepseek/deepseek-v4-flash`); the compiled Worker catalog records each
 route's primary `model` so labels and calibration keys never depend on which pool lists it first.
+A retired model ID can stay callable through a declared `model_aliases` entry in `config/provider_limits.yml`
+(`to`, `reason`, `decided_on`): it resolves to a newer pool with at least one route, so queued and future jobs
+naming it are served instead of failing as `route_retired` (review/48).
 BeatAPI's free chat routes (2026-10-07) join the DeepSeek pools by `model_key` and share one account-wide
 1-request-a-minute window with its `jev-1.13-free` judge, so the limit is declared on the `beatapi` provider.
 Static catalog quotas are candidate capacity:
@@ -1089,7 +1123,6 @@ backend is down. The response text fallback is bounded and not stored.
 | **`mistral/mistral-large-2512`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B Dense | Mistral AI | 256k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Direct or dispatch | Complex meeting synthesis, policy dispute resolution, high-stakes soundbite selection |
 | **`mistral/mistral-large-3`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B+ Frontier | Mistral AI | 256k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Available in pool | Frontier civic reasoning, ordinance comparison, multi-speaker attribution |
 | **`mistral/mistral-small-2603`** | ⭐ **Tier 2 (Advanced MoE)**<br>119B MoE (128 experts) | Mistral AI | 256k tokens | 49 RPM<br>50k TPM (1B Mo pool) | Available in pool | Full 3-hour meeting ingestion, narrative chapter summaries, legislative amendments |
-| **`mistral/codestral-2508`** | ⭐ **Tier 2 (Structured Specialist)**<br>22B–32B Dense | Mistral AI + Airforce | 256k tokens | 125 RPM<br>625k TPM (1B Mo pool) | Available in pool | Strict JSON schema extraction, table/ordinance parsing, agenda crosswalk recovery |
 | **`moonshotai/kimi-k2.7-code`** | ⭐ **Tier 2 (Code & Structured)**<br>High-Capacity Code | Airforce | 131k tokens | 1 RPM<br>1,000 Free RPD | Available in pool | Structured extraction, JSON validation, schema-constrained parsing |
 | **`mistral/devstral-2512`** | ⭐ **Tier 2 (Agentic Reasoner)**<br>Agentic Fine-tuned | Mistral AI | 256k tokens | 49 RPM<br>1M TPM (1B Mo pool) | Available in pool | Multi-pass transcript cleanup, meeting action item tracking, tool calling |
 | **`mistral/mistral-medium-latest`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 50 RPM<br>25k TPM (1B Mo pool) | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
@@ -1167,8 +1200,8 @@ before provider calls.
 
 `scripts/eval_remedy.py` freezes schema-v2 evidence and produces immutable route-comparison and
 rescoring artifacts; independently maintained gold never enters model messages. Production remedy
-routing is unchanged. `config/remedy.yml` starts in shadow mode with empty admissions and alias
-qualifications. Named high/max effort remains unavailable unless verified in the route catalog; an
+evaluation does not itself authorize publication. The selected production configuration uses
+`manual` / `live` with two explicitly authorized human-reviewed proposers and no alias qualifications. Named high/max effort remains unavailable unless verified in the route catalog; an
 explicit provider-default admission records an omitted override without claiming a named effort or
 silently accepting a fallback.
 
@@ -1178,17 +1211,36 @@ GitHub, feed-write or admission-override path; it supplies an empty trusted-admi
 therefore fails closed. A future trusted dispatch integration must supply validated runtime
 admissions and remains separate from this report-only replay tool.
 
+The admission integration also provides an explicit `flash-deepseek-v2`
+role plan (Flash/DeepSeek initial, Gemini/JEV adjudication) alongside strict legacy replay.
+Requests, observations, A/B ordering and reports share that immutable plan. Version2 observations
+bind its hash; version1 observations retain their original payload/ID and stage/route contracts.
+Reviewed project-evidence loading checks repository-local SHA256 anchors, raw source hashes and
+runtime prompt/schema/catalog/profile bindings. JEV's alternative evidence scope is limited to
+manual report-only remedy choices; generic admission still requires comparable AA evidence.
+
+`scripts/remedy_p3_daily.py --report-only-plan ... --plan-sha256 ...` selects a separate reviewed
+manual/report-only configuration without modifying production config. It fails before backend or
+storage initialization when admissions are absent. An admitted one-finding run writes immutable
+local observations, intent/receipt files and Worker handles; inference stays queue-only through
+the shared Worker DO. Unknown intents cannot be resubmitted. This path neither writes the
+production ledger nor pretends a provider pause supplies CAS. Ordinary daily ledger writes keep
+their existing CAS guard. The historical four-role plan has no production authorization. The local
+Gemini free route is registered in its own `gemini/gemini-3.8-flash-free` pool, preserving
+discovery and the shared Gemini pool. Its Worker deployment, serving-identity review and
+runtime-contract transfer evidence are still gates. The offline adapter replay creates bounded
+single-recording candidates or manual holds; source-wide policy validation remains mandatory.
+
 `citypods.remedy_p3_observations` persists completed P3 Worker responses as strict,
 content-addressed objects under `state/remedy/p3-observations/<source>/`. Appends and reconstruction
 use the shared remedy maintenance lease and verify the object after writing. Repeated collection of
 the same recipe/role is idempotent; a conflicting result is rejected. Pending Worker handles stay
 in the existing deferred-request registry. P3 votes remain separate from
 `citypods.remedy_ledger`'s human dispositions. The daily Worker caller and scheduled workflow
-shipped in PR #2447: it submits or reconciles stable recipe hashes, pins all four physical
-routes, validates completed route identity, and emits report artifacts without activating the
-current shadow/empty-admission configuration. The caller uses the shared review/49 JEV adapter.
-Deployment remains fail-closed until exact routes have valid runtime admissions and evaluated
-request parameters; the P1 evidence decision allowed implementation, not activation. The approved
+shipped in PR #2447. The selected role plan determines the exact physical routes; stable recipes
+are submitted or reconciled and completed route identity is checked. Historical four-role plans
+use the shared review/49 JEV adapter. The current two-proposer plan uses explicit hash-bound
+manual-publication authorization; historical P1 calibration evidence alone grants no activation. The approved
 three-route prompt comparison recorded provider-default reasoning, 900-second request timeouts,
 950-second case deadlines, and 16,384-token output caps, with no temperature override. JEV's eight
 completed local-pilot observations do not record equivalent effective parameter provenance. The
@@ -1196,8 +1248,8 @@ admission schema now represents provider-default settings and hashes compiled ro
 the P3 chat caller requests the evaluated 16,384 output tokens under the Worker's configured
 720-second response ceiling (the 900-second evaluation timeout cannot be matched; the slowest scored
 call took 162 seconds). Exact serving identity and JEV's effective Worker parameters still need
-qualification before P3 production activation. A separate,
-write-scoped daily publisher job creates human-review proposal
+qualification for their historical four-role plan; JEV is not used by the current human-review
+plan. A separate, write-scoped daily publisher job creates human-review proposal
 PRs from the revalidated mutation plan or
 reconciles keyed manual disposition issues. It preserves maintainer notes and carries checked
 choices forward only when the evidence binding is unchanged. Manual choices include every feed
@@ -1207,7 +1259,52 @@ existing current-writer permission check and P2 ledger append path; per-feed inc
 are stored as an additive typed event field under the remedy lease. Old events omit that field and
 retain their existing canonical IDs. A terminal disposition closes its issue; a future-evidence
 hold stays open. The publisher does not merge PRs or write feed configuration on main. No P3 calls
-or publication are enabled by the repository's current shadow configuration.
+or publication follow merely from these historical evaluation records; current two-route manual
+authorization is recorded separately below.
+Four maintainer-approved JEV Worker observations on 2026-10-19 returned the pinned route and
+upstream identity, each in one attempt. This evaluation lane uses the Worker's DO queue, local handles/receipts
+and B2 payloads. An initial attempt to use the Python client's optional R2 registry failed after
+Worker acceptance; read-only recovery retained the result without resubmission. No R2 bucket is
+required for this operational lane. JEV systemone receives only model/state/questions; its 1,024
+output tokens are a scheduling reservation, not an upstream cap. See review/51's qualification
+record; this evidence does not itself admit routes or enable publication.
+
+The subsequent approved three-chat-route observation set is incomplete: the pinned Sol job
+remained queued after two Worker dispatch attempts without a result; GLM Flash and DeepSeek
+were not submitted. This operational evidence does not admit the chat routes. Admission preflight
+also found that `p3_enabled` supplies no evaluation context to a validator that requires it, while
+the generic JEV benchmark and production storage/lease contracts need a scoped maintainer design
+before activation. See review/51 and the retained `chat-summary.json` receipt history.
+
+The maintainer subsequently authorized cancellation and an identical fresh Sol availability
+retry. The DO confirmed cancellation before the new operational job identity was submitted;
+payload/request digest equality is recorded. Availability failures are not calibration-quality
+outcomes and do not invalidate accepted P1 evidence. See review/51 for the retry receipt chain.
+
+
+Review/51 operational status, 2026-10-21: a fresh Worker poll reports the authorized Sol retry
+`af2b9092-bddc-4c40-a289-6bb3ffb497d7` as failed, with one recorded dispatch attempt and no
+returned model, answer or terminal reason. This supplies no quality score and does not change
+accepted P1 calibration evidence. The local controller ended its 45-minute window on October 19;
+it is no longer running. Resuming the already-approved GLM Flash observation was rejected at
+enqueue with `ingress_write_budget_reserved`; no provider call was made. DeepSeek remains
+unsubmitted at the shared admission gate. Keep the exact pins/settings and resume after Worker
+ingress capacity is available, without bypassing its budget or creating another Sol retry.
+Historically, the four JEV observations alone left admissions and shadow/report-only settings
+unchanged. Latest receipts and status are retained in the results directory's `chat-summary.json`.
+
+A separately authorized one-shot diagnostic uses exact-route Worker pauses at October 23
+23:50 UTC and direct local observations from October 24 00:01 UTC. Local frozen requests reuse
+shared structured shaping and DO reservation, with no R2 registry. One-hour expiry and owned-pause
+restoration bound the window; direct receipts do not substitute for Worker-served admission.
+See review/51 and `midnight-local-plan.md`. Production configuration remains unchanged.
+
+The one-shot midnight local phase made zero provider calls: route-level drain succeeded, but
+provider-wide in-flight checks remained busy. The controller preserved a no-call outcome for each
+route and restored/readback-verified its owned pauses. Selected-route pauses do not establish
+exclusive provider-account access; a primary BeatAPI provider pause would also affect JEV and
+requires separate maintainer approval. No calibration quality or production admission changed.
+
 Remedy publication planning (review/51 P4, report-only): `citypods/remedy_queue.py` plans what the
 P3 publisher would open, update or leave queued within `config/remedy.yml`'s limits (packing, rolling
 week, open caps, round-robin by city, stable decision markers and branches); the publisher records it
@@ -1463,8 +1560,17 @@ dirty episodes anywhere first until the run caps are spent, and is dirty only wh
 pending or missing.
 Like `tag`, the lane runs unsharded but is a scoped, lane-owned writer: it pushes through the
 foreign-block-preserving `push_records_merged` (protecting every block but `judging`), skips the
-full-run reconcile, and checkpoints after its pass once its batched jobs are submitted. An episode
-whose transcript read fails is skipped for the pass (`texts_unavailable`) and stays incomplete.
+full-run reconcile, and checkpoints after its pass once its batched jobs are submitted.
+Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
+state, conditional, and other storage reads continue to use their owning backend directly. For
+B2-backed runs, judge transcript reads try the configured public CDN URL through the guarded HTTP
+session first, then fall back to B2 on HTTP/network failure or a provider-transcript key hash
+mismatch. If rebuilt evidence still has the wrong digest, quote checking retries from B2 before
+deciding the row is unsupported. Per-pass judge counts report CDN cache status, bytes and elapsed
+time, B2 fallback bytes, and the run-local parsed-text cache's hits/misses and conservative
+estimated peak retained bytes (not process RSS). The 400-transcript quote-check cap is unchanged
+pending measurements. An episode whose transcript read fails is skipped for the pass
+(`texts_unavailable`) and stays incomplete.
 
 Dropping the prefix is a silent 404 on Gemini and Mistral — the providers whose endpoints do not
 live at the provider root — which is why the routing tests assert the full request URL rather than
@@ -1535,7 +1641,7 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
 2. **Civic & Topic Classification (`tag`):** High-volume, short prompt with rigid ontology outputs.
    - *Primary Candidates:* `google/gemma-4-31b-it` (29k RPD free capacity), `google/gemma-4-26b-a4b-it`, `gemini/gemini-3.1-flash-lite`.
 3. **Structured Agenda Extraction & Crosswalk (`chapter_titles` / `agenda_crosswalk`):** Requires 100% strict JSON schema compliance and zero table-structure hallucination.
-   - *Primary Candidates:* `mistral/codestral-2508` (124 RPM, 256k context), `mistral/devstral-2512`, `mistral/mistral-medium-latest`.
+   - *Primary Candidates:* `mistral/devstral-2512`, `mistral/mistral-medium-latest`.
 4. **Key Soundbite & Quote Selection (`soundbite-select`):** Requires speaker intent nuance, context bounding, and editorial judgment.
    - *Primary Candidates:* `mistral/mistral-large-2512`, `meta-llama/llama-3.3-70b-instruct`, `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`.
 5. **High-Volume Backfills & Reprocessing:** Requires sub-cent token pricing or massive free quotas.
@@ -2090,3 +2196,33 @@ Using those stored sibling decisions can expose additional disagreements to the 
 adjudication selector after deployment. Stored sibling judgments remain in place. Normal
 collection/replanning of unfinished questions can produce revision-3 packets when legacy
 replies omit required answers. This local change has launched no production adjudication jobs.
+
+P3 accepts one maintainer-approved returned-model alias: requested
+`z-ai/glm-5.3-flash-free` may return `zai-org/glm-5.3-flash` only on
+`orcarouter_zai_glm_5_3_flash_free`. This identity policy applies to report-only/live checks,
+binds into runtime evidence and preserves the actual returned ID; it grants no admission.
+
+The selected P3 remedy role plan's concise prompt revision sends source evidence once per
+adjudicator. Gemini receives one A/B proposal pair; JEV receives one choice instruction plus
+one evidence object. Legacy prompts remain readable/unchanged. JEV recipes include changed
+instruction/data identity, and runtime qualification binds the context builder and revision.
+The same shared factories generate evaluation and runtime payloads; the Python reevaluation
+builder records frozen inputs/hashes and audits duplication offline. This does not admit any
+role or authorize publication; current manual authority is separate. See review/51 and
+`evals/remedy/qualification/runtime-v2/README.md`.
+
+The selected remedy plan is `flash-deepseek-human-v3`: Flash and DeepSeek only. Validated complete
+agreement can propose a human-reviewed PR; disagreement or a completed contract failure becomes
+a human issue candidate. Request-bound terminal observations use explicitly unverified identity
+and never fabricate votes. Capacity, transport and unknown-intent errors propagate without a
+permanent failure observation; deferred handles remain pending and cannot be resubmitted blindly.
+Local intent, receipt and observation JSON is published atomically with exclusive creation.
+No Gemini/JEV inference is required. Earlier four-role plans and their legacy input hashes remain
+replayable.
+
+The maintainer authorized bounded production PR/issue creation. Config selects `manual` / `live`
+with exactly Flash and DeepSeek. A hash-bound manual-review authorization permits these proposers
+without claiming general AA or holdout qualification. Runtime/policy/evidence changes fail closed;
+ordinary qualification remains unchanged. Existing budgets, freshness checks and R2 CAS remain.
+Qualified alias types stay empty and remedy PRs require human merge. Authorization does not itself
+establish a successful deployment or completed production cycle; review/51 owns operational status.

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "approved": true,
+  "authority": "Explicit maintainer instructions in chat",
+  "instructions": [
+    "Do another evaluation. Fix the prompts so they are not duplicated and are clear and concise.",
+    "Make sure the packet generation is done by a Python script so it is repeatable."
+  ],
+  "max_provider_attempts": 48,
+  "max_attempts_per_case_role": 1,
+  "client_retries": 0,
+  "scope": "Fresh twelve-case concise-prompt evaluation, at the same per-run cap/profile as the first evaluation. No changed gold, comparator, validator, model/route, production routing, deployment or activation.",
+  "output_path": "evals/remedy/results/runtime-qualification-2026-10-26/concise-v2",
+  "generator_sha256": "1dda97403d2f4d5480955b984906f8f2f1554504bec5af3ebbdb2201845426d1",
+  "executor_sha256": "171c584ba0c3d0c52ac856c62a409f12f470be50fa05874d453c8a8e27d94695",
+  "original_outcome_acceptance_path": "evals/remedy/qualification/runtime-v1/outcome-acceptance.json",
+  "baseline_path": "evals/remedy/qualification/runtime-v1/observed-results.json",
+  "continuation_path": "evals/remedy/qualification/runtime-v1/observed-continuation.json",
+  "reference_sha256": {
+    "evals/remedy/qualification/runtime-v1/outcome-acceptance.json": "04f45ff899b3cc77c9b07ad0c4e2ce0c9ae2c5316ead805f2968612a55da9f2e",
+    "evals/remedy/qualification/runtime-v1/observed-results.json": "c26ee64382041a424fd2a9ccbffb22fd651c54737e1b7a3b1987d708757c7ec9",
+    "evals/remedy/qualification/runtime-v1/observed-continuation.json": "f8f2da096a1ba8ff2c3e84ea5fb35234dc121513e4181ddfa75f9b4aaa034be5",
+    "evals/remedy/qualification/runtime-v1/rq06-observed-acceptance.json": "6a9aee639489678bdbee517b5240cba3f8c17a59c8347e2383158ccf8b1d5dca",
+    "evals/remedy/qualification/runtime-v1/cases-draft.json": "7a4da2ec5ad2fca61c230cba442be7d6250eb790f65e901fbbdcf795c36650d4"
+  },
+  "profile": {
+    "chat_output_cap": 16384,
+    "reasoning": "default",
+    "temperature_override": false,
+    "deadline_seconds": 720,
+    "provider_spacing_seconds": 65,
+    "secondary_account_allowed": false
+  },
+  "gold_policy": "Original approved expectations remain unchanged; RQ06 observed acceptance remains a separate case-specific view. No gold/acceptance enters requests."
+}

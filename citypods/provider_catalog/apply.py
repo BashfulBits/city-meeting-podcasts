@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from glob import escape
 from typing import Any
 
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.provider_catalog.evidence import RouteEvidence, candidate_digest, digest
-from citypods.provider_catalog.issue import decision_choices
+from citypods.provider_catalog.issue import decision_choices, method_choice
+from citypods.provider_catalog.readiness import output_cap_for
 from citypods.provider_catalog.reconcile import Report
 from citypods.review_issues import DECISION_BLOCK_END, DECISION_BLOCK_START, checked_decisions
 
@@ -71,6 +72,10 @@ class EditPlan:
     removal_confirmations: tuple[tuple[str, str, str, int, str], ...] = ()
     # Route ID and safe, review-visible input-cap evidence notes for YAML and PR text.
     route_notes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # Model losing its last route, the lanes that list it, and ready-to-review alias targets.
+    last_routes: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = ()
+    # Route ID, verified replacement method, and the date it was verified.
+    method_changes: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,13 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
     for candidate in snapshot.candidates:
         prefix = f"`{candidate.key}`: "
         selected = [x.removeprefix(prefix) for x in checked if x.startswith(prefix)]
+        # AA matches change only what the next run scores; they never mix with route decisions.
+        matches = [x for x in selected if x.startswith("AA match ")]
+        if matches:
+            if len(matches) != 1:
+                raise ValueError(f"{candidate.key}: choose at most one AA match")
+            result.append(Decision(candidate.provider, candidate.model, "aa_match"))
+            selected = [x for x in selected if x not in matches]
         if not selected:
             continue
         if "test again" in selected:
@@ -156,6 +168,19 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
                     route_digest=anomaly.config_digest,
                 )
             )
+    for anomaly in snapshot.anomalies:
+        if anomaly.verdict != "structured_output_invalid" or not anomaly.alternative_method:
+            continue
+        if method_choice(anomaly.route_id, anomaly.alternative_method) in checked:
+            result.append(
+                Decision(
+                    anomaly.provider,
+                    anomaly.alternative_method,
+                    "set_method",
+                    route_id=anomaly.route_id,
+                    route_digest=anomaly.config_digest,
+                )
+            )
     for change in snapshot.rate_changes:
         if change.action == "offer_increase" and change.choice in checked:
             result.append(Decision(change.provider, change.choice, "increase_rate"))
@@ -196,7 +221,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
     routes, backups, ignored, applied, deferred, rejected = [], [], [], [], [], []
     route_notes = []
     existing = list(config.limits.get("routes") or [])
-    paid_routes, acknowledged = [], []
+    paid_routes, acknowledged, removals, method_changes = [], [], [], []
     anomalies = {a.route_id: a for a in report.anomalies}
     providers = config.limits.get("providers") or {}
     for decision in decisions:
@@ -205,7 +230,60 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             rejected.append(f"{decision.key}: provider/account no longer configured")
             continue
         if decision.action == "remove":
-            deferred.append(f"{decision.route_id}: removal requires deployed Slice 3 rescue")
+            route = next((r for r in existing if r.get("route_id") == decision.route_id), None)
+            if route is None:
+                applied.append(f"{decision.route_id}: remove already fulfilled")
+                continue
+            proof = anomalies.get(decision.route_id)
+            if (
+                route.get("provider") != decision.provider
+                or route.get("upstream_model") != decision.model
+                or not proof
+                or proof.verdict != "not_entitled"
+                or proof.contended
+                or proof.observed_on != config.today.isoformat()
+                or proof.config_digest != digest(route)
+                or decision.route_digest != digest(route)
+                or proof.provider != decision.provider
+                or proof.model != decision.model
+            ):
+                deferred.append(
+                    f"{decision.route_id}: fresh paused unchanged not_entitled proof required"
+                )
+                continue
+            removals.append(decision.route_id)
+            continue
+        if decision.action == "set_method":
+            route = next((r for r in existing if r.get("route_id") == decision.route_id), None)
+            proof = anomalies.get(decision.route_id)
+            if route is None:
+                rejected.append(f"{decision.route_id}: route missing")
+            elif (
+                route.get("provider") != decision.provider
+                or not proof
+                or proof.verdict != "structured_output_invalid"
+                or proof.alternative_method != decision.model
+                or proof.contended
+                or proof.observed_on != config.today.isoformat()
+                or proof.config_digest != digest(route)
+                or decision.route_digest != digest(route)
+            ):
+                deferred.append(
+                    f"{decision.route_id}: fresh paused unchanged structured-output proof required"
+                )
+            elif decision.model not in config.limits.get("structured_output_methods", {}):
+                rejected.append(f"{decision.route_id}: unknown method {decision.model}")
+            elif not route.get("structured_output_method"):
+                deferred.append(
+                    f"{decision.route_id}: the route inherits its method from the provider; "
+                    "edit the provider default manually"
+                )
+            else:
+                method_changes.append((decision.route_id, decision.model, config.today.isoformat()))
+                applied.append(
+                    f"{decision.route_id}: structured-output method "
+                    f"{route['structured_output_method']} → {decision.model}"
+                )
             continue
         if decision.action == "keep_paid":
             matches = [r for r in existing if r.get("route_id") == decision.route_id]
@@ -217,7 +295,11 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 route.get("provider") != decision.provider
                 or route.get("upstream_model") != decision.model
             ):
-                deferred.append(f"{decision.route_id}: route identity changed; refresh the issue")
+                deferred.append(
+                    f"{decision.route_id}: the route changed since the issue was written; wait for "
+                    "the next reconciliation run to update the issue, then tick again and "
+                    "comment `/apply`"
+                )
                 continue
             if not isinstance(route.get("free"), bool):
                 rejected.append(f"{decision.route_id}: explicit boolean free field required")
@@ -324,23 +406,38 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             )
             old = decision.evidence
             if not proof or not old:
-                deferred.append(f"{decision.key}: fresh evidence unavailable; refresh the issue")
+                deferred.append(
+                    f"{decision.key}: no current test result for this model; run the Provider "
+                    "catalog reconciliation workflow (or wait for the daily run), then "
+                    "comment `/apply` again"
+                )
                 continue
             if decision.offered_lanes and tuple(current.lanes) != decision.offered_lanes:
-                deferred.append(f"{decision.key}: offered lanes changed; choose again")
+                deferred.append(
+                    f"{decision.key}: the lanes offered for this model changed; re-tick the lane "
+                    "you want in the updated issue, then comment `/apply`"
+                )
                 continue
             comparison = (
                 "provider",
                 "upstream_model",
                 "account_id",
-                "catalog_digest",
                 "free",
                 "input_context_limit",
                 "output_context_limit",
                 "model_key",
             )
-            if any(getattr(proof, k) != getattr(old, k) for k in comparison):
-                deferred.append(f"{decision.key}: candidate changed; refresh and choose again")
+            # The whole-provider `catalog_digest` is deliberately not compared: an unrelated model
+            # appearing or disappearing in a busy catalog (Kilo, OpenRouter, NVIDIA, BeatAPI) used
+            # to defer every selection. Evidence that carries a per-model digest is held to it.
+            if any(getattr(proof, k) != getattr(old, k) for k in comparison) or (
+                old.model_digest and proof.model_digest != old.model_digest
+            ):
+                deferred.append(
+                    f"{decision.key}: the model's limits or identity changed since you ticked it; "
+                    "re-tick it in the updated issue (re-tested values are shown there), "
+                    "then comment `/apply`"
+                )
                 continue
             if (
                 not proof.catalog_complete
@@ -352,43 +449,50 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 or proof.structured_output_method
                 not in config.limits.get("structured_output_methods", {})
             ):
-                deferred.append(f"{decision.key}: complete paused fresh JSON proof required")
+                deferred.append(
+                    f"{decision.key}: today's JSON-output check did not pass or was interrupted; "
+                    "comment `/apply` again later (it re-checks the route each time)"
+                )
                 continue
             if not proof.model_key:
-                deferred.append(f"{decision.key}: identity_required; review a manual mapping")
+                deferred.append(
+                    f"{decision.key}: cannot tell which existing model this is (no model_key); "
+                    "add a `model_key` mapping in `config/provider_limits.yml` by hand, or "
+                    "tick `ignore`"
+                )
                 continue
             discovery = current.discovery if current else None
             cap = _verified_input_cap(discovery)
-            if (
-                not cap
-                or not decision.discovery_digest
-                or cap["evidence_digest"] != decision.discovery_digest
+            if cap and not (
+                decision.discovery_digest and cap["evidence_digest"] == decision.discovery_digest
             ):
+                cap = None
+            if not cap:
                 deferred.append(
-                    f"{decision.key}: fresh authenticated provider-counted input evidence "
-                    "required; refresh the issue"
+                    f"{decision.key}: input limit not tested (or retested since you ticked); "
+                    "the daily run measures it, or tick `test again`. Then comment `/apply` again"
                 )
                 continue
-            litellm = discovery.get("litellm") if isinstance(discovery, Mapping) else None
-            litellm_output = litellm.get("output") if isinstance(litellm, Mapping) else None
             provider_context_claim = (
                 proof.input_context_limit
                 if type(proof.input_context_limit) is int and proof.input_context_limit > 0
                 else None
             )
-            provider_output_claim = (
-                proof.output_context_limit
-                if type(proof.output_context_limit) is int and proof.output_context_limit > 0
-                else None
+            output_context_limit, output_origin = output_cap_for(
+                discovery,
+                proof.output_context_limit,
             )
-            output_context_limit = provider_output_claim or (
-                litellm_output if type(litellm_output) is int and litellm_output > 0 else None
-            )
+            output_source = {
+                "measured": "a measured output search",
+                "provider": "the provider catalog",
+                "litellm": "LiteLLM",
+                "provisional": "a provisional default (no measurement or published claim)",
+            }.get(output_origin)
+            measured_output = output_origin == "measured"
             if not output_context_limit:
                 deferred.append(
-                    f"{decision.key}: route config requires an output-context value; "
-                    "provider/catalog and LiteLLM claims are unavailable, enter a reviewed "
-                    "operational value before adding the route"
+                    f"{decision.key}: input limit is tested; the output limit is not. The next "
+                    "daily run measures it -- comment `/apply` again after that (your tick stays)"
                 )
                 continue
             model_key = proof.model_key
@@ -438,10 +542,13 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                             f"the empirically observed input plus generated output."
                         ),
                         (
-                            f"Output context is unmeasured; configured value "
-                            f"{output_context_limit} is sourced from "
-                            f"{'the provider catalog' if provider_output_claim else 'LiteLLM'} "
-                            "and is subject to this PR's review."
+                            f"Output context: configured value {output_context_limit} is sourced "
+                            f"from {output_source}"
+                            + (
+                                " (a verified lower bound, not a proven maximum)."
+                                if measured_output
+                                else " and is subject to this PR's review."
+                            )
                         ),
                     ),
                 )
@@ -470,6 +577,23 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             routes.append(tuple(route.items()))
         backups.extend(missing_backups)
         applied.append(f"{decision.key}: add ({', '.join(decision.lanes) or 'route only'})")
+    removed, repairs, primaries, last_routes = [], (), (), ()
+    if removals:
+        if backups or paid_routes:
+            deferred.extend(
+                f"{rid}: remove in a separate /apply; lane repair cannot share a PR with "
+                "lane additions or paid-route decisions"
+                for rid in removals
+            )
+        else:
+            # Routes added by this same plan count as replacement capacity.
+            planned = replace(
+                config,
+                limits={**config.limits, "routes": [*existing, *(dict(r) for r in routes)]},
+            )
+            removed, repairs, primaries, last_routes = _plan_removals(
+                removals, planned, applied, rejected
+            )
     return EditPlan(
         config.base_commit,
         tuple((p, digest(config.texts[p])) for p in SOURCE_PATHS),
@@ -481,8 +605,105 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         tuple(rejected),
         tuple(paid_routes),
         tuple(acknowledged),
+        removed_routes=tuple(removed),
+        lane_repairs=repairs,
+        primary_changes=primaries,
         route_notes=tuple(route_notes),
+        last_routes=last_routes,
+        method_changes=tuple(method_changes),
     )
+
+
+def _plan_removals(removals, config, applied, rejected):
+    """Remove each proven route whose lanes can be repaired; flag models losing their last route."""
+    from citypods.provider_catalog.retire import _repair_lanes
+
+    routes = list(config.limits.get("routes") or [])
+    by_id = {r["route_id"]: r for r in routes}
+    removed = []
+    for rid in sorted(removals):
+        _, _, blocked = _repair_lanes(config, (*removed, rid))
+        if blocked or len(removed) + 1 == len(routes):
+            rejected.append(
+                f"{rid}: no safe replacement; review pool alternatives for "
+                + (", ".join(blocked) or "the route catalog")
+            )
+            continue
+        removed.append(rid)
+        applied.append(f"{rid}: remove route that became paid")
+    repairs, primaries, _ = _repair_lanes(config, removed)
+    left = [r for r in routes if r["route_id"] not in removed]
+    last = []
+    for key in sorted({str(by_id[rid].get("model_key") or by_id[rid]["model"]) for rid in removed}):
+        if any(str(r.get("model_key") or r["model"]) == key for r in left):
+            continue
+        lanes = tuple(
+            sorted(
+                p for p, lane in config.lanes.items() if key in (*lane.models, *lane.backup_models)
+            )
+        )
+        last.append((key, lanes, alias_candidates(key, left, config.lanes)))
+    return removed, repairs, primaries, tuple(last)
+
+
+def _family(name: str) -> str:
+    tail = name.lower().rsplit("/", 1)[-1].removesuffix(":free")
+    return re.sub(r"[-_.]+", "-", re.sub(r"\d+(\.\d+)*", "", tail)).strip("-")
+
+
+def alias_candidates(retired: str, routes, lanes) -> tuple[str, ...]:
+    """Pools that could stand in for a model that lost its last route, best first.
+
+    Same family at another version comes first, then pools sharing the retired model's lanes.
+    This is advisory: quality, context and structured-output equivalence are a reviewer's call.
+    """
+    pools = {
+        str(r.get("model_key") or r["model"])
+        for r in routes
+        if r.get("free") is True and r.get("rpd") != 0
+    } - {retired}
+    used = {p for p, lane in lanes.items() if retired in (*lane.models, *lane.backup_models)}
+
+    def shared(pool):
+        return len(
+            used & {p for p, lane in lanes.items() if pool in (*lane.models, *lane.backup_models)}
+        )
+
+    family = _family(retired)
+    ranked = sorted(pools, key=lambda p: (_family(p) != family, -shared(p), p))
+    return tuple(p for p in ranked if _family(p) == family or shared(p))[:3]
+
+
+OUTPUT_BASES = {"output", "completion_including_reasoning", "generated_output"}
+
+
+def _verified_output_cap(discovery):
+    """The output tokens an isolated output search verified, or None.
+
+    Only a comparable, provider-counted bracket qualifies: a positive admitted lower bound with a
+    recognized output count basis and a control. It is a floor on what the route can produce, so
+    it is the cap used for the route; a later, deeper search may raise it.
+    """
+    if not isinstance(discovery, Mapping):
+        return None
+    axis = next(
+        (
+            row
+            for row in discovery.get("axes") or []
+            if isinstance(row, Mapping) and row.get("axis") == "output"
+        ),
+        None,
+    )
+    admitted = axis.get("admitted") if axis else None
+    if (
+        type(admitted) is int
+        and admitted > 0
+        and axis.get("count_basis") in OUTPUT_BASES
+        and isinstance(axis.get("control"), str)
+        and axis["control"]
+    ):
+        return admitted
+    return None
 
 
 def _verified_input_cap(discovery):
@@ -584,11 +805,56 @@ def proposal_body(plan: EditPlan) -> str:
             for route_id, account_id, verdict, status, checked_at in plan.removal_confirmations
         )
         lines.append("")
+    if plan.method_changes:
+        lines += ["Structured-output method changes (re-verified on the route today):"]
+        lines.extend(
+            f"- `{rid}` → `{method}` (verified {on})" for rid, method, on in plan.method_changes
+        )
+        lines.append("")
+    if plan.routes:
+        lanes_by_pool: dict[str, list[str]] = {}
+        for lane, key in plan.backups:
+            lanes_by_pool.setdefault(key, []).append(lane)
+        lines += [
+            "Route assignments (each route joins an existing or new model pool):",
+            "",
+            "| Route | Provider model | Account | Pool (`model_key`) | Lane backups |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for items in plan.routes:
+            route = dict(items)
+            lines.append(
+                f"| `{route['route_id']}` | `{route['upstream_model']}` | `{route['account_id']}` "
+                f"| `{route['model']}` | "
+                + (", ".join(f"`{x}`" for x in lanes_by_pool.get(route["model"], [])) or "none")
+                + " |"
+            )
+        lines.append("")
     if plan.route_notes:
-        lines += ["Authenticated input-cap evidence for proposed routes:"]
+        lines += ["Input-cap evidence for proposed routes (measured, or marked provisional):"]
         for route_id, notes in plan.route_notes:
             lines.append(f"- `{route_id}`")
             lines.extend(f"  - {note}" for note in notes)
+        lines.append("")
+    for model, model_lanes, targets in plan.last_routes:
+        lines += [
+            f"Last route for `{model}` removed. Lanes listing it: "
+            f"{', '.join(f'`{x}`' for x in model_lanes) or 'none'}. Queued jobs naming it fail as "
+            "`route_retired` unless it is aliased to a pool that serves them.",
+        ]
+        if targets:
+            lines += [
+                "Possible alias targets (verify score, context and JSON method first):",
+                *[f"- `{model}` → `{t}`" for t in targets],
+                "",
+                "```yaml",
+                "model_aliases:",
+                f"  {model}:",
+                f"    to: {targets[0]}",
+                '    reason: "<evidence>"',
+                '    decided_on: "<date>"',
+                "```",
+            ]
         lines.append("")
     for label, values in (
         ("Selected", plan.applied),
@@ -602,7 +868,7 @@ def proposal_body(plan: EditPlan) -> str:
         "Validated with both compilers and catalog/lane/limit tests in the workflow.",
         "No automatic merge/deployment, pipeline bump or completed-artifact invalidation.",
         "Lane repairs apply to newly created jobs; stored queued-job policies are unchanged."
-        if plan.proposal_kind == "removals"
+        if plan.proposal_kind == "removals" or plan.removed_routes
         else "No primary changes or catalog backfill.",
     ]
     return "\n".join(lines) + "\n"

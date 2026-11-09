@@ -3,7 +3,7 @@ name: Audio runner image
 on:
   schedule:
     # Rebuild weekly so registry availability and the pinned toolchain are exercised regularly.
-    - cron: "17 4 * * 0"
+    - cron: "35 4 * * 0"
   workflow_dispatch:
   push:
     branches: [main]
@@ -36,7 +36,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

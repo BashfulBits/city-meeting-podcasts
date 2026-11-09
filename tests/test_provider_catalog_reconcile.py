@@ -192,10 +192,24 @@ QUALITY = QualityIndex(
 )
 
 
+# k9 unscored: AA has not indexed it, so it is measured rather than auto-ignored.
+QUALITY_K9_UNSCORED = QualityIndex(
+    scores={key: value for key, value in QUALITY.scores.items() if key != ("kimi", "k9")}
+)
+
 NO_DECISIONS = Decisions()
 
 
-def _run(monkeypatch, *, canaries=None, state=None, decisions=NO_DECISIONS, control=None, **kw):
+def _run(
+    monkeypatch,
+    *,
+    canaries=None,
+    state=None,
+    decisions=NO_DECISIONS,
+    control=None,
+    quality=QUALITY,
+    **kw,
+):
     monkeypatch.setenv("K", "test-key")
     canaries = {"qwen/qwen-gone": GONE, **(canaries or {})}
     sent = []
@@ -209,7 +223,7 @@ def _run(monkeypatch, *, canaries=None, state=None, decisions=NO_DECISIONS, cont
         LIMITS,
         LANES,
         decisions,
-        QUALITY,
+        quality,
         state or {},
         session=FakeSession(CATALOGS),
         control=control,
@@ -228,8 +242,11 @@ def test_a_proven_free_model_becomes_a_candidate_with_score_links_and_lane_sugge
     assert new.score == 55.0 and new.below_floor is False
     assert new.lanes == ("tagger",)  # 55 >= the lane's 40; the opted-out lane is never offered
     assert any("huggingface" in url for _, url in new.links)
-    k9 = keys["openrouter/kimi/k9:free"]
-    assert k9.below_floor is True and k9.lanes == () and k9.context_limit == 131072
+    # k9 (AA 30) is under the bar (weakest lane model, 33): auto-ignored, never probed or listed.
+    assert "openrouter/kimi/k9:free" not in keys and "kimi/k9:free" not in sent
+    assert any(
+        "auto-ignored" in note and "kimi/k9:free (30)" in note for note in report.observations
+    )
     assert "kimi/k9" not in sent  # the paid variant has no free evidence
     assert "whisper-large-v3" not in sent  # non-chat entries are never canaried
     assert set(control.paused_providers) == {"groq", "openrouter", "zai"}
@@ -314,8 +331,8 @@ def test_discovery_runs_only_after_reachability_for_new_candidates_and_is_bounde
         if candidate.discovery
         and candidate.discovery.get("reason") != "below_automatic_quality_floor"
     )
-    assert any(
-        candidate.discovery and candidate.discovery.get("reason") == "below_automatic_quality_floor"
+    assert not any(
+        candidate.score is not None and candidate.score <= 33.0
         for candidate in automatic.candidates
     )
 
@@ -481,15 +498,17 @@ def test_ignored_candidates_are_not_canaried(monkeypatch):
 
 
 def test_a_failed_candidate_is_not_retried_for_28_days_and_cannot_starve_others(monkeypatch):
-    report, sent, _ = _run(monkeypatch, canaries={"kimi/k9:free": GONE})
+    report, sent, _ = _run(
+        monkeypatch, canaries={"kimi/k9:free": GONE}, quality=QUALITY_K9_UNSCORED
+    )
     assert "kimi/k9:free" in sent and not any(c.model == "kimi/k9:free" for c in report.candidates)
-    _, sent_again, _ = _run(monkeypatch, state=report.state)
+    _, sent_again, _ = _run(monkeypatch, state=report.state, quality=QUALITY_K9_UNSCORED)
     assert "kimi/k9:free" not in sent_again
     later = {
         **report.state,
         "canaries": {"openrouter/kimi/k9:free": {"verdict": "retired", "on": "2026-08-01"}},
     }
-    _, sent_later, _ = _run(monkeypatch, state=later)
+    _, sent_later, _ = _run(monkeypatch, state=later, quality=QUALITY_K9_UNSCORED)
     assert "kimi/k9:free" in sent_later
 
 
@@ -720,7 +739,7 @@ def test_inconclusive_candidates_are_retried_but_after_fresh_ones(monkeypatch):
     state = {
         "canaries": {"openrouter/kimi/k9:free": {"verdict": "quota_exhausted", "on": "2026-09-20"}}
     }
-    report, sent, _ = _run(monkeypatch, state=state)
+    report, sent, _ = _run(monkeypatch, state=state, quality=QUALITY_K9_UNSCORED)
     assert "kimi/k9:free" in sent
     assert "openrouter/kimi/k9:free" in {c.key for c in report.candidates}
 
@@ -917,6 +936,29 @@ def test_the_decision_block_survives_a_truncated_body(monkeypatch):
         line.split("] ", 1)[1] for line in body.splitlines() if line.startswith("- [")
     }
     assert decode_state(body) == json.loads(json.dumps(report.state))
+
+
+def test_a_state_that_fills_the_body_cannot_drop_the_marker(monkeypatch):
+    import hashlib
+
+    import citypods.provider_catalog.issue as issue
+
+    report, _, _ = _run(monkeypatch)
+    # Incompressible filler stands in for the catalog/canary history that reached 61 KB.
+    report.state["catalogs"] = {
+        str(i): hashlib.sha256(str(i).encode()).hexdigest() * 4 for i in range(900)
+    }
+    report.observations.extend(f"observation {i} " + "x" * 200 for i in range(300))
+    body = render_body(report, run_date="2026-10-30")
+    assert issue.MARKER in body
+    assert issue.is_catalog_issue(body)
+    assert len(body.encode()) < 65_536
+    # The state is still decodable and keeps what decisions need.
+    state = decode_state(body)
+    assert state["catalogs"] == report.state["catalogs"]
+    assert set(decision_choices(report)) <= {
+        line.split("] ", 1)[1] for line in body.splitlines() if line.startswith("- [")
+    }
 
 
 def test_beatapi_spacing_covers_health_and_every_schema_attempt(monkeypatch):
@@ -1146,7 +1188,24 @@ def test_failed_worker_ledger_charge_aborts_instead_of_continuing_to_probe():
             raise DispatchPauseError("ledger unavailable")
 
     with pytest.raises(DispatchPauseError, match="could not reserve scarce"):
-        WorkerDispatchControl(Client()).reserve("scarce")
+        WorkerDispatchControl(Client()).reserve("scarce", sleep=lambda _s: None)
+
+
+def test_transient_worker_ledger_error_is_retried_before_reserving():
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+    from scripts.reconcile_provider_routes import WorkerDispatchControl
+
+    class Client:
+        calls = 0
+
+        def reserve(self, route_id, requests_made):
+            self.calls += 1
+            if self.calls < 3:
+                raise DispatchPauseError("v2/dispatch:reserve request failed: ConnectionError")
+
+    client, slept = Client(), []
+    WorkerDispatchControl(client).reserve("scarce", sleep=slept.append)
+    assert client.calls == 3 and slept == [5, 10]
 
 
 def test_state_decoder_accepts_legacy_json_and_rejects_corrupt_compressed_markers():
@@ -1566,29 +1625,35 @@ def test_maintenance_captures_scoped_headers_only_under_exclusive_pause(monkeypa
         assert {o.run_id for o in report.rate_observations} == {"42"}
 
 
-def test_worker_reservation_outage_prevents_health_provider_call(monkeypatch):
+def test_worker_reservation_outage_skips_the_route_without_calling_the_provider(monkeypatch):
     from citypods.compute.llm_dispatch_pause import DispatchPauseError
 
     class Outage(FakeControl):
         def reserve(self, route_id):
             raise DispatchPauseError("writes exceeded")
 
-    def forbidden(*args):
-        pytest.fail("provider was called before its reservation")
+    configured = {route["upstream_model"] for route in LIMITS["routes"]}
+    called = []
+
+    def record(rules, cfg, model, *args):
+        called.append(model)
+        return Response(503, {})
 
     monkeypatch.setenv("K", "fake")
-    with pytest.raises(DispatchPauseError):
-        reconcile(
-            LIMITS,
-            LANES,
-            NO_DECISIONS,
-            QUALITY,
-            {},
-            session=FakeSession(CATALOGS),
-            control=Outage(),
-            today=TODAY,
-            canary_fn=forbidden,
-        )
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=Outage(),
+        today=TODAY,
+        canary_fn=record,
+    )
+    assert any("dispatch ledger unavailable" in line for line in report.observations)
+    # Configured routes are never called without a reservation (new candidates have no ledger).
+    assert not configured & set(called)
 
 
 def test_expired_pause_discards_rate_evidence_after_exit(monkeypatch):
@@ -2154,3 +2219,803 @@ def test_input_characterization_keeps_rejection_estimates_out_of_verified_bounds
         )["admitted_input"]
         == 10000
     )
+
+
+def _daily(monkeypatch, state, catalogs, **kw):
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+
+    def canary_fn(rules, cfg, model, key, session):
+        sent.append(model)
+        return OK
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(catalogs),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary_fn,
+        due_only=True,
+        **kw,
+    )
+    return report, sent
+
+
+def test_a_daily_incremental_run_canaries_only_newly_listed_models(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    # Nothing new and no deferred work: no canary at all, even with new-model watching on.
+    _, sent = _daily(monkeypatch, full.state, CATALOGS, new_models=True)
+    assert sent == []
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [*CATALOGS["https://groq.test"]["data"], {"id": "meta-llama/llama-brand-new"}]
+        },
+    }
+    report, sent = _daily(monkeypatch, full.state, grown, new_models=True)
+    assert sent == ["meta-llama/llama-brand-new"]
+    assert "groq/meta-llama/llama-brand-new" in {c.key for c in report.candidates}
+    # The previous full report's candidates are kept alongside the new one.
+    assert "groq/meta-llama/llama-new" in {c.key for c in report.candidates}
+    # The same catalog without --incremental behaviour canaries nothing.
+    _, sent = _daily(monkeypatch, full.state, grown)
+    assert sent == []
+
+
+def test_daily_new_model_watching_needs_a_prior_snapshot_and_respects_the_limit(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [
+                *CATALOGS["https://groq.test"]["data"],
+                *({"id": f"meta-llama/new-{i}"} for i in range(5)),
+            ]
+        },
+    }
+    _, sent = _daily(monkeypatch, {}, grown, new_models=True)
+    assert sent == []  # first sight of a provider is the weekly run's job
+    _, sent = _daily(monkeypatch, full.state, grown, new_models=True, new_model_limit=2)
+    assert len(sent) == 2
+
+
+def test_models_the_budget_could_not_cover_stay_new_for_the_next_daily_run(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [
+                *CATALOGS["https://groq.test"]["data"],
+                *({"id": f"meta-llama/new-{i}"} for i in range(3)),
+            ]
+        },
+    }
+    first, sent = _daily(monkeypatch, full.state, grown, new_models=True, new_model_limit=1)
+    assert len(sent) == 1
+    second, sent2 = _daily(monkeypatch, first.state, grown, new_models=True, new_model_limit=1)
+    assert len(sent2) == 1 and sent2 != sent
+    listed = {m[0] for m in second.state["catalogs"]["groq"]["models"]}
+    assert listed >= {sent[0], sent2[0]}
+
+
+def test_an_existing_empty_complete_snapshot_still_watches_for_new_models(monkeypatch):
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["catalogs"]["groq"]["models"] = []
+    state["catalogs"]["groq"]["complete"] = True
+    state["canaries"] = {}
+    _, sent = _daily(monkeypatch, state, CATALOGS, new_models=True)
+    assert sent
+
+
+def test_duplicate_physical_routes_are_not_health_checked_twice(monkeypatch):
+    class RecordingControl(FakeControl):
+        def __init__(self):
+            super().__init__()
+            self.reserved = []
+
+        def reserve(self, route_id):
+            self.reserved.append(route_id)
+
+    control = RecordingControl()
+    limits = {
+        "providers": {
+            "groq": {
+                "api_base": "https://groq.test/v1",
+                "accounts": [{"id": "primary", "api_key_env": "KEY"}],
+            }
+        },
+        "routes": [
+            {
+                "route_id": "r1",
+                "provider": "groq",
+                "model": "meta/llama-keep",
+                "account_id": "primary",
+                "upstream_model": "meta-llama/llama-keep",
+                "rpm": 1,
+            },
+            {
+                "route_id": "r2_alias",
+                "provider": "groq",
+                "model": "meta/llama-keep",
+                "account_id": "primary",
+                "upstream_model": "meta-llama/llama-keep",
+                "rpm": 1,
+            },
+        ],
+    }
+    monkeypatch.setenv("KEY", "fake")
+    reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=lambda *args, **kwargs: {},
+        early_rate_checks={"r2_alias"},
+    )
+    assert control.reserved == ["r1"]
+
+
+def _measured(summary_axes):
+    return {
+        "summary": {"retryable": False, "axes": summary_axes, "reason": "complete"},
+        "artifact": {"session": {"provider": "groq"}},
+    }
+
+
+def test_a_daily_run_measures_one_found_candidate_per_session_limit(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    # Two already-found candidates, neither measured; the better scored goes first, once.
+    state["last_full"]["candidates"] = [
+        {"provider": "groq", "model": "meta-llama/llama-new", "score": 55.0, "discovery": None},
+        {"provider": "openrouter", "model": "kimi/k9:free", "score": None, "discovery": None},
+    ]
+    calls = []
+
+    def fake(candidate, record, **kwargs):
+        calls.append((candidate.key, kwargs["selected_axes"]))
+        return _measured([])
+
+    monkeypatch.setattr(rec, "_discover_candidate_caps", fake)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args: OK,
+        due_only=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_session_limit=1,
+    )
+    assert calls == [("groq/meta-llama/llama-new", ("input",))]
+    assert report.discovery_sessions and report.floor is not None
+
+
+def test_a_found_candidate_with_a_measured_input_gets_its_output_search_next(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = [
+        {
+            "provider": "groq",
+            "model": "meta-llama/llama-new",
+            "score": 55.0,
+            "discovery": {
+                "axes": [
+                    {"axis": "input", "admitted": 9000},
+                    {"axis": "output", "admitted": None, "published": None},
+                ]
+            },
+        }
+    ]
+    # An earlier input session exists for this identity; the follow-up must still run.
+    calls = []
+    monkeypatch.setattr(
+        rec,
+        "_discover_candidate_caps",
+        lambda candidate, record, **kw: calls.append(kw["selected_axes"]) or _measured([]),
+    )
+    monkeypatch.setenv("K", "test-key")
+    identity = rec._candidate_discovery_identity(
+        "groq", "meta-llama/llama-new", rec.all_rules()["groq"], LIMITS["providers"]["groq"]
+    )
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args: OK,
+        due_only=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_session_limit=1,
+        discovery_history_calls={identity: 12},
+    )
+    assert calls == [("output",)]
+
+
+def test_a_contended_provider_spends_no_session_and_the_next_provider_is_measured(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    class GroqNeverDrains(FakeControl):
+        @contextmanager
+        def paused(self, provider):
+            self.paused_providers.append(provider)
+            yield FakeOutcome(contended=provider == "groq")
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = [
+        {"provider": "groq", "model": "meta-llama/llama-new", "score": 55.0, "discovery": None},
+        {"provider": "openrouter", "model": "kimi/k9:free", "score": None, "discovery": None},
+    ]
+    calls = []
+    monkeypatch.setattr(
+        rec,
+        "_discover_candidate_caps",
+        lambda candidate, record, **kw: calls.append(candidate.key) or _measured([]),
+    )
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QualityIndex(scores={**QUALITY.scores, ("kimi", "k9"): 50.0}),
+        state,
+        session=FakeSession(CATALOGS),
+        control=GroqNeverDrains(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args: OK,
+        due_only=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_session_limit=1,
+    )
+    assert calls == ["openrouter/kimi/k9:free"]
+    groq = next(c for c in report.candidates if c.provider == "groq")
+    assert groq.discovery["reason"] == "automatic_discovery_deferred_pause_contended"
+    assert "in flight" in groq.discovery["detail"]
+
+
+def _stub_session(candidate):
+    return {
+        "summary": {
+            "retryable": False,
+            "reason": "unsupported_endpoint_axis",
+            "reachability": "verified",
+            "calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "axes": [],
+        },
+        "artifact": {
+            "session": {"provider": candidate.provider},
+            "attempts": [],
+            "reason": "unsupported_endpoint_axis",
+        },
+    }
+
+
+def test_time_bound_discovery_starts_sessions_while_time_remains_and_saves_each(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    now = [0.0]
+    started = []
+    saved = []
+
+    def discover(candidate, *_args, **kwargs):
+        started.append((candidate.key, kwargs["deadline"], kwargs["fresh_run_budget"]))
+        now[0] += 4_000  # each session is long; a third would overrun the 7,200 s budget
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="timed-run",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: now[0],
+        discovery_sessions_sink=lambda sessions: saved.append(len(sessions)),
+    )
+    assert len(started) == 2  # the third candidate waits: 8,000 s spent leaves no session
+    assert all(deadline == 7_200 and fresh for _key, deadline, fresh in started)
+    assert saved == [1, 2]  # evidence is written after every session, not only at the end
+
+
+def test_a_failed_evidence_write_does_not_relabel_a_finished_session(monkeypatch, capsys):
+    import citypods.provider_catalog.reconcile as module
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", lambda c, *a, **k: _stub_session(c))
+    monkeypatch.setenv("K", "test-key")
+
+    def sink(_sessions):
+        raise ValueError("too many discovery sessions")
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="timed-run",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+        discovery_sessions_sink=sink,
+    )
+    measured = [c for c in report.candidates if c.discovery]
+    assert measured
+    assert all(c.discovery["reason"] == "unsupported_endpoint_axis" for c in measured)
+    assert "discovery evidence not saved" in capsys.readouterr().out
+
+
+def test_carried_candidates_at_or_below_the_current_bar_are_dropped_from_the_report():
+    from citypods.provider_catalog.reconcile import Report, _merge_into_last_full
+
+    def row(model, score):
+        return {
+            "provider": "kilo",
+            "model": model,
+            "score": score,
+            "below_floor": None,
+            "context_limit": None,
+            "links": [],
+            "lanes": [],
+            "proven_on": "2026-10-30",
+            "structured_output_method": "json_schema",
+        }
+
+    report = Report(floor=11.7)
+    _merge_into_last_full(
+        report,
+        {"candidates": [row("weak", 5.5), row("bar", 11.7), row("fine", 20.0), row("new", None)]},
+        set(),
+    )
+    assert sorted(c.model for c in report.candidates) == ["fine", "new"]
+
+
+def test_429_without_retry_after_backs_off_then_gives_up_after_the_ten_minute_wait(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    now = [0.0]
+    visits = []
+
+    def discover(candidate, *_args, **_kwargs):
+        record = _stub_session(candidate)
+        if candidate.model.endswith("k9:free"):
+            visits.append(now[0])
+            record["artifact"]["attempts"] = [
+                {"observation": {"outcome": "quota", "retry_after_seconds": None}}
+            ]
+        return record
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="backoff-run",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: now[0],
+        sleep=sleep,
+    )
+    # First try, then retries after 30, 60, 120, 240, 480 and 600 s; the 429 that follows the
+    # ten-minute wait ends it.
+    assert len(visits) == 7
+    gaps = [round(b - a) for a, b in zip(visits, visits[1:], strict=False)]
+    assert all(gap >= want for gap, want in zip(gaps, [30, 60, 120, 240, 480, 600], strict=True))
+    k9 = next(c for c in report.candidates if c.model.endswith("k9:free"))
+    assert k9.discovery["quota_gave_up"] is True
+    assert k9.discovery["quota_waits"] == 6
+
+
+def test_quota_backoff_helpers():
+    from citypods.provider_catalog.reconcile import (
+        _ended_on_unpaced_429,
+        _history_with_run_sessions,
+        _quota_wait_seconds,
+    )
+
+    assert [_quota_wait_seconds(n) for n in range(8)] == [30, 60, 120, 240, 480, 600, 600, 600]
+    assert _ended_on_unpaced_429(
+        {"attempts": [{"observation": {"outcome": "quota", "retry_after_seconds": None}}]}
+    )
+    assert not _ended_on_unpaced_429(
+        {"attempts": [{"observation": {"outcome": "quota", "retry_after_seconds": 30}}]}
+    )
+    assert not _ended_on_unpaced_429({"attempts": []})
+    other = {"session": {"identity": "someone-else"}, "attempts": [{"observation": {"x": 1}}]}
+    assert _history_with_run_sessions(["saved"], [other], "mine") == ["saved"]
+
+
+def test_measurement_plan_serves_candidates_with_fewest_tries_first():
+    from citypods.provider_catalog.reconcile import measurement_plan
+
+    def row(model, score):
+        return {"provider": "nvidia", "model": model, "score": score}
+
+    state = {
+        "last_full": {
+            "candidates": [row("tried", 40.0), row("fresh-a", None), row("fresh-b", 9.0)]
+        },
+        "canaries": {"nvidia/tried": {"measure_attempts": 2}},
+    }
+    plan = measurement_plan(state, 5.0, 8, per_provider=False)
+    assert list(plan) == ["nvidia/fresh-b", "nvidia/fresh-a", "nvidia/tried"]
+
+
+def test_refresh_scores_carried_candidates_from_accepted_matches_and_suggests_for_the_rest():
+    from citypods.provider_catalog.quality import QualityIndex
+    from citypods.provider_catalog.reconcile import (
+        Candidate,
+        Report,
+        _note_unmeasured,
+        _refresh_aa_scores,
+    )
+
+    def row(model):
+        return Candidate(
+            provider="kilo",
+            model=model,
+            score=None,
+            below_floor=None,
+            context_limit=None,
+            links=(),
+            lanes=(),
+            proven_on="2026-10-30",
+        )
+
+    quality = QualityIndex(
+        scores={("kimi", "k9-pro"): 30.0, ("kimi", "k9-mini"): 3.0},
+        names={("kimi", "k9-pro"): "K9 Pro", ("kimi", "k9-mini"): "K9 Mini"},
+        aliases={"kilo/kimi/k9:free": ("kimi", "k9-pro")},
+    )
+    report = Report(floor=11.7, candidates=[row("kimi/k9:free"), row("kimi/k9-turbo:free")])
+    _refresh_aa_scores(report, quality, {}, set())
+    accepted, other = report.candidates
+    assert accepted.score == 30.0 and accepted.below_floor is False and not accepted.aa_matches
+    assert other.score is None
+    assert [m["slug"] for m in other.aa_matches or ()] == ["k9-pro", "k9-mini"]
+
+    _note_unmeasured(report, {"kilo/kimi/k9-turbo:free": "it waited"}, set(), True)
+    assert other.measure_note == "it waited"
+    assert accepted.measure_note == "it was not in this run's measurement plan"
+
+
+def test_planned_candidates_are_not_crowded_out_by_newly_listed_models(monkeypatch):
+    """Regression (#2554): three new kilo models filled the per-provider budget every run, so the
+    already-found candidates waiting for measurement were never visited."""
+    import citypods.provider_catalog.reconcile as rec
+
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = [
+        {"provider": "groq", "model": "meta-llama/llama-new", "score": 55.0, "discovery": None}
+    ]
+    grown = {
+        **CATALOGS,
+        "https://groq.test": {
+            "data": [*CATALOGS["https://groq.test"]["data"], {"id": "meta-llama/aaa-brand-new"}]
+        },
+    }
+    monkeypatch.setattr(rec, "CANARY_BUDGET_PER_PROVIDER", 1)
+    monkeypatch.setattr(
+        rec, "_discover_candidate_caps", lambda candidate, record, **kw: _measured([])
+    )
+    seen = []
+
+    def canary(rules, cfg, model, *rest):
+        seen.append(model)
+        return OK
+
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        state,
+        session=FakeSession(grown),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary,
+        due_only=True,
+        new_models=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+    )
+    assert seen[0] == "meta-llama/llama-new"  # the planned one goes first
+    assert set(seen) == {"meta-llama/llama-new", "meta-llama/aaa-brand-new"}
+    assert {c.key for c in report.candidates} >= {"groq/meta-llama/llama-new"}
+
+
+def test_an_output_only_session_keeps_the_input_result_an_earlier_session_measured():
+    """Regression (#2554, minimax): the output session's `not_selected` input placeholder erased
+    the 252,698-token input result, so the plan flipped back to input the next day."""
+    from citypods.provider_catalog.reconcile import _merge_discovery
+
+    previous = {
+        "reason": "partial",
+        "axes": [
+            {"axis": "input", "admitted": 252_698, "reason": "quota_deferred"},
+            {"axis": "output", "admitted": None, "reason": None},
+        ],
+        "input_characterization": {"admitted_input": 252_698},
+    }
+    new = {
+        "reason": "partial",
+        "axes": [
+            {"axis": "input", "admitted": None, "reason": "not_selected"},
+            {"axis": "output", "admitted": 4_096, "reason": None},
+            {"axis": "total_input_heavy", "admitted": None, "reason": "not_selected"},
+        ],
+    }
+    merged = _merge_discovery(previous, new)
+    by_axis = {a["axis"]: a for a in merged["axes"]}
+    assert by_axis["input"]["admitted"] == 252_698
+    assert by_axis["output"]["admitted"] == 4_096
+    assert by_axis["total_input_heavy"]["reason"] == "not_selected"
+    assert merged["input_characterization"] == {"admitted_input": 252_698}
+
+
+def test_daily_session_merges_into_the_carried_discovery_not_a_blank_candidate(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    carried = {
+        **_carried("groq", "meta-llama/llama-new", 55.0),
+        "discovery": {
+            "reason": "partial",
+            "retryable": True,
+            "axes": [{"axis": "input", "admitted": 9_000, "reason": "quota_deferred"}],
+        },
+    }
+    session = _measured([])
+    session["summary"] = {
+        "retryable": True,
+        "reason": "partial",
+        "calls": 1,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "axes": [
+            {"axis": "input", "admitted": None, "reason": "not_selected"},
+            {"axis": "output", "admitted": 4_096, "reason": None},
+        ],
+    }
+    monkeypatch.setattr(rec, "_discover_candidate_caps", lambda candidate, record, **kw: session)
+    report, _seen = _daily_run_over(monkeypatch, [carried])
+    row = next(c for c in report.candidates if c.key == "groq/meta-llama/llama-new")
+    by_axis = {a["axis"]: a for a in row.discovery["axes"]}
+    assert by_axis["input"]["admitted"] == 9_000
+    assert by_axis["output"]["admitted"] == 4_096
+
+
+def _carried(provider, model, score=None):
+    return {
+        "provider": provider,
+        "model": model,
+        "score": score,
+        "below_floor": None,
+        "context_limit": None,
+        "links": [],
+        "lanes": [],
+        "proven_on": "2026-10-30",
+        "structured_output_method": "json_schema",
+        "discovery": None,
+    }
+
+
+def _daily_run_over(monkeypatch, candidates, decisions=NO_DECISIONS, catalogs=CATALOGS):
+    full, _, _ = _run(monkeypatch)
+    state = json.loads(json.dumps(full.state))
+    state["last_full"]["candidates"] = candidates
+    monkeypatch.setenv("K", "test-key")
+    seen = []
+
+    def canary(rules, cfg, model, *rest):
+        seen.append(model)
+        return OK
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        decisions,
+        QUALITY,
+        state,
+        session=FakeSession(catalogs),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *a, **k: {"json_schema": {"outcome": "valid"}},
+        canary_fn=canary,
+        due_only=True,
+        new_models=True,
+        discovery_enabled=True,
+        discovery_automatic=True,
+        measure_pending=True,
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+    )
+    return report, seen
+
+
+def test_measurement_plan_skips_models_the_maintainer_has_since_ignored():
+    from citypods.provider_catalog.reconcile import measurement_plan
+
+    state = {
+        "last_full": {
+            "candidates": [
+                {"provider": "kilo", "model": "kept", "score": None},
+                {"provider": "kilo", "model": "ignored", "score": None},
+            ]
+        }
+    }
+    decisions = Decisions(ignored=({"provider": "kilo", "model": "ignored", "reason": "r"},))
+    plan = measurement_plan(state, 5.0, 8, per_provider=False, decisions=decisions, today=TODAY)
+    assert list(plan) == ["kilo/kept"]
+
+
+def test_daily_run_retires_carried_candidates_ignored_after_they_were_found(monkeypatch):
+    """Regression (#2554): the weekly run that would rebuild the list aborted, so ignored models
+    stayed WAITING for a test the candidate loop correctly never ran."""
+    rows = [_carried("groq", "meta-llama/stale"), _carried("groq", "meta-llama/llama-new", 55.0)]
+    decisions = Decisions(
+        ignored=(
+            {"provider": "groq", "model": "meta-llama/stale", "reason": "r", "decided_on": "x"},
+        )
+    )
+    report, _seen = _daily_run_over(monkeypatch, rows, decisions)
+    keys = {c.key for c in report.candidates}
+    assert "groq/meta-llama/stale" not in keys
+    assert "groq/meta-llama/llama-new" in keys
+    assert any("ignored by maintainer decision" in o for o in report.observations)
+
+
+def test_planned_candidate_gone_from_the_catalog_says_so(monkeypatch):
+    rows = [_carried("groq", "meta-llama/delisted")]
+    report, seen = _daily_run_over(monkeypatch, rows)
+    assert "meta-llama/delisted" not in seen
+    gone = next(c for c in report.candidates if c.key == "groq/meta-llama/delisted")
+    assert gone.measure_note == "the provider's catalog no longer lists it"
+    from citypods.provider_catalog.readiness import WAITING, candidate_readiness
+
+    ready = candidate_readiness(gone)
+    assert ready.state == WAITING
+    assert "no longer lists it" in ready.headline and "next daily run" not in ready.next_step
+
+
+def test_retained_axis_takes_the_catalogs_current_published_claim():
+    from citypods.provider_catalog.reconcile import _merge_discovery
+
+    previous = {
+        "reason": "partial",
+        "axes": [{"axis": "output", "admitted": 4_096, "published": 32_768, "reason": None}],
+    }
+    new = {
+        "reason": "partial",
+        "axes": [{"axis": "output", "admitted": None, "published": None, "reason": "not_selected"}],
+    }
+    (row,) = _merge_discovery(previous, new)["axes"]
+    assert row["admitted"] == 4_096 and row["published"] is None
+
+
+def test_carried_bounds_from_another_identity_are_not_merged(monkeypatch):
+    import citypods.provider_catalog.reconcile as rec
+
+    carried = {
+        **_carried("groq", "meta-llama/llama-new", 55.0),
+        "discovery": {
+            "reason": "partial",
+            "retryable": True,
+            "identity": "some-other-account-or-endpoint",
+            "axes": [{"axis": "input", "admitted": 9_000, "reason": "quota_deferred"}],
+        },
+    }
+    session = _measured([])
+    session["summary"] = {
+        "retryable": True,
+        "reason": "partial",
+        "calls": 1,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "axes": [
+            {"axis": "input", "admitted": None, "reason": "not_selected"},
+            {"axis": "output", "admitted": 4_096, "reason": None},
+        ],
+    }
+    monkeypatch.setattr(rec, "_discover_candidate_caps", lambda candidate, record, **kw: session)
+    report, _seen = _daily_run_over(monkeypatch, [carried])
+    row = next(c for c in report.candidates if c.key == "groq/meta-llama/llama-new")
+    by_axis = {a["axis"]: a for a in row.discovery["axes"]}
+    assert by_axis["input"]["admitted"] is None  # the other identity's 9,000 did not carry over
+    assert by_axis["output"]["admitted"] == 4_096
+
+
+def test_an_accepted_aa_match_does_not_keep_a_dropped_candidate_pending():
+    """Regression (#2554, muse-glimmer): the accepted AA match re-scored it below the bar and it
+    left the candidates, but the ticked match row kept it listed as a pending prior selection."""
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import aa_match_choice
+    from citypods.provider_catalog.reconcile import Candidate, Report
+
+    match = {"creator": "meta", "slug": "muse-glimmer", "name": "Muse Glimmer", "score": 6.3}
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        None,
+        None,
+        100000,
+        (),
+        (),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+        aa_matches=[match],
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08")
+    row = aa_match_choice(candidate.key, match)
+    assert f"- [ ] {row}" in prior
+    ticked = prior.replace(f"- [ ] {row}", f"- [x] {row}")
+    new = render_body(Report(), run_date="2026-10-09", previous_body=ticked)
+    assert "Pending prior selections" not in new
+    assert not (decode_state(new).get("last_full") or {}).get("candidates")

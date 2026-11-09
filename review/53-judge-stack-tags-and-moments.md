@@ -554,6 +554,19 @@ shows earlier answers, so a contested item and a sampled one read the same.
   rows are kept (the ledger is append-only) and ignored as votes. An answer whose transcript cannot
   be read now, or past `quote_check_reads` (400 transcripts) a pass, keeps its marker and is
   recorded on a later pass. JEV answers are numbers and are not quote-checked.
+- **CDN read follow-up (2026-11-07, implementation under review).** On B2-backed judge runs,
+  transcript bytes are fetched from the configured public URL through the guarded HTTP session
+  before falling back to the authenticated B2 read on HTTP/network failure or a provider-key hash
+  mismatch. If the rebuilt evidence digest still differs, quote checking retries directly from B2
+  before marking the answer unsupported. Per-pass counts record Cloudflare HIT/MISS/other status,
+  bytes and elapsed time, B2 fallback bytes, and run-local parsed-text cache hits/misses plus an
+  estimated peak retained size. The estimate walks parsed structures, excludes shared taxonomy
+  definitions and conservatively counts repeated references; it is not process RSS. The 400-read
+  cap remains unchanged until production measurements establish a safe higher value. A 23-object
+  public VTT preflight found a 1.05 MB median, 2.02 MB p95 and 3.45 MB maximum estimated parsed
+  cache value; all 23 initial requests were CDN `MISS`, and all 23 repeat requests were `HIT`. The
+  sample is a prior chapter-locator holdout set, not a judge-run workload or RSS measurement; see
+  [the dated evidence note](evidence/judge-cdn-transcript-cache-2026-11-07.md).
 - **Stability probe**: `judging.stability_sample_rate` (2%) of subjects, once the first-tier routine
   answer is recorded, are asked again by the same judge with `order "_s"`, `sample "stability"`: the
   evidence first and the question reworded after it. The report counts flips per judge.
@@ -894,8 +907,7 @@ agreement cases; disagreement-triggered escalation must not accidentally remove 
 The adjudicator must remain independent of producer and sibling families and retain quote checks.
 
 Step 2's matched-candidate analysis is complete; PR #2528 records its replayable evidence.
-Step 3 revalidates the stale-row/pending-pointer recovery proposal using fresh read-only state.
-Production archive/removal remains a separate approval, followed by normal shadow collection.
+The approved recovery was completed and normal shadow collection has resumed.
 PR7 policy implementation and task graduation retain their separately documented gates.
 
 Approved recovery completed (2026-10-23): the [revalidation outcome](evidence/2026-10-23-judge-recovery-revalidation.md)
@@ -906,3 +918,8 @@ unknown-provenance pointers and unrelated state were preserved. Because B2 lacks
 maintainer explicitly approved a temporary source-writer maintenance window; all workflow states
 were restored. CF v2 payload/result processing remained independent and running. Normal shadow
 collection resumes; no manual dispatch, JEV backfill, quota change or authority-mode flip occurred.
+
+A [November 9 read-only provenance pilot](evidence/2026-11-09-judge-cohort-provenance-pilot.md)
+found additional candidate pairs and retained historical payload/result versions. JEV response
+creation time and actual route identity remain unresolved in the sampled completed records; the
+pilot does not qualify pairs or change thresholds.

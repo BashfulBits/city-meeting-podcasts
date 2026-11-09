@@ -473,6 +473,68 @@ def test_llm_evidence_is_a_quoted_region_with_transcript_timing_and_document_lin
     assert TAG_LLM_SCHEMA_VERSION == "2"
 
 
+def test_llm_tag_suggestions_accepts_bare_array_response():
+    """Models like gemini-3.1-flash-lite sometimes return a top-level JSON array rather than
+    wrapping in {"tags": [...]}. The parser must normalize top-level list responses."""
+    from citypods.compute.base import JobResult
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+
+    class Backend:
+        def run_inference(self, job):
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": (
+                                    '[{"id":"housing","chapter_id":"ch-1",'
+                                    '"confidence":0.82,'
+                                    '"explanation":"The item discusses housing.","evidence":['
+                                    '{"where":"transcript","quote":"housing supply"}]}]'
+                                )
+                            }
+                        }
+                    ]
+                },
+            )
+
+    episode, chapters = (
+        "Housing plan",
+        [
+            {
+                "chapter_id": "ch-1",
+                "title": "Housing plan",
+                "agenda_text": "housing plan",
+                "transcript_text": "housing supply",
+                "transcript_segments": [{"start": 10.0, "end": 13.0, "text": "housing supply"}],
+            }
+        ],
+    )
+    tags, chapter_tags, dispatched, _resolved_model = llm_tag_suggestions(
+        Backend(),
+        taxonomy=taxonomy,
+        agenda_item_titles=episode,
+        agenda_text="housing plan",
+        transcript_text="housing supply",
+        recipe_hash="recipe",
+        chapter_inputs=chapters,
+        agenda_documents=[],
+    )
+    assert not dispatched
+    assert tags == []
+    assert len(chapter_tags["ch-1"]) == 1
+    assert chapter_tags["ch-1"][0]["id"] == "housing"
+
+
 def test_transcript_region_does_not_span_the_whole_episode_on_a_common_word():
     """The old heuristic OR-matched only the quote's first/last word against each segment, so a
     common word like "the" could pull in unrelated segments from anywhere in the transcript and

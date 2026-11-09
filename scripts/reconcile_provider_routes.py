@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import zipfile
 import zlib
 from collections.abc import Iterator, Mapping
@@ -56,6 +57,7 @@ from citypods.provider_catalog.evidence import (  # noqa: E402
     verified_rate_history,
 )
 from citypods.provider_catalog.issue import (  # noqa: E402
+    accepted_aa_matches,
     decode_state,
     find_issue,
     render_body,
@@ -63,10 +65,12 @@ from citypods.provider_catalog.issue import (  # noqa: E402
 )
 from citypods.provider_catalog.limits import (  # noqa: E402
     RateChange,
+    availability_suspect_routes,
     configured_limit_changes,
     early_rate_routes,
     merge_observations,
     scope_recent_runs,
+    stale_health_routes,
 )
 from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
@@ -76,10 +80,18 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
     reconcile,
 )
 
+# The daily run measures found candidates one size-search session after another while this much
+# time remains (two hours), across providers and several per provider, so a backlog clears in
+# days rather than weeks. The workflow's 180-minute job timeout leaves room for the catalog checks.
+DAILY_DISCOVERY_SECONDS = 7_200
 LIMITS_PATH = REPO_ROOT / "config" / "provider_limits.yml"
-PAUSE_SECONDS = 900
-# NVIDIA calls run up to ~400 s; a 300 s drain left the 2026-09-24 dry run contended.
-DRAIN_TIMEOUT_SECONDS = 600
+PAUSE_SECONDS = 1200
+# The Worker abandons a call after 720 s, and NVIDIA's judge calls routinely hang that long
+# (2026-11-02 telemetry: 29 provider_response_timeout), so the drain must outlast one.
+DRAIN_TIMEOUT_SECONDS = 780
+# A transient Worker connection error must not abort a 90-minute run (2026-11-02 weekly-full).
+RESERVE_ATTEMPTS = 3
+RESERVE_BACKOFF_SECONDS = 5
 
 
 class WorkerDispatchControl:
@@ -105,12 +117,18 @@ class WorkerDispatchControl:
         except DispatchPauseError:
             return {}
 
-    def reserve(self, route_id: str) -> None:
-        try:
-            self.client.reserve(route_id, 1)
-        except DispatchPauseError as exc:
-            # A failed ledger write cannot authorize another scarce-quota method request.
-            raise DispatchPauseError(f"could not reserve {route_id}: {exc}") from exc
+    def reserve(self, route_id: str, *, sleep: Any = time.sleep) -> None:
+        last: DispatchPauseError | None = None
+        for attempt in range(RESERVE_ATTEMPTS):
+            try:
+                self.client.reserve(route_id, 1)
+                return
+            except DispatchPauseError as exc:
+                last = exc
+                if attempt + 1 < RESERVE_ATTEMPTS:
+                    sleep(RESERVE_BACKOFF_SECONDS * (attempt + 1))
+        # A failed ledger write cannot authorize another scarce-quota method request.
+        raise DispatchPauseError(f"could not reserve {route_id}: {last}") from last
 
 
 def _control(no_pause: bool) -> Any:
@@ -425,6 +443,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider", action="append", default=[])
     parser.add_argument("--sync-issues", action="store_true")
     parser.add_argument("--due-only", action="store_true")
+    parser.add_argument(
+        "--state-artifact",
+        type=Path,
+        help="write bulk reconcile memory here (uploaded as an artifact) instead of the issue",
+    )
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="with --due-only: also health-check the least recently checked share of routes",
+    )
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--rate-evidence", type=Path)
     parser.add_argument("--discovery-enabled", action="store_true")
@@ -528,6 +556,17 @@ def main(argv: list[str] | None = None) -> int:
     today = datetime.now(UTC).date()
     existing = find_issue() if args.sync_issues else None
     previous_state = decode_state((existing or {}).get("body") or "")
+    if previous_state.get("bulk_ref") and os.environ.get("GITHUB_REPOSITORY"):
+        from citypods.provider_catalog.evidence import _gh_download, _gh_json
+        from citypods.provider_catalog.state_store import restore_bulk
+
+        previous_state, note = restore_bulk(
+            previous_state,
+            repository=os.environ["GITHUB_REPOSITORY"],
+            api=_gh_json,
+            download=_gh_download,
+        )
+        print(f"state: {note}")
     rate_run_id = ""
     early = set()
     if args.rate_evidence:
@@ -542,6 +581,23 @@ def main(argv: list[str] | None = None) -> int:
                 )
             except DispatchPauseError:
                 print("early rate checks deferred: Worker telemetry unavailable")
+    if args.incremental:
+        if not args.due_only:
+            parser.error("--incremental requires --due-only")
+        # Each daily run checks the stalest seventh of the routes, so all are seen within a week
+        # without the full run's cost, and a dead route is found within days instead of at the
+        # next weekly run.
+        stale = stale_health_routes(limits, previous_state, today=today)
+        print(f"incremental: health-checking {len(stale)} least recently checked route(s)")
+        early = early | stale
+        if isinstance(control, WorkerDispatchControl):
+            try:
+                rows = control.client.availability_failures().get("route_failures") or []
+                suspects = availability_suspect_routes(rows, limits, previous_state, today=today)
+                print(f"incremental: {len(suspects)} route(s) failing as unavailable today")
+                early = early | suspects
+            except DispatchPauseError:
+                print("availability signals unavailable: Worker telemetry unavailable")
     context_run = None
     context_status = None
     discovery_history = ()
@@ -614,7 +670,13 @@ def main(argv: list[str] | None = None) -> int:
             discovery_history_gaps = (
                 f"request-cap history or retry receipts unavailable ({type(exc).__name__})",
             )
-    if args.due_only and not previous_state.get("deferred") and not early and not retry_receipts:
+    if (
+        args.due_only
+        and not args.incremental
+        and not previous_state.get("deferred")
+        and not early
+        and not retry_receipts
+    ):
         print("due-only: no deferred checks or request-cap retries; nothing to do")
         return 0
     if args.context_evidence:
@@ -623,7 +685,7 @@ def main(argv: list[str] | None = None) -> int:
             or args.due_only
             or args.provider
             or os.environ.get("GITHUB_REF") != "refs/heads/main"
-            or os.environ.get("GITHUB_EVENT_SCHEDULE") != "17 10 * * 1"
+            or os.environ.get("GITHUB_EVENT_SCHEDULE") != "07 10 * * 1"
         ):
             parser.error("context evidence is weekly scheduled main only")
         if isinstance(control, WorkerDispatchControl):
@@ -685,12 +747,26 @@ def main(argv: list[str] | None = None) -> int:
                 print("context calibration deferred: authority/history unavailable")
     session = requests.Session()
     quality = fetch_quality_index(session)
+    # AA entries the maintainer accepted as a model's match (ticked under Decisions) apply now.
+    aa_matches = accepted_aa_matches((existing or {}).get("body") or "", previous_state)
+    if quality is not None:
+        quality.aliases = dict(aa_matches)
+    # The weekly full run and the daily incremental run (scheduled, or repeated by hand with the
+    # `incremental` dispatch input) measure candidates; the daily run measures for up to two hours.
     activated_schedule = (
         DISCOVERY_ACTIVATION_ENABLED
         and DISCOVERY_SCHEDULED_ENABLED
         and (
-            os.environ.get("GITHUB_EVENT_NAME") == "schedule"
-            and os.environ.get("GITHUB_EVENT_SCHEDULE") == "17 10 * * 1"
+            (
+                os.environ.get("GITHUB_EVENT_NAME") == "schedule"
+                and os.environ.get("GITHUB_EVENT_SCHEDULE") == "07 10 * * 1"
+            )
+            or (
+                args.incremental
+                and os.environ.get("GITHUB_EVENT_NAME") in {"schedule", "workflow_dispatch"}
+                and not args.discovery_enabled
+                and os.environ.get("GITHUB_REF") in {None, "refs/heads/main"}
+            )
         )
     )
     # A queued receipt is not itself live-call authority. A reviewed activation change must
@@ -713,6 +789,25 @@ def main(argv: list[str] | None = None) -> int:
     if retry_receipts and not discovery_enabled:
         print("request-cap retries deferred until the reviewed discovery activation is enabled")
         retry_receipts = {}
+
+    def write_evidence(sessions):
+        # Rewritten after every session so a run that later crashes still leaves its
+        # authenticated results (the 2026-11-02 weekly-full lost them when it aborted).
+        if sessions:
+            args.discovery_evidence.write_text(
+                json.dumps(
+                    discovery_artifact(
+                        sessions,
+                        repository=os.environ.get("GITHUB_REPOSITORY", "local/local"),
+                        run_id=os.environ.get("GITHUB_RUN_ID", "local"),
+                        head_sha=os.environ.get("GITHUB_SHA", "0" * 40),
+                        now=datetime.now(UTC),
+                    ),
+                    indent=2,
+                )
+                + "\n"
+            )
+
     report = reconcile(
         limits,
         load_lanes(),
@@ -726,6 +821,10 @@ def main(argv: list[str] | None = None) -> int:
         due_only=args.due_only,
         rate_run_id=rate_run_id,
         early_rate_checks=early,
+        new_models=args.incremental,
+        measure_pending=args.incremental,
+        discovery_time_budget_seconds=DAILY_DISCOVERY_SECONDS if args.incremental else None,
+        discovery_sessions_sink=write_evidence if args.discovery_evidence else None,
         context_run=context_run,
         discovery_enabled=discovery_enabled,
         discovery_automatic=discovery_automatic,
@@ -740,6 +839,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     report.observations.extend(discovery_history_gaps)
     _carry_rate_state(report, previous_state)
+    report.state["aa_matches"] = {key: list(value) for key, value in aa_matches.items()}
     if args.rate_evidence:
         now = datetime.now(UTC)
         repository = os.environ["GITHUB_REPOSITORY"]
@@ -820,14 +920,20 @@ def main(argv: list[str] | None = None) -> int:
             )
         report.state["last_full"]["context_changes"] = list(report.context_changes)
     if args.discovery_evidence and report.discovery_sessions:
-        envelope = discovery_artifact(
-            report.discovery_sessions,
-            repository=os.environ.get("GITHUB_REPOSITORY", "local/local"),
-            run_id=os.environ.get("GITHUB_RUN_ID", "local"),
-            head_sha=os.environ.get("GITHUB_SHA", "0" * 40),
-            now=datetime.now(UTC),
-        )
-        args.discovery_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
+        # An evidence envelope that fails its own schema must not also lose the run's state and
+        # issue update (2026-11-03: a 4th daily session tripped the old 3-session cap here).
+        try:
+            envelope = discovery_artifact(
+                report.discovery_sessions,
+                repository=os.environ.get("GITHUB_REPOSITORY", "local/local"),
+                run_id=os.environ.get("GITHUB_RUN_ID", "local"),
+                head_sha=os.environ.get("GITHUB_SHA", "0" * 40),
+                now=datetime.now(UTC),
+            )
+        except ValueError as exc:
+            print(f"::error::discovery evidence not written ({exc}); state is still saved")
+        else:
+            args.discovery_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
     if not args.due_only and not args.provider:
         # Self-check (catalog reads only): would discovery re-find what is already configured?
         # A drop here means a plugin gate drifted from how routes are actually chosen.
@@ -835,6 +941,12 @@ def main(argv: list[str] | None = None) -> int:
             backtest_summary(backtest_discovery(limits, load_lanes(), quality, session=session))
         )
         report.state["last_full"]["observations"] = list(report.observations)
+    if args.state_artifact and os.environ.get("GITHUB_RUN_ID"):
+        from citypods.provider_catalog.state_store import bulk_ref, encode_bulk, split_bulk
+
+        bulk = split_bulk(report.state)[1]
+        args.state_artifact.write_bytes(encode_bulk(bulk))
+        report.state["bulk_ref"] = bulk_ref(bulk, os.environ["GITHUB_RUN_ID"])
     print(
         f"reconciliation: {len(report.candidates)} candidate(s), "
         f"{len(report.anomalies)} anomaly(ies), {len(report.observations)} observation(s)"

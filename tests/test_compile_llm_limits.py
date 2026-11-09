@@ -59,9 +59,10 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     # NVIDIA's v4.1 stays retired. `deepseek/deepseek-v4-pro` is now a real pool holding only a
     # genuine V4 Pro route (BeatAPI, 2026-10-07), never NVIDIA's v4.1.
     assert "deepseek/deepseek-v4-pro" not in worker["model_aliases"]
+    # The secondary account's V4 Pro route was removed 2026-10-31: the account is no longer
+    # entitled to it on free credit (review/48 decision).
     assert worker["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
         "beatapi_deepseek_v4_pro_free",
-        "beatapi_secondary_deepseek_v4_pro_free",
     ]
     assert worker["routes_by_id"]["nvidia_deepseek_v4_1_flash_free"]["model"] == (
         "deepseek/deepseek-v4.1-flash"
@@ -80,7 +81,7 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     # (2026-10-17) with Gemma 4 31B's second slot.
     assert worker["providers"]["nvidia"]["concurrency"] == 4
     assert gemma["request_start_margin_seconds"] is None
-    assert gemma["tpm_window_margin_seconds"] == 15.0
+    assert gemma["tpm_window_margin_seconds"] is None
     assert worker["routes_by_id"]["gemma_4_26b_primary"]["tpm_window_margin_seconds"] is None
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
@@ -105,10 +106,11 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     # v4.1 is NVIDIA + BeatAPI, and V4 Pro is BeatAPI alone. A lane or tournament contestant
     # always knows which version answers. Lanes that want several list the names.
     deepseek_key = "deepseek/deepseek-v4-flash"
+    # The secondary account lost its free V4 Flash and V4 Pro routes 2026-10-31 (403 "not available
+    # on free credit"); both pools keep their primary-account routes.
     assert compiled["model_routes_map"][deepseek_key] == [
         "orcarouter_deepseek_v4_flash_free",
         "beatapi_deepseek_v4_flash_free",
-        "beatapi_secondary_deepseek_v4_flash_free",
     ]
     assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
         "nvidia_deepseek_v4_1_flash_free",
@@ -117,7 +119,6 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     ]
     assert compiled["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
         "beatapi_deepseek_v4_pro_free",
-        "beatapi_secondary_deepseek_v4_pro_free",
     ]
     assert "deepseek/deepseek-v4-pro" not in compiled["model_aliases"]
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
@@ -133,8 +134,9 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     nemotron_35_super_key = "openrouter/nvidia/nemotron-3.5-super-vl:free"
     # OpenRouter's canonical name for the 3.5 Super VL family, reachable via both direct NVIDIA
-    # and OpenRouter broker legs. Legacy 3 Super selectors coalesce as aliases to this pool.
-    assert len(compiled["model_routes_map"][nemotron_35_super_key]) == 2
+    # and OpenRouter broker legs, plus Kilo's broker leg (added 2026-10-31). Legacy 3 Super
+    # selectors coalesce as aliases to this pool.
+    assert len(compiled["model_routes_map"][nemotron_35_super_key]) == 3
     assert (
         compiled["model_aliases"]["openrouter/nvidia/nemotron-3-super-120b-a12b:free"]
         == nemotron_35_super_key
@@ -143,19 +145,12 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert (
         compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl-120b-a12b"] == nemotron_35_super_key
     )
-
-    codestral_key = "mistral/codestral-2508"
-    codestral_routes = compiled["model_routes_map"][codestral_key]
-    # Native Mistral accounts were removed 2026-09-30 (metered, account-tier restricted); only the
-    # airforce codestral-latest route still serves this model key.
-    assert len(codestral_routes) == 1
-    assert {compiled["routes_by_id"][route_id]["provider"] for route_id in codestral_routes} == {
-        "airforce",
-    }
-    assert compiled["model_aliases"]["mistral/codestral-latest"] == codestral_key
-    worker = compile_llm_limits._worker_catalog(compiled)
-    assert worker["model_aliases"]["codestral-latest"] == codestral_key
-    assert worker["model_aliases"]["airforce/codestral-latest"] == codestral_key
+    assert compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl:free"] == nemotron_35_super_key
+    assert compiled["model_aliases"]["nvidia/nemotron-3.5-super-vl"] == nemotron_35_super_key
+    assert (
+        compiled["model_aliases"]["openrouter/nvidia/nemotron-3.5-super-vl"]
+        == nemotron_35_super_key
+    )
 
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
@@ -175,11 +170,6 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
         and route["input_context_limit"] > 0
         and route["output_context_limit"] > 0
         for route in compiled["routes"]
-    )
-    codestral = compiled["routes_by_id"]["mistral_codestral_airforce_primary"]
-    assert (codestral["input_context_limit"], codestral["output_context_limit"]) == (
-        256000,
-        8192,
     )
 
 
@@ -374,9 +364,6 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
             "gemini/gemini-3.5-flash",
         ]
     }
-    assert compiled["model_routes_map"]["mistral/codestral-2508"] == [
-        "mistral_codestral_airforce_primary",
-    ]
     worker = compile_llm_limits._worker_catalog(compiled)
     python_catalog = compile_llm_limits._python_routes(compiled)
     assert worker["model_routing"] == compiled["model_routing"]
@@ -390,6 +377,78 @@ def test_validated_model_routing_resolves_legacy_aliases_and_dedups():
         canonical_models={"canonical/source", "canonical/target"},
     )
     assert routing == {"canonical/source": ["canonical/target"]}
+
+
+def _declared(**entry):
+    return {
+        "old/model": {"to": "new/model", "reason": "better", "decided_on": "2026-10-31", **entry}
+    }
+
+
+def test_declared_alias_keeps_a_retired_id_resolving_to_a_newer_model():
+    declared = compile_llm_limits._validated_declared_aliases(
+        _declared(), route_aliases={"legacy/new": "new/model"}, canonical_models={"new/model"}
+    )
+    assert declared == {"old/model": "new/model"}
+    # The target may itself be a route-derived alias; it resolves one hop to the canonical pool.
+    declared = compile_llm_limits._validated_declared_aliases(
+        _declared(to="legacy/new"),
+        route_aliases={"legacy/new": "new/model"},
+        canonical_models={"new/model"},
+    )
+    assert declared == {"old/model": "new/model"}
+    assert (
+        compile_llm_limits._validated_declared_aliases(
+            None, route_aliases={}, canonical_models=set()
+        )
+        == {}
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "route_aliases", "canonical", "message"),
+    [
+        (_declared(), {}, set(), "has no routes"),
+        (_declared(), {}, {"new/model", "old/model"}, "still has routes"),
+        (_declared(), {"old/model": "other/model"}, {"new/model"}, "already an alias"),
+        (_declared(reason=" "), {}, {"new/model"}, "needs a reason"),
+        (_declared(decided_on=None), {}, {"new/model"}, "needs decided_on"),
+        (_declared(extra=1), {}, {"new/model"}, "unknown keys"),
+        ({"old/model": "new/model"}, {}, {"new/model"}, "must be a mapping"),
+        (["old/model"], {}, {"new/model"}, "must be a mapping of old IDs"),
+    ],
+)
+def test_declared_alias_rejects_unsafe_entries(raw, route_aliases, canonical, message):
+    with pytest.raises(ValueError, match=message):
+        compile_llm_limits._validated_declared_aliases(
+            raw, route_aliases=route_aliases, canonical_models=canonical
+        )
+
+
+def test_declared_alias_flows_into_the_worker_and_python_catalogs(monkeypatch, tmp_path):
+    raw = _raw_provider_limits()
+    raw["model_aliases"] = {
+        "retired/model": {
+            "to": "gemini/gemini-3.8-flash",
+            "reason": "test",
+            "decided_on": "2026-10-31",
+        }
+    }
+    source = tmp_path / "provider_limits.yml"
+    source.write_text(pyyaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    monkeypatch.setattr(compile_llm_limits, "INPUT_YAML", source)
+    monkeypatch.setattr(compile_llm_limits, "REPO_ROOT", tmp_path)
+    compiled = compile_llm_limits.compile_limits()
+    assert compiled["model_aliases"]["retired/model"] == "gemini/gemini-3.8-flash"
+    worker = compile_llm_limits._worker_catalog(compiled)
+    assert worker["model_aliases"]["retired/model"] == "gemini/gemini-3.8-flash"
+    assert "retired/model" not in worker["model_routes_map"]
+    # A declared alias also resolves inside model_routing, like a route-derived one.
+    raw["model_routing"] = {"retired/model": ["gemini/gemini-3.6-flash"]}
+    source.write_text(pyyaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    assert compile_llm_limits.compile_limits()["model_routing"]["gemini/gemini-3.8-flash"] == [
+        "gemini/gemini-3.6-flash"
+    ]
 
 
 def test_validated_model_routing_rejects_an_unknown_model():
@@ -538,7 +597,7 @@ def test_validated_routes_reports_the_offending_index_not_a_bare_keyerror():
 def test_validated_routes_rejects_a_duplicate_hand_authored_route_id():
     routes = [
         {"route_id": "dup", "model": "gemini/gemini-3-flash-preview"},
-        {"route_id": "dup", "model": "mistral/codestral-2508"},
+        {"route_id": "dup", "model": "dummy/model-b"},
     ]
     with pytest.raises(ValueError, match=r"route #1 redeclares route_id 'dup'"):
         compile_llm_limits._validated_routes(routes)
@@ -1041,9 +1100,18 @@ def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
     secondary = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi_secondary"]
     chat = [r for r in beatapi if r["api_shape"] != "systemone"]
     assert chat and all(r["tier"] == "backup" for r in chat)
-    # The second account carries the same five chat routes, on its own window, and never
-    # yields: JEV runs on the primary account.
-    assert len(secondary) == len(chat)
+    # The secondary account's free entitlement shrank 2026-10-31 (V4 Flash, V4 Pro and GPT-6
+    # Astra now answer 403 "not available on free credit"); it keeps these five routes, each of
+    # whose upstream model also exists on the primary account.
+    assert {r["route_id"] for r in secondary} == {
+        "beatapi_secondary_deepseek_v4_1_flash_free",
+        "beatapi_secondary_gpt_6_1_sol_free",
+        "beatapi_secondary_gemini_3_8_flash_free",
+        "beatapi_secondary_glm_5_3_flash_free",
+        "beatapi_secondary_minimax_m3_1_flash_free",
+    }
+    primary_models = {r["upstream_model"] for r in chat}
+    assert {r["upstream_model"] for r in secondary} <= primary_models
     assert all(r["tier"] == "backup" and not r["yields_to"] for r in secondary)
     # JEV is the account's primary (review/53 PR2); the chat backups yield to it.
     jev = worker["routes_by_id"]["beatapi_jev_1_13_free"]
@@ -1138,16 +1206,52 @@ def test_explicit_high_max_controls_preserve_default_request_parameters():
         assert route["request_params"] is None
 
 
-def test_kimi_max_controls_match_python_worker_without_changing_defaults():
+@pytest.mark.parametrize("retire_kimi", [False, True])
+def test_max_controls_match_python_worker_without_changing_defaults(monkeypatch, retire_kimi):
+    raw = _raw_provider_limits()
+    if retire_kimi:
+        raw["routes"] = [r for r in raw["routes"] if r["route_id"] != "nvidia_kimi_k3_free"]
+    # Exercise compilation independently of any particular live route, which may be retired.
+    route = dict(raw["routes"][0])
+    route.update(
+        route_id="test_max_controls",
+        upstream_model="test-max-controls",
+        reasoning_controls={"max": {"reasoning_effort": "max"}},
+    )
+    route.pop("request_params", None)
+    route.pop("yields_to", None)
+    raw["routes"].append(route)
+    monkeypatch.setattr(compile_llm_limits.yaml, "safe_load", lambda *_: raw)
     compiled = compile_llm_limits.compile_limits()
     worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
     python = {
         route["route_id"]: route for route in compile_llm_limits._python_routes(compiled)["routes"]
     }
     for routes in (worker, python):
-        route = routes["nvidia_kimi_k3_free"]
-        assert route["reasoning_controls"] == {"max": {"reasoning_effort": "max"}}
-        assert route.get("request_params") is None
+        for route_id in ("test_max_controls", "nvidia_kimi_k3_free"):
+            if route_id in routes:
+                assert routes[route_id]["reasoning_controls"] == {
+                    "max": {"reasoning_effort": "max"}
+                }
+                assert routes[route_id].get("request_params") is None
+
+
+def test_review51_gemini_free_route_is_exact_and_keeps_account_controls():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)
+    route = worker["routes_by_id"]["beatapi_gemini_3_8_flash_free"]
+    assert route["upstream_model"] == "gemini-3.8-flash-free"
+    assert route["model"] == "gemini/gemini-3.8-flash-free"
+    assert route["route_id"] not in worker["model_routes_map"]["gemini/gemini-3.8-flash"]
+    assert route["free"] is True
+    assert route["account_id"] == "primary"
+    assert route["tier"] == "backup"
+    assert route["yields_to"] == ["beatapi_jev_1_13_free"]
+    assert route["structured_output_method"] == "prompt_only"
+    assert route["output_context_limit"] == 16384
+    assert route.get("rpd") is None  # No provider-promised daily allowance is invented.
+    assert worker["providers"]["beatapi"]["concurrency"] == 1
+    assert worker["providers"]["beatapi"]["rpm"] == 1
 
 
 def test_gateway_route_attempt_override_precedes_provider_default(monkeypatch):

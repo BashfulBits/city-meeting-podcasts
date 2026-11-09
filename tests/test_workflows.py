@@ -24,6 +24,26 @@ WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 REPO_ROOT = WORKFLOWS.parents[1]
 
 
+@pytest.mark.parametrize("workflow", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name)
+def test_workflow_has_no_duplicate_yaml_keys(workflow):
+    """GitHub rejects duplicate keys, but safe_load silently overwrites them."""
+
+    def check(node):
+        if isinstance(node, yaml.MappingNode):
+            seen = set()
+            for key, value in node.value:
+                assert key.value not in seen, (
+                    f"{workflow}:{key.start_mark.line + 1}: duplicate key {key.value!r}"
+                )
+                seen.add(key.value)
+                check(value)
+        elif isinstance(node, yaml.SequenceNode):
+            for item in node.value:
+                check(item)
+
+    check(yaml.compose(workflow.read_text()))
+
+
 def _job(workflow_file: str, job_name: str | None = None) -> tuple[dict, dict]:
     wf = yaml.safe_load((WORKFLOWS / workflow_file).read_text())
     job = wf["jobs"][job_name] if job_name else next(iter(wf["jobs"].values()))
@@ -189,7 +209,7 @@ def test_workflows_use_node24_cache_actions_without_force_flag():
 def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     workflow, job = _job("r7-diarization.yml", "diarize")
     triggers = _on(workflow)
-    assert triggers["schedule"] == [{"cron": "30 */6 * * *"}]
+    assert triggers["schedule"] == [{"cron": "31 */6 * * *"}]
     assert "workflow_dispatch" in triggers
     assert workflow["concurrency"] == {
         "group": "r7-speaker-evaluation-state",
@@ -461,7 +481,7 @@ def test_no_combined_enrich_workflow():
 def test_asr_workflow_runs_every_five_hours():
     wf, _ = _job("asr.yml")
     schedules = _on(wf).get("schedule", [])
-    assert {item.get("cron") for item in schedules} == {"0 */5 * * *"}
+    assert {item.get("cron") for item in schedules} == {"34 */5 * * *"}
 
 
 def test_asr_reconcile_scopes_storage_secrets_to_the_step_that_needs_them():
@@ -890,9 +910,10 @@ def test_tag_lane_uses_async_llm_dispatch_and_keeps_provider_key_off_runner():
     # `llm_lanes` registry, which also carries the lane's ingress write budget (review/44 Phase 4).
     # models[0] is the recipe/calibration key; the rest are throughput spill (2026-09-24).
     assert site["llm_lanes"]["topic-tags:tagger"]["models"] == [
-        "gemini/gemini-3.1-flash-lite",
-        "kilo/stepfun/step-3.7-flash:free",
+        "gemini/gemini-3.5-flash-lite",
+        "openrouter/nvidia/nemotron-3.5-super-vl:free",
         "deepseek/deepseek-v4-flash",
+        "gemini/gemini-3.1-flash-lite",
     ]
 
 
@@ -1228,8 +1249,8 @@ def test_chapter_workflows_use_alternating_two_hour_schedules():
     agenda, _agenda_job = _job("chapter-agenda.yml")
     locator, _locator_job = _job("chapter-locator.yml")
 
-    assert _on(agenda)["schedule"] == [{"cron": "0 */2 * * *"}]
-    assert _on(locator)["schedule"] == [{"cron": "0 1-23/2 * * *"}]
+    assert _on(agenda)["schedule"] == [{"cron": "06 */2 * * *"}]
+    assert _on(locator)["schedule"] == [{"cron": "17 1-23/2 * * *"}]
 
 
 def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
@@ -1241,15 +1262,15 @@ def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
     )
 
     assert [item["cron"] for item in _on(wf)["schedule"]] == [
-        "45 0 * * *",
-        "25 3 * * *",
-        "05 6 * * *",
-        "45 8 * * *",
-        "25 11 * * *",
-        "05 14 * * *",
-        "45 16 * * *",
-        "25 19 * * *",
-        "05 22 * * *",
+        "12 0 * * *",
+        "36 3 * * *",
+        "25 6 * * *",
+        "15 8 * * *",
+        "42 11 * * *",
+        "27 14 * * *",
+        "22 16 * * *",
+        "09 19 * * *",
+        "41 22 * * *",
     ]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
     assert wf["concurrency"] == {
@@ -1600,7 +1621,7 @@ def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
 def test_deferred_full_prune_workflow_runs_weekly_and_is_main_only():
     wf, job = _job("llm-deferred-full-prune.yml", "prune")
     schedules = _on(wf)["schedule"]
-    assert schedules == [{"cron": "30 4 * * 0"}]
+    assert schedules == [{"cron": "14 4 * * 0"}]
     assert job["if"] == "github.ref == 'refs/heads/main'"
     assert job["timeout-minutes"] == 180
     step = next(
@@ -1621,7 +1642,7 @@ def test_provider_catalog_reconcile_is_issue_only_paused_and_keyed_from_config()
     assert wf["permissions"] == {}
     assert job["permissions"] == {"contents": "read", "issues": "write", "actions": "read"}
     crons = {entry["cron"] for entry in _on(wf)["schedule"]}
-    assert crons == {"17 10 * * 1", "20 8 * * *"}
+    assert crons == {"07 10 * * 1", "27 8 * * *"}
     step = job["steps"][_step_index(job, "reconcile_provider_routes.py")]
     assert "--sync-issues" in step["run"] and "--due-only" in step["run"]
     assert "--apply" not in step["run"] and "--open-pr" not in step["run"]
@@ -1811,15 +1832,31 @@ def test_rate_consumer_uses_trusted_main_and_read_only_artifacts_without_provide
     assert upload["with"]["name"] == "provider-catalog-rate-evidence-${{ github.run_id }}"
 
 
+def test_manual_dispatch_can_repeat_the_daily_incremental_run():
+    producer, job = _job("provider-catalog-reconcile.yml", "reconcile")
+    inputs = producer[True]["workflow_dispatch"]["inputs"]
+    assert inputs["incremental"]["type"] == "boolean" and inputs["incremental"]["default"] is False
+    step = next(s for s in job["steps"] if s.get("name") == "Reconcile provider catalogs")
+    assert "inputs.incremental == true" in step["env"]["DUE_ONLY"]
+    assert "inputs.incremental == true" in step["env"]["INCREMENTAL"]
+    assert "'27 8 * * *'" in step["env"]["INCREMENTAL"]
+    assert 'if [ "$INCREMENTAL" = "true" ]' in step["run"] and "--incremental" in step["run"]
+    # The incremental run measures candidates, so it needs the evidence path and a long timeout.
+    assert "--discovery-evidence" in step["run"].split('elif [ "$INCREMENTAL" = "true" ]')[1][:200]
+    assert "'27 8 * * *' && 180" in job["timeout-minutes"]
+    assert "inputs.incremental == true && 180" in job["timeout-minutes"]
+
+
 def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock():
     producer, _ = _job("provider-catalog-reconcile.yml", "reconcile")
     workflow, job = _job("provider-catalog-commands.yml", "retirements")
     assert "weekly-full" in producer["run-name"]
-    assert "daily-due-only" in producer["run-name"]
+    assert "daily-incremental" in producer["run-name"]
     assert job["needs"] == "limits"
     assert "always()" in job["if"]
     assert "workflow_run.path == '.github/workflows/provider-catalog-reconcile.yml'" in job["if"]
     assert "display_title == 'Provider catalog reconciliation (weekly-full)'" in job["if"]
+    assert "display_title == 'Provider catalog reconciliation (daily-incremental)'" in job["if"]
     assert "head_repository.full_name == github.repository" in job["if"]
     assert "conclusion == 'success'" in job["if"] and "event == 'schedule'" in job["if"]
     assert job["permissions"] == {"contents": "write", "pull-requests": "write", "actions": "read"}
@@ -1848,11 +1885,11 @@ def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock()
 def test_context_artifact_is_weekly_main_only_and_apply_keeps_writer_lock():
     wf, producer = _job("provider-catalog-reconcile.yml", "reconcile")
     run = next(s for s in producer["steps"] if s.get("name") == "Reconcile provider catalogs")
-    assert '"$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1"' in run["run"]
+    assert '"$GITHUB_EVENT_SCHEDULE" = "07 10 * * 1"' in run["run"]
     assert "--context-evidence" in run["run"]
     upload = next(s for s in producer["steps"] if s.get("name") == "Retain scoped context evidence")
     assert "github.event_name == 'schedule'" in upload["if"]
-    assert "github.event.schedule == '17 10 * * 1'" in upload["if"]
+    assert "github.event.schedule == '07 10 * * 1'" in upload["if"]
     assert upload["with"]["retention-days"] == 90
     assert wf["concurrency"]["group"] == "provider-catalog-writers"
 

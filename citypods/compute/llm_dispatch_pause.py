@@ -128,6 +128,39 @@ class DispatchPauseClient:
             raise DispatchPauseError("rate failure telemetry unavailable") from exc
         return data
 
+    def availability_failures(self) -> dict[str, Any]:
+        """Fetch bounded current-day counters of 410, 403 and 404 answers, one class per status.
+
+        Older Workers answer without these counters; callers treat that as "no signal".
+        """
+        data = self._request("GET", "v2/stats?availability_failures=1")
+        try:
+            day = data["utc_day"]
+            if date.fromisoformat(day).isoformat() != day:
+                raise ValueError("invalid UTC day")
+            rows = data["route_failures"]
+            if (
+                data.get("kind") != "availability_failures"
+                or data.get("truncated") is not False
+                or not isinstance(rows, list)
+                or len(rows) > 256
+            ):
+                raise ValueError("unavailable bounded counters")
+            for row in rows:
+                if (
+                    row["utc_day"] != day
+                    or not isinstance(row["route_id"], str)
+                    or not row["route_id"]
+                    or row["failure_class"]
+                    not in {"route_gone", "route_forbidden", "route_not_found"}
+                    or type(row["count"]) is not int
+                    or row["count"] < 0
+                ):
+                    raise ValueError("invalid failure cell")
+        except (ValueError, TypeError, KeyError) as exc:
+            raise DispatchPauseError("availability failure telemetry unavailable") from exc
+        return data
+
     def __init__(
         self,
         url: str | None = None,
@@ -160,14 +193,19 @@ class DispatchPauseClient:
         self.timeout = timeout
 
     def _request(self, method: str, path: str, body: Mapping[str, Any] | None = None) -> dict:
-        headers = {"authorization": f"Bearer {self.token}"} if self.token else {}
+        headers = {
+            "connection": "close",
+            **({"authorization": f"Bearer {self.token}"} if self.token else {}),
+        }
         url = urljoin(self.url.rstrip("/") + "/", path)
         # Re-arming a pause is idempotent; admission/reservation calls must never retry.
+        # Disabling keep-alive ensures long intervals between probes do not reuse stale sockets.
         operation = path.split("?", 1)[0]
         retryable = (method, operation) in {
             ("POST", "v2/dispatch:pause"),
             ("POST", "v2/dispatch:resume"),
             ("GET", "v2/dispatch:pause-status"),
+            ("GET", "v2/stats"),
         }
         attempts = 2 if retryable else 1
         for attempt in range(attempts):

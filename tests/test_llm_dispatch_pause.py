@@ -223,6 +223,38 @@ def test_rate_failures_requires_complete_typed_counter_snapshot(monkeypatch, fau
     assert calls == [("GET", "v2/stats?rate_failures=1")]
 
 
+@pytest.mark.parametrize("fault", [None, "legacy", "truncated", "bad_class"])
+def test_availability_failures_requires_complete_typed_counter_snapshot(monkeypatch, fault):
+    client = _client(FakeSession([0]))
+    data = {
+        "kind": "availability_failures",
+        "utc_day": "2026-10-09",
+        "truncated": False,
+        "route_failures": [
+            {
+                "utc_day": "2026-10-09",
+                "route_id": "route",
+                "failure_class": "route_gone",
+                "count": 2,
+            }
+        ],
+    }
+    if fault == "legacy":
+        data = {"utc_day": "2026-10-09"}
+    elif fault == "truncated":
+        data["truncated"] = True
+    elif fault == "bad_class":
+        data["route_failures"][0]["failure_class"] = "own_rpm"
+    calls = []
+    monkeypatch.setattr(client, "_request", lambda *args: calls.append(args) or data)
+    if fault:
+        with pytest.raises(DispatchPauseError):
+            client.availability_failures()
+    else:
+        assert client.availability_failures() == data
+    assert calls == [("GET", "v2/stats?availability_failures=1")]
+
+
 class ContextResponseSession:
     def __init__(self, body, status=200):
         self.body = body
@@ -371,3 +403,36 @@ def test_control_diagnostic_does_not_include_worker_response():
         _client(RefusedSession([0])).pause(Selection("global"), 60)
     assert caught.value.diagnostic == "v2/dispatch:pause HTTP=403"
     assert "secret" not in caught.value.diagnostic
+
+
+def test_dispatch_requests_send_connection_close_header():
+    session = FakeSession([0])
+    client = _client(session)
+    client.pause(Selection("global"), 60)
+    assert session.calls[0][3].get("connection") == "close"
+
+
+def test_read_only_stats_retries_transport_errors():
+    import requests
+
+    class TransientSession(FakeSession):
+        attempts = 0
+
+        def request(self, *args, **kwargs):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise requests.ConnectionError("transient connection reset")
+            return FakeResponse(
+                200,
+                {
+                    "utc_day": "2026-11-02",
+                    "kind": "availability_failures",
+                    "truncated": False,
+                    "route_failures": [],
+                },
+            )
+
+    session = TransientSession([0])
+    client = _client(session)
+    assert client.availability_failures()["kind"] == "availability_failures"
+    assert session.attempts == 2

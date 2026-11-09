@@ -188,22 +188,33 @@ export function inputWindow(route) {
 }
 
 /**
- * Settle a lease-tagged Google input reservation at response end, a conservative upper bound on
- * arrival at the provider. Pending entries are held at the lease deadline until this happens;
- * a lost executor therefore ages out safely without a start RPC or a per-attempt table.
+ * Settle a lease-tagged Google input reservation at request start/arrival time (the actual
+ * rate-limit window anchor for Google AI Studio). Pending entries anchor to scheduled start
+ * time and clear after the minute window.
  */
 export function settleInputWindow(route, job, result, now, nonConsuming = false) {
   const entries = inputWindow(route).filter((entry) => entry.lease_token !== job.lease_token);
-  if (!nonConsuming && result.actual_start_at != null) {
+  // Google rate limits by arrival time: any attempt that reached the provider
+  // (actual_start_at != null) consumes input tokens in Google's 60s sliding window, even if the
+  // call subsequently failed with a transient server error (500/503). Wiping the window on a 5xx
+  // leaves the coordinator believing the minute has full TPM capacity, causing subsequent
+  // admissions within the 60s window to hit an immediate 429 rate limit refusal.
+  const reachedProvider =
+    Number.isFinite(Number(result.actual_start_at)) && Number(result.actual_start_at) > 0;
+  const isGoogle5xx =
+    route?.provider === "gemini" &&
+    [500, 503].includes(Number(result.provider_status_code));
+  const recordInWindow = reachedProvider && (!nonConsuming || isGoogle5xx);
+  if (recordInWindow) {
     const observed = Number(result.observed_input_tokens);
     const hasUsage = result.observed_input_tokens != null &&
       Number.isFinite(observed) && observed >= 0;
-    const tokens = hasUsage ? observed : Number(job.token_reservation) || 0;
+    const tokens =
+      hasUsage ? observed : Number(job.token_reservation || result.token_reservation) || 0;
     if (tokens > 0) {
-      const endedAt = Number(result.actual_end_at);
+      const startedAt = Number(result.actual_start_at);
       entries.push({
-        at: Math.max(Number(result.actual_start_at), Number.isFinite(endedAt) && endedAt > 0
-          ? endedAt : now),
+        at: startedAt > 0 ? startedAt : now,
         tokens,
       });
     }
