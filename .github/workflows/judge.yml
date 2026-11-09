@@ -6,11 +6,10 @@ name: LLM judge stack
 # run does nothing; a manual dispatch with dry_run plans and packs every packet and submits none.
 on:
   schedule:
-    # Hourly at a staggered minute: a pass does minutes of real work (446s on 2026-11-09) and
-    # only ~5 of the 12 two-hourly crons fired, so more chances recover dropped slots. The
-    # concurrency group serialises passes and a superseded run yields, so extra triggers cost no
-    # Worker budget (the packet gates in site_config.yml judging.max_outstanding_packets bound it).
-    - cron: "37 * * * *"
+    # Every two hours: twelve passes split each judge lane's daily cap into run caps
+    # (site_config.yml llm_lanes judge:*), keeping JEV's single-flight window lightly loaded.
+    # The judge window must equal this interval (tests/test_run.py), so cadence is not raised here.
+    - cron: "37 */2 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
