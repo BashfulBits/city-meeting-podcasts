@@ -1133,6 +1133,7 @@ class MomentsStage(LLMProducerStage):
             MOMENTS_SYSTEM_PROMPT,
             candidate_matrix_key,
             ensure_moment_contract,
+            moment_recipe_models,
             normalize_decision_candidate,
             normalize_quote_candidate,
             parse_transcript_segments,
@@ -1216,7 +1217,7 @@ class MomentsStage(LLMProducerStage):
                 transcript_words_key=ep.transcript_words_key,
                 chapters=chapter_rows,
                 agenda_text_key=agenda_key,
-                route_models=allowed_models,
+                route_models=moment_recipe_models(input_tokens),
                 meeting_family=family,
                 evaluation_policy="candidate-generation-v1",
             )

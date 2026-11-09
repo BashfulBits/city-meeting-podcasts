@@ -517,6 +517,10 @@ persists stable `defer_reasons` counters (`insufficient-budget`, `external-requi
 total on `/admin/status`.
 | **Security** | `security.py` — SSRF gate (`validate_source_url`), host allowlists, redirect/size caps; `http.py` retry/backoff; ffmpeg protocol whitelist; defusedxml. |
 
+Moments dispatch excludes the retired Kimi route while its historical large-packet recipe identity
+retains that model name. This preserves completed artifacts and pending recipe identities; it does
+not permit new dispatches to Kimi. Other input or recipe changes retain their normal invalidation.
+
 ### Purpose-bound LLM work telemetry (GH#2001, review/52)
 
 `compute/llm_work.py` provides the run-local middle layer for production stages and research jobs.

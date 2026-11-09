@@ -17,6 +17,63 @@ from citypods.video_clips import caption_text, render_video_clip, video_clip_key
 from tests._cas_fake import MemStorage
 
 
+@pytest.mark.parametrize("tokens", [45000, 45001])
+def test_retired_kimi_is_not_dispatched_and_recipe_identity_is_preserved(tokens):
+    from citypods.compute.llm_lanes import lane_for
+    from citypods.moments import moment_recipe_models, select_moment_models
+
+    primary, backup = select_moment_models(tokens)
+    lane = lane_for("r6-moments")
+    assert set(primary + backup) <= set(lane.models + lane.backup_models)
+    assert "moonshotai/kimi-k3" not in primary + backup
+    previous = (
+        ("gemini/gemini-3.5-flash-lite",)
+        if tokens <= 45000
+        else ("zai/glm-5.3-flash", "deepseek/deepseek-v4-flash", "moonshotai/kimi-k3")
+    )
+    assert moment_recipe_models(tokens) == previous
+
+
+def test_existing_large_moments_are_reused_after_kimi_retirement(monkeypatch):
+    from citypods.moments import recipe_hash
+    from citypods.stages import MomentsStage
+    from tests.test_stages import _city
+
+    storage = MemStorage()
+    storage.put_cas(
+        "transcript.vtt", b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello.\n", "text/vtt"
+    )
+    monkeypatch.setattr("citypods.compute.llm_policy.estimate_tokens", lambda _: 45001)
+    city = _city()
+    old_hash = recipe_hash(
+        transcript_key="transcript.vtt",
+        transcript_words_key=None,
+        chapters=[],
+        agenda_text_key=None,
+        route_models=("zai/glm-5.3-flash", "deepseek/deepseek-v4-flash", "moonshotai/kimi-k3"),
+        meeting_family=str(city.extra.get("meeting_family") or "default"),
+        evaluation_policy="candidate-generation-v1",
+    )
+    ep = Episode(
+        guid="episode",
+        uid="episode",
+        title="Meeting",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        transcript_key="transcript.vtt",
+        video_url="https://example.com/meeting",
+        moments_llm_recipe_hash=old_hash,
+    )
+
+    class Backend:
+        def run_inference(self, job):
+            raise AssertionError("existing moments must not be reissued")
+
+    ctx = StageContext(
+        storage=storage, ffmpeg=None, max_kbps=96, dry_run=False, moment_backend=Backend()
+    )
+    assert MomentsStage().process(None, city, [ep], ctx).reused == 1
+
+
 def _candidate(**overrides):
     value = {
         "candidate_id": "r6-one",
