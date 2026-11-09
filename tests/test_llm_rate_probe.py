@@ -238,6 +238,53 @@ def test_phase_2_records_only_a_size_that_actually_returned_200():
     assert result["observed_input_ceiling"] == 8000
 
 
+def test_phase_2_searches_above_the_old_250k_cap_for_a_large_context_route():
+    """The search cap was a hard-coded 250,000, so a 1M-context route could never be shown to
+    accept more than ~250k and every higher ceiling stayed untested."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+    result = run_phase_2(_ScriptedRunner([ok]), _route(input_context_limit=1_000_000))
+
+    assert result["observed_input_ceiling"] > 250_000
+    assert result["search_upper_bound"] == 1_000_000
+
+
+def test_phase_2_max_search_tokens_still_bounds_the_search():
+    from citypods.llm_rate_probe import run_phase_2
+
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+    result = run_phase_2(
+        _ScriptedRunner([ok]), _route(input_context_limit=1_000_000), max_search_tokens=250_000
+    )
+
+    assert result["observed_input_ceiling"] <= 250_000
+    assert result["search_upper_bound"] == 250_000
+
+
+def test_phase_2_gives_large_probes_a_longer_timeout_and_restores_it():
+    from citypods.llm_rate_probe import run_phase_2
+
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+
+    class TimeoutRunner(_ScriptedRunner):
+        request_timeout_seconds = 15.0
+
+        def __init__(self):
+            super().__init__([ok])
+            self.timeouts = []
+
+        def send_request(self, route, prompt, *, max_tokens=1):
+            self.timeouts.append(self.request_timeout_seconds)
+            return super().send_request(route, prompt, max_tokens=max_tokens)
+
+    runner = TimeoutRunner()
+    run_phase_2(runner, _route(input_context_limit=1_000_000))
+
+    assert max(runner.timeouts) > 100  # the ~500k-token first probe is not cut off at 15s
+    assert runner.request_timeout_seconds == 15.0
+
+
 def test_phase_2_retries_through_a_throttle_before_giving_up():
     """Endurance semantics: a throttle is waited out and the SAME size re-probed, so a busy route
     still yields a real measurement instead of being written off."""

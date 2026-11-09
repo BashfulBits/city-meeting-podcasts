@@ -8,6 +8,16 @@ on:
         required: false
         default: ""
         type: string
+      route:
+        description: "Route ID to probe (optional; e.g. nvidia_minimaxai_minimax_m3_1_flash)"
+        required: false
+        default: ""
+        type: string
+      max_search_tokens:
+        description: "Phase 2 upper bound in chars/4 tokens (default 1000000)"
+        required: false
+        default: "1000000"
+        type: string
       phases:
         description: "Phases to run (comma-separated, e.g. 0,4 or 0,1,1b,2,3)"
         required: false
@@ -43,6 +53,8 @@ jobs:
         env:
           INPUT_APPLY: ${{ inputs.apply }}
           INPUT_PROVIDER: ${{ inputs.provider }}
+          INPUT_ROUTE: ${{ inputs.route }}
+          INPUT_MAX_SEARCH_TOKENS: ${{ inputs.max_search_tokens }}
           INPUT_PHASES: ${{ inputs.phases }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
@@ -66,6 +78,12 @@ jobs:
           fi
           if [ -n "$INPUT_PROVIDER" ]; then
             ARGS="$ARGS --provider $INPUT_PROVIDER"
+          fi
+          if [ -n "$INPUT_ROUTE" ]; then
+            ARGS="$ARGS --route $INPUT_ROUTE"
+          fi
+          if [ -n "$INPUT_MAX_SEARCH_TOKENS" ]; then
+            ARGS="$ARGS --max-search-tokens $INPUT_MAX_SEARCH_TOKENS"
           fi
           IFS=',' read -ra PHASE_LIST <<< "$INPUT_PHASES"
           for p in "${PHASE_LIST[@]}"; do
