@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Chapter locator no longer errors on agendas with no accepted items.** A completed agenda
+  artifact whose items were all rejected used to build a locator job and raise "locator requires at
+  least one agenda item" every run. The stage now defers it as `no-accepted-agenda-items` (mapped
+  to `blocked` in the backlog trend) before reading the transcript. The chapter-locator workflow
+  runner is pinned to `ubuntu-24.04`.
+- **Locator duplicate-unit errors name both agenda items.** "duplicate locator unit: uNNNNN" now
+  also reports the two agenda item indexes, so a repeated agenda entry can be told apart from the
+  model anchoring distinct items to one unit.
+
 - **Chapter locator.** Fixed large requests being rejected because they included retired Kimi K3,
   which had been removed from the dispatcher lane. Large requests now use DeepSeek V4.1 Flash alone.
 
