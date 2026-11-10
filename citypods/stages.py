@@ -9069,6 +9069,23 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                     stats.defer("llm-pending")
                     continue
 
+            # A completed agenda artifact can legitimately carry zero accepted items (everything
+            # rejected, or a procedural-only agenda). There is nothing to locate, and
+            # build_locator_request would raise on every run, so classify it as a deferral
+            # instead of a recurring stage error.
+            try:
+                has_accepted_items = any(
+                    item.status == "accepted"
+                    for item in AgendaCandidatesArtifact.from_dict(raw_agenda).items
+                )
+            except Exception:  # noqa: BLE001 -- fall through; the build path below reports it
+                has_accepted_items = True
+            if not has_accepted_items:
+                if work is not None:
+                    work.defer("blocked")
+                stats.defer("no-accepted-agenda-items")
+                continue
+
             words = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
             vtt = _read_storage_bytes(ctx.storage, ep.transcript_key)
             units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
