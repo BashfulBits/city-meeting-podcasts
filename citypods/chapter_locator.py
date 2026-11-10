@@ -307,7 +307,7 @@ def validate_locator_response(
     units_by_id = {unit.id: unit for unit in units}
     anchors: list[LocatorAnchor] = []
     seen_agenda: set[int] = set()
-    seen_units: set[str] = set()
+    seen_units: dict[str, int] = {}
     for item in response.anchors:
         if item.agenda_item_index >= agenda_item_count:
             raise ValueError(f"agenda item index out of range: {item.agenda_item_index}")
@@ -326,9 +326,14 @@ def validate_locator_response(
         if item.alternative_unit_id is not None and item.alternative_unit_id not in units_by_id:
             raise ValueError(f"unknown alternative locator unit: {item.alternative_unit_id}")
         if item.unit_id in seen_units:
-            raise ValueError(f"duplicate locator unit: {item.unit_id}")
+            # Name both agenda items: the same title listed twice (e.g. an agenda merged from
+            # overlapping feeds) is a different cause than the model mis-anchoring distinct items.
+            raise ValueError(
+                f"duplicate locator unit: {item.unit_id} "
+                f"(agenda items {seen_units[item.unit_id]} and {item.agenda_item_index})"
+            )
         seen_agenda.add(item.agenda_item_index)
-        seen_units.add(item.unit_id)
+        seen_units[item.unit_id] = item.agenda_item_index
         anchors.append(
             LocatorAnchor(
                 agenda_item_index=item.agenda_item_index,

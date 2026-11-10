@@ -59,6 +59,7 @@ STAGE_TOKENS: dict[str, dict[str, tuple[str, str]]] = {
         "stop-signal": ("chapter-locator", "stopped"),
         "agenda-not-complete": ("chapter-locator", "blocked"),
         "missing-timed-transcript": ("chapter-locator", "blocked"),
+        "no-accepted-agenda-items": ("chapter-locator", "blocked"),
     },
     "tags": {
         "tag-llm-dispatch": ("tagger", "queued"),

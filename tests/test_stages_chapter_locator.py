@@ -876,3 +876,21 @@ def test_unsettled_reservations_do_not_permanently_close_lane(prefix, cap, event
     settle(True)
     assert getattr(ctx, event).is_set()
     assert not reserve()
+
+
+def test_locator_stage_defers_without_error_when_no_accepted_agenda_items(tmp_path: Path):
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ctx = _ctx(storage=storage, dry_run=False)
+
+    ep = _make_episode("ep-no-accepted")
+    raw = dict(ep.generated_agenda_candidates)
+    raw["items"] = [{**item, "status": "rejected"} for item in raw["items"]]
+    ep.generated_agenda_candidates = raw
+    # Transcript present: the deferral must not depend on the transcript check.
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.defer_reasons.get("no-accepted-agenda-items") == 1
+    assert not stats.errors
