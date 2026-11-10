@@ -12,7 +12,6 @@ from citypods.chapter_locator import (
     DEEPSEEK_V41_LOCATOR_MODEL,
     GEMINI_CONTEXT_TOKENS,
     GEMINI_LOCATOR_MODEL,
-    KIMI_LOCATOR_MODEL,
     LOCATOR_CONTRACT,
     LOCATOR_OUTPUT_TOKEN_RESERVE,
     MISTRAL_CONTEXT_TOKENS,
@@ -32,6 +31,7 @@ from citypods.chapter_locator import (
     select_locator_models,
     validate_locator_response,
 )
+from citypods.compute.llm_lanes import lane_for
 from citypods.compute.structured import response_model
 
 
@@ -370,9 +370,10 @@ def test_production_locator_pins_small_packets_to_v4_flash_alone():
     assert request.model == PRODUCTION_LOCATOR_MODEL
 
 
-def test_production_locator_sends_large_packets_to_v41_with_kimi_as_companion():
+def test_production_locator_sends_large_packets_to_v41():
     request = _production_request(1200)
 
     assert request.input_tokens > 76_000
-    assert request.models == (DEEPSEEK_V41_LOCATOR_MODEL, KIMI_LOCATOR_MODEL)
+    assert request.models == (DEEPSEEK_V41_LOCATOR_MODEL,)
     assert request.model == DEEPSEEK_V41_LOCATOR_MODEL
+    assert set(request.models) <= set(lane_for("chapter-locator").models)

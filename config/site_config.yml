@@ -137,15 +137,14 @@ llm_lanes:
     telemetry: {producer: chapter_locator, unit: episode, completion: consumed, scope: retained_catalog}
     # Production selection is size-aware in citypods/chapter_locator.py. DeepSeek V4 Flash is the
     # stable recipe model for packets up to 76,000 internal estimated input tokens; larger packets
-    # go to DeepSeek V4.1 Flash with Kimi K3 as its companion. This empirically-derived cutoff
+    # go to DeepSeek V4.1 Flash. This empirically-derived cutoff
     # stays below the largest accepted V4 packet (76,546) and above the largest observed rejected
     # boundary (81,301). GLM 5.3 Flash is documented as optional small-context capacity and is not
     # wired into production.
     models:
       [deepseek/deepseek-v4-flash, deepseek/deepseek-v4.1-flash]
     # Each request is pinned to its size band: V4 Flash alone (one model index) or, above 76,000
-    # tokens, the V4.1 Flash + Kimi K3 pair (two indexes, so five write units). Kimi K3 was retired
-    # upstream on 2026-10-15; the Worker skips its blocked route and V4.1 takes the work.
+    # tokens, V4.1 Flash alone (one model index). Kimi K3 was retired upstream on 2026-10-15.
     dispatch_shape: per_model
     max_queued_jobs: 3200
     reserved_write_units: 4300
