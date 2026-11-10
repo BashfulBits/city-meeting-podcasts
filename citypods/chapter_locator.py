@@ -31,8 +31,8 @@ DEEPSEEK_FREE_LOCATOR_MODEL = "deepseek/deepseek-v4-flash"
 NEMOTRON_LOCATOR_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
 # Production uses the baseline prompt. DeepSeek V4 Flash is the preferred route for packets in its
-# empirically verified fit band; Kimi K3 handles larger packets. Keep these in the lane registry
-# and select one per request so the Worker reserves only that model's pool.
+# empirically verified fit band; DeepSeek V4.1 Flash handles larger packets. Keep these in the
+# lane registry and select one per request so the Worker reserves only that model's pool.
 #
 # THIS STRING IS PART OF THE RECIPE HASH (see `stages.py`'s `chapter_locator` recipe), so changing
 # the configured model re-queues every locator artifact in the catalog -- a deliberate backfill
@@ -44,8 +44,7 @@ GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
 PRODUCTION_LOCATOR_MODEL = lane_for("chapter-locator").primary_model
 PRODUCTION_LOCATOR_MODELS = lane_for("chapter-locator").models
 KIMI_LOCATOR_MODEL = "moonshotai/kimi-k3"
-# Companion overflow model for packets above the V4 Flash band. NVIDIA retired Kimi K3 on
-# 2026-10-15 (HTTP 410), so V4.1 Flash is listed first; the Worker skips a blocked route.
+# NVIDIA retired Kimi K3 on 2026-10-15 (HTTP 410); V4.1 handles larger packets alone.
 DEEPSEEK_V41_LOCATOR_MODEL = "deepseek/deepseek-v4.1-flash"
 # Saved V4 Flash telemetry accepted packets through 76,546 internal estimated tokens and
 # repeatedly rejected packets from 81,301. Keep a small margin below the observed accepted edge.
@@ -530,7 +529,7 @@ def build_production_locator_request(
     models = (
         (PRODUCTION_LOCATOR_MODEL,)
         if input_tokens <= DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS
-        else (DEEPSEEK_V41_LOCATOR_MODEL, KIMI_LOCATOR_MODEL)
+        else (DEEPSEEK_V41_LOCATOR_MODEL,)
     )
     return LocatorRequest(
         messages=messages,
