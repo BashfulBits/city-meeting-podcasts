@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Chapter locator.** Fixed large requests being rejected because they included retired Kimi K3,
+  which had been removed from the dispatcher lane. Large requests now use DeepSeek V4.1 Flash alone.
+
 Bound the judge's in-memory parsed transcript cache and spill older snapshots to private temporary
 storage, preserving quote-check read limits and origin-refresh behavior. Report spill and rehydrate
 counts to inform later tuning of the per-pass quote-check budget.
