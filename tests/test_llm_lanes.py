@@ -429,7 +429,7 @@ def _worker_routes_for(model: str, catalog: dict) -> list[str]:
 # structural catalog keeps the route; nothing is failed as unroutable) until the named condition is
 # met. Keep this list short and dated; an entry here is an outage by decision, not a default.
 _STOOD_DOWN_LANE_MODELS = {
-    # review/58 WP3a/WP3c: BeatAPI withdrew jev-1.13-free (HTTP 400); needs an owner anchor decision.
+    # review/58 WP3a/WP3c: BeatAPI withdrew jev-1.13-free (400); owner must pick the anchor.
     ("judge:anchor", "typesafe/jev-1.13"),
     ("remedy:p3", "typesafe/jev-1.13"),
 }
