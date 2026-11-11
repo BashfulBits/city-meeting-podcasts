@@ -46,12 +46,20 @@ TIMEOUT_SECONDS = 2400
 MAX_OUTPUT_TOKENS = {
     "deepseek/deepseek-v4-flash": 16_384,
     "deepseek/deepseek-v4.1-flash": 16_384,
+    "gemini/gemini-3-flash-preview": 16_384,
+    "gemini/gemini-3.1-flash-lite": 8_192,
     "gemini/gemini-3.5-flash-lite": 8_192,
+    "minimaxai/minimax-m3.1-flash": 12_800,
     "moonshotai/kimi-k3": 8_192,
+    "nvidia/nemotron-3-ultra-550b-a55b:free": 32_768,
+    "openrouter/nvidia/nemotron-3.5-super-vl:free": 32_768,
+    "tencent/hy3": 32_768,
     "zai/glm-5.3-flash": 65_536,
 }
 MIN_GAP_SECONDS = {
     "gemini": 80.0,
+    "kilo": 10.0,
+    "openrouter": 10.0,
     "nvidia": 120.0,
     "orcarouter": 10.0,
 }
@@ -123,6 +131,12 @@ def main() -> int:
     parser.add_argument(
         "--provider-pause", help="Provider name to pause; defaults to the route provider."
     )
+    parser.add_argument(
+        "--pause-scope",
+        choices=("provider", "route"),
+        default="provider",
+        help="Pause the whole provider (default) or only the evaluated route.",
+    )
     parser.add_argument("--min-gap-seconds", type=float)
     args = parser.parse_args()
 
@@ -159,7 +173,7 @@ def main() -> int:
         "model": model,
         "route_id": route.route_id,
         "provider": route.provider,
-        "provider_pause_scope": provider,
+        "provider_pause_scope": route.route_id if args.pause_scope == "route" else provider,
         "prompt": args.prompt,
         "prompt_text": TRANSITION_SWEEP if args.prompt == "transition_sweep" else None,
         "uids": sorted(uids),
@@ -176,7 +190,9 @@ def main() -> int:
     last_start = 0.0
     pause_client = DispatchPauseClient()
     with paused(
-        Selection("provider", provider),
+        Selection("route", route.route_id)
+        if args.pause_scope == "route"
+        else Selection("provider", provider),
         seconds=3600,
         drain_timeout=1800,
         poll_interval=10,
