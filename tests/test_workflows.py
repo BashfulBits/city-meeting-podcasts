@@ -1625,10 +1625,15 @@ def test_llm_deferred_sweep_is_hourly_with_a_45_minute_budget():
     assert wf["concurrency"] == {"group": "llm-deferred-sweep", "cancel-in-progress": False}
     assert job["timeout-minutes"] == 45
     step = next(s for s in job["steps"] if "llm_deferred_sweep.py" in s.get("run", ""))
-    assert step["timeout-minutes"] == 42
+    assert step["timeout-minutes"] == 41
     match = re.search(r"--run-time-budget-minutes (\d+)", step["run"])
     assert match is not None
-    assert float(match.group(1)) < step["timeout-minutes"] < job["timeout-minutes"]
+    budget = float(match.group(1))
+    assert budget == 32
+    # Deadline checks run between chunks: keep room for an in-flight chunk and the final index
+    # writes so the step is never killed mid-write.
+    assert step["timeout-minutes"] - budget >= 8
+    assert budget < step["timeout-minutes"] < job["timeout-minutes"]
 
 
 def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
@@ -1768,7 +1773,7 @@ def test_contracts_probe_artificial_analysis_with_production_secret():
             "sweep",
             "Reconcile pending deferred/dispatched LLM requests",
             45,
-            42,
+            41,
         ),
         (
             "asr.yml",

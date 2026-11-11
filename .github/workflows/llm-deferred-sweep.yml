@@ -12,7 +12,9 @@ name: LLM deferred sweep
 # calls a day. Minute :57 is unused by every other scheduled workflow.
 #
 # Wall-clock budget is 45 minutes so a run does not crowd the next hour's: the sweep's own
-# --run-time-budget-minutes (38) < step timeout (42) < job timeout (45). Reaching the budget is a
+# --run-time-budget-minutes (32) < step timeout (41) < job timeout (45). The 9-minute gap covers
+# an in-flight chunk plus final index writes (deadline checks run between chunks); the job's spare
+# 4 minutes cover setup before and telemetry after the sweep step. Reaching the budget is a
 # clean exit 0 with work left deferred (deferred is not failed); the concurrency group below never
 # cancels a running sweep, so a late-starting run simply queues behind it.
 # DeepSeek's off-peak window (16:30 UTC, review/27 section 5.3) is covered by the 17:57 run.
@@ -43,7 +45,7 @@ concurrency:
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    # 45-minute wall-clock budget: sweep budget 38 < step timeout 42 < job timeout 45.
+    # 45-minute wall-clock budget: sweep budget 32 < step timeout 41 < job timeout 45.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -72,7 +74,7 @@ jobs:
         # GitHub reports as a grey "cancelled" -- skipping the summary report where submit_failed
         # surfaces. A STEP-level timeout below the job's fails the step, so the run goes red and
         # post-steps still execute.
-        timeout-minutes: 42
+        timeout-minutes: 41
         env:
           # Surface phase telemetry even when GitHub cancels the job during a storage read.
           PYTHONUNBUFFERED: "1"
@@ -100,7 +102,7 @@ jobs:
           if [ "${{ inputs.repair_index }}" = "true" ]; then
             python scripts/llm_deferred_sweep.py --repair-index
           else
-            python scripts/llm_deferred_sweep.py --run-time-budget-minutes 38 \
+            python scripts/llm_deferred_sweep.py --run-time-budget-minutes 32 \
               --pending-audit-limit "$PENDING_AUDIT_LIMIT"
           fi
 
