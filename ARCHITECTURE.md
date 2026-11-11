@@ -1042,9 +1042,11 @@ claimed tick: `bundle_id`, `claimed_jobs`, `route_ids`, `in_flight_calls_before`
 `active_bundles_before` (the DO's counts before this bundle, taken from the claim response),
 `candidate_jobs`. The claim response carries no admissible-capacity figure, so none is logged.
 `bundle_completed`, once per bundle after the commit: `bundle_id`, `bundle_duration_ms` (claim to
-commit), `commit_ok`, and `calls[]` with `route_id`, `purpose`, `outcome`, `failure_class`,
-`provider_status_code`, `call_duration_ms` and `hold_ms` (call end to commit) for every call on
-every route. Empty ticks keep `scheduled_claim_empty`.
+commit), `commit_ok`, and `calls[]` with `route_id`, `purpose`, `final`, `outcome`,
+`failure_class`, `provider_status_code`, `call_duration_ms` and `hold_ms` (call end to commit) for
+every call on every route, including superseded attempts (`final: false`: 429 retries and
+in-window Google 5xx retries) before each job's settled one (`final: true`). Empty ticks keep
+`scheduled_claim_empty`.
 Chat judge packing sizes the complete serialized messages and structured contract in the same
 raw units as enqueue. Google Gemma packing preflight also returns a separate model/prompt-family
 feedback target: Google successes and same-generation NVIDIA recoveries form a bounded 128-packet

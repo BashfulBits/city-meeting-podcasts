@@ -226,6 +226,7 @@ test("scheduled() logs scheduled_claim and bundle_completed for a successful non
   const call = done[0].calls[0];
   assert.equal(call.route_id, "route-a");
   assert.equal(call.outcome, "success");
+  assert.equal(call.final, true);
   assert.equal(call.failure_class, null);
   assert.ok(call.call_duration_ms >= 0);
   assert.ok(call.hold_ms >= 0);
@@ -343,6 +344,12 @@ test("scheduled() retries once after a 429 and completes successfully", async ()
     assert.equal(attempts[0].admitted_input_estimate, 500);
     assert.equal(attempts[0].reserved_input_estimate, 500);
     assert.notEqual(attempts[0].attempt_id, attempts[1].attempt_id);
+    // bundle_completed lists the superseded 429 attempt as well as the final success.
+    const done = events.filter(e => e.event === "bundle_completed");
+    assert.equal(done.length, 1);
+    assert.deepEqual(done[0].calls.map(c => c.final), [false, true]);
+    assert.deepEqual(done[0].calls.map(c => c.provider_status_code), [429, 200]);
+    assert.deepEqual(done[0].calls.map(c => c.outcome), ["retryable_error", "success"]);
   } finally {
     globalThis.fetch = originalFetch;
     console.info = originalInfo;

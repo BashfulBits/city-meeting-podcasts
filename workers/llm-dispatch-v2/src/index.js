@@ -1214,7 +1214,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
  * enforces MAX_429_RETRIES (see coordinator.js) -- this loop does not separately bound attempts;
  * it simply keeps retrying for as long as the DO keeps authorizing.
  */
-async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneState, bundleDeadline, maxResponseMs }) {
+async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneState, bundleDeadline, maxResponseMs, attemptLog = [] }) {
   let targetTime = laneState.receivedAt + job.wait_ms;
   if (laneState.predecessorActualStart !== null) {
     targetTime = Math.max(targetTime, laneState.predecessorActualStart + job.min_inter_request_gap_ms);
@@ -1292,6 +1292,7 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
           inWindow5xxRetries += 1;
           if (jobWithPayload.attempt_ordinal != null) jobWithPayload.attempt_ordinal += 1;
           laneState.predecessorActualStart = outcome.result.actual_start_at;
+          attemptLog.push({ job, result: outcome.result }); // superseded attempt, telemetry only
           await sleepUntil(Date.now() + backoffMs);
           continue;
         }
@@ -1328,6 +1329,14 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       };
     }
     if (jobWithPayload.attempt_ordinal != null) jobWithPayload.attempt_ordinal += 1;
+    attemptLog.push({
+      job,
+      result: {
+        ...baseAttemptResult(job, attemptId, outcome.actualStartAt, outcome.actualEndAt, "retryable_error"),
+        provider_status_code: 429,
+        failure_class: outcome.failureClass,
+      },
+    }); // superseded attempt, telemetry only
     laneState.retryBarrier = auth.retry_not_before;
     await sleepUntil(auth.retry_not_before);
     // Loop: re-attempt with a fresh attempt_id, still bounded by the DO's own retry count.
@@ -1410,6 +1419,7 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
   }
 
   const results = [];
+  const attemptLog = []; // superseded attempts (in-window retries), for bundle_completed only
   // Promise.allSettled over independent lanes -- safe without a separate concurrency limiter
   // because claimDispatchWindow already caps distinct routes at MAX_CONCURRENT_ROUTE_LANES (see
   // Unit 4/Unit 6's own guardrail on why this constant exists).
@@ -1429,6 +1439,7 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
             laneState,
             bundleDeadline,
             maxResponseMs,
+            attemptLog,
           });
         } catch (err) {
           // An unexpected exception here must still produce a completeBatch result -- letting it
@@ -1455,7 +1466,7 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
     commitOk = false;
     console.error(`scheduled: completeBatch failed for bundle ${plan.bundle_id}: ${describeError(err)}`, err);
   }
-  logBundleCompleted({ plan, results, claimNow, commitAt: Date.now(), commitOk });
+  logBundleCompleted({ plan, results, attemptLog, claimNow, commitAt: Date.now(), commitOk });
 }
 
 /**
@@ -1463,20 +1474,25 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
  * (successful non-Gemma calls are logged nowhere else). `hold_ms` is how long the call's slot
  * stayed held after the call ended, until the bundle commit. No payload, response or error text.
  */
-function logBundleCompleted({ plan, results, claimNow, commitAt, commitOk }) {
+function logBundleCompleted({ plan, results, attemptLog = [], claimNow, commitAt, commitOk }) {
   const jobsById = new Map(plan.jobs.map((job) => [job.id, job]));
+  const attempts = [
+    ...attemptLog.map(({ result }) => ({ result, final: false })),
+    ...results.map((result) => ({ result, final: true })),
+  ];
   console.info(JSON.stringify({
     event: "bundle_completed",
     bundle_id: plan.bundle_id,
     bundle_duration_ms: commitAt - claimNow,
     commit_ok: commitOk,
-    calls: results.map((result) => {
+    calls: attempts.map(({ result, final }) => {
       const job = jobsById.get(result.job_id);
       const started = Number.isFinite(result.actual_start_at) ? result.actual_start_at : null;
       const ended = Number.isFinite(result.actual_end_at) ? result.actual_end_at : null;
       return {
         route_id: job?.route_id ?? null,
         purpose: job?.purpose ?? null,
+        final,
         outcome: result.outcome,
         failure_class: result.failure_class ?? null,
         provider_status_code: result.provider_status_code ?? null,
