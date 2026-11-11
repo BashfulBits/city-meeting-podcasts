@@ -1363,6 +1363,20 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
     return; // no B2 access, no further DO calls
   }
 
+  // review/58 WP1a: one line per claimed tick, from the claim response alone (no extra DO call).
+  // in_flight_calls and active_bundles are the DO's counts BEFORE this bundle was added; the claim
+  // response carries no admissible-capacity figure, so none is logged.
+  const claimDiagnostics = plan.claim_diagnostics || {};
+  console.info(JSON.stringify({
+    event: "scheduled_claim",
+    bundle_id: plan.bundle_id,
+    claimed_jobs: plan.jobs.length,
+    route_ids: [...new Set(plan.jobs.map((job) => job.route_id))],
+    in_flight_calls_before: claimDiagnostics.in_flight_calls ?? null,
+    active_bundles_before: claimDiagnostics.active_bundles ?? null,
+    candidate_jobs: claimDiagnostics.candidate_jobs ?? null,
+  }));
+
   const receivedAt = Date.now(); // wait_ms is relative to THIS instant, not plan-build time
   const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;
   const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
@@ -1434,11 +1448,43 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
   );
 
   await networkObservation;
+  let commitOk = true;
   try {
     await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results);
   } catch (err) {
+    commitOk = false;
     console.error(`scheduled: completeBatch failed for bundle ${plan.bundle_id}: ${describeError(err)}`, err);
   }
+  logBundleCompleted({ plan, results, claimNow, commitAt: Date.now(), commitOk });
+}
+
+/**
+ * review/58 WP1a: one line per bundle once its calls settle, covering every call on every route
+ * (successful non-Gemma calls are logged nowhere else). `hold_ms` is how long the call's slot
+ * stayed held after the call ended, until the bundle commit. No payload, response or error text.
+ */
+function logBundleCompleted({ plan, results, claimNow, commitAt, commitOk }) {
+  const jobsById = new Map(plan.jobs.map((job) => [job.id, job]));
+  console.info(JSON.stringify({
+    event: "bundle_completed",
+    bundle_id: plan.bundle_id,
+    bundle_duration_ms: commitAt - claimNow,
+    commit_ok: commitOk,
+    calls: results.map((result) => {
+      const job = jobsById.get(result.job_id);
+      const started = Number.isFinite(result.actual_start_at) ? result.actual_start_at : null;
+      const ended = Number.isFinite(result.actual_end_at) ? result.actual_end_at : null;
+      return {
+        route_id: job?.route_id ?? null,
+        purpose: job?.purpose ?? null,
+        outcome: result.outcome,
+        failure_class: result.failure_class ?? null,
+        provider_status_code: result.provider_status_code ?? null,
+        call_duration_ms: started !== null && ended !== null ? ended - started : null,
+        hold_ms: ended !== null ? commitAt - ended : null,
+      };
+    }),
+  }));
 }
 
 

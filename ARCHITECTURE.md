@@ -1036,6 +1036,15 @@ full error body, or credential is logged, and no per-attempt SQL row or extra RP
 `own_tpm_observed` includes job/lease/attempt identity for correlation. A quota limit without a
 requested amount remains ambiguous between packet size and recent project usage; see
 [review/56](review/56-gemma-aistudio-acceptance-plan.md) for the acceptance and feedback plan.
+The dispatch Worker also logs two slot-use events (review/58 WP1a), one JSON line each, with no
+DO read, row or subrequest added and no prompt, response or error text. `scheduled_claim`, once per
+claimed tick: `bundle_id`, `claimed_jobs`, `route_ids`, `in_flight_calls_before` and
+`active_bundles_before` (the DO's counts before this bundle, taken from the claim response),
+`candidate_jobs`. The claim response carries no admissible-capacity figure, so none is logged.
+`bundle_completed`, once per bundle after the commit: `bundle_id`, `bundle_duration_ms` (claim to
+commit), `commit_ok`, and `calls[]` with `route_id`, `purpose`, `outcome`, `failure_class`,
+`provider_status_code`, `call_duration_ms` and `hold_ms` (call end to commit) for every call on
+every route. Empty ticks keep `scheduled_claim_empty`.
 Chat judge packing sizes the complete serialized messages and structured contract in the same
 raw units as enqueue. Google Gemma packing preflight also returns a separate model/prompt-family
 feedback target: Google successes and same-generation NVIDIA recoveries form a bounded 128-packet

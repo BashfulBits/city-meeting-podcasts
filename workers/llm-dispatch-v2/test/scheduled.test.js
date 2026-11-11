@@ -184,6 +184,84 @@ test("scheduled() claims a job, calls the gateway, writes the result, and comple
   }
 });
 
+async function runTickCapturingEvents({ gatewayStatus = 200 } = {}) {
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  const originalInfo = console.info;
+  const originalError = console.error;
+  const events = [];
+  console.info = line => events.push(JSON.parse(line));
+  console.error = () => {};
+  globalThis.fetch = fakeFetch(store, { gatewayStatus, gatewayBody: gatewayStatus === 200 ? null : "{}" });
+  try {
+    const env = makeEnv();
+    await enqueueOneJob(env, "job-log", store);
+    const waitUntilPromises = [];
+    await worker.scheduled({}, env, { waitUntil: (p) => waitUntilPromises.push(p) });
+    await Promise.all(waitUntilPromises);
+    return events;
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.info = originalInfo;
+    console.error = originalError;
+  }
+}
+
+test("scheduled() logs scheduled_claim and bundle_completed for a successful non-Gemma call", async () => {
+  const events = await runTickCapturingEvents();
+  const claims = events.filter(e => e.event === "scheduled_claim");
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0].claimed_jobs, 1);
+  assert.deepEqual(claims[0].route_ids, ["route-a"]);
+  assert.equal(claims[0].in_flight_calls_before, 0);
+  assert.equal(claims[0].active_bundles_before, 0);
+  assert.ok(claims[0].bundle_id);
+
+  const done = events.filter(e => e.event === "bundle_completed");
+  assert.equal(done.length, 1);
+  assert.equal(done[0].bundle_id, claims[0].bundle_id);
+  assert.equal(done[0].commit_ok, true);
+  assert.ok(done[0].bundle_duration_ms >= 0);
+  assert.equal(done[0].calls.length, 1);
+  const call = done[0].calls[0];
+  assert.equal(call.route_id, "route-a");
+  assert.equal(call.outcome, "success");
+  assert.equal(call.failure_class, null);
+  assert.ok(call.call_duration_ms >= 0);
+  assert.ok(call.hold_ms >= 0);
+  assert.ok(call.hold_ms <= done[0].bundle_duration_ms);
+  assert.ok("purpose" in call);
+  // No payload or response content in either event.
+  assert.ok(!JSON.stringify(events).includes("hello from the model"));
+});
+
+test("scheduled() bundle_completed carries the failure class of a failed call", async () => {
+  const events = await runTickCapturingEvents({ gatewayStatus: 500 });
+  const done = events.filter(e => e.event === "bundle_completed");
+  assert.equal(done.length, 1);
+  assert.equal(done[0].calls[0].outcome, "retryable_error");
+  assert.equal(typeof done[0].calls[0].failure_class, "string");
+  assert.equal(done[0].calls[0].provider_status_code, 500);
+});
+
+test("scheduled() emits no scheduled_claim or bundle_completed on an empty tick", async () => {
+  const originalInfo = console.info;
+  const originalLog = console.log;
+  const events = [];
+  console.info = line => events.push(JSON.parse(line));
+  console.log = line => events.push(JSON.parse(line));
+  try {
+    const env = makeEnv();
+    const waitUntilPromises = [];
+    await worker.scheduled({}, env, { waitUntil: (p) => waitUntilPromises.push(p) });
+    await Promise.all(waitUntilPromises);
+  } finally {
+    console.info = originalInfo;
+    console.log = originalLog;
+  }
+  assert.equal(events.filter(e => e.event === "scheduled_claim" || e.event === "bundle_completed").length, 0);
+});
+
 test("scheduled() durably requeues a final Gateway 500 instead of stranding the job", async () => {
   const store = new Map();
   const originalFetch = globalThis.fetch;
