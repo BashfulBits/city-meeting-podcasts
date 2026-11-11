@@ -72,6 +72,17 @@ jobs:
             echo "::warning::azure.archive.ubuntu.com does not resolve; using the fallback apt mirrors"
             sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
           fi
+          # If the runner's resolver cannot see the Ubuntu archive at all, look the hosts up on a
+          # public resolver for this job. apt still verifies package signatures.
+          for host in archive.ubuntu.com security.ubuntu.com; do
+            if ! getent hosts "$host" >/dev/null; then
+              ip="$(dig +short +time=3 +tries=2 @1.1.1.1 A "$host" | grep -E '^[0-9.]+$' | head -1 || true)"
+              if [ -n "$ip" ]; then
+                echo "::warning::$host does not resolve on the runner; pinning it to $ip for this job"
+                echo "$ip $host" | sudo tee -a /etc/hosts >/dev/null
+              fi
+            fi
+          done
           apt_opts="-o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
           diagnose() {
             echo "::error::apt could not install the FFmpeg runtime libraries"
