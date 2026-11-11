@@ -318,6 +318,8 @@ success. Kimi K3 and V4.1 rows are repeated from 2026-10-02 for reference.
 Meeting-cluster 95% intervals for the joint score: MiniMax 82.3 to 92.9; Super VL 66.7 to 91.5.
 The detailed scores are in the
 [overflow candidate score file](../results/2026-11-11-manual-review-v2-long-context-overflow-candidates.json).
+The per-meeting model responses for these arms are not merged into `answer-key.json`; they stay in
+the private telemetry directory, so rescoring them needs a rerun or that directory.
 
 ### Failures by cause
 
