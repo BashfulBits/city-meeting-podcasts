@@ -1516,9 +1516,11 @@ routes:
     # STOOD DOWN 2026-11-11 (review/58 WP3a): `rpd: 0` is the catalog's paused-route convention
     # (the Worker neither ranks nor claims the route; queued `typesafe/jev-1.13` jobs are held,
     # not failed). The prior daily limit was 1400. Over 2026-11-04..11 the route answered 717 x
-    # HTTP 400 `request_defect` against 26 successes, and 0 of 882 jobs whose first failure was
-    # a request defect recovered. Restore the 1400 only when review/58 WP3c (JEV 400 diagnosis)
-    # names the defect and a fix is verified.
+    # HTTP 400 against 26 successes, and 0 of 882 jobs whose first failure was a request defect
+    # recovered. Cause (review/58 WP3c, 2026-11-11): BeatAPI withdrew `jev-1.13-free` from the
+    # key (HTTP 400 `bad_request`, "not available to this key"); it is not a request defect.
+    # Restore the 1400 only if BeatAPI offers a free jev model again, or the owner approves a
+    # paid `jev-1.13`/`jev-1.14` route or a different anchor model.
     rpd: 0
     concurrency: 1
     free: true
