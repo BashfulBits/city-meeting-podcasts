@@ -7,6 +7,7 @@
   decision to move that band to MiniMax M3.1 Flash (88.0% on the 12 long meetings). The locator
   evaluation runner gains a `--pause-scope route` option and output limits for the new models. No
   production code or configuration changes.
-- **CI: FFmpeg library install no longer hangs when the runner's first apt mirror does not
-  resolve.** The `test` job drops `azure.archive.ubuntu.com` from the mirror list for that run when
-  DNS for it fails, and adds apt retries and request timeouts.
+- **CI: FFmpeg library install no longer hangs when the runner cannot resolve the Ubuntu apt
+  mirrors.** The `test` job skips apt when the libraries are already on the runner, otherwise drops
+  an unresolvable Azure mirror, bounds apt with retries and timeouts, and prints resolver state on
+  failure.

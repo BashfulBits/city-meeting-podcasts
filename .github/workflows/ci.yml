@@ -54,19 +54,37 @@ jobs:
 
       - name: Install FFmpeg runtime libraries
         timeout-minutes: 5
-        # The hosted runner lists azure.archive.ubuntu.com first in its apt mirror file. When that
-        # name does not resolve, apt retries it for every package and the step runs to its time
-        # limit, so drop the mirror for this job and let apt use the remaining ones. Retries and
-        # per-request timeouts bound a slow mirror as well.
+        # These libraries are often already on the runner image, and apt hangs for the whole step
+        # when the runner cannot resolve the Ubuntu mirrors (seen 2026-11-11), so skip apt when
+        # every SONAME is present. Otherwise drop the Azure mirror if it does not resolve, bound
+        # apt with retries and request timeouts, and print resolver state if it still fails.
         run: |
+          missing=""
+          for so in libgnutls.so.30 libopus.so.0 libvpx.so.9 libdav1d.so.7 libmp3lame.so.0; do
+            ldconfig -p | grep -q "$so" || missing="$missing $so"
+          done
+          if [ -z "$missing" ]; then
+            echo "FFmpeg runtime libraries already present; skipping apt"
+            exit 0
+          fi
+          echo "Missing:$missing"
           if ! getent hosts azure.archive.ubuntu.com >/dev/null; then
             echo "::warning::azure.archive.ubuntu.com does not resolve; using the fallback apt mirrors"
             sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
           fi
-          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
-          sudo apt-get $apt_opts update -qq
-          sudo apt-get $apt_opts install -y -qq --no-install-recommends \
-            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+          apt_opts="-o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
+          diagnose() {
+            echo "::error::apt could not install the FFmpeg runtime libraries"
+            cat /etc/apt/apt-mirrors.txt || true
+            for host in archive.ubuntu.com security.ubuntu.com pypi.org; do
+              getent hosts "$host" || echo "$host does not resolve"
+            done
+            resolvectl status 2>/dev/null | head -20 || true
+            exit 1
+          }
+          timeout 90 sudo apt-get $apt_opts update || diagnose
+          timeout 150 sudo apt-get $apt_opts install -y -qq --no-install-recommends \
+            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0 || diagnose
 
       - name: Install pinned ffmpeg (matches production's audio.yml pin)
         # Bound the whole step as well as each socket read: urllib's timeout is an inactivity
