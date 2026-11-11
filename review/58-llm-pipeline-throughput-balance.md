@@ -385,7 +385,7 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | # | Package | Model | Depends on | Expected gain | Verification |
 |---|---|---|---|---|---|
 | WP1a | Worker logs: `scheduled_claim`, `bundle_completed` (`index.js` only) | Sonnet | — | Measurement for all later gates | Workers Logs: both events present on every claimed tick |
-| WP1b | Producer funnel telemetry + `/admin/status` lane table | Sonnet | — | Closes the visibility gap | Status page shows a class for every lane |
+| WP1b | Producer funnel telemetry + `/admin/status` lane table (**implemented, PR pending merge**: producer events carry `queue`, `admission`, `packets`, run-local first-seen times; the status table classes every lane; the waiting-vs-completed split, slot productivity and failed-attempt share read "not measured" because producers do not poll and those figures are dispatcher-side) | Sonnet | — | Closes the visibility gap | Status page shows a class for every lane |
 | WP2 | Per-route response timeout (config, compile script, `index.js`) | Sonnet, Opus review | WP1a | ~750k slot-seconds/week | Gemma timeouts end at 240 s; timeout share < 3% |
 | WP3a | Stand down routes that cannot succeed; fix stale tuning comments | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
 | WP3b | Route health ladder (coordinator) | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day |

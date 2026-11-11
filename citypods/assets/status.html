@@ -83,6 +83,7 @@ tr:hover td{background:#1c2128}
   <a href="#kpis">At-a-glance</a>
   <a href="#backlog">Backlog</a>
   <a href="#deferred">Deferred Work</a>
+  <a href="#llm_lanes">LLM Lanes</a>
   <a href="#transcript_quality">H15 Trust</a>
   <a href="#issues">Issues</a>
   <a href="#table">Resource Table</a>
@@ -95,6 +96,7 @@ tr:hover td{background:#1c2128}
 <div id="kpis"></div>
 <div id="backlog"></div>
 <div id="deferred"></div>
+<div id="llm_lanes"></div>
 <div id="transcript_quality"></div>
 <div id="issues"></div>
 <div id="table"></div>
@@ -473,6 +475,57 @@ function renderTranscriptQuality(){
   <div>Gold points: <strong>${fmtNum(gold.total||0)}</strong> total · both-correct <strong>${fmtNum(gold.both_correct||0)}</strong> · reviewer-correction <strong>${fmtNum(gold.reviewer_correction||0)}</strong></div>
   <div>${latestLine}</div>
   <div class="muted" style="font-size:.75rem;margin-top:.25rem">${link(ghSearch('H15 L3 calibration report in:title'), 'Search the standing H15 L3 calibration report issue')}</div>
+</div>`;
+}
+
+// ── LLM lane funnel (review/58 section 9) ───────────────────────────────────
+
+const LANE_CLASS = {
+  a:['input-starved','badge-warn'], b:['producer-limited','badge-warn'],
+  c:['dispatcher-limited','badge-warn'], d:['return-path-limited','badge-warn'],
+  e:['budget-capped','badge-warn'], idle:['caught up','badge-ok'],
+  unknown:['not measured','badge-err']
+};
+
+function renderLlmLanes(){
+  const lanes = Array.isArray(S.llm_lanes) ? S.llm_lanes : [];
+  const rows = lanes.map(l=>{
+    const [label, cls] = LANE_CLASS[l.class] || LANE_CLASS.unknown;
+    const adm = l.admission
+      ? `admitted ${fmtNum(l.admission.admitted)} · replayed ${fmtNum(l.admission.replayed)} · deferred ${fmtNum(l.admission.deferred)}`
+      : 'not measured (older event)';
+    const q = l.queue
+      ? `waiting ${fmtNum(l.queue.waiting_at_worker)} · completed ${fmtNum(l.queue.completed_uncollected)} · unobserved ${fmtNum(l.queue.unobserved)}`
+      : 'not measured';
+    const pk = l.packets
+      ? Object.entries(l.packets).map(([k,v])=>`${esc(k)} ${fmtNum(v)}`).join(' · ')
+      : '—';
+    return `<tr>
+      <td>${esc(l.purpose)}</td>
+      <td><span class="badge ${cls}">${esc(label)}</span></td>
+      <td>${esc(l.summary)}</td>
+      <td class="muted">${esc(adm)}</td>
+      <td class="muted">${q}</td>
+      <td class="muted">${pk}</td>
+      <td class="muted">${esc(l.event_ts ? l.event_ts.slice(0,16).replace('T',' ') : '—')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('llm_lanes').innerHTML = `
+<h2>LLM Lanes</h2>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>Lane</th><th>Class</th><th>Where the work is</th><th>Ingress (latest run)</th><th>Queue split</th><th>Packets</th><th>Event (UTC)</th></tr></thead>
+<tbody>${rows || '<tr><td colspan="7" class="muted">No LLM lanes configured.</td></tr>'}</tbody>
+</table>
+</div>
+<div class="muted" style="font-size:.75rem;margin:.4rem 0">
+  Classes follow review/58 section 4 and are computed from the latest producer run event per lane
+  (<code>llm_work</code>); nothing here reads the Worker. <strong>Slot productivity and
+  failed-attempt share are not measured here</strong>: they are dispatcher-side (Worker logs), not
+  in producer events. Producers enqueue and exit without polling, so "unobserved" queued work cannot
+  be split into waiting at the Worker versus completed and not yet collected. "Backlog seen for at
+  least" is a lower bound from consecutive runs that still held work; no durable eligibility
+  timestamp exists.
 </div>`;
 }
 
@@ -953,6 +1006,7 @@ ${renderBurndownChart(points)}
 
 renderKpis();
 renderBacklog();
+renderLlmLanes();
 renderTranscriptQuality();
 renderIssues();
 renderTable();
