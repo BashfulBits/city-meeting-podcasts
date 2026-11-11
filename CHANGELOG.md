@@ -15,6 +15,20 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/58 LLM pipeline throughput balance (docs and evaluation tooling).** Seven days of Worker
+  logs, AI Gateway analytics, GitHub run history and B2 state show the dispatcher is bound by how it
+  holds slots: 58% of held slot-time waits for a bundle's slowest call and 22% runs to the 720 s
+  timeout. The review ranks the bottlenecks, gives per-lane eligibility funnels, a timeout
+  recommendation, saturation SLOs and a sequenced work-package list. It also scores six more
+  high-context routes for chapter-locator packets above 76,000 estimated tokens and records the
+  decision to move that band to MiniMax M3.1 Flash (88.0% on the 12 long meetings). The locator
+  evaluation runner gains a `--pause-scope route` option and output limits for the new models. No
+  production code or configuration changes.
+- **CI: FFmpeg library install no longer hangs when the runner cannot resolve the Ubuntu apt
+  mirrors.** The `test` job skips apt when the libraries are already on the runner, otherwise drops
+  an unresolvable Azure mirror, bounds apt with retries and timeouts, and prints resolver state on
+  failure.
+
 - **Chapter locator no longer errors on agendas with no accepted items.** A completed agenda
   artifact whose items were all rejected used to build a locator job and raise "locator requires at
   least one agenda item" every run. The stage now defers it as `no-accepted-agenda-items` (mapped
