@@ -31,8 +31,9 @@ DEEPSEEK_FREE_LOCATOR_MODEL = "deepseek/deepseek-v4-flash"
 NEMOTRON_LOCATOR_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
 # Production uses the baseline prompt. DeepSeek V4 Flash is the preferred route for packets in its
-# empirically verified fit band; DeepSeek V4.1 Flash handles larger packets. Keep these in the
-# lane registry and select one per request so the Worker reserves only that model's pool.
+# empirically verified fit band; MiniMax M3.1 Flash handles larger packets up to
+# LOCATOR_OVERFLOW_MAX_INPUT_TOKENS (review/58 WP8). Keep these in the lane registry and select one
+# per request so the Worker reserves only that model's pool.
 #
 # THIS STRING IS PART OF THE RECIPE HASH (see `stages.py`'s `chapter_locator` recipe), so changing
 # the configured model re-queues every locator artifact in the catalog -- a deliberate backfill
@@ -44,12 +45,38 @@ GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
 PRODUCTION_LOCATOR_MODEL = lane_for("chapter-locator").primary_model
 PRODUCTION_LOCATOR_MODELS = lane_for("chapter-locator").models
 KIMI_LOCATOR_MODEL = "moonshotai/kimi-k3"
-# NVIDIA retired Kimi K3 on 2026-10-15 (HTTP 410); V4.1 handles larger packets alone.
+# NVIDIA retired Kimi K3 on 2026-10-15 (HTTP 410). DeepSeek V4.1 Flash then served the overflow
+# band alone until review/58 WP8 (2026-11-11) removed it from the lane: about 5% of its NVIDIA
+# calls succeeded. Results it already produced stay reusable (LOCATOR_RETIRED_REUSABLE_MODELS).
 DEEPSEEK_V41_LOCATOR_MODEL = "deepseek/deepseek-v4.1-flash"
+# review/58 WP8 overflow model (owner decision 2, 2026-11-11): 88.0% on the 12 long meetings with
+# 12 of 12 structurally valid, baseline prompt. Its one route is NVIDIA's, at 1 RPM, one call at
+# a time, sharing NVIDIA's provider slots.
+MINIMAX_LOCATOR_MODEL = "minimaxai/minimax-m3.1-flash"
+# Both size limits below are in this repository's ``estimate_tokens`` units (chars/4 over the
+# request messages, as ``build_locator_request(...).input_tokens`` reports), not provider tokens.
+#
 # Saved V4 Flash telemetry accepted packets through 76,546 internal estimated tokens and
 # repeatedly rejected packets from 81,301. Keep a small margin below the observed accepted edge.
 DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS = 76_000
+# Largest packet sent to MINIMAX_LOCATOR_MODEL. A larger packet is never submitted: the producer
+# holds it as deferred (``locator-over-input-cap``), and it becomes eligible on the first run after
+# this cap is raised. Set from the WP8a input-size probe (2026-11-11): MiniMax admitted 941,663
+# provider tokens (610,831 estimated) and rejected a 709,545-estimate packet with HTTP 400; the
+# provider/estimate ratio ran 1.40 to 1.59, so 500,000 estimated is about 795,000 provider tokens
+# at the worst ratio. Accuracy above 191,294 estimated tokens is unmeasured (no gold labels), and
+# two of five probe answers above it were structurally invalid; lower this one value (for example
+# to 300,000, below which both probe answers were valid) if production quality disappoints.
+LOCATOR_OVERFLOW_MAX_INPUT_TOKENS = 500_000
+# Deliberately NOT bumped for WP8. This string is part of every locator recipe hash and of the
+# reuse check on completed results, so bumping it would re-queue every accepted V4 Flash result in
+# the catalog. A request's model is already in its recipe hash, so moving the overflow band to a
+# new model gives those packets new recipes without touching the V4 Flash band's.
 LOCATOR_ROUTING_VERSION = "size-split-v1"
+# Models no longer in the lane whose COMPLETED results, produced under the current prompt and
+# routing version, are still reused rather than re-located. Pending work on them is not kept: the
+# producer cancels a queued job naming one and re-plans it on the lane as configured now.
+LOCATOR_RETIRED_REUSABLE_MODELS: tuple[str, ...] = (DEEPSEEK_V41_LOCATOR_MODEL,)
 # Mistral Large 3 accepts 256k total tokens. Reserve enough output room for a long chapter list
 # plus one structured-output repair. Gemini's documented 1M input window has the same reserve.
 MISTRAL_CONTEXT_TOKENS = 256_000
@@ -133,10 +160,29 @@ class LocatorRequest:
     model: str
     input_tokens: int
     models: tuple[str, ...] = ()
+    # The request's ``max_tokens``: the output reserve, clamped to the largest output limit among
+    # the selected model's routes so the Worker has a route that can take the job.
+    max_output_tokens: int = LOCATOR_OUTPUT_TOKEN_RESERVE
 
     def __post_init__(self) -> None:
         if not self.models:
             object.__setattr__(self, "models", (self.model,))
+
+
+class LocatorInputOverCapError(ValueError):
+    """A production locator packet larger than ``LOCATOR_OVERFLOW_MAX_INPUT_TOKENS``.
+
+    Not a failure: the producer holds the episode as deferred, submits nothing, and counts it, so
+    the packet waits for a raised cap or the split-packet design (GH#2651).
+    """
+
+    def __init__(self, input_tokens: int, cap: int) -> None:
+        super().__init__(
+            f"locator packet of {input_tokens} estimated input tokens is above the "
+            f"{cap}-token overflow cap; held as deferred"
+        )
+        self.input_tokens = input_tokens
+        self.cap = cap
 
 
 _VTT_TIMING = re.compile(
@@ -407,6 +453,43 @@ def select_locator_model(input_tokens: int) -> str:
     return select_locator_models(input_tokens)[0]
 
 
+def select_production_locator_models(input_tokens: int) -> tuple[str, ...]:
+    """The production lane model for a packet of ``input_tokens`` (``estimate_tokens`` units).
+
+    Up to DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS: DeepSeek V4 Flash, the lane's primary. Above it, up
+    to LOCATOR_OVERFLOW_MAX_INPUT_TOKENS: MiniMax M3.1 Flash. Above the cap nothing is selected:
+    :class:`LocatorInputOverCapError` tells the producer to hold the packet as deferred.
+    """
+    if input_tokens < 0:
+        raise ValueError("input_tokens must be non-negative")
+    if input_tokens <= DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS:
+        return (PRODUCTION_LOCATOR_MODEL,)
+    if input_tokens <= LOCATOR_OVERFLOW_MAX_INPUT_TOKENS:
+        return (MINIMAX_LOCATOR_MODEL,)
+    raise LocatorInputOverCapError(input_tokens, LOCATOR_OVERFLOW_MAX_INPUT_TOKENS)
+
+
+def locator_max_output_tokens(model: str) -> int:
+    """``max_tokens`` for a locator request on ``model``.
+
+    The output reserve, clamped to the largest ``output_context_limit`` among the model's
+    compiled routes: the Worker indexes a job only on routes whose output limit holds its
+    ``max_tokens``, so a reserve above every route's limit would leave the job unroutable.
+    DeepSeek V4 Flash keeps the full reserve (its OrcaRouter route allows 128,000); MiniMax M3.1
+    Flash is clamped to its route's 12,800.
+    """
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
+
+    limits = [
+        route.output_context_limit
+        for route in ROUTE_CANDIDATES.get(canonical_model(model), ())
+        if route.output_context_limit
+    ]
+    if not limits:
+        return LOCATOR_OUTPUT_TOKEN_RESERVE
+    return min(LOCATOR_OUTPUT_TOKEN_RESERVE, max(limits))
+
+
 def build_locator_request(
     agenda_items: Sequence[LocatorAgendaItem],
     units: Sequence[LocatorUnit],
@@ -421,6 +504,26 @@ def build_locator_request(
     comparing pooled candidate packets with packets that retain per-unit retrieval provenance; it
     is omitted from ordinary requests.
     """
+    messages = _locator_messages(agenda_items, units, unit_annotations=unit_annotations)
+    from citypods.compute.llm_policy import estimate_tokens
+
+    input_tokens = estimate_tokens(list(messages))
+    models = select_locator_models(input_tokens)
+    return LocatorRequest(
+        messages=messages,
+        model=models[0],
+        models=models,
+        input_tokens=input_tokens,
+    )
+
+
+def _locator_messages(
+    agenda_items: Sequence[LocatorAgendaItem],
+    units: Sequence[LocatorUnit],
+    *,
+    unit_annotations: Mapping[str, Mapping[str, Any]] | None = None,
+) -> tuple[dict[str, str], ...]:
+    """Validate the inputs and build the baseline locator messages (shared by both builders)."""
     if not agenda_items:
         raise ValueError("locator requires at least one agenda item")
     if not units:
@@ -484,7 +587,7 @@ def build_locator_request(
             "to preserve item-to-unit associations while checking transcript text and timing."
         )
 
-    messages = (
+    return (
         {
             "role": "system",
             "content": system_content,
@@ -493,16 +596,6 @@ def build_locator_request(
             "role": "user",
             "content": json.dumps(material, ensure_ascii=False, separators=(",", ":")),
         },
-    )
-    from citypods.compute.llm_policy import estimate_tokens
-
-    input_tokens = estimate_tokens(list(messages))
-    models = select_locator_models(input_tokens)
-    return LocatorRequest(
-        messages=messages,
-        model=models[0],
-        models=models,
-        input_tokens=input_tokens,
     )
 
 
@@ -516,31 +609,24 @@ def build_production_locator_request(
     """Build a baseline-prompt request on the size-selected production route.
 
     The complete unit list is always retained.  Annotations are optional research provenance and
-    never replace or filter transcript units.
+    never replace or filter transcript units. The size is the same ``estimate_tokens`` figure
+    :func:`build_locator_request` reports, plus any retry hint. A packet above
+    LOCATOR_OVERFLOW_MAX_INPUT_TOKENS raises :class:`LocatorInputOverCapError`; it is not
+    truncated.
     """
+    from citypods.compute.llm_policy import estimate_tokens
 
-    request = build_locator_request(
-        agenda_items,
-        units,
-        unit_annotations=unit_annotations,
-    )
-    messages = request.messages
-    input_tokens = request.input_tokens
+    messages = _locator_messages(agenda_items, units, unit_annotations=unit_annotations)
     if retry_hint:
         messages = (*messages, {"role": "user", "content": retry_hint})
-        from citypods.compute.llm_policy import estimate_tokens
-
-        input_tokens = estimate_tokens(list(messages))
-    models = (
-        (PRODUCTION_LOCATOR_MODEL,)
-        if input_tokens <= DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS
-        else (DEEPSEEK_V41_LOCATOR_MODEL,)
-    )
+    input_tokens = estimate_tokens(list(messages))
+    models = select_production_locator_models(input_tokens)
     return LocatorRequest(
         messages=messages,
         model=models[0],
         models=models,
         input_tokens=input_tokens,
+        max_output_tokens=locator_max_output_tokens(models[0]),
     )
 
 
@@ -553,14 +639,18 @@ __all__ = [
     "GEMINI_LOCATOR_MODEL",
     "LOCATOR_CONTRACT",
     "LOCATOR_OUTPUT_TOKEN_RESERVE",
+    "LOCATOR_OVERFLOW_MAX_INPUT_TOKENS",
+    "LOCATOR_RETIRED_REUSABLE_MODELS",
     "LOCATOR_ROUTING_VERSION",
     "DEEPSEEK_V41_LOCATOR_MODEL",
     "KIMI_LOCATOR_MODEL",
     "LocatorAgendaItem",
     "LocatorAnchor",
+    "LocatorInputOverCapError",
     "LocatorRequest",
     "LocatorUnit",
     "MISTRAL_CONTEXT_TOKENS",
+    "MINIMAX_LOCATOR_MODEL",
     "MISTRAL_LOCATOR_MODEL",
     "NEMOTRON_CONTEXT_TOKENS",
     "NEMOTRON_LOCATOR_MODEL",
@@ -570,9 +660,11 @@ __all__ = [
     "build_locator_units",
     "build_production_locator_request",
     "ensure_locator_contract",
+    "locator_max_output_tokens",
     "locator_units_from_vtt",
     "locator_units_from_words",
     "select_locator_model",
     "select_locator_models",
+    "select_production_locator_models",
     "validate_locator_response",
 ]

@@ -165,6 +165,39 @@ locator result; 4 have no accepted agenda items. Estimated input tokens for the 
 284,516, p99 474,974, largest 862,960. The estimate undercounts provider prompt tokens by 1.28 to
 2.29 times depending on the tokenizer (measured on the 12 scored meetings).
 
+## MiniMax input-size probe (WP8a) and pause log
+
+To set the MiniMax M3.1 Flash ceiling for review/58 WP8, real production locator packets (baseline
+prompt) of increasing size were sent directly to route `nvidia_minimaxai_minimax_m3_1_flash`, each
+reserved against the route. "Estimated tokens" is the producer's `estimate_tokens` figure; "provider
+prompt tokens" is the provider's reported `usage.prompt_tokens`.
+
+| Estimated tokens | Provider prompt tokens | Result | Latency |
+|---:|---:|---|---:|
+| 219,129 | 348,229 | admitted, structurally valid, 6 anchors | 44.0 s |
+| 299,155 | 430,156 | admitted, valid, 27 anchors | 225.3 s |
+| 402,534 | 564,797 | admitted, INVALID: duplicate locator unit (items 17 and 18) | 155.1 s |
+| 501,310 | 755,581 | admitted, valid, 13 anchors | 123.8 s |
+| 610,831 | 941,663 | admitted, INVALID: duplicate locator unit (items 12 and 13) | 127.7 s |
+| 709,545 | not reported | REJECTED: HTTP 400 "Invalid request" after 20.8 s | — |
+
+The largest pending packet (862,960) was not sent. The provider/estimate ratio was 1.40 to 1.59.
+The largest admitted input, 941,663 provider tokens, is the route's `hard_input_ceiling`; the
+production cap is 500,000 estimated tokens (795,000 at the 1.59 prior plus 12,800 output). The
+probe measured admission only: accuracy above 191,294 estimated tokens is unscored, and 2 of the 5
+admitted answers were invalid. Raw probe output is not committed.
+
+Pause log. Both passes paused only route `nvidia_minimaxai_minimax_m3_1_flash`, reason "review/58
+WP8a MiniMax input-size probe"; no other route or provider was paused.
+
+| Pass | Paused (UTC) | Released (UTC) | `pause-status` before | `pause-status` after | Calls |
+|---|---|---|---|---|---|
+| 1 | 22:13:21 | 22:23:46 | 22:11:01: no pauses, 0 in flight | 22:23:53: no pauses | 4 direct, each reserved against the route |
+| 2 | 22:25:57 | 22:28:26 | 22:23:53: no pauses | 22:28:32: no pauses | 2 direct, each reserved against the route |
+
+Measured effect: 0 in flight at each pause (drained in 0.1 s); 19 requests had been used on the
+route that UTC day before the probe. No pause is outstanding.
+
 ## Correction to the V4.1 figures
 
 An earlier draft said V4.1 on NVIDIA had no successes. The Worker does not log successful non-Gemma
