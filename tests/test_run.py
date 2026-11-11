@@ -365,6 +365,75 @@ def test_chapter_record_write_lease_is_scoped_to_the_commit_window():
     assert json.loads(payload)["state"] == "released"
 
 
+def _record_write_busy_storage():
+    from citypods.ops.maintenance_leases import (
+        CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
+        acquire,
+    )
+    from tests._cas_fake import MemCAS
+
+    storage = MemCAS()
+    acquire(storage, owner="sibling", key=CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY)
+    return storage
+
+
+def test_chapter_record_write_lease_busy_is_a_clean_skip(monkeypatch, capsys):
+    monkeypatch.setattr(run, "CHAPTER_RECORD_WRITE_LEASE_WAIT_SECONDS", 0.0)
+    parent = type("ParentLease", (), {"owner": "chapter-owner"})()
+
+    with run._chapter_record_write_lease(
+        _record_write_busy_storage(), lane="chapter-locator", maintenance_lease=parent
+    ) as held:
+        assert held is False
+
+    assert "clean deferral" in capsys.readouterr().out
+
+
+def test_chapter_record_write_lease_waits_for_a_sibling_to_release(monkeypatch):
+    from citypods.ops.maintenance_leases import CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY as key
+
+    storage = _record_write_busy_storage()
+    parent = type("ParentLease", (), {"owner": "chapter-owner"})()
+
+    def _sibling_finishes_during_the_wait(_seconds):
+        data, etag = storage.get_bytes(key)
+        payload = json.loads(data)
+        payload["state"] = "released"
+        body = (json.dumps(payload) + "\n").encode()
+        storage.put_cas(key, body, "application/json", if_match=etag)
+
+    monkeypatch.setattr(run.time, "sleep", _sibling_finishes_during_the_wait)
+    with run._chapter_record_write_lease(
+        storage, lane="chapter-agenda", maintenance_lease=parent
+    ) as held:
+        assert held is True
+
+
+def test_chapter_record_write_lease_real_errors_still_fail():
+    from citypods.ops.maintenance_leases import MaintenanceLeaseUnavailable
+
+    class _NoCAS:
+        cas_capable = False
+
+    parent = type("ParentLease", (), {"owner": "chapter-owner"})()
+    with pytest.raises(MaintenanceLeaseUnavailable):
+        with run._chapter_record_write_lease(
+            _NoCAS(), lane="chapter-locator", maintenance_lease=parent
+        ):
+            pytest.fail("must not run the commit without a lease")
+
+
+def test_mark_record_write_skipped_stamps_the_run_event(tmp_path):
+    event = tmp_path / "run_events" / "e.json"
+    event.parent.mkdir()
+    event.write_text(json.dumps({"outcome": "completed"}))
+
+    run._mark_record_write_skipped(tmp_path, "run_events/e.json")
+
+    assert json.loads(event.read_text())["record_write"] == "skipped_lease_busy"
+    run._mark_record_write_skipped(tmp_path, None)  # no event path: no-op
+
+
 def test_normalize_episode_durations_prefers_probe_without_listing(monkeypatch):
     ep = _ep("g-probe", hosted="https://cdn/g-probe.m4a")
     ep.audio_key = "audio/src/g-probe.m4a"

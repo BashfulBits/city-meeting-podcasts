@@ -491,7 +491,12 @@ claims `maintenance-leases/chapter-agenda.json` and `chapter-locator` claims
 claims the shared `maintenance-leases/chapter-record-write.json` mutex around the complete
 re-read/merge/upload commit to B2; the repair tool claims both lane leases as a composite
 transaction before mutation. The Actions idle poll remains an operator-friendly wait diagnostic,
-not the correctness boundary.
+not the correctness boundary. A busy record-write lease is a deferral, not a failure: the lane
+waits up to 10 minutes, then skips only its record commit (log line plus `record_write:
+skipped_lease_busy` on the run event) and exits successfully, and the next run redoes the work;
+`MaintenanceLeaseUnavailable` and storage errors still fail the run. The locator workflow's job
+(240 min) and step (225 min) timeouts mirror chapter-agenda so the 204-minute stop budget fires
+first, leaving room for the state push. The tagger producer runs every four hours.
 
 The regular Audio workflow's own `lane=audio` scoped push is deliberately **not** made to claim
 either chapter lease for its whole run (unlike chapter-agenda/chapter-locator, it is the
