@@ -387,7 +387,7 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP1a | Worker logs: `scheduled_claim`, `bundle_completed` (`index.js` only) | Sonnet | — | Measurement for all later gates | Workers Logs: both events present on every claimed tick |
 | WP1b | Producer funnel telemetry + `/admin/status` lane table | Sonnet | — | Closes the visibility gap | Status page shows a class for every lane |
 | WP2 | Per-route response timeout (config, compile script, `index.js`) | Sonnet, Opus review | WP1a | ~750k slot-seconds/week | Gemma timeouts end at 240 s; timeout share < 3% |
-| WP3a | Stand down routes that cannot succeed; fix stale tuning comments | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
+| WP3a | Stand down routes that cannot succeed; fix stale tuning comments. **Status: implemented in PR (branch `fix/58-wp3a-stand-down-failing-routes`), awaiting merge and owner deploy.** `rpd: 0` on `beatapi_jev_1_13_free` and both `beatapi*_glm_5_3_flash_free`; the primary BeatAPI chat routes' `yields_to` JEV removed (re-add when WP3c restores JEV). `judge:adjudicator` keeps GLM via OrcaRouter and DeepSeek V4.1 via NVIDIA, BeatAPI primary and secondary. | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
 | WP3b | Route health ladder (coordinator) | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day |
 | WP3c | JEV 400 diagnosis | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
 | WP4 | Early slot release (coordinator + `index.js`) | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k |

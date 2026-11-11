@@ -1113,10 +1113,12 @@ def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
     primary_models = {r["upstream_model"] for r in chat}
     assert {r["upstream_model"] for r in secondary} <= primary_models
     assert all(r["tier"] == "backup" and not r["yields_to"] for r in secondary)
-    # JEV is the account's primary (review/53 PR2); the chat backups yield to it.
+    # JEV is the account's primary (review/53 PR2). The chat backups yielded to it until the
+    # review/58 WP3a stand-down; a route that is off (rpd: 0) must not hold any route back.
     jev = worker["routes_by_id"]["beatapi_jev_1_13_free"]
     assert jev["tier"] is None and jev["api_shape"] == "systemone"
-    assert all(r["yields_to"] == ["beatapi_jev_1_13_free"] for r in chat)
+    assert jev["rpd"] == 0
+    assert all(not r["yields_to"] for r in chat)
     # Every other route is primary by omission.
     assert all(
         r["tier"] is None
@@ -1246,7 +1248,7 @@ def test_review51_gemini_free_route_is_exact_and_keeps_account_controls():
     assert route["free"] is True
     assert route["account_id"] == "primary"
     assert route["tier"] == "backup"
-    assert route["yields_to"] == ["beatapi_jev_1_13_free"]
+    assert not route["yields_to"]  # JEV is stood down (review/58 WP3a)
     assert route["structured_output_method"] == "prompt_only"
     assert route["output_context_limit"] == 16384
     assert route.get("rpd") is None  # No provider-promised daily allowance is invented.
