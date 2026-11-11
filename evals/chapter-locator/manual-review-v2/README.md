@@ -291,3 +291,94 @@ transition-sweep decision:
 The first behavior was tested on two affected meetings only, and the second is based on rare
 validation failures. Preserve both as targeted recovery guidance and verify them on future cases
 before making them broad prompt instructions.
+
+## Overflow candidates after the Kimi K3 retirement (2026-11-11)
+
+NVIDIA retired Kimi K3 on 2026-10-15, which left DeepSeek V4.1 Flash as the only approved route
+above 76,000 estimated tokens. This section scores the high-context free routes that the 2026-10-02
+comparison did not cover, on the same 12 long meetings (80,890 to 191,294 estimated input tokens,
+108 gold chapters with a manual agenda association), with the baseline prompt.
+
+Each arm ran once with one schema-repair attempt per meeting, a 2,400 s client timeout, and its
+provider or route paused in the dispatcher for the run. A retry pass for the failed meetings was
+cancelled by the owner after one round, so invalid meetings below are unresolved, not retried to
+success. Kimi K3 and V4.1 rows are repeated from 2026-10-02 for reference.
+
+| Model (route) | Valid | Assigned | Within 60s | Joint, all 12 | Joint, valid only | Mean / median s |
+|---|---:|---:|---:|---:|---:|---:|
+| Kimi K3 (retired) | 12/12 | 99/108 | 98/99 | 90.7% | 90.7% | 91.1 / 90.2 |
+| DeepSeek V4.1 Flash (NVIDIA) | 12/12 | 99/108 | 97/99 | 89.8% | 89.8% | 569.1 / 502.2 |
+| **MiniMax M3.1 Flash (NVIDIA)** | 12/12 | 100/108 | 95/100 | **88.0%** | 88.0% | 53.0 / 55.7 |
+| Nemotron 3.5 Super VL (Kilo) | 12/12 | 92/108 | 89/92 | 82.4% | 82.4% | 101.9 / 82.9 |
+| Nemotron 3 Ultra (Kilo) | 9/12 | 58/108 | 57/58 | 52.8% | 82.6% (57/69) | 108.1 / 97.9 |
+| Gemini 3.1 Flash Lite | 11/12 | 79/108 | 73/79 | 67.6% | 74.5% (73/98) | 4.9 / 3.7 |
+| Gemini 3 Flash Preview | 7/12 | 49/108 | 49/49 | 45.4% | 94.2% (49/52) | 34.0 / 31.8 |
+| Tencent HY3 (OrcaRouter) | 0/12 | — | — | — | — | — |
+
+Meeting-cluster 95% intervals for the joint score: MiniMax 82.3 to 92.9; Super VL 66.7 to 91.5.
+The detailed scores are in the
+[overflow candidate score file](../results/2026-11-11-manual-review-v2-long-context-overflow-candidates.json).
+The per-meeting model responses for these arms are not merged into `answer-key.json`; they stay in
+the private telemetry directory, so rescoring them needs a rerun or that directory.
+
+### Failures by cause
+
+| Route | Valid first try | Schema-invalid attempts | Empty responses | Timeouts | Other |
+|---|---:|---:|---:|---:|---|
+| `nvidia_minimaxai_minimax_m3_1_flash` | 10 | 2 (both repaired) | 0 | 0 | — |
+| `kilo_nemotron_3_5_super_vl_free` | 10 | 2 (both repaired) | 0 | 0 | — |
+| `kilo_nvidia_nemotron_3_ultra_550b_a55b_free` | 7 | 3 | 4 | 3 (about 301 s each) | — |
+| `gemini_3_1_flash_lite_primary` | 11 | 2 (malformed unit id, same meeting) | 0 | 0 | — |
+| `gemini_3_flash_preview_primary` | 7 | 8 | 0 | 0 | 1 × 429 daily quota (20 RPD) |
+| `orcarouter_tencent_hy3_free` | 0 | 0 | 0 | 0 | 12 × prompt too long for the free tier |
+
+- Most schema failures were the duplicate-anchor case already described in the findings above
+  (two agenda items placed on the same unit); production retries these.
+- The only timeouts were on Nemotron 3 Ultra, on meetings of 81,766 to 102,231 estimated tokens.
+  One followed an empty response in the first pass and two came in the cancelled retry round. All
+  three ended at about 301 s, far below the 2,400 s client timeout, so the cut-off is upstream.
+- No successful call on any new route took longer than 276 s, well inside the dispatcher's 720 s
+  response timeout.
+
+### Request sizes
+
+The internal estimate undercounts provider prompt tokens on these packets: by 1.28 to 1.58 times for
+MiniMax, 1.52 to 2.23 for Gemini and 1.68 to 2.29 for Nemotron. The largest cohort packet (191,294
+estimated) was admitted as 263,297 provider tokens by MiniMax, above the 244,760 lower bound
+recorded in `provider_limits.yml`, and as about 348,000 by both Nemotron routes.
+
+Packets built for the 716 meetings with a pending locator result and at least one accepted agenda
+item (2026-11-11):
+
+| Estimated input tokens | Packets |
+|---|---:|
+| up to 76,000 (V4 Flash) | 222 |
+| 76,001 to 191,294 (largest packet scored here) | 342 |
+| 191,295 to 500,000 | 145 |
+| above 500,000 | 7 |
+
+Median 107,252; p90 284,516; p99 474,974; largest 862,960. At the ratios above the largest packet
+is roughly 1.1 to 2.0 million provider tokens, which no free route's context window admits as a
+single request. A split scheme for these is tracked in
+[GH#2651](https://github.com/BashfulBits/city-meeting-podcasts/issues/2651).
+
+### Recommendation (owner decision 2026-11-11)
+
+Use MiniMax M3.1 Flash with the baseline prompt for packets above 76,000 estimated tokens. It is
+within 2.7 points of Kimi K3 and 1.8 of V4.1 on this slice, answered every meeting, and is about
+ten times faster than V4.1. Cap it at the largest size measured here until a context-admission
+probe (review/58 WP8a) finds its real ceiling, and hold larger packets as deferred instead of sending them to V4.1,
+which timed out on about 95% of production calls in the week to 2026-11-11.
+
+Limits of this evidence: 12 meetings, one pass, the baseline prompt only, and the same meeting set
+used for the earlier routing choices. MiniMax's configured output limit is 12,800 tokens, the
+smallest of the candidates; no response here was cut off, but agendas longer than those in this
+cohort have not been tried.
+
+### Kimi availability check (2026-11-11)
+
+No provider with a configured key offers Kimi K3 free. NVIDIA lists only `moonshotai/kimi-k2.6`.
+OpenRouter, Kilo and Hugging Face list Kimi models as paid. Airforce returns HTTP 402
+`paid_model_required` for `kimi-k3` and `kimi-k3.1-pro`; only its `kimi-k2.7-code` is marked free
+(4,096 output tokens, not tested). BeatAPI and SiliconFlow list K3-family models without price
+fields and were not called. Moonshot's own API is paid.
