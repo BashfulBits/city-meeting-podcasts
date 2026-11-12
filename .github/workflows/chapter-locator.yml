@@ -19,7 +19,10 @@ permissions:
 jobs:
   locate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # Same shape as chapter-agenda: the in-process stop budget (chapter_run_time_budget_minutes
+    # 240 x budget_safety 0.85 = 204m) must fire before the step timeout, leaving ~20m for the
+    # in-flight tail, the 7 to 8 minute state push and reconcile. The job timeout is a backstop.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -50,7 +53,7 @@ jobs:
         # (2026-08-26..09-02). A STEP-level timeout below the job's fails the step, so the run
         # goes red and the post-steps still execute. Record-first source preparation is what
         # should keep the lane well inside this; reaching it means something regressed.
-        timeout-minutes: 38
+        timeout-minutes: 225
         env:
           GITHUB_TOKEN: ${{ github.token }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}

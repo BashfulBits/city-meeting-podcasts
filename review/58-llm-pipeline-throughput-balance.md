@@ -402,3 +402,9 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
 | WP8 | Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 191,294 estimated tokens, hold larger packets as deferred, drop V4.1 from the lane, route output limit check | Opus | — (owner deploys the compiled route config) | 342 of 494 overflow packets get a working route | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; deferred count for oversize packets reported |
 | WP8a | MiniMax input-size probe (approved by the owner 2026-11-11): with the route paused, send real pending locator packets of increasing size above 191,294 estimated tokens through the evaluation runner until one is rejected or times out; record admitted and rejected provider token counts and latency; update `hard_input_ceiling` and the WP8 cap from the result | Lead (holds the pause) | — | Up to 145 more packets if the ceiling is near 500,000 | Largest admitted and smallest rejected size recorded in the evidence file; pause logged and released |
+
+**WP6 status.** Part A is in the `fix/58-wp6a-producer-run-fixes` PR: the chapter-lane record-write
+lease skip (bounded wait, then a clean deferral stamped `record_write: skipped_lease_busy` on the
+run event), the locator timeouts (job 240 and step 225 minutes against the 204-minute stop budget,
+matching chapter-agenda) and the tag cadence (`19 */4 * * *`). Still open under WP6: the stale-recipe
+locator backfill and the Worker-cron `repository_dispatch` trigger.
