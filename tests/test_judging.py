@@ -2703,3 +2703,42 @@ def test_adjudication_ignores_a_sibling_reading_of_the_anchors_family():
     assert [d.sample for d in due_questions(subject, spec, families=FAMILIES, **kwargs)] == [
         "contested"
     ]
+
+
+def test_the_report_pairs_each_anchor_with_its_own_independent_sibling():
+    """JEV keeps its historical Gemma pair after a Nemotron reading lands; Gemini never pairs
+    with Gemma (same family) and waits for Nemotron."""
+    from citypods.judging.report import summarize
+
+    def row(role, model, value):
+        return {
+            "judge_role": role,
+            "judge_model": model,
+            "kind": "validate",
+            "question_id": "supported",
+            "context_tier": "T1",
+            "value": value,
+            "sample": "routine",
+            "judged_at": "2026-11-12T00:00:00+00:00",
+        }
+
+    def report(judgments):
+        record = {
+            "published": "2026-11-01",
+            "llm_tag_candidates": [{"id": "a"}],
+            "judging": {"subjects": {"a": {"task": "tag", "judgments": judgments}}},
+        }
+        return summarize([record], families=FAMILIES)["agreement"]
+
+    before = [
+        row("anchor", JEV, 0.9),
+        row("sibling", GEMMA_31B, True),
+        row("anchor", DECISION, 0.1),
+    ]
+    agreement = report(before)
+    assert agreement[JEV]["tag:supported@T1"] == {"agree": 1, "pairs": 1, "rate": 1.0}
+    assert DECISION not in agreement  # only a Google sibling so far: no independent pair
+
+    agreement = report([*before, row("sibling", NEMOTRON, False)])
+    assert agreement[JEV]["tag:supported@T1"] == {"agree": 1, "pairs": 1, "rate": 1.0}
+    assert agreement[DECISION]["tag:supported@T1"] == {"agree": 1, "pairs": 1, "rate": 1.0}

@@ -466,6 +466,10 @@ export function classifyDecisions400(body) {
       return { failure_class: "own_rpd", rule_id: "decisions-quota-daily", scope: "route" };
     }
     if (msg.includes("token")) {
+      // One request above the per-minute token quota never fits by waiting.
+      if (requestExceedsTokenQuota(msg)) {
+        return { failure_class: "route_input_limit", rule_id: "decisions-request-over-tpm", scope: "route" };
+      }
       return { failure_class: "own_tpm", rule_id: "decisions-quota-tokens", scope: "route" };
     }
     return { failure_class: "own_rpm", rule_id: "decisions-quota-requests", scope: "route" };

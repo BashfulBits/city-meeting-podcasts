@@ -244,3 +244,31 @@ test("decisions failures end the attempt the right way", async () => {
   assert.equal(missing.out.result.outcome, "retryable_error");
   assert.equal(missing.stored.length, 0);
 });
+
+test("an array-wrapped success is unwrapped and stored under the asked keys", async () => {
+  const { out, stored } = await attemptWith({ status: 200, body: [wireReply(PAYLOAD, ANSWERS)] });
+  assert.equal(out.result.outcome, "success");
+  assert.equal(stored.length, 1);
+  assert.deepEqual(stored[0].value.answers ?? stored[0].value.body?.answers ?? stored[0].value.response?.answers, ANSWERS);
+});
+
+test("a question key named __proto__ keeps its own answer", () => {
+  const shape = apiShapeFor(DECISION);
+  // A computed key creates an own property, as JSON.parse does for the reply.
+  const payload = { systemone: { state: {}, questions: { ["__proto__"]: { type: "noul", instructions: "i" } } } };
+  const answer = { type: "noul", noul: 0.4, confidence: 0.5 };
+  const body = JSON.parse(`{"answers": {"__proto__": ${JSON.stringify(answer)}}}`);
+  const normalized = shape.normalizeReply(payload, body);
+  assert.equal(Object.hasOwn(normalized.answers, "__proto__"), true);
+  assert.deepEqual(normalized.answers.__proto__, answer);
+  assert.equal(shape.replyProblem(payload, normalized), null);
+  assert.equal(shape.replyProblem(payload, { answers: {} }), "structured_output_empty");
+});
+
+test("one request above the per-minute token quota is an input limit, not a wait", () => {
+  const over = err({ message: "Quota exceeded for input tokens per minute. limit: 45000, requested: 46000" });
+  assert.equal(classifyDecisions400(over).failure_class, "route_input_limit");
+  assert.equal(apiShapeFor(DECISION).normalizeStatus(400, over), 400);
+  const under = err({ message: "Quota exceeded for input tokens per minute. limit: 45000, requested: 30000" });
+  assert.equal(classifyDecisions400(under).failure_class, "own_tpm");
+});

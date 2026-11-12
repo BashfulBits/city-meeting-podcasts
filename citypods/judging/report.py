@@ -21,6 +21,7 @@ from typing import Any
 
 from citypods.judging import ledger
 from citypods.judging.audit import final_reading
+from citypods.judging.families import family_of
 
 CANDIDATE_LISTS = {
     "tag": ("llm_tag_candidates",),
@@ -53,9 +54,12 @@ def summarize(
     *,
     now: datetime | None = None,
     probes: Mapping[str, bool] | None = None,
+    families: Mapping[str, str] | None = None,
 ) -> dict:
     """``probes`` maps a probe id to the verdict a human gave it (``evals/judge/<task>/gold.json``);
-    without it a probe's answers are counted but not scored."""
+    without it a probe's answers are counted but not scored. With ``families``, an anchor is
+    paired only with a sibling of another family (a Gemma reading is not an independent check
+    on the Google anchor)."""
     now = now or datetime.now(UTC)
     probe_results: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0, 0])
     audit_results: dict[str, Counter] = defaultdict(Counter)
@@ -159,7 +163,8 @@ def summarize(
                     if vote is not None:
                         cell[f"{label}_pairs"] += 1
                         cell[f"{label}_agree"] += vote == human
-            # (question, tier) -> {"sibling": vote, "anchor:<model>": vote}
+            # (question, tier) -> {"sibling:<model>": vote, "anchor:<model>": vote}; siblings keep
+            # their identity so an anchor is paired with its own independent sibling.
             by_tier: dict[tuple[str, str], dict[str, bool]] = defaultdict(dict)
             for row in rows:
                 if row.get("kind") != "validate":
@@ -168,17 +173,34 @@ def summarize(
                 role = row.get("judge_role")
                 if verdict is not None and role in ("anchor", "sibling"):
                     key = (str(row.get("question_id")), str(row.get("context_tier")))
-                    label = f"anchor:{row.get('judge_model')}" if role == "anchor" else "sibling"
+                    label = f"{role}:{row.get('judge_model')}"
                     by_tier[key][label] = verdict
             for (question, tier), votes in by_tier.items():
-                if "sibling" not in votes:
-                    continue
+                siblings = [
+                    (label.removeprefix("sibling:"), vote)
+                    for label, vote in votes.items()
+                    if label.startswith("sibling:")
+                ]
                 for label, vote in votes.items():
-                    if label.startswith("anchor:"):
-                        model = label.removeprefix("anchor:")
-                        cell = agreement[(model, task, f"{question}@{tier}")]
-                        cell[0] += vote == votes["sibling"]
-                        cell[1] += 1
+                    if not label.startswith("anchor:"):
+                        continue
+                    model = label.removeprefix("anchor:")
+                    # The first independent sibling to answer (the ledger is append-only), so a
+                    # historical JEV/Gemma pair stays that pair after a Nemotron reading lands.
+                    paired = next(
+                        (
+                            sib_vote
+                            for sib_model, sib_vote in siblings
+                            if families is None
+                            or family_of(sib_model, families) != family_of(model, families)
+                        ),
+                        None,
+                    )
+                    if paired is None:
+                        continue
+                    cell = agreement[(model, task, f"{question}@{tier}")]
+                    cell[0] += vote == paired
+                    cell[1] += 1
             first_tier_anchors = {
                 str(r.get("judge_model"))
                 for r in rows
@@ -275,7 +297,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-dir", type=Path, default=Path("state"))
     args = parser.parse_args(argv)
-    print(json.dumps(summarize(_records(args.state_dir), probes=_gold_verdicts()), indent=2))
+    from citypods.compute.llm_lanes import load_families
+
+    report = summarize(_records(args.state_dir), probes=_gold_verdicts(), families=load_families())
+    print(json.dumps(report, indent=2))
     return 0
 
 

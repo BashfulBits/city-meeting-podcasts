@@ -20,7 +20,12 @@
  * and `normalizeStatus(status, body)` (the status the rest of the Worker sees for a non-2xx reply).
  */
 
-import { observedTokens as chatObservedTokens, upstreamEmptyCompletion, upstreamRequestForRoute } from "./gateway.js";
+import {
+  normalizeProviderBody,
+  observedTokens as chatObservedTokens,
+  upstreamEmptyCompletion,
+  upstreamRequestForRoute,
+} from "./gateway.js";
 import { isStructuredPayload, structuredReplyProblem } from "./structured_output.js";
 import { classifyDecisions400 } from "./classify.js";
 
@@ -73,7 +78,9 @@ function missingAnswerProblem(payload, body, maxMissingFraction) {
   const asked = Object.keys(systemoneQuestions(payload) || {});
   if (!asked.length) return null;
   const answers = body?.answers || {};
-  const missing = asked.filter((id) => !answers[id] || typeof answers[id] !== "object").length;
+  const missing = asked.filter(
+    (id) => !Object.hasOwn(answers, id) || !answers[id] || typeof answers[id] !== "object"
+  ).length;
   return missing / asked.length > maxMissingFraction ? "structured_output_empty" : null;
 }
 
@@ -148,17 +155,21 @@ const decisions = {
     };
   },
   // The reply as producers read it: answers under the keys they asked with, as JEV returned them.
-  // A wire key the request did not send is dropped.
-  normalizeReply(payload, body) {
+  // A wire key the request did not send is dropped. An array-wrapped reply is unwrapped first, as
+  // `normalizeProviderBody` does for every other reader.
+  normalizeReply(payload, rawBody) {
+    const body = normalizeProviderBody(rawBody);
     if (!body || typeof body !== "object" || !body.answers || typeof body.answers !== "object" ||
         Array.isArray(body.answers)) {
-      return body;
+      return rawBody;
     }
     const { fromWire } = decisionKeyMap(systemoneQuestions(payload));
-    const answers = {};
-    for (const [wire, answer] of Object.entries(body.answers)) {
-      if (fromWire.has(wire)) answers[fromWire.get(wire)] = answer;
-    }
+    // Built with defineProperty semantics, so a key such as "__proto__" stays an own answer.
+    const answers = Object.fromEntries(
+      Object.entries(body.answers)
+        .filter(([wire]) => fromWire.has(wire))
+        .map(([wire, answer]) => [fromWire.get(wire), answer])
+    );
     return { ...body, answers };
   },
   // Google reports a quota or rate limit on this endpoint as HTTP 400. Read as 429, it takes the

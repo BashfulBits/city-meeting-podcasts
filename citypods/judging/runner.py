@@ -1584,7 +1584,11 @@ def episode_needs_judging(
             }
             judge_model = _pick_sibling(
                 sibling_candidates(
-                    subject.producer_model, sibling, families, exclude_families=not_anchor
+                    subject.producer_model,
+                    sibling,
+                    families,
+                    allow_all_slots=family_of(subject.producer_model, families) == RULE_FAMILY,
+                    exclude_families=not_anchor,
                 ),
                 _models_used(subject),
                 None,
@@ -1647,7 +1651,11 @@ def episode_needs_judging(
             )
             meeting_sibling = _pick_sibling(
                 choose_sibling_candidates(
-                    producers, sibling, families, exclude_families=not_anchor
+                    producers,
+                    sibling,
+                    families,
+                    allow_all_slots={family_of(p, families) for p in producers} == {RULE_FAMILY},
+                    exclude_families=not_anchor,
                 ),
                 _models_used(first),
                 None,

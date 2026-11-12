@@ -95,7 +95,7 @@ still resolve.
     or question-count limit → `route_input_limit`; bad key → `route_unavailable` (account); model
     unavailable → `route_unavailable` (route, retryable).
 - **Limits:** 262,144-token context; 1 to 1,000 questions per request; no Batch API; no context
-  caching. **Published** free tier per key: 200 RPM, 50,000 TPM, 10,000 RPD. These are Google's
+  caching. **Published** free tier per Google Cloud project: 200 RPM, 50,000 TPM, 10,000 RPD; the two keys are in separate projects (`project_primary`, `project_secondary`). These are Google's
   published values, **not measured here**; confirm them in the first day of Worker logs.
 - **Capacity arithmetic.** TPM is the binding limit. Compiled TPM is 45,000 (10% margin), which is
   also the route's `hard_input_ceiling`. A stored anchor request is 19k to 41k tokens, so each key
