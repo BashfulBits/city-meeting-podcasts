@@ -4522,7 +4522,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     if (!healthClass) return;
     const { escalated, changed, entry, previousRung } =
-      recordRouteHealthFailure(map, routeId, healthClass, now, config);
+      recordRouteHealthFailure(map, routeId, healthClass, now, config, detail.startedAt);
     if (!changed) return;
     this._txRouteHealthDirty = true;
     if (!escalated) return;
@@ -6480,6 +6480,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ? routeHealthGate(routeHealth[route.route_id], now,
           (inFlightByRoute.get(route.route_id) || 0) + extraInFlight)
         : null;
+      // Every route the ladder is cooling, listed even when its blocked_until has already taken it
+      // out of the ranking (so an empty claim still says why); the route loop adds probe holds.
+      for (const [routeId, entry] of Object.entries(routeHealth || {})) {
+        if (routeHealthGate(entry, now, 0) === "cooling") {
+          diagnostics.routes.route_health[routeId] = "cooling";
+        }
+      }
       // review/58 section 9 "in-flight / admissible": computed from the ranking just made, so it
       // costs no read. Measured before this claim's own admissions.
       diagnostics.admissible_calls = this._admissibleCalls(
@@ -8083,6 +8090,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // lengthens a route's blocked_until, and a success clears both together.
           this._settleRouteHealth(job.lease_route_id, result.outcome, healthClass, now, {
             failureClass: result.failure_class, status, jobId: job.id,
+            startedAt: result.actual_start_at,
           });
 
           // Unit 7 calibration, now a bounded recent window of input ratios and output sizes

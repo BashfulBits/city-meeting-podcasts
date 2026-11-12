@@ -1146,8 +1146,8 @@ jobs move to other routes of their model or stay queued; the ladder never fails 
 cooldown ends the route is half-open: the claim admits one call to it while that call holds a
 lease. A failed probe climbs a rung (the top rung re-arms); the first success clears the ladder
 and, as before, the route's cooldown. Failures of calls already in flight while the route cools are
-counted but do not climb. 429 pacing, `gateway_limit`, `route_unavailable` and unusable-reply
-classes are not tracked; pauses, `rpd: 0`, `yields_to`, `tier: backup`, lease expiry and stale
+counted but do not climb, however late they finish. 429 pacing, `gateway_limit`,
+`route_unavailable` and unusable-reply classes are not tracked; pauses, `rpd: 0`, `yields_to`, `tier: backup`, lease expiry and stale
 tokens are unchanged. State is one sparse JSON map, `scheduler.route_health_json` (failing routes
 only): it rides the scheduler-authority SELECT every claim, completion and route view already
 make and the accounting UPDATE every transaction already issues, so a healthy route costs no row

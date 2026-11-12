@@ -122,6 +122,9 @@ test("ladder escalates per class at its threshold, climbs on a failed probe and 
   // A call already in flight when the cooldown began fails while it cools: counted, no climb.
   const inFlight = recordRouteHealthFailure(map, "r", "capacity", now + 10_000, config);
   assert.deepEqual([inFlight.escalated, map.r.rung, map.r.capacity], [false, 1, 1]);
+  // A call that started while the route cooled but finishes after the cooldown is not a probe.
+  const late = recordRouteHealthFailure(map, "r", "timeout", map.r.until + 5000, config, now + 30_000);
+  assert.deepEqual([late.escalated, map.r.rung], [false, 1]);
   // Each failed half-open probe moves one rung up; the top rung re-arms.
   let at = now;
   for (const [rung, seconds] of [[2, 300], [3, 900], [4, 3600], [4, 3600]]) {
@@ -190,6 +193,8 @@ test("a response timeout cools its route at once and the next job moves to the s
   const second = await f.coordinator.claimDispatchWindow(f.clock.value, 25);
   assert.ok(second.jobs.length > 0);
   assert.ok(second.jobs.every(planned => planned.route_id === sibling), "work flows to the sibling");
+  // Cooled through blocked_until, the route drops out of the ranking; diagnostics still name it.
+  assert.equal(second.claim_diagnostics.routes.route_health[failedRoute], "cooling");
 });
 
 test("upstream capacity enters the ladder on the second consecutive failure, success resets it", async t => {

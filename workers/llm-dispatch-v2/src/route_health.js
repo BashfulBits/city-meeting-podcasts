@@ -118,12 +118,13 @@ const blankEntry = () => ({ timeout: 0, capacity: 0, defect: 0, rung: 0, until: 
 
 /**
  * Record one failure of class `cls` on `routeId`. Mutates `map`. Returns `{ entry, escalated }`;
- * `escalated` is true when the route moved up a rung (or re-armed the top rung), and `entry.until` is then its new cooldown
- * end. Escalates when a healthy route's class count reaches its threshold, or when a route on the
- * ladder fails after its cooldown ended (its half-open probe). A failure that lands while the
- * route is still cooling (a call already in flight when the cooldown began) only counts.
+ * `escalated` is true when the route moved up a rung (or re-armed the top rung), and `entry.until`
+ * is then its new cooldown end. Escalates when a healthy route's class count reaches its
+ * threshold, or when a route on the ladder fails a call that started after its cooldown ended
+ * (its half-open probe). A call that started before then -- in flight when the cooldown began,
+ * however late it finishes -- only counts. `startedAt` is the attempt's start (defaults to `now`).
  */
-export function recordRouteHealthFailure(map, routeId, cls, now, config) {
+export function recordRouteHealthFailure(map, routeId, cls, now, config, startedAt = now) {
   if (!config.enabled || !HEALTH_CLASSES.includes(cls) || !(config.thresholds[cls] > 0)) {
     return { entry: map[routeId] || null, escalated: false, changed: false };
   }
@@ -133,8 +134,9 @@ export function recordRouteHealthFailure(map, routeId, cls, now, config) {
   const entry = { ...blankEntry(), ...(map[routeId] || {}) };
   const previousRung = entry.rung;
   entry[cls] += 1;
+  const started = Number.isFinite(startedAt) ? Math.min(startedAt, now) : now;
   const escalated = entry.rung > 0
-    ? now >= entry.until
+    ? started >= entry.until
     : entry[cls] >= config.thresholds[cls];
   if (escalated) {
     entry.rung = Math.min(entry.rung + 1, config.rungsMs.length);
