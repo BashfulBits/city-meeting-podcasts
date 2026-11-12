@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from citypods.compute.llm_work import LLMWorkTracker
 from citypods.config import load_site_config
 from citypods.ops.maintenance_leases import acquire
 from citypods.remedy_evaluation import RemedyConfig, TrustedProjectEvidence, _read_trusted_artifact
@@ -33,6 +34,45 @@ def _write_exclusive(path: Path, payload: dict[str, Any]) -> None:
     with path.open("x", encoding="utf-8") as stream:
         json.dump(payload, stream, ensure_ascii=False, sort_keys=True, indent=2)
         stream.write("\n")
+
+
+_P3_PURPOSE = "remedy:p3"
+_P3_PRODUCER = "remedy"
+_P3_STATE = {
+    "report_ready": "consumed",
+    "policy_hold": "policy_held",
+    "initial_pending": "queued",
+    "adjudication_pending": "queued",
+}
+
+
+def _funnel_snapshot(findings: list[dict]) -> dict:
+    """Finding-level funnel counts for the report (review/58 section 9); no payloads.
+
+    This run writes no durable run event (the workflow has no state sync), so the snapshot rides
+    in the uploaded report. A later change that persists it gives `/admin/status` a measured row.
+    """
+    tracker = LLMWorkTracker()
+    tracker.activate(_P3_PURPOSE, producer=_P3_PRODUCER)
+    for row in findings:
+        work = tracker.item(_P3_PURPOSE, str(row.get("finding_id")), producer=_P3_PRODUCER)
+        state = _P3_STATE.get(str(row.get("status")), "errored")
+        if state == "consumed":
+            work.consumed()
+        else:
+            work.defer(state)
+    tracker.packet_counts(
+        _P3_PURPOSE,
+        {
+            "findings": len(findings),
+            "submitted_or_completed": sum(
+                int(r.get("submitted_or_completed", 0)) for r in findings
+            ),
+            "pending": sum(int(r.get("pending", 0)) for r in findings),
+        },
+    )
+    tracker.finish()
+    return tracker.snapshot()
 
 
 def _collect_evidence(repo_root: Path, path: Path) -> None:
@@ -124,6 +164,7 @@ def run_daily(
             else "pending"
         ),
         "findings": findings,
+        "llm_work": _funnel_snapshot(findings),
     }
     _write_exclusive(output, result)
     if temporary is not None:

@@ -1668,6 +1668,18 @@ class JudgeStage(LLMProducerStage):
                     work.consumed(reused=uid not in result.episodes_with_work)
                 elif uid in result.episodes_with_work:
                     work.defer("queued")
+        for purpose in self.PURPOSES:
+            role = purpose.partition(":")[2]
+            # Packet-level funnel counts the runner already computed (review/58 section 9).
+            ctx.llm_work.packet_counts(
+                purpose,
+                {
+                    "outstanding": result.counts.get(f"outstanding:{purpose}", 0),
+                    "submitted": result.counts.get(f"packets:{role}", 0),
+                    "run_cap_hit": result.counts.get(f"run_cap:{purpose}", 0),
+                    "run_cap_outstanding": result.counts.get(f"run_cap_outstanding:{purpose}", 0),
+                },
+            )
         label = (
             getattr(sources[0][0], "slug", "")
             if len(sources) == 1
