@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Chapter-agenda and chapter-locator runs no longer fail when the shared `chapter-record-write`
+  lease is held by another live run: they wait up to 10 minutes, then skip the record commit as a
+  clean deferral (log line plus `record_write: skipped_lease_busy` on the run event). Lease
+  storage or corruption errors still fail the run (review/58 WP6).
+- The chapter-locator workflow now uses the same timeouts as chapter-agenda (job 240, step 225
+  minutes) so the 204-minute in-process stop budget fires before the step is killed; it was 45 and
+  38 minutes.
+
+- The LLM topic-tag producer runs every four hours (`19 */4 * * *`) instead of three times a day.
+
 - **Review/58 WP3a: stand down routes that cannot succeed.**
   `beatapi_jev_1_13_free` (`judge:anchor`: 717 HTTP 400 against 26 successes, 0 of 882 jobs
   recovered) and both BeatAPI GLM 5.3 Flash routes (`judge:adjudicator`: 721 HTTP 524 at
