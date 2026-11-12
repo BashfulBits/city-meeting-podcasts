@@ -425,11 +425,24 @@ def _worker_routes_for(model: str, catalog: dict) -> list[str]:
     return list((catalog.get("model_routes_map") or {}).get(model) or [])
 
 
+# Lane models deliberately stood down: every route is paused (rpd: 0), so queued jobs are held (the
+# structural catalog keeps the route; nothing is failed as unroutable) until the named condition is
+# met. Keep this list short and dated; an entry here is an outage by decision, not a default.
+_STOOD_DOWN_LANE_MODELS = {
+    # review/58 WP3a/WP3c: BeatAPI withdrew jev-1.13-free (400); owner must pick the anchor.
+    ("judge:anchor", "typesafe/jev-1.13"),
+    ("remedy:p3", "typesafe/jev-1.13"),
+}
+
+
 @pytest.mark.parametrize(("purpose", "model"), _lane_models())
 def test_every_lane_model_has_a_live_worker_route(purpose, model):
     catalog = json.loads(_WORKER_CATALOG.read_text(encoding="utf-8"))
     routes = _worker_routes_for(model, catalog)
     assert routes, f"{purpose}: {model} has no route in the compiled v2 catalog"
+    if (purpose, model) in _STOOD_DOWN_LANE_MODELS:
+        assert all(catalog["routes_by_id"][r].get("rpd") == 0 for r in routes)
+        return
     # rpd: 0 is the catalog's paused-route convention; a model whose every route is paused strands
     # its queued jobs exactly like a missing one.
     live = [r for r in routes if catalog["routes_by_id"][r].get("rpd") != 0]
@@ -546,3 +559,39 @@ def test_load_families_parses_the_site_config_once_per_path(monkeypatch):
     clear_cache()
     load_families()
     assert len(parsed) > after_first
+
+
+# --- review/58 WP3a: routes stood down because they cannot succeed --------------------------------
+
+_STOOD_DOWN_ROUTES = (
+    "beatapi_jev_1_13_free",
+    "beatapi_glm_5_3_flash_free",
+    "beatapi_secondary_glm_5_3_flash_free",
+)
+
+
+def _live_routes(catalog: dict, model: str) -> list[str]:
+    return [
+        r for r in _worker_routes_for(model, catalog) if catalog["routes_by_id"][r].get("rpd") != 0
+    ]
+
+
+def test_stood_down_routes_are_paused_and_not_selectable():
+    catalog = json.loads(_WORKER_CATALOG.read_text(encoding="utf-8"))
+    for route_id in _STOOD_DOWN_ROUTES:
+        assert catalog["routes_by_id"][route_id]["rpd"] == 0, route_id
+    # Nothing is made to yield to a route that is off.
+    for route in catalog["routes_by_id"].values():
+        assert "beatapi_jev_1_13_free" not in (route.get("yields_to") or [])
+
+
+def test_judge_adjudicator_keeps_working_routes_after_the_beatapi_glm_stand_down():
+    catalog = json.loads(_WORKER_CATALOG.read_text(encoding="utf-8"))
+    lane = load_lanes()["judge:adjudicator"]
+    for model in lane.models:
+        live = _live_routes(catalog, model)
+        assert live, f"judge:adjudicator: no live route for {model}"
+        assert not {"beatapi_glm_5_3_flash_free", "beatapi_secondary_glm_5_3_flash_free"} & set(
+            live
+        )
+    assert _live_routes(catalog, "zai/glm-5.3-flash") == ["orcarouter_zai_glm_5_3_flash_free"]

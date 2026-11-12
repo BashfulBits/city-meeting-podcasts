@@ -1537,9 +1537,6 @@
       "model": "gemini/gemini-3.8-flash-free",
       "provider": "beatapi",
       "tier": "backup",
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
       "upstream_model": "gemini-3.8-flash-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1575,9 +1572,6 @@
       "model": "deepseek/deepseek-v4-flash",
       "provider": "beatapi",
       "tier": "backup",
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
       "upstream_model": "deepseek-v4-flash-0731-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1614,9 +1608,6 @@
       "model": "deepseek/deepseek-v4.1-flash",
       "provider": "beatapi",
       "tier": "backup",
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
       "upstream_model": "deepseek-v4.1-flash-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1653,9 +1644,6 @@
       "model": "deepseek/deepseek-v4-pro",
       "provider": "beatapi",
       "tier": "backup",
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
       "upstream_model": "deepseek-v4-pro-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1692,9 +1680,6 @@
       "model": "openai/gpt-6-astra",
       "provider": "beatapi",
       "tier": "backup",
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
       "upstream_model": "gpt-6-astra-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1731,9 +1716,6 @@
       "model": "openai/gpt-6.1-sol",
       "provider": "beatapi",
       "tier": "backup",
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
       "upstream_model": "gpt-6.1-sol-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1882,6 +1864,7 @@
       "output_context_limit": 16384,
       "account_id": "primary",
       "rpm": 1,
+      "rpd": 0,
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
@@ -1954,7 +1937,7 @@
       "hard_input_ceiling": 58000,
       "account_id": "primary",
       "rpm": 1,
-      "rpd": 1400,
+      "rpd": 0,
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
@@ -1984,14 +1967,12 @@
       "model": "zai/glm-5.3-flash",
       "provider": "beatapi",
       "tier": "backup",
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
       "upstream_model": "glm-5.3-flash-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
       "account_id": "primary",
       "rpm": 1,
+      "rpd": 0,
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
@@ -2022,9 +2003,6 @@
       "model": "minimax/minimax-m3.1-flash",
       "provider": "beatapi",
       "tier": "backup",
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
       "upstream_model": "minimax-m3.1-flash-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,

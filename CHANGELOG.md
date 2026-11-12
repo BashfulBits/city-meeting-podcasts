@@ -15,6 +15,28 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/58 WP3a: stand down routes that cannot succeed.**
+  `beatapi_jev_1_13_free` (`judge:anchor`: 717 HTTP 400 against 26 successes, 0 of 882 jobs
+  recovered) and both BeatAPI GLM 5.3 Flash routes (`judge:adjudicator`: 721 HTTP 524 at
+  BeatAPI's ~125 s edge limit) are paused with the existing `rpd: 0` convention. The
+  primary-account BeatAPI chat routes no longer `yield_to` the paused JEV route. Queued
+  `typesafe/jev-1.13` jobs are held, not failed, until review/58 WP3c restores the route.
+  Stale dispatch-tuning comments corrected (comments only, no values changed). Deploy the
+  recompiled `dispatch_limits.json` Worker to take effect; no pipeline-version bump and no
+  stored artifact is invalidated.
+
+- **Dispatch Worker slot-use logs (review/58 WP1a).** The Worker logs `scheduled_claim` (jobs,
+  routes, in-flight calls and active bundles before the claim) on every claimed tick and
+  `bundle_completed` (bundle duration; per call route, purpose, outcome, failure class, duration
+  and hold) once per bundle, for every route including successful non-Gemma calls. No Durable
+  Object reads, rows or subrequests are added. Deploy the Worker to start emitting them.
+
+- **Review/58 WP5: hourly deferred sweep.** `llm-deferred-sweep` now runs every hour (minute :57)
+  instead of every six hours, so completed LLM results are collected sooner. The concurrency group
+  still never cancels a running sweep, and the sweep has a 45-minute wall-clock budget (script
+  budget 32 min, step timeout 41, job timeout 45); hitting the budget exits successfully with the
+  remaining work left deferred. Adds about 20 terminal-feed/poll calls a day.
+
 - **Review/58 LLM pipeline throughput balance (docs and evaluation tooling).** Seven days of Worker
   logs, AI Gateway analytics, GitHub run history and B2 state show the dispatcher is bound by how it
   holds slots: 58% of held slot-time waits for a bundle's slowest call and 22% runs to the 720 s

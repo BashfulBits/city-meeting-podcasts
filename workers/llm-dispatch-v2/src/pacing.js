@@ -285,14 +285,15 @@ export function availableTokenBudget(route, now) {
  * `buffer_seconds` is a backoff, so it has to be able to expire on its own. Stored as a bare
  * number and compared straight against the dispatch window, it was a permanent kill switch
  * instead: _capacityFraction scores a route 0 once buffer_seconds >= DISPATCH_WINDOW_SECONDS
- * (25), and a single 429 adds MAX_429_BACKOFF_SECONDS (60) at once. The only code that ever
+ * (25 when this was written; 30 in config/dispatch_tuning.yml now), and a single 429 adds MAX_429_BACKOFF_SECONDS (60) at once. The only code that ever
  * cleared it ran on a *successful* completeBatch for that route -- unreachable, because a
  * zero-capacity route is never ranked, so never claimed, so never succeeds. One 429 therefore
  * removed a route from v2's ranking forever, with no blocked_until and no error to show for it.
  * Observed 2026-08-30: 15,833 queued jobs, every route silently at zero, zero bundles claimed.
  *
  * Decaying at one second per second gives the backoff its intended meaning -- a 60-second buffer
- * stops gating the route after ~35 seconds (when it falls under the 25-second window) and is
+ * stops gating the route after ~35 seconds (when it falls under a 25-second window; ~30 seconds
+ * under today's 30-second window) and is
  * fully spent after 60 -- and makes recovery unattended.
  */
 export function effectiveBufferSeconds(route, now) {
