@@ -1360,3 +1360,66 @@ def test_orcarouter_declares_its_one_shared_800_per_day_pool():
     for route in raw["routes"]:
         if route.get("provider") == "orcarouter":
             assert route["rpd"] <= 800
+
+
+# review/58 B2: optional per-route response timeout.
+RESPONSE_TIMEOUT_ROUTES = {
+    240: ["gemma_4_31b_primary", "gemma_4_31b_secondary"],
+    300: [
+        "gemini_3_5_flash_lite_primary",
+        "gemini_3_5_flash_lite_secondary",
+        "gemini_3_1_flash_lite_primary",
+        "gemini_3_1_flash_lite_secondary",
+    ],
+    420: [
+        "kilo_nemotron_3_5_super_vl_free",
+        "openrouter_nvidia_nemotron_3_5_super_vl_free",
+        "nvidia_nemotron_3_5_super_vl_120b_a12b_free",
+        "orcarouter_deepseek_v4_flash_free",
+        "beatapi_deepseek_v4_flash_free",
+    ],
+}
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, "240", True, [240]])
+def test_response_timeout_seconds_rejects_invalid_values(bad):
+    with pytest.raises(ValueError, match="invalid response_timeout_seconds"):
+        _compile_raw([_route("a", "example/a", response_timeout_seconds=bad)])
+
+
+def test_response_timeout_seconds_cannot_exceed_the_global_ceiling():
+    ceiling = compile_llm_limits._global_max_response_seconds()
+    with pytest.raises(ValueError, match="above the global MAX_RESPONSE_SECONDS"):
+        _compile_raw([_route("a", "example/a", response_timeout_seconds=ceiling + 1)])
+    compiled = _compile_raw([_route("a", "example/a", response_timeout_seconds=ceiling)])
+    assert compiled["routes_by_id"]["a"]["response_timeout_seconds"] == ceiling
+
+
+def test_response_timeout_seconds_unset_passes_through_as_null():
+    compiled = _compile_raw(
+        [_route("a", "example/a"), _route("b", "example/b", response_timeout_seconds=None)]
+    )
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    assert worker["a"]["response_timeout_seconds"] is None
+    assert worker["b"]["response_timeout_seconds"] is None
+
+
+def test_response_timeout_seconds_reaches_worker_and_python_catalogs():
+    compiled = _compile_raw([_route("a", "example/a", response_timeout_seconds=240)])
+    worker_route = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]["a"]
+    assert worker_route["response_timeout_seconds"] == 240
+    python_routes = compile_llm_limits._python_routes(compiled)["routes"]
+    assert python_routes[0]["response_timeout_seconds"] == 240
+
+
+def test_production_response_timeouts_are_exactly_the_review_58_set():
+    worker = compile_llm_limits._worker_catalog(compile_llm_limits.compile_limits())
+    expected = {rid: value for value, rids in RESPONSE_TIMEOUT_ROUTES.items() for rid in rids}
+    actual = {
+        rid: route["response_timeout_seconds"]
+        for rid, route in worker["routes_by_id"].items()
+        if route["response_timeout_seconds"] is not None
+    }
+    assert actual == expected
+    ceiling = compile_llm_limits._global_max_response_seconds()
+    assert all(value <= ceiling for value in actual.values())

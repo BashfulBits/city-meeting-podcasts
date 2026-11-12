@@ -406,6 +406,9 @@ routes:
     model: gemini/gemini-3.5-flash-lite
     provider: gemini
     upstream_model: gemini-3.5-flash-lite
+    # review/58 B2 (2026-11-11): initial value for the Flash Lite family; 2,122 timeouts in 7 days
+    # held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 300
     input_context_limit: 1048576
     output_context_limit: 65536
     # Gemini 3.5 Flash Lite vs chars/4: p50 1.70 / p95 2.15 over 106 paired jobs (2026-09-23).
@@ -424,6 +427,9 @@ routes:
     model: gemini/gemini-3.5-flash-lite
     provider: gemini
     upstream_model: gemini-3.5-flash-lite
+    # review/58 B2 (2026-11-11): initial value for the Flash Lite family; 2,122 timeouts in 7 days
+    # held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 300
     input_context_limit: 1048576
     output_context_limit: 65536
     # Gemini 3.5 Flash Lite vs chars/4: p50 1.70 / p95 2.15 over 106 paired jobs (2026-09-23).
@@ -442,6 +448,9 @@ routes:
     model: gemini/gemini-3.1-flash-lite
     provider: gemini
     upstream_model: gemini-3.1-flash-lite
+    # review/58 B2 (2026-11-11): initial value for the Flash Lite family; 2,122 timeouts in 7 days
+    # held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 300
     input_context_limit: 1048576
     output_context_limit: 65536
     # Gemini 3.1 Flash Lite vs chars/4: p50 1.06 / p95 1.59 over 339 paired jobs (2026-09-23).
@@ -460,6 +469,9 @@ routes:
     model: gemini/gemini-3.1-flash-lite
     provider: gemini
     upstream_model: gemini-3.1-flash-lite
+    # review/58 B2 (2026-11-11): initial value for the Flash Lite family; 2,122 timeouts in 7 days
+    # held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 300
     input_context_limit: 1048576
     output_context_limit: 65536
     # Gemini 3.1 Flash Lite vs chars/4: p50 1.06 / p95 1.59 over 339 paired jobs (2026-09-23).
@@ -530,6 +542,9 @@ routes:
     model: google/gemma-4-31b-it
     provider: gemini
     upstream_model: gemma-4-31b-it
+    # review/58 B2 (evidence 2026-11-11): 2,011 successes in 7 days, 11 over 300 s (p99 201 s),
+    # against 1,556 timeouts that each held a slot 720 s. 240 s gives up about 0.5% of successes.
+    response_timeout_seconds: 240
     # Worker owns paced retries; Gateway retries correlated with TPM refusals.
     ai_gateway_max_attempts: 1
     input_context_limit: 262144
@@ -553,6 +568,9 @@ routes:
     model: google/gemma-4-31b-it
     provider: gemini
     upstream_model: gemma-4-31b-it
+    # review/58 B2 (evidence 2026-11-11): 2,011 successes in 7 days, 11 over 300 s (p99 201 s),
+    # against 1,556 timeouts that each held a slot 720 s. 240 s gives up about 0.5% of successes.
+    response_timeout_seconds: 240
     # Worker owns paced retries; Gateway retries correlated with TPM refusals.
     ai_gateway_max_attempts: 1
     input_context_limit: 262144
@@ -917,6 +935,9 @@ routes:
     model_key: openrouter/nvidia/nemotron-3.5-super-vl:free
     provider: kilo
     upstream_model: nvidia/nemotron-3.5-super-vl:free
+    # review/58 B2 (2026-11-11): initial value for Nemotron 3.5 Super; 2,122 timeouts in 7 days
+    # held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 420
     # Kilo lists 1,000,000; the sibling legs measured 249,027 input tokens, so stay at their window.
     input_context_limit: 262144
     output_context_limit: 131072
@@ -956,6 +977,9 @@ routes:
     model: openrouter/nvidia/nemotron-3.5-super-vl:free
     provider: openrouter
     upstream_model: nvidia/nemotron-3.5-super-vl:free
+    # review/58 B2 (2026-11-11): initial value for Nemotron 3.5 Super; 2,122 timeouts in 7 days
+    # held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 420
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
@@ -1155,6 +1179,9 @@ routes:
     model_key: openrouter/nvidia/nemotron-3.5-super-vl:free
     provider: nvidia
     upstream_model: nvidia/nemotron-3.5-super-vl-120b-a12b
+    # review/58 B2 (2026-11-11): initial value for Nemotron 3.5 Super; 2,122 timeouts in 7 days
+    # held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 420
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
@@ -1196,6 +1223,9 @@ routes:
     model_key: deepseek/deepseek-v4-flash
     provider: orcarouter
     upstream_model: deepseek/deepseek-v4-flash-free
+    # review/58 B2 (2026-11-11): initial value for DeepSeek V4 Flash (not V4.1); 2,122 timeouts in 7
+    # days held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 420
     input_context_limit: 1000000
     output_context_limit: 128000
     account_id: primary
@@ -1300,6 +1330,9 @@ routes:
     provider: beatapi
     tier: backup
     upstream_model: deepseek-v4-flash-0731-free
+    # review/58 B2 (2026-11-11): initial value for DeepSeek V4 Flash (not V4.1); 2,122 timeouts in 7
+    # days held 1.53M slot-seconds at 720 s. No per-route latency table yet: tune from bundle_completed.
+    response_timeout_seconds: 420
     # The 0731 revision of V4 Flash; pools with OrcaRouter's `deepseek-v4-flash-free`. Reasoning model: spends output tokens on reasoning_content.
     input_context_limit: 128000
     output_context_limit: 16384

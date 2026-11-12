@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { LLMSchedulerDO, leaseCoversCall, withLeaseDeadlines } from "../src/index.js";
+import worker, { LLMSchedulerDO, effectiveResponseMs, leaseCoversCall, withLeaseDeadlines } from "../src/index.js";
 import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 const CATALOG = {
@@ -732,4 +732,81 @@ test("the Gemma network probe waits for a free connection slot when dispatch run
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+// review/58 B2: per-route response timeout.
+function catalogWithTimeout(value) {
+  const route = { ...CATALOG.routes_by_id["route-a"] };
+  if (value !== undefined) route.response_timeout_seconds = value;
+  return { ...CATALOG, routes_by_id: { "route-a": route } };
+}
+
+async function runTickWithCatalog(catalog, { hangUntilAbort = false } = {}) {
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  const originalInfo = console.info;
+  const originalError = console.error;
+  const events = [];
+  console.info = line => events.push(JSON.parse(line));
+  console.error = () => {};
+  const base = fakeFetch(store);
+  globalThis.fetch = async (url, init = {}) => {
+    if (hangUntilAbort && new URL(url).host !== B2_HOST) {
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      });
+    }
+    return base(url, init);
+  };
+  try {
+    const env = makeEnv({ DISPATCH_LIMITS_OVERRIDE: catalog }, { DISPATCH_LIMITS_OVERRIDE: catalog });
+    await enqueueOneJob(env, "job-timeout", store);
+    const started = Date.now();
+    const waitUntilPromises = [];
+    await worker.scheduled({}, env, { waitUntil: (p) => waitUntilPromises.push(p) });
+    await Promise.all(waitUntilPromises);
+    const elapsedMs = Date.now() - started;
+    return { events, elapsedMs };
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.info = originalInfo;
+    console.error = originalError;
+  }
+}
+
+test("a route with response_timeout_seconds times out at that value with the same failure class", async () => {
+  // Global MAX_RESPONSE_SECONDS is 5 in makeEnv; the route says 1.
+  const { events, elapsedMs } = await runTickWithCatalog(catalogWithTimeout(1), { hangUntilAbort: true });
+  const call = events.find(e => e.event === "bundle_completed").calls[0];
+  assert.equal(call.outcome, "retryable_error");
+  assert.equal(call.failure_class, "provider_response_timeout");
+  assert.equal(call.response_timeout_ms, 1000);
+  assert.ok(call.call_duration_ms >= 900 && call.call_duration_ms < 3000, `ran ${call.call_duration_ms} ms`);
+  assert.ok(elapsedMs < 4000, `the global 5 s must not apply (${elapsedMs} ms)`);
+});
+
+test("a route without response_timeout_seconds uses the global timeout", async () => {
+  const { events, elapsedMs } = await runTickWithCatalog(catalogWithTimeout(undefined), { hangUntilAbort: true });
+  const call = events.find(e => e.event === "bundle_completed").calls[0];
+  assert.equal(call.failure_class, "provider_response_timeout");
+  assert.equal(call.response_timeout_ms, 5000);
+  assert.ok(call.call_duration_ms >= 4900, `ran ${call.call_duration_ms} ms`);
+  assert.ok(elapsedMs >= 4900);
+});
+
+test("a compiled route value above the global ceiling is clamped at runtime", async () => {
+  const { events } = await runTickWithCatalog(catalogWithTimeout(9999));
+  const call = events.find(e => e.event === "bundle_completed").calls[0];
+  assert.equal(call.outcome, "success");
+  assert.equal(call.response_timeout_ms, 5000);
+});
+
+test("effectiveResponseMs: min of route and global; anything unusable means the global", () => {
+  assert.equal(effectiveResponseMs({ response_timeout_seconds: 240 }, 720_000), 240_000);
+  assert.equal(effectiveResponseMs({ response_timeout_seconds: 720 }, 720_000), 720_000);
+  assert.equal(effectiveResponseMs({ response_timeout_seconds: 900 }, 720_000), 720_000);
+  for (const bad of [undefined, null, 0, -5, "abc", NaN, Infinity]) {
+    assert.equal(effectiveResponseMs({ response_timeout_seconds: bad }, 720_000), 720_000, String(bad));
+  }
+  assert.equal(effectiveResponseMs(undefined, 720_000), 720_000);
 });
