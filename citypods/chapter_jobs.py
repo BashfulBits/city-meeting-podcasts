@@ -13,7 +13,7 @@ from citypods.chapter_artifacts import (
     recipe_hash,
 )
 from citypods.chapter_locator import (
-    LOCATOR_OUTPUT_TOKEN_RESERVE,
+    LOCATOR_RETIRED_REUSABLE_MODELS,
     LOCATOR_ROUTING_VERSION,
     PRODUCTION_LOCATOR_MODEL,
     PRODUCTION_LOCATOR_MODELS,
@@ -41,6 +41,9 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 # chapter_locator.py is the single source of truth for the production locator model name.
 LOCATOR_MODEL = PRODUCTION_LOCATOR_MODEL
 LOCATOR_MODELS = PRODUCTION_LOCATOR_MODELS
+# Models whose completed results the reuse checks accept: the lane's models plus retired ones whose
+# results were produced under the current prompt and routing version (see chapter_locator.py).
+LOCATOR_REUSABLE_MODELS = (*LOCATOR_MODELS, *LOCATOR_RETIRED_REUSABLE_MODELS)
 # Prompt variant used for all production agenda extraction jobs.
 AGENDA_PROMPT_VERSION = "agenda-flow"
 # THIS STRING FEEDS build_locator_job()'s recipe_hash directly (unlike
@@ -297,10 +300,11 @@ def build_locator_job(
         inputs={
             "messages": messages,
             "structured_output": LOCATOR_CONTRACT,
-            # Match the output reserve select_locator_models() already assumes when it fits a
-            # request into a route's context window; the bare LiteLLMBackend default (1024) starved
+            # The output reserve (LOCATOR_OUTPUT_TOKEN_RESERVE), clamped to the selected model's
+            # largest route output limit (12,800 for MiniMax M3.1 Flash) so the Worker has a
+            # route to index the job on; the bare LiteLLMBackend default (1024) starved
             # multi-anchor responses mid-JSON well before that reserve was ever exercised.
-            "max_tokens": LOCATOR_OUTPUT_TOKEN_RESERVE,
+            "max_tokens": request.max_output_tokens,
             "max_tokens_mode": "route_max",
             "llm_policy": LLMRequestPolicy(
                 allowed_models=request.models,
@@ -360,6 +364,7 @@ __all__ = [
     "LOCATOR_MODEL",
     "LOCATOR_MODELS",
     "LOCATOR_PROMPT_VERSION",
+    "LOCATOR_REUSABLE_MODELS",
     "build_agenda_job",
     "build_locator_job",
     "finalize_agenda_job",

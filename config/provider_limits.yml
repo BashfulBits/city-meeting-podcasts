@@ -1575,11 +1575,18 @@ routes:
 
   # Input cap evidence: 244760 provider-counted input tokens admitted; 180 output tokens
   # generated in the same request (control input:v2).
-  # The hard_input_ceiling is the admitted input lower bound; the estimated rejection is not
-  # used as a cap.
+  # 2026-11-11 (review/58 WP8a input-size probe, route paused, real chapter-locator packets,
+  # production prompt, max_tokens 12800, one attempt each): admitted 348,229 / 430,156 /
+  # 564,797 / 755,581 / 941,663 provider-counted input tokens (estimate_tokens 219,129 to 610,831;
+  # provider/estimate ratio 1.40 to 1.59; 44 to 225 s); a 709,545-estimate packet was rejected
+  # with HTTP 400 "Invalid request" after 20.8 s (about 1.0 to 1.13M provider tokens at the
+  # observed ratios). hard_input_ceiling is the largest admitted input, a lower bound;
+  # input_context_limit is held to the same verified figure (the probe did not record that
+  # call's output tokens). input_token_ratio is the worst probe ratio. The chapter-locator lane
+  # sends this route packets up to 500,000 estimated tokens (about 795,000 provider tokens at
+  # 1.59, plus up to 12,800 output, inside 941,663).
   # Provider/catalog input_context_limit claim: not published; source:
-  # https://integrate.api.nvidia.com/v1/models. Operational context is at least the empirically
-  # observed input plus generated output.
+  # https://integrate.api.nvidia.com/v1/models.
   # Output context: configured value 12800 is sourced from a measured output search (a verified
   # lower bound, not a proven maximum).
   - route_id: nvidia_minimaxai_minimax_m3_1_flash
@@ -1587,8 +1594,9 @@ routes:
     provider: nvidia
     upstream_model: minimaxai/minimax-m3.1-flash
     account_id: primary
-    input_context_limit: 244940
-    hard_input_ceiling: 244760
+    input_context_limit: 941663
+    hard_input_ceiling: 941663
+    input_token_ratio: 1.59
     structured_output_method: json_schema
     structured_output_verified_on: '2026-11-04'
     rpm: 1

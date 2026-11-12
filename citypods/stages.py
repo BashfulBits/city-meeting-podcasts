@@ -8664,6 +8664,45 @@ def _cancel_chapter_fallbacks(ctx, stats: StageStats, states: list[dict]) -> Non
             discard_deferred(ctx.storage, recipe, expected_ref=ref)
 
 
+def _cancel_retired_locator_handle(ctx, stats: StageStats, handle, raw_agenda: dict) -> bool:
+    """Cancel a submitted locator job whose model has left the lane; True once it is cancelled.
+
+    The Worker checks the lane only when it admits a job, so a job queued before a model left the
+    lane would otherwise keep running on that model's routes while the episode waits on it
+    (review/58 WP8: DeepSeek V4.1 Flash). Only a coordinator-queued job is cancelled, with the
+    same ``cancel_batch`` + ``discard_deferred`` pair the provider-chapter exclusion uses. A job
+    already in flight, unknown to the Worker, or never submitted (an ingress-deferred capsule,
+    which the deferred sweep retires on ``model_not_in_lane``) is left alone and the episode
+    keeps waiting on it, as before.
+    """
+    from citypods.chapter_jobs import LOCATOR_MODELS
+    from citypods.compute.llm_deferred import discard_deferred
+    from citypods.compute.llm_policy import canonical_model
+
+    model = handle.model
+    recipe = raw_agenda.get("locator_recipe")
+    if (
+        not isinstance(model, str)
+        or not model
+        or handle.deferred_request is not None
+        or not handle.ref
+        or not isinstance(recipe, str)
+        or canonical_model(model) in {canonical_model(m) for m in LOCATOR_MODELS}
+    ):
+        return False
+    cancel = getattr(_chapter_llm_backend(ctx), "cancel_batch", None)
+    if not callable(cancel):
+        return False
+    try:
+        cancelled = set(cancel([handle.ref]).get("cancelled", ()))
+    except Exception as exc:  # noqa: BLE001 -- the episode keeps waiting on its old job
+        stats.errors.append(f"retired-model locator cancellation: {exc}")
+        return False
+    if handle.ref not in cancelled:
+        return False
+    return discard_deferred(ctx.storage, recipe, expected_ref=handle.ref)
+
+
 def _write_chapter_json(storage, key: str, value: dict) -> str:
     """Upload a bounded generated-chapter artifact without exposing its local temp path."""
 
@@ -8992,11 +9031,16 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
         from citypods.chapter_jobs import (
             LOCATOR_MODELS,
             LOCATOR_PROMPT_VERSION,
+            LOCATOR_REUSABLE_MODELS,
             LOCATOR_ROUTING_VERSION,
             build_locator_job,
             finalize_locator_job,
         )
-        from citypods.chapter_locator import DuplicateLocatorStartError, build_locator_units
+        from citypods.chapter_locator import (
+            DuplicateLocatorStartError,
+            LocatorInputOverCapError,
+            build_locator_units,
+        )
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
         from citypods.compute.llm_deferred import discard_completed_result, look_up_deferred
@@ -9056,7 +9100,7 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
             # stale result anyway, and _mark_stage_complete would re-stamp it under the fresh
             # fingerprint, permanently laundering stale output as current.
             is_current_locator_artifact = locator_status == "not_applicable" or (
-                raw_agenda.get("locator_model") in LOCATOR_MODELS
+                raw_agenda.get("locator_model") in LOCATOR_REUSABLE_MODELS
                 and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
                 and raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
             )
@@ -9071,7 +9115,18 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
             locator_recipe = raw_agenda.get("locator_recipe")
             if locator_status == "pending" and isinstance(locator_recipe, str):
                 cached = look_up_deferred(ctx.storage, locator_recipe)
-                if isinstance(cached, JobHandle):
+                if isinstance(cached, JobHandle) and _cancel_retired_locator_handle(
+                    ctx, stats, cached, raw_agenda
+                ):
+                    # The queued job named a model the lane no longer has (review/58 WP8: V4.1).
+                    # It is cancelled at the Worker, so re-plan the episode on the lane as
+                    # configured now, in this run.
+                    raw_agenda = dict(raw_agenda)
+                    for field in ("locator_status", "locator_recipe", "locator_job_ref"):
+                        raw_agenda.pop(field, None)
+                    ep.generated_agenda_candidates = raw_agenda
+                    locator_status = None
+                elif isinstance(cached, JobHandle):
                     if cached.ref and cached.ref != raw_agenda.get("locator_job_ref"):
                         raw_agenda = dict(raw_agenda)
                         raw_agenda["locator_job_ref"] = cached.ref
@@ -9159,6 +9214,15 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                         else None
                     ),
                 )
+            except LocatorInputOverCapError as exc:
+                # Deferred, not failed (review/58 WP8): nothing is submitted, no state changes, and
+                # the episode is re-measured each run, so it becomes eligible once the cap rises.
+                if work is not None:
+                    work.defer("policy_held")
+                stats.defer(
+                    "locator-over-input-cap", sample=f"{uid}: {exc.input_tokens} estimated tokens"
+                )
+                continue
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # build pass for every other episode
                 if work is not None:
@@ -9414,11 +9478,11 @@ def episode_needs_chapter_locator(ep: Episode) -> bool:
         return True
     if locator_status == "not_applicable":
         return False
-    from citypods.chapter_jobs import LOCATOR_MODELS, LOCATOR_PROMPT_VERSION
+    from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION, LOCATOR_REUSABLE_MODELS
     from citypods.chapter_locator import LOCATOR_ROUTING_VERSION
 
     is_current_locator_artifact = (
-        raw_agenda.get("locator_model") in LOCATOR_MODELS
+        raw_agenda.get("locator_model") in LOCATOR_REUSABLE_MODELS
         and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
         and raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
     )

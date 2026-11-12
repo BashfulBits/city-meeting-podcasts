@@ -60,10 +60,17 @@ docs/  ──► GitHub Pages              ;   audio + transcripts + state ─�
 ```
 
 The production `chapter-locator` stage uses the baseline locator prompt and routes by the complete
-request's internal token estimate: DeepSeek V4 Flash at or below 76,000 tokens, Kimi K3 above it.
-Each request is pinned to one route, and its recipe records prompt and routing versions so a policy
-change requeues generated locator work gradually under the lane's 800-jobs-per-day budget. GLM 5.3
-Flash and DeepSeek V4.1 Flash remain documented optional capacity and are not production routes.
+request's internal token estimate: DeepSeek V4 Flash at or below 76,000 tokens, MiniMax M3.1 Flash
+(`nvidia_minimaxai_minimax_m3_1_flash`) from 76,001 up to `LOCATOR_OVERFLOW_MAX_INPUT_TOKENS`
+(500,000, set from the review/58 WP8a admission probe). A larger packet is not submitted: it is held
+as deferred (`locator-over-input-cap` in the run event, `policy_held` work state) and re-measured
+each run, so raising the cap releases it. Each request is pinned to one model, its `max_tokens` is
+clamped to that model's largest route output limit (12,800 for MiniMax), and its recipe records the
+model plus prompt and routing versions, so a policy change requeues generated locator work gradually
+under the lane's 800-jobs-per-day budget. DeepSeek V4.1 Flash left the locator lane in review/58 WP8
+(it remains a `judge:adjudicator` model): its accepted locator results stay reusable, and a still
+queued V4.1 locator job is cancelled at the Worker and re-planned, since the Worker checks lane
+membership only at ingress. GLM 5.3 Flash remains documented optional capacity.
 Provider-supplied chapters remain canonical; the locator runs only for episodes without them and
 does not alter audio bytes.
 The locator checks its current recipe in the deferred registry before reserving a producer slot.

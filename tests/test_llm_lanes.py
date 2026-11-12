@@ -394,6 +394,19 @@ class TestRecipeAffectingModelPins:
         assert AGENDA_BACKUP_AFTER_ATTEMPTS == 12
         assert PRODUCTION_LOCATOR_MODEL == lane_for("chapter-locator").primary_model
 
+    def test_locator_overflow_moved_from_v41_to_minimax(self):
+        """review/58 WP8: V4.1 left the locator lane only; the adjudicator keeps it."""
+        from citypods.chapter_jobs import LOCATOR_MODELS
+        from citypods.chapter_locator import DEEPSEEK_V41_LOCATOR_MODEL, MINIMAX_LOCATOR_MODEL
+
+        locator = lane_for("chapter-locator").models
+        assert locator == ("deepseek/deepseek-v4-flash", "minimaxai/minimax-m3.1-flash")
+        assert LOCATOR_MODELS == locator
+        assert MINIMAX_LOCATOR_MODEL in locator
+        assert DEEPSEEK_V41_LOCATOR_MODEL not in locator
+        assert DEEPSEEK_V41_LOCATOR_MODEL in load_lanes()["judge:adjudicator"].models
+        assert load_families()[MINIMAX_LOCATOR_MODEL] == "minimax"
+
 
 # --- Lane <-> route catalog consistency -----------------------------------------------------------
 #

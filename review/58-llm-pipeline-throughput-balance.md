@@ -198,7 +198,10 @@ Classification:
     `judge:adjudicator`): 6 successes (AI Gateway) against 103 timeouts (Worker log), about 5%.
     The only other V4.1 route is BeatAPI (128k context, same 125 s edge limit), so this locator
     band has no dependable route. 398 results were pending on this model at 03:30Z. Owner decision
-    2 in section 10 moves this band to MiniMax M3.1 Flash (WP8).
+    2 in section 10 moved this band to MiniMax M3.1 Flash (WP8, done 2026-11-11): packets of
+    76,001 to 500,000 estimated tokens now go to `nvidia_minimaxai_minimax_m3_1_flash`, V4.1 is out
+    of the locator lane (it stays in `judge:adjudicator`), and the 7 larger packets are held as
+    deferred. Takes effect when the owner deploys the Worker with the recompiled config.
 - Retries after a failure go to the same route 58% of the time, another route of the same model
   36%, another model 5%. Preferred/backup fallback (review/46) is not what recovers jobs; repetition
   is.
@@ -361,18 +364,25 @@ is added then.
      packet as too large. Reference: Kimi K3 90.7% (retired), V4.1 89.8% at a 502 s median. Full
      tables are in `evals/chapter-locator/manual-review-v2/README.md`.
    - Decision: route packets above 76,000 estimated tokens to `minimaxai/minimax-m3.1-flash`
-     (`nvidia_minimaxai_minimax_m3_1_flash`) with the production prompt, up to 191,294 estimated
-     tokens, the largest size measured. That covers 342 of the 494. Remove V4.1 from the locator
-     lane. This is WP8.
-   - Packets above the cap (152, of which 7 exceed 500,000) are held as deferred. The largest is
-     862,960 estimated tokens, roughly 1.1 to 2.0 million provider tokens, and no free route admits
-     that as one request. Raising the cap is WP8a, an input-size probe on MiniMax (it admitted
-     263,297 provider tokens against a recorded lower bound of 244,760). The remainder needs a
-     split-packet design, tracked in
-     [GH#2651](https://github.com/BashfulBits/city-meeting-podcasts/issues/2651) and not in this
-     plan.
-   - Risks: the score rests on 12 meetings and one pass; MiniMax's output limit is 12,800 tokens;
-     the route allows one call at a time at 1 RPM and shares NVIDIA's three slots.
+     (`nvidia_minimaxai_minimax_m3_1_flash`) with the production prompt. Remove V4.1 from the
+     locator lane. This is WP8.
+   - Cap: **500,000 estimated tokens** (`LOCATOR_OVERFLOW_MAX_INPUT_TOKENS`, next to the 76,000
+     split in `citypods/chapter_locator.py`), set from the WP8a probe: MiniMax admitted up to
+     941,663 provider tokens (610,831 estimated) and rejected 709,545 estimated with HTTP 400
+     (evidence file, "MiniMax input-size probe (WP8a) and pause log"). The cap covers 487 of the
+     494 overflow packets (342 up to 191,294 plus 145 from 191,295 to 500,000).
+   - The 7 packets above 500,000 are held as deferred (counted as `locator-over-input-cap` in the
+     producer's run event) and become eligible on their own if the cap is raised. The largest is
+     862,960 estimated tokens and no free route admits it as one request; it needs a split-packet
+     design, tracked in [GH#2651](https://github.com/BashfulBits/city-meeting-podcasts/issues/2651)
+     and not in this plan.
+   - Risks: accuracy above 191,294 estimated tokens is unmeasured, the probe checked admission
+     only, and 2 of its 5 admitted large answers were invalid (duplicate locator unit; the producer
+     makes one corrective resubmit, then gives up). If large-packet quality proves poor, lower the
+     one constant (for example to 300,000). The score rests on 12 meetings and one pass; MiniMax's
+     output limit is 12,800 tokens (about 2.6 times the ~4,900 an 84-item agenda needs); the route
+     allows one call at a time at 1 RPM (at most 1,440 calls a day; observed latency 44 to 225 s)
+     and shares NVIDIA's three slots.
    - No free Kimi K3 route exists on any configured provider (checked 2026-11-11).
 3. **JEV diagnosis: approved, done 2026-11-11 (WP3c).** BeatAPI withdrew the free model, so the
    400s are not a defect in our request (see the evidence file's "JEV 400 diagnosis (WP3c)").
@@ -400,8 +410,8 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
 | WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger) | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains | Run conclusions; locator `ready` count falls |
 | WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
-| WP8 | Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 191,294 estimated tokens, hold larger packets as deferred, drop V4.1 from the lane, route output limit check | Opus | — (owner deploys the compiled route config) | 342 of 494 overflow packets get a working route | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; deferred count for oversize packets reported |
-| WP8a | MiniMax input-size probe (approved by the owner 2026-11-11): with the route paused, send real pending locator packets of increasing size above 191,294 estimated tokens through the evaluation runner until one is rejected or times out; record admitted and rejected provider token counts and latency; update `hard_input_ceiling` and the WP8 cap from the result | Lead (holds the pause) | — | Up to 145 more packets if the ceiling is near 500,000 | Largest admitted and smallest rejected size recorded in the evidence file; pause logged and released |
+| WP8 | **Done 2026-11-11.** Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 500,000 estimated tokens (cap from WP8a), hold larger packets as deferred, drop V4.1 from the lane, route output limit check. Result: locator lane is V4 Flash + MiniMax; V4.1 stays only in `judge:adjudicator`; locator `max_tokens` clamps to MiniMax's 12,800; queued V4.1 locator jobs are cancelled and re-planned; no routing-version bump, so V4 Flash results stand | Opus | — (owner deploys the compiled route config) | 487 of 494 overflow packets get a working route; 7 held | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; `locator-over-input-cap` deferred count reported (expected 7) |
+| WP8a | **Done 2026-11-11.** MiniMax input-size probe (approved by the owner 2026-11-11): with the route paused, send real pending locator packets of increasing size above 191,294 estimated tokens through the evaluation runner until one is rejected or times out; record admitted and rejected provider token counts and latency; update `hard_input_ceiling` and the WP8 cap from the result. Result: admitted up to 941,663 provider tokens (610,831 estimated), rejected 709,545 estimated (HTTP 400); `hard_input_ceiling` 941,663, cap 500,000; 2 of 5 admitted large answers invalid; two route pauses logged and released | Lead (holds the pause) | — | 145 more packets (191,295 to 500,000) | Evidence file, "MiniMax input-size probe (WP8a) and pause log" |
 
 **WP6 status.** Part A is in the `fix/58-wp6a-producer-run-fixes` PR: the chapter-lane record-write
 lease skip (bounded wait, then a clean deferral stamped `record_write: skipped_lease_busy` on the
