@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/58 WP5: hourly deferred sweep.** `llm-deferred-sweep` now runs every hour (minute :57)
+  instead of every six hours, so completed LLM results are collected sooner. The concurrency group
+  still never cancels a running sweep, and the sweep has a 45-minute wall-clock budget (script
+  budget 32 min, step timeout 41, job timeout 45); hitting the budget exits successfully with the
+  remaining work left deferred. Adds about 20 terminal-feed/poll calls a day.
+
 - **Review/58 LLM pipeline throughput balance (docs and evaluation tooling).** Seven days of Worker
   logs, AI Gateway analytics, GitHub run history and B2 state show the dispatcher is bound by how it
   holds slots: 58% of held slot-time waits for a bundle's slowest call and 22% runs to the 720 s

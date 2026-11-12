@@ -3,24 +3,25 @@ name: LLM deferred sweep
 # R13's deferred-request registry (citypods/compute/llm_deferred.py) holds deferred-direct and
 # genuine dispatch handles. V2 reads and legacy queue-only submissions are bulked; v1 remains on
 # its existing temporary singleton reap path while it drains. The job persists completed results
-# and prunes expired registry records, but its normal six-hour run is a short observation/retry pass.
+# and prunes expired registry records; each run is a short observation/retry pass.
 #
-# Scheduled every six hours, anchored so one run still lands at 17:37 UTC -- 67 minutes after
-# DeepSeek's 16:30 off-peak window opens (review/27 §5.3), which the previous once-daily cron
-# existed to catch. The off-peak run stays in that window; the other three shorten observation lag.
+# Scheduled hourly (review/58 B4/WP5). The six-hourly cadence ran only 21 of 28 scheduled times
+# with a median start delay of 201 minutes, so results were collected about three times a day and
+# waited 6-12 h before a later lane could use them. Hourly gives GitHub more chances to start
+# runs and caps collection lag near one interval. Cost: about 20 more terminal-feed/poll
+# calls a day. Minute :57 is unused by every other scheduled workflow.
 #
-# Raised from once daily on 2026-08-27. A v2 job completes within minutes of dispatch but was only
-# *observed* by this sweep, so a daily cadence left completions pending for up to ~23h. That is a
-# compounding cost, not just latency: the deferred registry this sweep must list, and the
-# coordinator's `jobs` table, both stay near their maximum between runs. Six-hourly keeps both
-# small, which makes each run cheaper -- and it compounds with the consumption ack (review/44),
-# since a job's DO row and B2 objects are only released once a sweep has actually observed it.
-# If a future route's discount/quota window can't be caught on this cadence, add another cron entry
-# timed to that window rather than tightening this one for everything.
+# Wall-clock budget is 45 minutes so a run does not crowd the next hour's: the sweep's own
+# --run-time-budget-minutes (32) < step timeout (41) < job timeout (45). The 9-minute gap covers
+# an in-flight chunk plus final index writes (deadline checks run between chunks); the job's spare
+# 4 minutes cover setup before and telemetry after the sweep step. Reaching the budget is a
+# clean exit 0 with work left deferred (deferred is not failed); the concurrency group below never
+# cancels a running sweep, so a late-starting run simply queues behind it.
+# DeepSeek's off-peak window (16:30 UTC, review/27 section 5.3) is covered by the 17:57 run.
 
 on:
   schedule:
-    - cron: "37 5,11,17,23 * * *" # every 6h; the 17:37 run is 1h into DeepSeek's off-peak window
+    - cron: "57 * * * *" # hourly; WP5 of review/58
   workflow_dispatch:
     inputs:
       pending_audit_limit:
@@ -44,9 +45,8 @@ concurrency:
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    # The v1 registry is temporary but has a large legacy tail. Keep 15 minutes for Actions
-    # teardown after the 90-minute reap pass rather than cancelling a verified B2 completion.
-    timeout-minutes: 360
+    # 45-minute wall-clock budget: sweep budget 32 < step timeout 41 < job timeout 45.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -74,7 +74,7 @@ jobs:
         # GitHub reports as a grey "cancelled" -- skipping the summary report where submit_failed
         # surfaces. A STEP-level timeout below the job's fails the step, so the run goes red and
         # post-steps still execute.
-        timeout-minutes: 330
+        timeout-minutes: 41
         env:
           # Surface phase telemetry even when GitHub cancels the job during a storage read.
           PYTHONUNBUFFERED: "1"
@@ -102,7 +102,7 @@ jobs:
           if [ "${{ inputs.repair_index }}" = "true" ]; then
             python scripts/llm_deferred_sweep.py --repair-index
           else
-            python scripts/llm_deferred_sweep.py --run-time-budget-minutes 90 \
+            python scripts/llm_deferred_sweep.py --run-time-budget-minutes 32 \
               --pending-audit-limit "$PENDING_AUDIT_LIMIT"
           fi
 
