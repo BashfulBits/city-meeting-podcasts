@@ -394,14 +394,14 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 
 | # | Package | Model | Depends on | Expected gain | Verification |
 |---|---|---|---|---|---|
-| WP1a | Worker logs: `scheduled_claim`, `bundle_completed` (`index.js` only) | Sonnet | — | Measurement for all later gates | Workers Logs: both events present on every claimed tick |
+| WP1a | Worker logs: `scheduled_claim`, `bundle_completed` (`index.js` only) | Sonnet | — | Measurement for all later gates | Workers Logs: both events present on every claimed tick **Status: implemented in `feat/58-wp1a-dispatch-worker-logs` (PR open); owner deploys the Worker.** Admissible capacity is not in the claim response, so it is not logged; the in-flight ÷ admissible SLO still needs a coordinator change |
 | WP1b | Producer funnel telemetry + `/admin/status` lane table | Sonnet | — | Closes the visibility gap | Status page shows a class for every lane |
 | WP2 | Per-route response timeout (config, compile script, `index.js`) | Sonnet, Opus review | WP1a | ~750k slot-seconds/week | Gemma timeouts end at 240 s; timeout share < 3% |
 | WP3a | Stand down routes that cannot succeed; fix stale tuning comments | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
 | WP3b | Route health ladder (coordinator) | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day |
 | WP3c | JEV 400 diagnosis | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
 | WP4 | Early slot release (coordinator + `index.js`) | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k |
-| WP5 | Hourly sweep | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
+| WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
 | WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger) | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains | Run conclusions; locator `ready` count falls |
 | WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
 | WP8 | **Done 2026-11-11.** Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 500,000 estimated tokens (cap from WP8a), hold larger packets as deferred, drop V4.1 from the lane, route output limit check. Result: locator lane is V4 Flash + MiniMax; V4.1 stays only in `judge:adjudicator`; locator `max_tokens` clamps to MiniMax's 12,800; queued V4.1 locator jobs are cancelled and re-planned; no routing-version bump, so V4 Flash results stand | Opus | — (owner deploys the compiled route config) | 487 of 494 overflow packets get a working route; 7 held | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; `locator-over-input-cap` deferred count reported (expected 7) |

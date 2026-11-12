@@ -1590,6 +1590,8 @@ def test_deferred_llm_producers_run_at_least_three_times_daily():
 
     def daily_occurrences(cron: str) -> int:
         hours = cron.split()[1]
+        if hours == "*":
+            return 24
         if hours.startswith("*/"):
             return 24 // int(hours[2:])
         total = 0
@@ -1606,6 +1608,32 @@ def test_deferred_llm_producers_run_at_least_three_times_daily():
         schedules = _on(yaml.safe_load((WORKFLOWS / workflow).read_text())).get("schedule", [])
         occurrences = sum(daily_occurrences(item["cron"]) for item in schedules)
         assert occurrences >= minimum, f"{workflow} has only {occurrences} daily runs"
+
+
+def test_llm_deferred_sweep_is_hourly_with_a_45_minute_budget():
+    """Review/58 WP5: hourly collection, never overlapping, stopping cleanly inside 45 minutes."""
+    wf, job = _job("llm-deferred-sweep.yml", "sweep")
+    crons = [item["cron"] for item in _on(wf)["schedule"]]
+    assert len(crons) == 1
+    minute, *rest = crons[0].split()
+    assert rest == ["*", "*", "*", "*"], "sweep must run every hour"
+    for path in WORKFLOWS.glob("*.yml"):
+        if path.name == "llm-deferred-sweep.yml":
+            continue
+        for item in _on(yaml.safe_load(path.read_text())).get("schedule", []):
+            assert item["cron"].split()[0] != minute, f"{path.name} shares minute {minute}"
+    assert wf["concurrency"] == {"group": "llm-deferred-sweep", "cancel-in-progress": False}
+    assert job["timeout-minutes"] == 45
+    step = next(s for s in job["steps"] if "llm_deferred_sweep.py" in s.get("run", ""))
+    assert step["timeout-minutes"] == 41
+    match = re.search(r"--run-time-budget-minutes (\d+)", step["run"])
+    assert match is not None
+    budget = float(match.group(1))
+    assert budget == 32
+    # Deadline checks run between chunks: keep room for an in-flight chunk and the final index
+    # writes so the step is never killed mid-write.
+    assert step["timeout-minutes"] - budget >= 8
+    assert budget < step["timeout-minutes"] < job["timeout-minutes"]
 
 
 def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
@@ -1744,8 +1772,8 @@ def test_contracts_probe_artificial_analysis_with_production_secret():
             "llm-deferred-sweep.yml",
             "sweep",
             "Reconcile pending deferred/dispatched LLM requests",
-            360,
-            330,
+            45,
+            41,
         ),
         (
             "asr.yml",
