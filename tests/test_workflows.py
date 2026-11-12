@@ -1610,6 +1610,26 @@ def test_deferred_llm_producers_run_at_least_three_times_daily():
         assert occurrences >= minimum, f"{workflow} has only {occurrences} daily runs"
 
 
+def test_chapter_locator_stop_budget_fires_before_the_step_timeout_with_push_margin():
+    """review/58 B5: a 38m step timeout killed a lane whose own stop budget is 204m. The code's
+    stop() must fire first, leaving room for the 7 to 8 minute state push and reconcile."""
+    site = WORKFLOWS.parents[1] / "config" / "site_config.yml"
+    defaults = yaml.safe_load(site.read_text())["defaults"]
+    # run.py falls back to 240 when chapter_run_time_budget_minutes is unset.
+    stop_budget = float(defaults.get("chapter_run_time_budget_minutes", 240)) * float(
+        defaults["budget_safety"]
+    )
+    _wf, job = _job("chapter-locator.yml", "locate")
+    step = next(s for s in job["steps"] if "enrich --lane chapter-locator" in s.get("run", ""))
+    assert stop_budget + 15 <= step["timeout-minutes"] < job["timeout-minutes"]
+
+
+def test_tag_workflow_runs_every_four_hours():
+    wf, _job_ = _job("tag.yml", "tag")
+    crons = [item["cron"] for item in _on(wf)["schedule"]]
+    assert crons == ["19 */4 * * *"]
+
+
 def test_llm_deferred_sweep_is_hourly_with_a_45_minute_budget():
     """Review/58 WP5: hourly collection, never overlapping, stopping cleanly inside 45 minutes."""
     wf, job = _job("llm-deferred-sweep.yml", "sweep")
@@ -1763,8 +1783,8 @@ def test_contracts_probe_artificial_analysis_with_production_secret():
             "chapter-locator.yml",
             "locate",
             "Locate agenda candidates in complete transcripts",
-            45,
-            38,
+            240,
+            225,
         ),
         ("r7-diarization.yml", "diarize", "Diarize Denton pilot meetings", 330, 325),
         ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)", 360, 330),

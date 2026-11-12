@@ -11,6 +11,7 @@ from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from typing import Any
 
 from citypods.compute.base import JobHandle, JobResult
@@ -20,6 +21,23 @@ SCHEMA_VERSION = 1
 WORKING = frozenset({"ready", "queued", "ingress_limited", "stopped"})
 HELD = frozenset({"blocked", "policy_held", "errored"})
 _STATES = WORKING | HELD | {"consumed", "reused"}
+# Ingress dispositions kept apart from the latest per-recipe status: the flush that follows an
+# admission re-reports the same job as ``queued``, which would otherwise erase admitted vs replayed.
+_ADMISSION = frozenset(
+    {
+        "fresh_admitted",
+        "replayed",
+        "deferred",
+        "client_daily_cap",
+        "deferred_retry",
+        "rejected",
+        "prior_pending",
+        "cached_completed",
+    }
+)
+# What a Worker poll said about a handle. Producers normally enqueue and exit without polling, so
+# most queued work has no poll observation; those items are reported as ``unobserved``.
+_POLLED = frozenset({"waiting", "completed", "failed"})
 _BINDING = "_llm_work"
 _ACTIVE: ContextVar[tuple[Any, str] | None] = ContextVar("llm_work_producer", default=None)
 
@@ -29,6 +47,9 @@ class _Item:
     state: str = "ready"
     consumed: bool = False
     jobs: dict[str, str] = field(default_factory=dict)
+    first_seen: str = ""
+    admission: dict[str, str] = field(default_factory=dict)
+    polled: dict[str, str] = field(default_factory=dict)
 
 
 class LLMWorkTracker:
@@ -44,7 +65,12 @@ class LLMWorkTracker:
         self._items: dict[str, dict[str, _Item]] = {}
         self._partial: set[str] = set()
         self._complete = False
+        self._packets: dict[str, dict[str, int]] = {}
         self._lock = threading.RLock()
+
+    @staticmethod
+    def _now() -> str:
+        return datetime.now(UTC).isoformat()
 
     @property
     def lanes(self):
@@ -104,8 +130,57 @@ class LLMWorkTracker:
         if state not in _STATES:
             raise ValueError(f"Invalid initial LLM work state: {state}")
         with self._lock:
-            self._items.setdefault(purpose, {}).setdefault(str(identity), _Item(state=state))
+            self._items.setdefault(purpose, {}).setdefault(
+                str(identity), _Item(state=state, first_seen=self._now())
+            )
         return WorkItem(self, purpose, str(identity))
+
+    def packet_counts(self, purpose: str, counts: dict[str, int]) -> None:
+        """Record packet-level counts a producer already computed (judge lanes, remedy:p3).
+
+        Only non-negative integers are kept; the dict replaces any earlier report for the purpose.
+        """
+        if purpose not in self.lanes:
+            raise ValueError(f"Unregistered LLM telemetry purpose: {purpose}")
+        clean = {
+            str(key): int(value)
+            for key, value in counts.items()
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+        }
+        with self._lock:
+            self._packets[purpose] = dict(sorted(clean.items()))
+
+    @staticmethod
+    def _queue_split(items) -> dict[str, int]:
+        """Split queued items by what a Worker poll observed; no poll means ``unobserved``."""
+        split = {"waiting_at_worker": 0, "completed_uncollected": 0, "failed_at_worker": 0}
+        unobserved = 0
+        for item in items:
+            if item.state != "queued":
+                continue
+            seen = set(item.polled.values())
+            if "completed" in seen:
+                split["completed_uncollected"] += 1
+            elif "failed" in seen:
+                split["failed_at_worker"] += 1
+            elif "waiting" in seen:
+                split["waiting_at_worker"] += 1
+            else:
+                unobserved += 1
+        split["unobserved"] = unobserved
+        return split
+
+    @staticmethod
+    def _admission_counts(items) -> dict[str, int]:
+        counts = Counter(status for item in items for status in item.admission.values())
+        return {
+            "admitted": counts["fresh_admitted"],
+            "replayed": counts["replayed"],
+            "deferred": counts["deferred"] + counts["client_daily_cap"] + counts["deferred_retry"],
+            "rejected": counts["rejected"],
+            "prior_pending": counts["prior_pending"],
+            "cached_completed": counts["cached_completed"],
+        }
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -129,7 +204,20 @@ class LLMWorkTracker:
                     "backlog": sum(states[state] for state in WORKING),
                     "consumed": sum(item.consumed for item in items.values()),
                     "job_outcomes": dict(sorted(jobs.items())),
+                    # Additive (funnel telemetry, review/58 section 9). Run-local timestamps:
+                    # nothing durable records when an item first became eligible, so readers
+                    # extend these across runs rather than trusting one event.
+                    "first_seen_at": min((i.first_seen for i in items.values()), default=None),
+                    "oldest_eligible_at": min(
+                        (i.first_seen for i in items.values() if i.state in WORKING),
+                        default=None,
+                    ),
+                    "queue": self._queue_split(items.values()),
+                    "admission": self._admission_counts(items.values()),
+                    "jobs": sum(len(item.jobs) for item in items.values()),
                 }
+                if purpose in self._packets:
+                    purposes[purpose]["packets"] = dict(self._packets[purpose])
             return {"schema_version": SCHEMA_VERSION, "purposes": purposes}
 
 
@@ -167,6 +255,10 @@ class WorkItem:
     def job_outcome(self, recipe: str, status: str, reason: str | None = None) -> None:
         with self.tracker._lock:
             item = self._item()
+            if recipe not in item.jobs:
+                item.polled.clear()  # a new recipe supersedes earlier poll observations
+            if status in _ADMISSION:
+                item.admission[recipe] = status
             item.jobs[recipe] = status
             if item.state in {"consumed", "reused"}:
                 return
@@ -176,6 +268,13 @@ class WorkItem:
                 item.state = "ingress_limited"
             elif status in {"rejected", "errored"}:
                 item.state = "errored"
+
+    def poll_outcome(self, recipe: str, observed: str) -> None:
+        """Record what a Worker poll said about one of this item's handles."""
+        if observed not in _POLLED:
+            raise ValueError(f"Invalid LLM poll observation: {observed}")
+        with self.tracker._lock:
+            self._item().polled[recipe] = observed
 
     def bind(self, job):
         policy = job.inputs.get("llm_policy")
@@ -239,7 +338,27 @@ class WorkBackend:
         return results
 
     def poll_batch(self, handles):
-        return self._backend.poll_batch(handles)
+        results = self._backend.poll_batch(handles)
+        for handle in handles:
+            if handle.ref not in results:
+                continue  # the collector (or a partial response) made no observation
+            value = results[handle.ref]
+            if value is None:
+                self.work.poll_outcome(handle.recipe_hash, "waiting")
+            elif isinstance(value, JobResult):
+                self.work.poll_outcome(handle.recipe_hash, "completed")
+            elif isinstance(value, Exception) and _is_terminal_failure(value):
+                self.work.poll_outcome(handle.recipe_hash, "failed")
+        return results
+
+
+def _is_terminal_failure(error: Exception) -> bool:
+    """A Worker-recorded terminal failure; lost-handle and transport errors are not one."""
+    from citypods.compute.llm import LLMDispatchMissingError, LLMDispatchTerminalError
+
+    return isinstance(error, LLMDispatchTerminalError) and not isinstance(
+        error, LLMDispatchMissingError
+    )
 
 
 def validate_work_binding(job) -> WorkItem | None:

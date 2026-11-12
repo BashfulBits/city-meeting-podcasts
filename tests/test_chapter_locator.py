@@ -6,20 +6,25 @@ import json
 
 import pytest
 
+import citypods.chapter_locator as chapter_locator
 from citypods.chapter_locator import (
     DEEPSEEK_FREE_CONTEXT_TOKENS,
     DEEPSEEK_FREE_LOCATOR_MODEL,
+    DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS,
     DEEPSEEK_V41_LOCATOR_MODEL,
     GEMINI_CONTEXT_TOKENS,
     GEMINI_LOCATOR_MODEL,
     LOCATOR_CONTRACT,
     LOCATOR_OUTPUT_TOKEN_RESERVE,
+    LOCATOR_OVERFLOW_MAX_INPUT_TOKENS,
+    MINIMAX_LOCATOR_MODEL,
     MISTRAL_CONTEXT_TOKENS,
     MISTRAL_LOCATOR_MODEL,
     NEMOTRON_CONTEXT_TOKENS,
     NEMOTRON_LOCATOR_MODEL,
     PRODUCTION_LOCATOR_MODEL,
     LocatorAgendaItem,
+    LocatorInputOverCapError,
     LocatorUnit,
     build_locator_request,
     build_locator_units,
@@ -29,6 +34,7 @@ from citypods.chapter_locator import (
     locator_units_from_words,
     select_locator_model,
     select_locator_models,
+    select_production_locator_models,
     validate_locator_response,
 )
 from citypods.compute.llm_lanes import lane_for
@@ -348,7 +354,7 @@ def test_request_rejects_ambiguous_or_empty_inputs():
         build_locator_request([LocatorAgendaItem(index=0, title="Item", evidence_text="")], [unit])
 
 
-def _production_request(unit_count: int):
+def _production_inputs(unit_count: int):
     item = LocatorAgendaItem(
         index=0,
         title="Call to order",
@@ -360,7 +366,11 @@ def _production_request(unit_count: int):
         LocatorUnit(id=f"u{i}", start=float(i), end=float(i + 1), text="word " * 60)
         for i in range(unit_count)
     ]
-    return build_production_locator_request([item], units)
+    return [item], units
+
+
+def _production_request(unit_count: int):
+    return build_production_locator_request(*_production_inputs(unit_count))
 
 
 def test_production_locator_pins_small_packets_to_v4_flash_alone():
@@ -368,12 +378,112 @@ def test_production_locator_pins_small_packets_to_v4_flash_alone():
 
     assert request.models == (PRODUCTION_LOCATOR_MODEL,)
     assert request.model == PRODUCTION_LOCATOR_MODEL
+    # The V4 Flash band keeps the full output reserve it has always sent.
+    assert request.max_output_tokens == LOCATOR_OUTPUT_TOKEN_RESERVE
 
 
-def test_production_locator_sends_large_packets_to_v41():
+def test_overflow_cap_is_the_wp8a_probe_value():
+    # review/58 WP8a: 500,000 estimated tokens is about 795,000 provider tokens at the worst
+    # observed ratio (1.59), under the 941,663 MiniMax admitted. Changing it is an owner decision.
+    assert DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS == 76_000
+    assert LOCATOR_OVERFLOW_MAX_INPUT_TOKENS == 500_000
+
+
+@pytest.mark.parametrize(
+    ("input_tokens", "expected"),
+    [
+        (0, PRODUCTION_LOCATOR_MODEL),
+        (DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS, PRODUCTION_LOCATOR_MODEL),
+        (DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS + 1, MINIMAX_LOCATOR_MODEL),
+        (LOCATOR_OVERFLOW_MAX_INPUT_TOKENS, MINIMAX_LOCATOR_MODEL),
+    ],
+)
+def test_production_routing_boundaries(input_tokens, expected):
+    assert select_production_locator_models(input_tokens) == (expected,)
+
+
+def test_production_routing_holds_packets_above_the_cap():
+    with pytest.raises(LocatorInputOverCapError) as raised:
+        select_production_locator_models(LOCATOR_OVERFLOW_MAX_INPUT_TOKENS + 1)
+    assert raised.value.input_tokens == LOCATOR_OVERFLOW_MAX_INPUT_TOKENS + 1
+    assert raised.value.cap == LOCATOR_OVERFLOW_MAX_INPUT_TOKENS
+    with pytest.raises(ValueError, match="non-negative"):
+        select_production_locator_models(-1)
+
+
+def test_raising_the_cap_makes_a_held_packet_eligible(monkeypatch):
+    size = LOCATOR_OVERFLOW_MAX_INPUT_TOKENS + 1
+    with pytest.raises(LocatorInputOverCapError):
+        select_production_locator_models(size)
+    monkeypatch.setattr(chapter_locator, "LOCATOR_OVERFLOW_MAX_INPUT_TOKENS", size)
+    assert select_production_locator_models(size) == (MINIMAX_LOCATOR_MODEL,)
+
+
+def test_production_locator_sends_large_packets_to_minimax():
     request = _production_request(1200)
 
-    assert request.input_tokens > 76_000
-    assert request.models == (DEEPSEEK_V41_LOCATOR_MODEL,)
-    assert request.model == DEEPSEEK_V41_LOCATOR_MODEL
+    assert request.input_tokens > DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS
+    # The same estimate_tokens measure build_locator_request reports.
+    assert request.input_tokens == build_locator_request(*_production_inputs(1200)).input_tokens
+    assert request.models == (MINIMAX_LOCATOR_MODEL,)
+    assert request.model == MINIMAX_LOCATOR_MODEL
     assert set(request.models) <= set(lane_for("chapter-locator").models)
+    assert DEEPSEEK_V41_LOCATOR_MODEL not in lane_for("chapter-locator").models
+
+
+def test_minimax_request_output_fits_its_route():
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES
+
+    request = _production_request(1200)
+    (route,) = ROUTE_CANDIDATES[MINIMAX_LOCATOR_MODEL]
+    assert route.route_id == "nvidia_minimaxai_minimax_m3_1_flash"
+    assert route.output_context_limit == 12_800
+    assert request.max_output_tokens == route.output_context_limit
+
+
+def test_production_locator_holds_packets_above_the_cap_unbuilt(monkeypatch):
+    items, units = _production_inputs(1200)
+    size = build_locator_request(items, units).input_tokens
+    monkeypatch.setattr(chapter_locator, "LOCATOR_OVERFLOW_MAX_INPUT_TOKENS", size - 1)
+    with pytest.raises(LocatorInputOverCapError) as raised:
+        build_production_locator_request(items, units)
+    assert raised.value.input_tokens == size
+
+
+def test_minimax_route_admits_a_cap_sized_packet():
+    """Every Python-visible size limit on the route holds a packet at the cap.
+
+    The Worker scales the chars/4 estimate by the route's ratio and needs the scaled input plus
+    the job's max_tokens inside input_context_limit, and the scaled input inside
+    hard_input_ceiling (workers/llm-dispatch-v2/test/locator_overflow_route.test.js asserts the
+    same through the Worker's own functions).
+    """
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES, route_input_tokens
+
+    (route,) = ROUTE_CANDIDATES[MINIMAX_LOCATOR_MODEL]
+    scaled = route_input_tokens(LOCATOR_OVERFLOW_MAX_INPUT_TOKENS, route)
+    assert route.input_token_ratio == pytest.approx(1.59)
+    assert route.hard_input_ceiling == 941_663
+    assert scaled <= route.hard_input_ceiling
+    assert scaled + route.output_context_limit <= route.input_context_limit
+
+
+def test_minimax_route_shapes_the_locator_contract_as_json_schema():
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES
+    from citypods.compute.structured_shaping import shape_for_route
+
+    (route,) = ROUTE_CANDIDATES[MINIMAX_LOCATOR_MODEL]
+    contract = ensure_locator_contract()
+    request = _production_request(50)
+    messages = [dict(message) for message in request.messages]
+    shaped, response_format = shape_for_route(
+        messages,
+        name=contract.__name__,
+        schema=contract.model_json_schema(),
+        route=route,
+    )
+    assert shaped == messages
+    assert response_format == {
+        "type": "json_schema",
+        "json_schema": {"name": contract.__name__, "schema": contract.model_json_schema()},
+    }

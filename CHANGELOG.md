@@ -15,6 +15,51 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/58 WP8: chapter-locator overflow moves to MiniMax M3.1 Flash.** Locator packets of
+  76,001 to 500,000 estimated tokens now route to `minimaxai/minimax-m3.1-flash`
+  (`nvidia_minimaxai_minimax_m3_1_flash`) with the unchanged production prompt; the 76,000 split
+  and the V4 Flash band are unchanged. The cap is one constant,
+  `LOCATOR_OVERFLOW_MAX_INPUT_TOKENS`, set from the WP8a admission probe (admitted up to 941,663
+  provider tokens, rejected 709,545 estimated). Larger packets (7 today, GH#2651) are not
+  submitted: they are held as deferred, counted as `locator-over-input-cap` in the producer run
+  event, and become eligible on their own if the cap is raised. DeepSeek V4.1 Flash left the
+  locator lane only (it stays in `judge:adjudicator`). The MiniMax route's `hard_input_ceiling`
+  and input context are now 941,663 with a 1.59 input-ratio prior, and the locator's `max_tokens`
+  is clamped to the model's largest route output limit (12,800 for MiniMax; V4 Flash keeps
+  20,000). Backfill story: no routing-version bump, so V4 Flash recipes and accepted results are
+  untouched, and accepted V4.1 results stay reusable. Overflow packets get new recipes because the
+  model is in the recipe hash. A still queued V4.1 locator job is cancelled at the Worker and
+  re-planned on MiniMax in the same run (within the producer cap); one already in flight finishes
+  and is then re-planned; an unsubmitted V4.1 capsule is retired by the deferred sweep. Takes
+  effect when the Worker is deployed with the recompiled config.
+
+- **Producer funnel telemetry and an `/admin/status` LLM lane table (review/58 WP1b).** Producer
+  `llm_work` run events gain, per purpose and additively (old events stay valid):
+  `first_seen_at` and `oldest_eligible_at` (run-local); `queue` (queued work split into waiting
+  at the Worker, completed not collected, failed at the Worker, and `unobserved`, from poll
+  responses a run actually saw); `admission` (admitted, replayed, deferred, rejected, prior
+  pending, cached), which the flush's re-report as `queued` no longer erases; `jobs`; and
+  `packets` (judge lanes: outstanding, submitted, run-cap counts; `remedy:p3`: findings,
+  submitted, pending, written to the daily report because that workflow persists no run event).
+  `/admin/status` shows one row per configured lane with its review/58 section 4 class
+  (input-starved, producer-limited, dispatcher-limited, return-path-limited, budget-capped,
+  caught up, or not measured) and a summary such as "waiting on agenda text" or "eligible
+  backlog N, backlog seen for at least X h". Producers do not poll, so the
+  waiting-versus-completed split reads "not measured" until a run observes a poll; slot
+  productivity and failed-attempt share are dispatcher-side and also show "not measured". No
+  Worker, Durable Object, `/v2/stats` or storage-listing reads were added, no pipeline version
+  changed, and no stored artifact is invalidated.
+
+- Chapter-agenda and chapter-locator runs no longer fail when the shared `chapter-record-write`
+  lease is held by another live run: they wait up to 10 minutes, then skip the record commit as a
+  clean deferral (log line plus `record_write: skipped_lease_busy` on the run event). Lease
+  storage or corruption errors still fail the run (review/58 WP6).
+- The chapter-locator workflow now uses the same timeouts as chapter-agenda (job 240, step 225
+  minutes) so the 204-minute in-process stop budget fires before the step is killed; it was 45 and
+  38 minutes.
+
+- The LLM topic-tag producer runs every four hours (`19 */4 * * *`) instead of three times a day.
+
 - **Review/58 WP3a: stand down routes that cannot succeed.**
   `beatapi_jev_1_13_free` (`judge:anchor`: 717 HTTP 400 against 26 successes, 0 of 882 jobs
   recovered) and both BeatAPI GLM 5.3 Flash routes (`judge:adjudicator`: 721 HTTP 524 at

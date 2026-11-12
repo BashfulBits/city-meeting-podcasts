@@ -82,6 +82,7 @@ from citypods.ops.maintenance_leases import (
     CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
     CompositeMaintenanceLease,
     MaintenanceLease,
+    MaintenanceLeaseBusy,
 )
 from citypods.ops.maintenance_leases import (
     acquire as acquire_maintenance_lease,
@@ -2821,6 +2822,12 @@ def _chapter_batch_replay_items(
     return replay, submission_errors
 
 
+# A busy record-write lease means a sibling chapter lane (or a repair) is mid-commit; that window
+# is minutes (state push), so wait for it briefly before giving up on this run's commit.
+CHAPTER_RECORD_WRITE_LEASE_WAIT_SECONDS = 600.0
+CHAPTER_RECORD_WRITE_LEASE_POLL_SECONDS = 10.0
+
+
 @_contextmanager
 def _chapter_record_write_lease(
     storage,
@@ -2828,19 +2835,53 @@ def _chapter_record_write_lease(
     lane: str | None,
     maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None,
 ):
-    """Serialize chapter-lane read/merge/write commits without serializing their LLM work."""
+    """Serialize chapter-lane read/merge/write commits without serializing their LLM work.
+
+    Yields ``True`` when the commit may proceed (lease held, or no lease applies) and ``False``
+    when another live run still owns the record-write lease after a bounded wait. A busy lease is
+    a deferral, not a failure (deferred != failed): the caller skips its record commit and the
+    next scheduled run redoes the work (accepted Worker jobs are durable and idempotent by recipe).
+    Genuine lease errors (``MaintenanceLeaseUnavailable``, storage faults) still raise.
+    """
     if lane not in {"chapter-agenda", "chapter-locator"} or maintenance_lease is None:
-        yield
+        yield True
         return
-    write_lease = acquire_maintenance_lease(
-        storage,
-        owner=maintenance_lease.owner,
-        key=CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
-    )
+    deadline = time.monotonic() + CHAPTER_RECORD_WRITE_LEASE_WAIT_SECONDS
+    write_lease = None
+    while write_lease is None:
+        try:
+            write_lease = acquire_maintenance_lease(
+                storage,
+                owner=maintenance_lease.owner,
+                key=CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
+            )
+        except MaintenanceLeaseBusy as exc:
+            if time.monotonic() >= deadline:
+                print(
+                    f"state: {lane} record-write lease busy ({exc}); skipping this run's "
+                    "record commit as a clean deferral (not a failure)",
+                    flush=True,
+                )
+                yield False
+                return
+            time.sleep(CHAPTER_RECORD_WRITE_LEASE_POLL_SECONDS)
     try:
-        yield
+        yield True
     finally:
         write_lease.release()
+
+
+def _mark_record_write_skipped(state_dir: Path, run_event_path: str | None) -> None:
+    """Stamp the already-written run event so a skipped commit is visible, not silent."""
+    if not run_event_path:
+        return
+    path = state_dir / run_event_path
+    try:
+        event = json.loads(path.read_text())
+        event["record_write"] = "skipped_lease_busy"
+        path.write_text(json.dumps(event, indent=2) + "\n")
+    except (OSError, ValueError) as exc:
+        print(f"state: could not annotate run event {run_event_path}: {exc}", flush=True)
 
 
 def _build_impl(
@@ -4214,12 +4255,16 @@ def _build_impl(
                 # The per-lane leases let extraction and locator work overlap, but their source
                 # records live on the non-CAS B2 plane. Serialize the complete re-read/merge/upload
                 # critical section so a second lane cannot upload a merge based on an older read.
+                pushed = 0
                 with _chapter_record_write_lease(
                     storage,
                     lane=lane,
                     maintenance_lease=maintenance_lease,
-                ):
-                    pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
+                ) as record_write_held:
+                    if record_write_held:
+                        pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
+                    else:
+                        _mark_record_write_skipped(state_dir, run_event_path)
                 pushed += push_calendar_records_merged(
                     storage,
                     state_dir,

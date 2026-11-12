@@ -344,8 +344,11 @@ the private telemetry directory, so rescoring them needs a rerun or that directo
 
 The internal estimate undercounts provider prompt tokens on these packets: by 1.28 to 1.58 times for
 MiniMax, 1.52 to 2.23 for Gemini and 1.68 to 2.29 for Nemotron. The largest cohort packet (191,294
-estimated) was admitted as 263,297 provider tokens by MiniMax, above the 244,760 lower bound
-recorded in `provider_limits.yml`, and as about 348,000 by both Nemotron routes.
+estimated) was admitted as 263,297 provider tokens by MiniMax, and as about 348,000 by both
+Nemotron routes. The later WP8a probe (review/58; evidence file "MiniMax input-size probe (WP8a)
+and pause log") found MiniMax admits up to 941,663 provider tokens (610,831 estimated) and rejects
+709,545 estimated; `provider_limits.yml` now records 941,663 as the route's `hard_input_ceiling`,
+replacing the 244,760 lower bound. That probe measured admission only, not accuracy.
 
 Packets built for the 716 meetings with a pending locator result and at least one accepted agenda
 item (2026-11-11):
@@ -354,8 +357,8 @@ item (2026-11-11):
 |---|---:|
 | up to 76,000 (V4 Flash) | 222 |
 | 76,001 to 191,294 (largest packet scored here) | 342 |
-| 191,295 to 500,000 | 145 |
-| above 500,000 | 7 |
+| 191,295 to 500,000 (admitted by the WP8a probe, accuracy unscored) | 145 |
+| above 500,000 (held as deferred) | 7 |
 
 Median 107,252; p90 284,516; p99 474,974; largest 862,960. At the ratios above the largest packet
 is roughly 1.1 to 2.0 million provider tokens, which no free route's context window admits as a
@@ -366,9 +369,12 @@ single request. A split scheme for these is tracked in
 
 Use MiniMax M3.1 Flash with the baseline prompt for packets above 76,000 estimated tokens. It is
 within 2.7 points of Kimi K3 and 1.8 of V4.1 on this slice, answered every meeting, and is about
-ten times faster than V4.1. Cap it at the largest size measured here until a context-admission
-probe (review/58 WP8a) finds its real ceiling, and hold larger packets as deferred instead of sending them to V4.1,
-which timed out on about 95% of production calls in the week to 2026-11-11.
+ten times faster than V4.1. Hold larger packets as deferred instead of sending them to V4.1,
+which timed out on about 95% of production calls in the week to 2026-11-11. The cap was first set
+at the largest size measured here (191,294); after the WP8a context-admission probe it is 500,000
+estimated tokens (`LOCATOR_OVERFLOW_MAX_INPUT_TOKENS`, review/58 WP8). Accuracy between 191,294 and
+500,000 is unmeasured, and 2 of the probe's 5 admitted large answers were invalid (duplicate
+locator unit), so the cap is one constant to lower if large-packet quality proves poor.
 
 Limits of this evidence: 12 meetings, one pass, the baseline prompt only, and the same meeting set
 used for the earlier routing choices. MiniMax's configured output limit is 12,800 tokens, the

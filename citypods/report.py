@@ -1274,6 +1274,18 @@ def _timeline_audio_repair_status(records_cache: dict[str, dict]) -> dict:
     }
 
 
+def _llm_lane_table(history: list[dict], now) -> list[dict]:
+    """Per-lane funnel class from the ``llm_work`` aggregates already in run history.
+
+    No new reads: the run events were loaded for the history table. Dispatcher-side figures (slot
+    productivity, failed-attempt share) are not in producer events and are reported as such.
+    """
+    from citypods.compute.llm_lanes import load_lanes
+    from citypods.ops.lane_funnel import lane_rows
+
+    return lane_rows(history, sorted(load_lanes()), now=now)
+
+
 def build_status(cities: list, *, site_config: dict, state_dir: Path | None = None) -> dict:
     """Build the operational status snapshot for the /admin/status/ dashboard (issue #124).
 
@@ -1433,6 +1445,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         site_config, Path(state_dir) if state_dir else None
     )
     timeline_audio_repair = _timeline_audio_repair_status(records_cache)
+    llm_lanes = _llm_lane_table(history, now)
     audio_work = by_work_class.get("audio", {})
     audio_open = sum(
         n for state, n in audio_work.items() if state not in {"done", "alignment-disabled"}
@@ -1593,6 +1606,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "work_manifest": manifest_meta,
         },
         "transcript_quality": transcript_quality,
+        "llm_lanes": llm_lanes,
         "issues": {
             "deferred": actuals["deferred"],
             "dead": actuals["dead"],

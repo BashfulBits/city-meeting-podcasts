@@ -29,7 +29,7 @@
       "max_queued_jobs": 3200,
       "models": [
         "deepseek/deepseek-v4-flash",
-        "deepseek/deepseek-v4.1-flash"
+        "minimaxai/minimax-m3.1-flash"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
