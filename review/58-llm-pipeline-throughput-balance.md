@@ -384,14 +384,14 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 
 | # | Package | Model | Depends on | Expected gain | Verification |
 |---|---|---|---|---|---|
-| WP1a | Worker logs: `scheduled_claim`, `bundle_completed` (`index.js` only) | Sonnet | — | Measurement for all later gates | Workers Logs: both events present on every claimed tick |
+| WP1a | Worker logs: `scheduled_claim`, `bundle_completed` (`index.js` only) | Sonnet | — | Measurement for all later gates | Workers Logs: both events present on every claimed tick **Status: implemented in `feat/58-wp1a-dispatch-worker-logs` (PR open); owner deploys the Worker.** Admissible capacity is not in the claim response, so it is not logged; the in-flight ÷ admissible SLO still needs a coordinator change |
 | WP1b | Producer funnel telemetry + `/admin/status` lane table (**implemented, PR pending merge**: producer events carry `queue`, `admission`, `packets`, run-local first-seen times; the status table classes every lane; the waiting-vs-completed split, slot productivity and failed-attempt share read "not measured" because producers do not poll and those figures are dispatcher-side) | Sonnet | — | Closes the visibility gap | Status page shows a class for every lane |
 | WP2 | Per-route response timeout (config, compile script, `index.js`) | Sonnet, Opus review | WP1a | ~750k slot-seconds/week | Gemma timeouts end at 240 s; timeout share < 3% |
 | WP3a | Stand down routes that cannot succeed; fix stale tuning comments | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
 | WP3b | Route health ladder (coordinator) | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day |
 | WP3c | JEV 400 diagnosis | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
 | WP4 | Early slot release (coordinator + `index.js`) | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k |
-| WP5 | Hourly sweep | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
+| WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
 | WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger) | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains | Run conclusions; locator `ready` count falls |
 | WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
 | WP8 | Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 191,294 estimated tokens, hold larger packets as deferred, drop V4.1 from the lane, route output limit check | Opus | — (owner deploys the compiled route config) | 342 of 494 overflow packets get a working route | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; deferred count for oversize packets reported |
