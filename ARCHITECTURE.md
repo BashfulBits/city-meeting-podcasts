@@ -1045,7 +1045,9 @@ The dispatch Worker also logs two slot-use events (review/58 WP1a), one JSON lin
 DO read, row or subrequest added and no prompt, response or error text. `scheduled_claim`, once per
 claimed tick: `bundle_id`, `claimed_jobs`, `route_ids`, `in_flight_calls_before` and
 `active_bundles_before` (the DO's counts before this bundle, taken from the claim response),
-`candidate_jobs`. The claim response carries no admissible-capacity figure, so none is logged.
+`candidate_jobs`, and `admissible_calls` (WP3b: calls the routes the ranking scores above zero
+could hold, capped per provider and by `MAX_IN_FLIGHT_LLM_CALLS`; computed in the claim from the
+ranking it already made, so no read; null on a tick refused before ranking).
 `bundle_completed`, once per bundle after the commit: `bundle_id`, `bundle_duration_ms` (claim to
 commit), `commit_ok`, and `calls[]` with `route_id`, `purpose`, `final`, `outcome`,
 `failure_class`, `provider_status_code`, `call_duration_ms` and `hold_ms` (call end to commit) for
@@ -1133,6 +1135,28 @@ job requeues on the upstream-capacity budget and the route is stood down for
 `ROUTE_UNAVAILABLE_BLOCK_SECONDS`. A 404 is treated as a transient upstream fault (requeue plus the
 escalating 15s-5min upstream cooldown), because providers and aggregators return 404 while a model's
 backend is down. The response text fallback is bounded and not stored.
+The V2 coordinator also keeps a **route health ladder** (review/58 WP3b,
+`workers/llm-dispatch-v2/src/route_health.js`). Per route it counts consecutive failures with no
+success between, in three classes: response timeout (the Worker's deadline or a gateway 504/524),
+upstream capacity (`upstream_capacity`, a retryable 400, a final 5xx) and request defect (a 4xx
+`request_defect`, which still fails its own job). A class reaching its threshold (timeout 1,
+capacity 2, defect 3) puts the route on rung 1; each rung is a `blocked_until` cooldown
+(60 s, 300 s, 900 s, 3600 s), so the claim skips the route exactly as it skips any cooled route and
+jobs move to other routes of their model or stay queued; the ladder never fails a job. When a
+cooldown ends the route is half-open: the claim admits one call to it while that call holds a
+lease. A failed probe climbs a rung (the top rung re-arms); the first success clears the ladder
+and, as before, the route's cooldown. Failures of calls already in flight while the route cools are
+counted but do not climb. 429 pacing, `gateway_limit`, `route_unavailable` and unusable-reply
+classes are not tracked; pauses, `rpd: 0`, `yields_to`, `tier: backup`, lease expiry and stale
+tokens are unchanged. State is one sparse JSON map, `scheduler.route_health_json` (failing routes
+only): it rides the scheduler-authority SELECT every claim, completion and route view already
+make and the accounting UPDATE every transaction already issues, so a healthy route costs no row
+or read, and an escalation costs no row in packed mode (one `routes` UPDATE under the legacy
+tables). Absent or unreadable state reads as every route healthy. Every rung change and reset logs
+a `route_health` event; `/v2/stats?routes=1` lists `health_rung`, `health_class` and
+`health_until`, and the claim diagnostics list `route_health` rejections. Thresholds and rungs are
+`ROUTE_HEALTH_*` in `config/dispatch_tuning.yml`; `ROUTE_HEALTH_LADDER_ENABLED: 0` (or a Worker
+variable of that name) switches it off without a rollback.
 
 | Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Representative Context Window* | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
 |---|---|---|---|---|---|---|

@@ -1373,8 +1373,9 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
   }
 
   // review/58 WP1a: one line per claimed tick, from the claim response alone (no extra DO call).
-  // in_flight_calls and active_bundles are the DO's counts BEFORE this bundle was added; the claim
-  // response carries no admissible-capacity figure, so none is logged.
+  // in_flight_calls and active_bundles are the DO's counts BEFORE this bundle was added;
+  // admissible_calls (review/58 WP3b) is the in-flight ceiling the routes allowed at that moment,
+  // so in_flight_calls_before / admissible_calls is section 9's "in-flight / admissible".
   const claimDiagnostics = plan.claim_diagnostics || {};
   console.info(JSON.stringify({
     event: "scheduled_claim",
@@ -1382,6 +1383,7 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
     claimed_jobs: plan.jobs.length,
     route_ids: [...new Set(plan.jobs.map((job) => job.route_id))],
     in_flight_calls_before: claimDiagnostics.in_flight_calls ?? null,
+    admissible_calls: claimDiagnostics.admissible_calls ?? null,
     active_bundles_before: claimDiagnostics.active_bundles ?? null,
     candidate_jobs: claimDiagnostics.candidate_jobs ?? null,
   }));
