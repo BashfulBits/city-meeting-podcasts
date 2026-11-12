@@ -170,3 +170,19 @@ locator result; 4 have no accepted agenda items. Estimated input tokens for the 
 An earlier draft said V4.1 on NVIDIA had no successes. The Worker does not log successful non-Gemma
 calls; AI Gateway shows 6 successes (p50 242 s, longest 608 s) against 103 timeouts in the Worker
 log. The gateway does not record the timed-out requests, so their sizes are unknown.
+
+## JEV 400 diagnosis (WP3c, 2026-11-11 22:3xZ)
+
+Read from AI Gateway logs and BeatAPI's `GET /v1/models` (no request bodies or keys recorded).
+
+- Every `jev-1.13-free` call since 2026-11-05 returns HTTP 400 with body code `bad_request`,
+  message "The requested model is not available to this key: check the model id against
+  GET /v1/models, or retry in a few minutes if it worked before.", `retryable: false`, after about
+  16 to 18 s.
+- The last success was 2026-11-04T17:43Z, after 2,649 successes.
+- BeatAPI's model list for the primary key no longer contains `jev-1.13-free`; it lists `jev-1.13`
+  and `jev-1.14` (no free variant). The secondary key lists no jev model.
+- The same message appeared sporadically from 2026-10-11.
+- Conclusion: BeatAPI withdrew the free model from the key; the 400s are not a defect in our
+  request. The Worker classes this as `request_defect` (terminal for the job) although it is a
+  route-level availability failure.
