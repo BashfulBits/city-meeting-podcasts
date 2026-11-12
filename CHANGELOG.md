@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/58 WP3a: stand down routes that cannot succeed.**
+  `beatapi_jev_1_13_free` (`judge:anchor`: 717 HTTP 400 against 26 successes, 0 of 882 jobs
+  recovered) and both BeatAPI GLM 5.3 Flash routes (`judge:adjudicator`: 721 HTTP 524 at
+  BeatAPI's ~125 s edge limit) are paused with the existing `rpd: 0` convention. The
+  primary-account BeatAPI chat routes no longer `yield_to` the paused JEV route. Queued
+  `typesafe/jev-1.13` jobs are held, not failed, until review/58 WP3c restores the route.
+  Stale dispatch-tuning comments corrected (comments only, no values changed). Deploy the
+  recompiled `dispatch_limits.json` Worker to take effect; no pipeline-version bump and no
+  stored artifact is invalidated.
+
 - **Dispatch Worker slot-use logs (review/58 WP1a).** The Worker logs `scheduled_claim` (jobs,
   routes, in-flight calls and active bundles before the claim) on every claimed tick and
   `bundle_completed` (bundle duration; per call route, purpose, outcome, failure class, duration
