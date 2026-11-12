@@ -495,7 +495,7 @@ function renderLlmLanes(){
       ? `admitted ${fmtNum(l.admission.admitted)} · replayed ${fmtNum(l.admission.replayed)} · deferred ${fmtNum(l.admission.deferred)}`
       : 'not measured (older event)';
     const q = l.queue
-      ? `waiting ${fmtNum(l.queue.waiting_at_worker)} · completed ${fmtNum(l.queue.completed_uncollected)} · unobserved ${fmtNum(l.queue.unobserved)}`
+      ? `waiting ${fmtNum(l.queue.waiting_at_worker)} · completed ${fmtNum(l.queue.completed_uncollected)} · failed ${fmtNum(l.queue.failed_at_worker)} · unobserved ${fmtNum(l.queue.unobserved)}`
       : 'not measured';
     const pk = l.packets
       ? Object.entries(l.packets).map(([k,v])=>`${esc(k)} ${fmtNum(v)}`).join(' · ')

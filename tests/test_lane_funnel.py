@@ -96,9 +96,9 @@ def test_backlog_streak_stops_at_a_drained_run():
     assert "at least 5 h" in row["summary"]
 
 
-def test_first_seen_extends_the_streak_when_present():
+def test_oldest_eligible_extends_the_streak_when_present():
     older = (NOW - timedelta(hours=100)).isoformat()
-    history = [event(2, "chapter-agenda", purpose_row({"queued": 1}, first_seen_at=older))]
+    history = [event(2, "chapter-agenda", purpose_row({"queued": 1}, oldest_eligible_at=older))]
     (row,) = lane_rows(history, ["chapter-agenda"], now=NOW)
     assert "at least 4 d" in row["summary"]
 
@@ -156,3 +156,22 @@ def test_status_html_renders_the_lane_table():
         re.search(r'<script id="status-data" type="application/json">(.*?)</script>', html, re.S)[1]
     )
     assert {row["purpose"] for row in parsed["llm_lanes"]} == set(load_lanes())
+
+
+def test_errored_partial_and_failed_worker_rows_are_not_caught_up():
+    assert classify("judge:anchor", purpose_row({"errored": 2, "consumed": 1}))[0] == "e"
+    code, text = classify("judge:anchor", purpose_row({"consumed": 1}, coverage="partial"))
+    assert code == "unknown" and "partial" in text
+    assert classify("remedy:p3", purpose_row({"consumed": 1}, scope="sample"))[0] == "unknown"
+    failed = purpose_row(
+        {"queued": 3},
+        queue={"waiting_at_worker": 0, "completed_uncollected": 0, "failed_at_worker": 3},
+    )
+    assert "3 failed at the Worker" in classify("judge:anchor", failed)[1]
+
+
+def test_consumed_item_age_does_not_stretch_the_backlog_age():
+    old = (NOW - timedelta(hours=500)).isoformat()
+    row = purpose_row({"queued": 1}, first_seen_at=old, oldest_eligible_at=NOW.isoformat())
+    (out,) = lane_rows([event(2, "chapter-agenda", row)], ["chapter-agenda"], now=NOW)
+    assert "at least 2 h" in out["summary"]

@@ -164,3 +164,14 @@ def test_remedy_daily_snapshot_counts_findings_without_payloads():
     assert snap["states"] == {"consumed": 1, "policy_held": 1, "queued": 1}
     assert snap["packets"] == {"findings": 3, "pending": 1, "submitted_or_completed": 2}
     assert "f1" not in str(snap)
+
+
+def test_new_recipe_supersedes_stale_poll_observation():
+    work = tracker()
+    item = work.item("new-purpose", "a", producer="new-stage")
+    item.defer("queued")
+    item.job_outcome("a", "queued")
+    item.poll_outcome("a", "failed")
+    item.job_outcome("b", "queued")
+    assert row(work)["queue"]["failed_at_worker"] == 0
+    assert row(work)["queue"]["unobserved"] == 1

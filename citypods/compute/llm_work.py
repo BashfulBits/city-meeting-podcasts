@@ -255,6 +255,8 @@ class WorkItem:
     def job_outcome(self, recipe: str, status: str, reason: str | None = None) -> None:
         with self.tracker._lock:
             item = self._item()
+            if recipe not in item.jobs:
+                item.polled.clear()  # a new recipe supersedes earlier poll observations
             if status in _ADMISSION:
                 item.admission[recipe] = status
             item.jobs[recipe] = status

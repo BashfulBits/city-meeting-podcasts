@@ -80,17 +80,17 @@ def _backlog_since(events: list[tuple[datetime, dict]]) -> datetime | None:
 
     A lower bound on how long the oldest eligible item has waited: items older than the first
     event of the streak are invisible to run-local telemetry. Uses the earliest of the event time
-    and any ``first_seen_at`` / ``oldest_eligible_at`` the event carried.
+    and any ``oldest_eligible_at`` the event carried.
     """
     since = None
     for when, row in reversed(events):
         if _backlog(row) == 0:
             break
         candidates = [when]
-        for key in ("oldest_eligible_at", "first_seen_at"):
-            seen = _parse(row.get(key))
-            if seen is not None:
-                candidates.append(seen)
+        # Only the eligible timestamp: first_seen_at also covers consumed items.
+        seen = _parse(row.get("oldest_eligible_at"))
+        if seen is not None:
+            candidates.append(seen)
         since = min([since, *candidates]) if since else min(candidates)
     return since
 
@@ -111,6 +111,7 @@ def classify(purpose: str, row: dict) -> tuple[str, str]:
     ready, queued = _int(states.get("ready")), _int(states.get("queued"))
     limited, stopped = _int(states.get("ingress_limited")), _int(states.get("stopped"))
     blocked, policy_held = _int(states.get("blocked")), _int(states.get("policy_held"))
+    errored = _int(states.get("errored"))
     backlog = ready + queued + limited + stopped
     unit = row.get("unit") if isinstance(row.get("unit"), str) else "item"
     upstream = UPSTREAM.get(purpose, "upstream input")
@@ -118,10 +119,14 @@ def classify(purpose: str, row: dict) -> tuple[str, str]:
     if _int(row.get("observed")) == 0:
         return "unknown", "nothing observed in the latest event"
     if backlog == 0:
+        if errored:
+            return "e", f"{errored} {unit}s errored, none eligible{partial}"
         if policy_held:
             return "e", f"held by policy: {policy_held} {unit}s{partial}"
         if blocked:
             return "a", f"waiting on {upstream} ({blocked} {unit}s blocked){partial}"
+        if row.get("coverage") == "partial" or row.get("scope") == "sample":
+            return "unknown", "no backlog seen, but the event is a partial run or research sample"
         return "idle", f"caught up{partial}"
     # Most known work is not yet eligible: say so, then classify the eligible remainder.
     head = f"waiting on {upstream} ({blocked} blocked)" if blocked > backlog else ""
@@ -137,9 +142,13 @@ def classify(purpose: str, row: dict) -> tuple[str, str]:
         return "unknown", _text(head, body, backlog, unit, partial)
     waiting = _int(queue.get("waiting_at_worker"))
     done = _int(queue.get("completed_uncollected"))
+    failed = _int(queue.get("failed_at_worker"))
     if _int(queue.get("unobserved")) >= max(waiting, done, 1):
         body = f"{queued} queued; producers did not poll, so waiting vs completed is not measured"
         return "unknown", _text(head, body, backlog, unit, partial)
+    if failed > max(waiting, done):
+        body = f"{failed} failed at the Worker, awaiting retry"
+        return "c", _text(head, body, backlog, unit, partial)
     if done > waiting:
         body = f"{done} completed at the Worker, not collected"
         return "d", _text(head, body, backlog, unit, partial)
@@ -188,6 +197,7 @@ def lane_rows(
                 "event_ts": when.isoformat(),
                 "unit": row.get("unit"),
                 "coverage": row.get("coverage"),
+                "scope": row.get("scope"),
                 "observed": _int(row.get("observed")),
                 "backlog": _backlog(row),
                 "states": _counts(row.get("states")) or {},
