@@ -1079,8 +1079,8 @@ routes:
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE, 4 then; 1 since 2026-10-23) stack up to 6 in flight
+    # on one model and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
     # one -- up to 2 in flight while both transports are live, the same
     # coexistence caveat as split_cap_multiplier. Held at 1 on 2026-10-16 (with the 800 RPD raise),
     # 2 on 2026-10-17 to drain the judge sibling backlog, and back to 1 on 2026-10-19: with two
@@ -1136,8 +1136,8 @@ routes:
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE, 4 then; 1 since 2026-10-23) stack up to 6 in flight
+    # on one model and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
     # one -- up to 2 in flight while both transports are live, the same
     # coexistence caveat as split_cap_multiplier.
     concurrency: 4
@@ -1262,13 +1262,15 @@ routes:
   # rate-limit headers. Context limits are UNMEASURED conservative placeholders (BeatAPI publishes
   # none); run llm-rate-probe.yml phase 2 for this provider and author hard_input_ceiling from it.
   # The DeepSeek ids join the existing logical models rather than forming BeatAPI-only ones.
-  # `yields_to` (2026-10-09, review/53 PR2): each chat route steps aside while JEV has queued
-  # work, so JEV always gets the single-flight account window first and the chat routes take the
-  # idle minutes. An ordering rule only: a held chat job stays queued, never fails.
+  # `yields_to` (2026-10-09, review/53 PR2) made each chat route step aside while JEV had queued
+  # work. Removed 2026-11-11 (review/58 WP3a) with the JEV stand-down below: a route that is off
+  # (`rpd: 0`) must not hold the backups back, and the queued anchor jobs would have kept them
+  # yielding indefinitely. When JEV is restored (review/58 WP3c), re-add
+  # `yields_to: [beatapi_jev_1_13_free]` to the primary-account chat routes (not the secondary).
   # `tier: backup` (2026-10-08): ranked after every primary route in its pool, so these legs take
   # spill work only. They keep their full output limit: tag and moments jobs reserve 12-16k output
   # tokens and a smaller limit would drop the routes from those lanes. Yielding to JEV while it
-  # has queued work ships with the JEV route (review/49 P1).
+  # has queued work shipped with the JEV route (review/49 P1) and is off while JEV is stood down.
   # ==========================================
   # Local registration for review/51; deployment/admission remain separately gated.
   # Exact free ID verified by 60 original-prompt answers and 7 adjudication answers (Oct24).
@@ -1279,7 +1281,6 @@ routes:
     model_key: gemini/gemini-3.8-flash-free
     provider: beatapi
     tier: backup
-    yields_to: [beatapi_jev_1_13_free]
     upstream_model: gemini-3.8-flash-free
     input_context_limit: 128000
     output_context_limit: 16384
@@ -1298,7 +1299,6 @@ routes:
     model_key: deepseek/deepseek-v4-flash
     provider: beatapi
     tier: backup
-    yields_to: [beatapi_jev_1_13_free]
     upstream_model: deepseek-v4-flash-0731-free
     # The 0731 revision of V4 Flash; pools with OrcaRouter's `deepseek-v4-flash-free`. Reasoning model: spends output tokens on reasoning_content.
     input_context_limit: 128000
@@ -1318,7 +1318,6 @@ routes:
     model_key: deepseek/deepseek-v4.1-flash
     provider: beatapi
     tier: backup
-    yields_to: [beatapi_jev_1_13_free]
     upstream_model: deepseek-v4.1-flash-free
     # Pools with NVIDIA's deepseek-v4.1-flash. Reasoning model.
     input_context_limit: 128000
@@ -1338,7 +1337,6 @@ routes:
     model_key: deepseek/deepseek-v4-pro
     provider: beatapi
     tier: backup
-    yields_to: [beatapi_jev_1_13_free]
     upstream_model: deepseek-v4-pro-free
     # No other route serves V4 Pro today (NVIDIA retired v4-pro-0813). Reasoning model.
     input_context_limit: 128000
@@ -1358,7 +1356,6 @@ routes:
     model_key: openai/gpt-6-astra
     provider: beatapi
     tier: backup
-    yields_to: [beatapi_jev_1_13_free]
     upstream_model: gpt-6-astra-free
     # Response metadata says usage_source=anthropic / billing source claude_messages, so the serving family is unverified; do not treat it as an independent OpenAI family for judge selection.
     input_context_limit: 128000
@@ -1378,7 +1375,6 @@ routes:
     model_key: openai/gpt-6.1-sol
     provider: beatapi
     tier: backup
-    yields_to: [beatapi_jev_1_13_free]
     upstream_model: gpt-6.1-sol-free
     # Same metadata caveat as gpt-6-astra-free.
     input_context_limit: 128000
@@ -1438,7 +1434,8 @@ routes:
   # `api_shape: systemone` builds `{model, state, questions}` and posts to `request_path` under
   # the custom-beatapi gateway base. Limits measured 2026-09-30 (review/49 section 7): about 64k
   # input tokens total and 32k for state plus the largest question; plan for 58,000 total.
-  # Shares the account's one successful call/minute with the five chat routes above, which yield.
+  # Shares the account's one successful call/minute with the primary-account chat routes above,
+  # which yielded to it until the 2026-11-11 stand-down (see `yields_to` note above).
   # Output is a few hundred tokens and the endpoint takes no max_tokens; output_context_limit is
   # only the scheduling reservation. Worker-only: the Python catalog gives it no direct transport.
   - route_id: beatapi_secondary_gemini_3_8_flash_free
@@ -1472,6 +1469,12 @@ routes:
     output_context_limit: 16384
     account_id: primary
     rpm: 1
+    # STOOD DOWN 2026-11-11 (review/58 WP3a): `rpd: 0` is the paused-route convention. 721 x HTTP
+    # 524 over 2026-11-04..11 on both BeatAPI accounts: BeatAPI's edge ends a non-streaming call
+    # at about 125 s and streaming is disabled for Worker CPU, so a call needing longer cannot
+    # succeed (264k slot-seconds). Restore (delete this line) only if BeatAPI raises the edge
+    # limit or the Worker streams this route; `zai/glm-5.3-flash` stays served by OrcaRouter.
+    rpd: 0
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1510,7 +1513,15 @@ routes:
     hard_input_ceiling: 58000
     account_id: primary
     rpm: 1
-    rpd: 1400
+    # STOOD DOWN 2026-11-11 (review/58 WP3a): `rpd: 0` is the catalog's paused-route convention
+    # (the Worker neither ranks nor claims the route; queued `typesafe/jev-1.13` jobs are held,
+    # not failed). The prior daily limit was 1400. Over 2026-11-04..11 the route answered 717 x
+    # HTTP 400 against 26 successes, and 0 of 882 jobs whose first failure was a request defect
+    # recovered. Cause (review/58 WP3c, 2026-11-11): BeatAPI withdrew `jev-1.13-free` from the
+    # key (HTTP 400 `bad_request`, "not available to this key"); it is not a request defect.
+    # Restore the 1400 only if BeatAPI offers a free jev model again, or the owner approves a
+    # paid `jev-1.13`/`jev-1.14` route or a different anchor model.
+    rpd: 0
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1523,7 +1534,6 @@ routes:
     model_key: zai/glm-5.3-flash
     provider: beatapi
     tier: backup
-    yields_to: [beatapi_jev_1_13_free]
     upstream_model: glm-5.3-flash-free
     # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
     # values every BeatAPI route here uses until a measurement replaces them.
@@ -1531,6 +1541,12 @@ routes:
     output_context_limit: 16384
     account_id: primary
     rpm: 1
+    # STOOD DOWN 2026-11-11 (review/58 WP3a): `rpd: 0` is the paused-route convention. 721 x HTTP
+    # 524 over 2026-11-04..11 on both BeatAPI accounts: BeatAPI's edge ends a non-streaming call
+    # at about 125 s and streaming is disabled for Worker CPU, so a call needing longer cannot
+    # succeed (264k slot-seconds). Restore (delete this line) only if BeatAPI raises the edge
+    # limit or the Worker streams this route; `zai/glm-5.3-flash` stays served by OrcaRouter.
+    rpd: 0
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1543,7 +1559,6 @@ routes:
     model_key: minimax/minimax-m3.1-flash
     provider: beatapi
     tier: backup
-    yields_to: [beatapi_jev_1_13_free]
     upstream_model: minimax-m3.1-flash-free
     # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
     # values every BeatAPI route here uses until a measurement replaces them.

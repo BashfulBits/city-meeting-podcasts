@@ -185,7 +185,10 @@ Classification:
 - Evidence and cause, per route:
   - `beatapi_jev_1_13_free` (`judge:anchor`): 717 × 400 against 26 successes. `request_defect` is
     terminal for the job and sets no route cooldown; 0 of 882 jobs whose first failure was a request
-    defect recovered. Its `yields_to` rule also holds back the `beatapi_*` backup routes.
+    defect recovered. Its `yields_to` rule also holds back the `beatapi_*` backup routes. Cause
+    (WP3c, 2026-11-11): not a request defect. BeatAPI withdrew `jev-1.13-free` from the key (HTTP
+    400 `bad_request`, "not available to this key", `retryable: false`); the Worker classes this
+    route-level availability failure as `request_defect`.
   - AI Studio Gemma (`judge:sibling`): 6,934 × 503 `upstream_capacity`, route cooldown 5 s or less,
     up to 8 requeues; 7.5% of attempts succeeded in the last 48 h.
   - BeatAPI GLM 5.3 Flash (both accounts, `judge:adjudicator`): 721 × 524. BeatAPI's edge ends a
@@ -381,7 +384,10 @@ is added then.
      allows one call at a time at 1 RPM (at most 1,440 calls a day; observed latency 44 to 225 s)
      and shares NVIDIA's three slots.
    - No free Kimi K3 route exists on any configured provider (checked 2026-11-11).
-3. **JEV diagnosis: approved.** A handful of direct provider calls with a real packet (WP3c).
+3. **JEV diagnosis: approved, done 2026-11-11 (WP3c).** BeatAPI withdrew the free model, so the
+   400s are not a defect in our request (see the evidence file's "JEV 400 diagnosis (WP3c)").
+   Restoring anchor judging now needs an owner decision on the anchor model: wait for a free jev
+   model, approve a paid `jev-1.13`/`jev-1.14` route, or choose a different anchor.
 4. **Tagger daily ceiling: approved** to raise once WP4 shows the dispatcher drains it, within the
    6,000 global cap.
 5. **AI Gateway read permission: granted** on the ops token. Gateway retry, rate-limit and error
@@ -397,9 +403,9 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP1a | Worker logs: `scheduled_claim`, `bundle_completed` (`index.js` only) | Sonnet | — | Measurement for all later gates | Workers Logs: both events present on every claimed tick **Status: implemented in `feat/58-wp1a-dispatch-worker-logs` (PR open); owner deploys the Worker.** Admissible capacity is not in the claim response, so it is not logged; the in-flight ÷ admissible SLO still needs a coordinator change |
 | WP1b | Producer funnel telemetry + `/admin/status` lane table | Sonnet | — | Closes the visibility gap | Status page shows a class for every lane |
 | WP2 | Per-route response timeout (config, compile script, `index.js`) | Sonnet, Opus review | WP1a | ~750k slot-seconds/week | Gemma timeouts end at 240 s; timeout share < 3% |
-| WP3a | Stand down routes that cannot succeed; fix stale tuning comments | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
+| WP3a | Stand down routes that cannot succeed; fix stale tuning comments. **Status: implemented in PR (branch `fix/58-wp3a-stand-down-failing-routes`), awaiting merge and owner deploy.** `rpd: 0` on `beatapi_jev_1_13_free` and both `beatapi*_glm_5_3_flash_free`; the primary BeatAPI chat routes' `yields_to` JEV removed (re-add when WP3c restores JEV). `judge:adjudicator` keeps GLM via OrcaRouter and DeepSeek V4.1 via NVIDIA, BeatAPI primary and secondary. | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
 | WP3b | Route health ladder (coordinator) | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day |
-| WP3c | JEV 400 diagnosis | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
+| WP3c | JEV 400 diagnosis. **Done 2026-11-11:** BeatAPI withdrew `jev-1.13-free` from the key; restoring needs an owner decision on the anchor model (free model returns, paid route, or other anchor). | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
 | WP4 | Early slot release (coordinator + `index.js`) | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k |
 | WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
 | WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger) | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains | Run conclusions; locator `ready` count falls |

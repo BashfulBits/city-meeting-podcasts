@@ -1882,6 +1882,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("DISPATCH_WINDOW_SECONDS", 25);
   }
 
+  // The literal fallbacks in the `_max*` readers below are conservative defaults for a Worker with
+  // no tuning; production values come from config/dispatch_tuning.yml (MAX_BUNDLE_JOBS 6,
+  // MAX_JOBS_PER_ROUTE_PER_BUNDLE 1, MAX_CONCURRENT_ROUTE_LANES 6, MAX_ACTIVE_BUNDLES 12,
+  // MAX_IN_FLIGHT_LLM_CALLS 20, MAX_BUNDLES_PER_UTC_DAY 1400, DISPATCH_WINDOW_SECONDS 30).
   _maxBundleJobs() {
     return this._envInt("MAX_BUNDLE_JOBS", 4);
   }
@@ -6114,8 +6118,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         });
       }
       // The dispatch half of the DO row-write budget (write_budget.js): each lease costs up to
-      // ~40 billed rows through retirement. Bundles alone did not bound it -- 1,400 bundles of 5
-      // jobs could write ~280k rows against the account's 100,000/day.
+      // ~40 billed rows through retirement. Bundles alone did not bound it -- 1,400 bundles of up to
+      // 6 jobs could write ~336k rows against the account's 100,000/day.
       const maxLeasesPerDay = this._maxLeasesPerUtcDay();
       if (leasesRemaining <= 0) {
         return recordEmpty("daily_lease_limit", {

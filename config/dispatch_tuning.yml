@@ -154,7 +154,7 @@ CLEANUP_INTERVAL_MINUTES: 10
 PURGE_BATCH_LIMIT: 14
 # Admission-time allowance subtracted from the dispatch window: a job is admitted only if its
 # planned start + this value <= the window's end. Lowered 20 -> 2 on 2026-09-23. At 20 it
-# left only the first 5s of a 25s window usable, although nothing downstream needs the CALL to
+# left only the first 5s of the then 25s window usable (30s since the raise above), although nothing downstream needs the CALL to
 # finish inside the window -- the executor defers a job only when its START would fall past
 # the window (index.js dispatchOneJob), and a started call is already bounded by
 # MAX_RESPONSE_SECONDS inside the lease. The remaining 2s absorbs claim-to-receipt skew so a

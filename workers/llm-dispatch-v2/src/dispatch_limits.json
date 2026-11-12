@@ -1946,9 +1946,7 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
+      "yields_to": null,
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -1991,9 +1989,7 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
+      "yields_to": null,
       "structured_output_method": "json_object",
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
@@ -2036,9 +2032,7 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
+      "yields_to": null,
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -2081,9 +2075,7 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
+      "yields_to": null,
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -2126,9 +2118,7 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
+      "yields_to": null,
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -2171,9 +2161,7 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
+      "yields_to": null,
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -2324,7 +2312,7 @@
       "input_token_ratio": null,
       "account_id": "primary",
       "rpm": 1,
-      "rpd": null,
+      "rpd": 0,
       "tpd": null,
       "tpm": null,
       "concurrency": 1,
@@ -2410,7 +2398,7 @@
       "input_token_ratio": null,
       "account_id": "primary",
       "rpm": 1,
-      "rpd": 1400,
+      "rpd": 0,
       "tpd": null,
       "tpm": null,
       "concurrency": 1,
@@ -2453,7 +2441,7 @@
       "input_token_ratio": null,
       "account_id": "primary",
       "rpm": 1,
-      "rpd": null,
+      "rpd": 0,
       "tpd": null,
       "tpm": null,
       "concurrency": 1,
@@ -2474,9 +2462,7 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
+      "yields_to": null,
       "structured_output_method": "json_object",
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
@@ -2519,9 +2505,7 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": [
-        "beatapi_jev_1_13_free"
-      ],
+      "yields_to": null,
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
