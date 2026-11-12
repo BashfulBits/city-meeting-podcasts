@@ -10,8 +10,8 @@ which depends on that run's search results) doesn't leave orphaned records behin
 ``--full-prune-only`` maintenance mode performs a less-frequent full-registry TTL pass so terminal
 records that no longer have pending index pointers are eventually collected too.
 
-Scheduled every six hours, with one run inside DeepSeek's off-peak discount window (see the workflow
-this script backs). A normal run is an observation and bounded-retry pass, not a multi-hour drain:
+Scheduled hourly with a 45-minute job budget (see the workflow this script backs).
+A normal run is an observation and bounded-retry pass, not a multi-hour drain:
 durable v2 submissions and reads are batched, while direct retries stop cleanly at the configured
 deadline so the next cadence can make a fresh capacity decision.
 """
