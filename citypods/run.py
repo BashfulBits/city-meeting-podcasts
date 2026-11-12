@@ -3142,8 +3142,9 @@ def _build_impl(
             print(f"moments: LLM backend unavailable ({exc}); moments deferred", file=sys.stderr)
     judge_backend = None
     judging_config = site_config.get("judging") or {}
-    # review/53: the judge lane dispatches only through the Worker (JEV is api_shape systemone and
-    # has no direct transport); nothing is built unless judging is enabled for this lane.
+    # review/53: the judge lane dispatches only through the Worker (the anchor, Gemini Decision 1,
+    # is api_shape decisions and has no direct transport; review/58 WP9); nothing is built unless
+    # judging is enabled for this lane.
     if lane == "judge" and judging_config.get("enabled") and not dry_run and phase != "render":
         from dataclasses import replace as _dc_replace
 

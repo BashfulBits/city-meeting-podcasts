@@ -1,4 +1,10 @@
-# review/49 — Judge-consensus admission (JEV as anchor judge)
+# review/49 — Judge-consensus admission (anchor judge: JEV until 2026-11-05, Gemini Decision 1 from 2026-11-12)
+
+> **Anchor change (2026-11-12).** BeatAPI retired the free JEV tier on 2026-11-05. The `judge:anchor`
+> model is now Google's `gemini-decision-1`, in the same shadow state. See
+> [Gemini Decision 1 as the anchor](#gemini-decision-1-as-the-anchor-2026-11-12-review58-wp9). Where
+> this document says "JEV" for the anchor role, read "the anchor"; JEV's measurements below are kept
+> as dated history and are **not** Gemini Decision 1's.
 
 **Maturity: umbrella design; its phases are L3 in their build specs · authored 2026-09-29, revised 2026-10-11.
 P0 shipped ([review/50](50-p0-llm-verb-backlog-trend.md)). P1 to P5 and P7 are L3 in [review/53](53-judge-stack-tags-and-moments.md); P1 to P4 have
@@ -35,6 +41,9 @@ R6 (`judge_observations`), so this is a generalisation and consolidation, not a 
 
 ## Is JEV a good candidate?
 
+*History (2026-09-29): JEV was the anchor until BeatAPI retired its free tier on 2026-11-05; see
+"Gemini Decision 1 as the anchor" below for the current anchor.*
+
 Qualified yes. Reported, not independently verified by me: strong on RewardBench/HaluEval-style
 bounded judgments, low variance, returns probabilities, weak on reasoning-heavy judging (68.4% JudgeBench).
 That profile matches "is this tag supported by this chapter" and "is this quote supported and usable",
@@ -44,6 +53,119 @@ items (embarrassing to a person, member-of-public PII), where a single judge sho
 Hard constraints to design around: one job at a time, 1 RPM (free tier), 32k tokens of state plus the
 longest question (64k total window). About 1,440 calls/day at most, so **JEV is a scarce, slow anchor,
 not the bulk scorer**. Packing helps only if one call answers many questions about one shared state.
+
+## Gemini Decision 1 as the anchor (2026-11-12, review/58 WP9)
+
+This section is canonical for the anchor model. [review/58](58-llm-pipeline-throughput-balance.md)
+WP9 and the [2026-11-11 throughput evidence](evidence/2026-11-11-llm-pipeline-throughput.md) point here.
+
+### (a) What changed and the API
+
+BeatAPI retired the free JEV tier on **2026-11-05**. The `judge:anchor` lane now names
+`gemini/gemini-decision-1` (Google AI Studio). It takes JEV's place in the **same shadow state**
+(`judging.tasks.*.mode: shadow`): there is no new switch, and the anchor has no more authority than
+JEV had. JEV's route entry and family mapping stay in config, stood down, so its stored judgments
+still resolve.
+
+- **Endpoint:** `POST https://generativelanguage.googleapis.com/v1beta/decisions`, key in the
+  `x-goog-api-key` header. Through Cloudflare AI Gateway the path is
+  `…/google-ai-studio/v1beta/decisions`. Routes `gemini_decision_1_primary` and `_secondary` use the
+  existing `GEMINI_API_KEY` and `GEMINI_API_KEY_SECONDARY`; no new secret.
+- **Request:** `{model, input, questions: {<key>: {type: noul|choice|score, instructions, criteria}}}`.
+- **Response:** `answers.<key>` carries `noul` (a probability), `choice` (with a `probabilities` map)
+  or `score` (with `legend` and `probabilities`), and **every answer has a `confidence`**. Usage is
+  `{total_input_tokens, total_output_tokens: 0, total_tokens}`.
+- **Differences from BeatAPI `systemone`, and how the Worker absorbs them** (the `decisions` shape
+  in `workers/llm-dispatch-v2/src/api_shapes.js`; the Python producer still sends the `systemone`
+  payload):
+  - `input` replaces `state`. An object state is sent as JSON; an empty state gets a one-line
+    instruction to answer from each question's own evidence.
+  - Question keys must match `[A-Za-z0-9_-]{1,64}`. Keys that already match are sent unchanged and
+    reserved first; any other key is sent as its sanitised stem (54 characters at most) plus
+    `-<base-36 index>`, unique within the request. The reply is mapped back to the asked keys before
+    it is stored, so the producer never sees a wire key.
+  - `noul` takes no `criteria` (JEV accepted `criteria: {}`); the Worker drops it. `choice` and
+    `score` keep theirs.
+  - `noul` answers are clamped to **0.01–0.99** by Google, so no anchor answer is ever 0 or 1.
+  - `confidence` on every answer; the parser records it on `noul` judgments too.
+  - A `score` that arrives as a level string is read as that level's index. This is defensive and
+    not yet seen in replies.
+  - A 400 is classified by its body: safety block → `request_defect` (terminal); quota → reported
+    to the Worker as a 429 so it takes the rate-limit path (`own_rpm`/`own_tpm`/`own_rpd`); input
+    or question-count limit → `route_input_limit`; bad key → `route_unavailable` (account); model
+    unavailable → `route_unavailable` (route, retryable).
+- **Limits:** 262,144-token context; 1 to 1,000 questions per request; no Batch API; no context
+  caching. **Published** free tier per key: 200 RPM, 50,000 TPM, 10,000 RPD. These are Google's
+  published values, **not measured here**; confirm them in the first day of Worker logs.
+- **Capacity arithmetic.** TPM is the binding limit. Compiled TPM is 45,000 (10% margin), which is
+  also the route's `hard_input_ceiling`. A stored anchor request is 19k to 41k tokens, so each key
+  carries about **one request a minute**; with two keys, about two a minute. That is above JEV's
+  1 RPM account-wide budget, and it is not shared with any chat route. Packets are built under the
+  45,000 ceiling (`DecisionBackend`), not JEV's 28k state plus 58k total.
+- **Data use:** Google's free tier may use submitted content to improve its products. The packets
+  are public meeting transcripts and agenda text.
+
+### (b) Replay against JEV (agreement, not accuracy)
+
+Six stored JEV anchor requests (201 `noul` questions) were re-sent to Gemini Decision 1 and compared
+with JEV's stored answers. **This measures agreement with JEV, not accuracy:** neither model is
+ground truth on these items.
+
+| Measure | Value |
+|---|---|
+| Same side of 0.5 as JEV | 166 of 201 (82.6%) |
+| Opposite extremes (one at or below 0.2, the other at or above 0.8) | 0 |
+| Absolute difference in probability | median 0.087, p90 0.363 |
+| Answers at or beyond 0.2 / 0.8 | Gemini 64%, JEV 38% |
+| Latency | 0.6 to 0.8 s per request |
+| Input tokens | within about 3% of JEV's count for the same request |
+
+Gemini answers more decisively than JEV did. Whether that is better calibration or overconfidence is
+what (d) must measure.
+
+### (c) Where JEV is still named
+
+The sections below keep JEV's measurements as **dated history**. Each is annotated where it names
+JEV as the anchor; none of its numbers carries over to Gemini Decision 1:
+
+- section 3a backend mapping and the `choose` / `grade` evidence (JEV, 2026-09-30);
+- section 4 stability probes, `gold.json` and audit agreement (the mechanism stands; the per-judge
+  record restarts for the new model);
+- section 4b context-ladder calls per item (JEV packet sizes);
+- section 4c route table and the BeatAPI yield rule;
+- section 7 "Where JEV plugs in" (JEV API spike);
+- the capacity sections (JEV at 1 RPM and its row accounting).
+
+### (d) What must be re-measured on Gemini Decision 1
+
+- **`t_admit` and `t_reject`** (section 3). Gemini's answers are clamped to 0.01–0.99 and more
+  decisive, so JEV's thresholds do not transfer.
+- **Order-stability and paraphrase-stability probes** (section 4.3); JEV's "low variance" claim was
+  JEV's.
+- **The keyword-stuffing caveat** (section 7: a stuffed random text scored 0.92 on JEV).
+- **`grade` confidence** (JEV returned 0.09 to 0.3, so `grade` was a tie-break only).
+- **`choose` shuffle stability** (JEV: 6 of 6 meetings).
+- Packet-size versus accuracy at the 45,000-token ceiling, and the real per-key TPM and RPD.
+
+**JEV and Gemini telemetry are never pooled.** Every judgment records `judge_model`, and the packet
+recipe hash includes it, so a Gemini packet is a new recipe and JEV's stored judgments keep their
+hashes. `citypods/judging/report.py` keys anchor agreement, escalation rate and audit cells by anchor
+model. A pending JEV anchor marker is dropped once the anchor changes and is not counted as
+outstanding.
+
+### Independence with a Google anchor
+
+JEV was BeatAPI's own model, so it never shared a family with a producer. Gemini Decision 1 is in
+the `google` family, which also produces tags and moments and supplies the Gemma sibling. The rule is
+unchanged (every judge differs in family from the entry's producer and from each other); applying it
+now has these consequences:
+
+- An entry produced by a Google model gets **no anchor**.
+- An entry whose producer family is unknown gets no anchor (stricter; this also applies to JEV).
+- Siblings and adjudicators exclude the anchor's family, so **all rule-candidate sibling load moves
+  from Gemma to Nemotron**. Subjects that a Gemma sibling judged before get a new Nemotron sibling.
+- An entry produced by Nemotron gets no sibling.
+- Adjudication ignores a stored sibling judgment from the anchor's family.
 
 ## Proposed design
 
@@ -57,6 +179,8 @@ never overwritten (same rule as today).
 
 ### 2. JEV packing: one state per chapter/meeting, many questions
 
+*Anchor note (2026-11-12): the anchor is now Gemini Decision 1; the packing idea stands, but its packets are built under a 45,000-token ceiling, not JEV's 28k state plus 58k total (see "Gemini Decision 1 as the anchor").*
+
 State = the chapter (or the moment's surrounding window) transcript plus mapped agenda evidence, capped
 under ~28k tokens. Questions = every candidate tag on that chapter, or every moment candidate on that
 meeting. One call therefore judges a whole subject. Throughput is bounded by subjects/day, not candidates/day.
@@ -64,6 +188,7 @@ Subjects that do not fit get the normal `payload-too-large` deferral, never trun
 
 ### 3. Consensus admission rule
 
+- *(Anchor note, 2026-11-12: "JEV" in this rule now means the anchor, Gemini Decision 1; `t_admit` and `t_reject` are re-measured for it.)*
 - **Admit** when JEV `p >= t_admit` and at least one independent-family judge (existing Gemma or an
   `r6-judge` route) also says supported.
 - **Reject/suppress** when both are below `t_reject`.
@@ -85,7 +210,7 @@ The judge stack is not a tag feature. Any producer LLM task whose output is eith
   - `gate`: is it safe to publish (no PII, no mocking, not procedural filler)? Answer is a probability; **any** judge that flags it holds the subject.
   - `grade`: how good is it on an ordered scale? Answer is a level.
   - `choose`: which of these N subjects from the same group is best? Answer is a winner with probabilities.
-- **Backend mapping:** JEV: `validate` and `gate` are `noul`, `grade` is `score` with a `criteria` array, `choose` is `choice` with an options object (all verified live). LLM judges (Qwen via Groq, Gemma) get the same question compiled to a JSON schema (`{supported: boolean, quote}`, `{level: integer, reason}`, `{best: enum, reason}`). Both return the same normalized **judgment**: `{judge, task, subject_id, question_id, kind, value, confidence or probabilities, context_tier, prompt_version, evidence_digest}`.
+- **Backend mapping:** (JEV as verified 2026-09-30; Gemini Decision 1 uses the same `noul` / `score` / `choice` types without `criteria` on `noul`, see "Gemini Decision 1 as the anchor") JEV: `validate` and `gate` are `noul`, `grade` is `score` with a `criteria` array, `choose` is `choice` with an options object (all verified live). LLM judges (Qwen via Groq, Gemma) get the same question compiled to a JSON schema (`{supported: boolean, quote}`, `{level: integer, reason}`, `{best: enum, reason}`). Both return the same normalized **judgment**: `{judge, task, subject_id, question_id, kind, value, confidence or probabilities, context_tier, prompt_version, evidence_digest}`.
 - **Task spec** (a registry entry, one per task): subject kinds, group key, the ordered list of questions, how evidence is built at each context tier, the **consensus policy** per question kind, the **selection policy**, the probe set location, and the audit-item renderer.
 - **Consensus per kind:** `validate`: admit when the JEV and sibling probabilities are both high enough, reject when both are low enough, otherwise contested; `gate`: any judge above the flag level holds the subject; `grade`: admit on agreement of levels within one step, contested when they differ by more; `choose`: winners agree is decided, otherwise contested, and order-flips are treated as contested. **Contested goes to the adjudicator, then the weekly audit.** Thresholds are calibrated from probes and adjudicator agreement (section 4), never from human labels.
 - **Selection policy:** `all_admitted` (tags: every admitted tag is visible) or `top_k_per_group` (moments: at most K admitted subjects per meeting, chosen by the `choose` result with `grade` as the tie-break).
@@ -135,7 +260,7 @@ tags attach to; this design does not judge chapter discovery (that stays with th
    Until the set has enough items (about 20) it is reported but does not gate anything; judges are then ranked
    on stability (3) and adjudication (4) only.
 3. **Stability probes.** Re-ask a sample with shuffled question order and a paraphrase; a judge whose
-   verdict flips is unreliable on that item. This directly tests JEV's advertised low variance.
+   verdict flips is unreliable on that item. This directly tests JEV's advertised low variance (2026-11-12: re-run for Gemini Decision 1; JEV's stability record does not carry over).
 4. **Adjudication (rare, automated).** Not a second sibling judge. A *judge* is the routine
    cheap vote every candidate gets (JEV plus one sibling). An *adjudicator* is a third, stronger
    long-context model consulted only when the two judges disagree or are near threshold, and for a small
@@ -165,7 +290,7 @@ tags attach to; this design does not judge chapter discovery (that stays with th
 5. **Blind human audit (section 4a)** is a check on all of the above, not the source of truth.
 
 Reliability per judge is a windowed score from probes 2–4 (false-accept/false-reject rate, flip rate,
-agreement with adjudication), stored per (judge, task, prompt version). JEV becomes sole judge for a
+agreement with adjudication), stored per (judge, task, prompt version). The anchor (JEV until 2026-11-05, Gemini Decision 1 from 2026-11-12) becomes sole judge for a
 task only when it beats the panel on probes and adjudication over a minimum sample and duration.
 Consensus among judges alone is never used as truth, since they share biases.
 
@@ -216,6 +341,8 @@ page with embedded media; the exact vehicle (issue vs artifact/page) is an imple
 
 ### 4b. Context ladder: how much evidence should a judge see?
 
+*Anchor note (2026-11-12): the calls-per-item and accuracy figures below are JEV's; the tier rule stands, and its numbers are re-measured on Gemini Decision 1.*
+
 More context should raise accuracy and lower speed: a larger prompt carries fewer judgments per call, costs more tokens and, for the sibling judge, more Durable Object rows. The plan measures this instead of guessing.
 
 **Tiers (per task, built by the task spec's evidence builder).** Always included (they are cheap): the tag definition and the chapter or agenda title.
@@ -250,14 +377,14 @@ tags. Marginal cases are Uncertain, which the lane and the audit both exclude fr
 
 **Status.** The "second adjudicator route" was left to the locator verdict, which is now in ([review/40](40-generated-agenda-chapters.md), 2026-10-02): the production locator is DeepSeek V4 Flash (packets up to 76,000 estimated tokens) and Kimi K3 (larger); `chapter-agenda` is Nemotron 3 Ultra, tencent/hy3 and Gemini 3.1 Flash Lite. Those stay protected. The verdict released GLM 5.3 Flash, DeepSeek V4.1 Flash, Gemini 3.5 Flash and Gemini 3.5 Flash Lite. No adjudicator had been chosen before this; the split below is a recommendation for the maintainer.
 
-**Independence is per entry, not per lane.** Every LLM output records the model that produced it. When JEV and the sibling disagree on an entry, the adjudicator is picked from the adjudicator slots whose family differs from (a) that entry's producer and (b) the sibling judge that scored it. JEV is TypeSafe's own model, so it never collides. Two adjudicators from two different families therefore always leave at least one eligible adjudicator for any entry from any verb, provided neither sibling judge shares a family with them. Rule candidates have no producing model, so either adjudicator is eligible. This works for `r6-moments`, tags and future verbs without a per-lane list.
+**Independence is per entry, not per lane.** Every LLM output records the model that produced it. When JEV and the sibling disagree on an entry, the adjudicator is picked from the adjudicator slots whose family differs from (a) that entry's producer and (b) the sibling judge that scored it. JEV is TypeSafe's own model, so it never collides. (2026-11-12: Gemini Decision 1 is a Google model and does collide; the same rule now skips the anchor for Google-produced entries and keeps siblings and adjudicators out of the anchor's family.) Two adjudicators from two different families therefore always leave at least one eligible adjudicator for any entry from any verb, provided neither sibling judge shares a family with them. Rule candidates have no producing model, so either adjudicator is eligible. This works for `r6-moments`, tags and future verbs without a per-lane list.
 
 **Where the load is.** At 500 episodes/day the capacity table above has the sibling judge at about 470 calls/day packed per episode (about 230 packed across episodes) against a 600 RPD target, and the adjudicator at 60 to 120 packets/day. Throughput is a judge problem; the adjudicator only sees the contested residual.
 
 | Role | Route | Why | To verify before relying on it |
 |---|---|---|---|
-| Anchor judge | **JEV** (`jev-1.13-free`, BeatAPI) | Pinned (section 2) | Single-flight account shared with BeatAPI's chat routes (below) |
-| Sibling slot A, bulk | **Gemma 4 31B / 26B** (AI Studio, both projects) | Four 14,400 RPD pools at 30 RPM; the binding limit is about 16k tokens/minute and a 14,400-token ceiling, which fits T1 packets (about 25 items) and small T2 packets. Takes every rule candidate (99% of candidates today) and every entry not produced by a Google model | Daily token cap unrecorded; shares quota with the R5 pre-labeler lanes until P7 retires them; recorded AA is low (16.7 for 26B), which the probes and stability checks measure |
+| Anchor judge | **Gemini Decision 1** (`gemini_decision_1_primary` / `_secondary`, AI Studio) from 2026-11-12; JEV (`jev-1.13-free`, BeatAPI) until its free tier was retired on 2026-11-05 | Pinned (section 2) | Published free-tier limits unmeasured; Google family, so Google-produced entries get no anchor and siblings exclude Gemma (see "Gemini Decision 1 as the anchor") |
+| Sibling slot A, bulk | **Gemma 4 31B / 26B** (AI Studio, both projects) | Four 14,400 RPD pools at 30 RPM; the binding limit is about 16k tokens/minute and a 14,400-token ceiling, which fits T1 packets (about 25 items) and small T2 packets. Takes every rule candidate (99% of candidates today) and every entry not produced by a Google model. **2026-11-12:** with a Google anchor, Gemma is excluded as a sibling; this load moves to slot B | Daily token cap unrecorded; shares quota with the R5 pre-labeler lanes until P7 retires them; recorded AA is low (16.7 for 26B), which the probes and stability checks measure |
 | Sibling slot B, independent of Google | **Nemotron 3 Super 120B** (OpenRouter 200 RPD + NVIDIA leg) or **Qwen3.8-27B** (Groq) | Only needed for Gemini-produced LLM entries (tagger primary, moments primaries): a few dozen packets a day. Qwen's 200k TPD (about 25 six-thousand-token packets) makes Nemotron Super the steadier default; the league can trial both | Nemotron Super has no AA or judging record here; Qwen's TPD is shared with the existing `r6-judge` lane during migration |
 | Adjudicator 1 | **GLM 5.3 Flash** (OrcaRouter) | Highest recorded AA of the released routes (41.8), 1M context, 800 RPD, about 5 s, `json_object` verified | Orca's per-request free prompt cap (`err_free_prompt_cap`) at the adjudicator packet size; whether its 800 RPD is shared with Orca's other free models |
 | Adjudicator 2 | **DeepSeek V4.1 Flash**, NVIDIA leg | AA 39.5, 1M context, no RPD cap at 4 RPM; read long locator packets well (89.8% joint recall on the long slice) | Slow on long packets (about 502 s median); needs the `prompt_only` method on NVIDIA; the BeatAPI V4.1 leg must not serve adjudication (below) |
@@ -320,6 +447,8 @@ sets no numeric thresholds up front.
 - Two evaluators (`llm_evaluation.py`, `moment_evaluation.py`) converge on one engine.
 
 ### 7. Where JEV plugs in
+
+*Anchor note (2026-11-12): dated history. JEV is stood down; Gemini Decision 1 plugs in through the Worker's `decisions` API shape (see "Gemini Decision 1 as the anchor"). The JEV measurements below are not Gemini's.*
 
 Provider keys and queueing live in the dispatch Worker (`workers/llm-dispatch-v2`). Add JEV as a Worker route with `rpm: 1`, `concurrency: 1`
 in `config/provider_limits.yml` (same mechanism as other slow routes), queued like other `queue_only` lanes.
@@ -391,6 +520,8 @@ free-plan limit**, not the 61 the test predicts: the 39 variables match `wrangle
   should stay on existing gates until shadow data exists.
 
 ## Capacity check (maintainer figures, 2026-09-29)
+
+*Anchor note (2026-11-12): the JEV rows in this and the following capacity sections assume JEV at 1 RPM. Gemini Decision 1 is TPM-bound at about one 19k–41k-token request a minute per key, two keys (see "Gemini Decision 1 as the anchor").*
 
 Historical shorthand only: the job-to-meeting equivalence in this paragraph is superseded by
 the detailed 500-meeting table and the 800-meeting reconciliation below. It does not account
@@ -536,7 +667,7 @@ these token budgets and admissible packet sizes have been verified.
 | `chapter-locator` | crucial production | protected (the unpushed `chapter-locator` eval work is out of scope) |
 | `topic-tags:tagger` | additive verb | tagger league |
 | `r6-moments` | additive verb | moment-finder league |
-| `r6-judge` | judge | replaced by the shared `judge` lane, itself a league with JEV pinned plus two sibling slots (and a separate adjudicator league); today's models feed the sibling slots if eligible |
+| `r6-judge` | judge | replaced by the shared `judge` lane, itself a league with the anchor pinned (JEV until 2026-11-05, Gemini Decision 1 from 2026-11-12) plus two sibling slots (and a separate adjudicator league); today's models feed the sibling slots if eligible |
 | `topic-tags:prelabeler`, `topic-tags:prelabeler-shadow` | R5 evaluator | retire once judge lane is live; shadow first |
 | `tournament:tag`, `tournament:tag-judge` | route comparison | retire; replaced by league scoring |
 | `r5-benchmark:tag`, `r5-benchmark:judge` | R5 benchmark | retire; its frozen sample folds into `evals/tag-judge/` |
@@ -661,13 +792,14 @@ Two separate decisions, each stated relative to a measured baseline rather than 
 - Audit audio is a link to the meeting page at `#t=`; no clip uploads, no PAT.
 - The mobile check of the `#t=` link is deferred to the website redesign.
 - Approved 2026-09-30: the worked shadow and switch-over example (a tag is visible only once judged good), the two relative graduation rules, and the initial context rule (judge at T1, escalate to T2 when p is 0.3 to 0.7).
-- Approved 2026-10-08: the judge and adjudicator split of section 4c (JEV anchor; Gemma 4 31B/26B bulk sibling; Nemotron 3 Super as the non-Google sibling; GLM 5.3 Flash and DeepSeek V4.1 Flash adjudicators; independence per entry).
+- Approved 2026-10-08: the judge and adjudicator split of section 4c (JEV anchor, replaced by Gemini Decision 1 on 2026-11-12; Gemma 4 31B/26B bulk sibling; Nemotron 3 Super as the non-Google sibling; GLM 5.3 Flash and DeepSeek V4.1 Flash adjudicators; independence per entry).
+- Owner correction 2026-11-12: BeatAPI retired free JEV on 2026-11-05; Gemini Decision 1 is the anchor in the same shadow state, with no new switch and no added authority; JEV and Gemini telemetry are kept apart by `judge_model`.
 - The 15 adjudicated context labels are Claude's and were shown to the maintainer for a sanity check; they are replaced over time by audit-verified labels, not by a separate labeling exercise.
 
 ## Open questions (remaining)
 
 1. **Judge and adjudicator routes:** approved 2026-10-08 (section 4c).
-2. **BeatAPI chat routes as backups:** backup tier shipped; yield-to-JEV ships with P1 (section 4c).
+2. **BeatAPI chat routes as backups:** backup tier shipped; yield-to-JEV ships with P1 (section 4c). (2026-11-12: moot while JEV is stood down; `yields_to` stays removed.)
 
 ## Path to L3
 
@@ -687,3 +819,4 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 | P6 | route leagues stay L2 until the judge lanes have run with authority; review/53 already carries `active`/`eligible` pools for them |
 | Judge and adjudicator routes | recommendation in section 4c; qualified the section 4 way (audit-grown probes, stability, audit agreement, quote check), no separate benchmark |
 | Open decisions | shadow and switch-over shape, graduation wording (above) |
+| Anchor replacement (2026-11-12) | Gemini Decision 1 replaces JEV in the same shadow state ([review/58](58-llm-pipeline-throughput-balance.md) WP9); thresholds and stability probes are re-measured per "Gemini Decision 1 as the anchor" (d) |

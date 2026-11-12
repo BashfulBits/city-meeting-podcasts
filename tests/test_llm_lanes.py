@@ -498,8 +498,11 @@ class TestJudgePools:
 
     def test_repository_judge_lanes(self):
         lanes = load_lanes()
-        assert lanes["judge:anchor"].models == ("typesafe/jev-1.13",)
+        # review/58 WP9: Gemini Decision 1 replaced JEV (retired from BeatAPI's free tier).
+        assert lanes["judge:anchor"].models == ("gemini/gemini-decision-1",)
         sibling = lanes["judge:sibling"]
+        # The anchor is Google, so a non-Google sibling slot must exist for its subjects.
+        assert load_families()["gemini/gemini-decision-1"] == "google"
         assert sibling.eligible_models == ("qwen/qwen3.8-27b",)
         assert "qwen/qwen3.8-27b" in sibling.slot_models["non_google"]
         assert set(lanes["judge:adjudicator"].models) == {

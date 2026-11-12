@@ -372,6 +372,11 @@ is added then.
      the route allows one call at a time at 1 RPM and shares NVIDIA's three slots.
    - No free Kimi K3 route exists on any configured provider (checked 2026-11-11).
 3. **JEV diagnosis: approved.** A handful of direct provider calls with a real packet (WP3c).
+   **Superseded 2026-11-12 (owner correction):** BeatAPI retired the free JEV tier on
+   2026-11-05, so the anchor moves to Google's Gemini Decision 1 in the same shadow state, with
+   no new switch and no added authority (WP9). The API, replay against JEV, independence
+   consequences and what must be re-measured are canonical in
+   [review/49](49-judge-consensus-admission.md#gemini-decision-1-as-the-anchor-2026-11-12-review58-wp9).
 4. **Tagger daily ceiling: approved** to raise once WP4 shows the dispatcher drains it, within the
    6,000 global cap.
 5. **AI Gateway read permission: granted** on the ops token. Gateway retry, rate-limit and error
@@ -396,3 +401,4 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
 | WP8 | Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 191,294 estimated tokens, hold larger packets as deferred, drop V4.1 from the lane, route output limit check | Opus | — (owner deploys the compiled route config) | 342 of 494 overflow packets get a working route | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; deferred count for oversize packets reported |
 | WP8a | MiniMax input-size probe (approved by the owner 2026-11-11): with the route paused, send real pending locator packets of increasing size above 191,294 estimated tokens through the evaluation runner until one is rejected or times out; record admitted and rejected provider token counts and latency; update `hard_input_ceiling` and the WP8 cap from the result | Lead (holds the pause) | — | Up to 145 more packets if the ceiling is near 500,000 | Largest admitted and smallest rejected size recorded in the evidence file; pause logged and released |
+| WP9 | Gemini Decision 1 as the `judge:anchor` model (owner correction 2026-11-12): Worker `decisions` API shape, two routes on the existing Gemini keys, `DecisionBackend`, anchor independence across all judges, per-anchor-model report; canonical in [review/49](49-judge-consensus-admission.md#gemini-decision-1-as-the-anchor-2026-11-12-review58-wp9) | Opus | WP3a (JEV stood down) | Restores `judge:anchor` in shadow at about one request a minute per key | Attempts on `gemini_decision_1_*` succeed; anchor judgments carry `judge_model: gemini/gemini-decision-1`; first-day 429s match the published limits |

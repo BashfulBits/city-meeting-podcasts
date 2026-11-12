@@ -1,8 +1,9 @@
 """Which wire protocol a compiled LLM route speaks (review/53 PR1/PR2).
 
 Routes default to OpenAI-style chat completions. A route with another ``api_shape`` (BeatAPI's JEV
-``systemone`` judge endpoint) is reached only through the dispatch Worker, which builds its
-requests in ``workers/llm-dispatch-v2/src/api_shapes.js``.
+``systemone`` judge endpoint; Google's Gemini Decision 1 ``decisions`` endpoint, review/58 WP9) is
+reached only through the dispatch Worker, which builds its requests in
+``workers/llm-dispatch-v2/src/api_shapes.js``.
 """
 
 from __future__ import annotations

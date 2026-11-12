@@ -199,10 +199,14 @@ llm_lanes:
   # Nothing enqueues to these lanes until the judge stage (PR3) and `judging.enabled` (PR4).
   judge:anchor:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
-    # JEV through BeatAPI's systemone endpoint; about 190 routine jobs/day at 800 meetings. The
-    # cap stays under the account's ~1,440 successful calls/day, which the BeatAPI chat backups
-    # share (they yield to JEV while it has queued work).
-    models: ["typesafe/jev-1.13"]
+    # Gemini Decision 1 through Google's /v1beta/decisions endpoint on both Gemini keys (review/58
+    # WP9, review/49 "Gemini Decision 1 as the anchor"); about 190 routine jobs/day at 800
+    # meetings. It replaced JEV (typesafe/jev-1.13), which BeatAPI retired from its free tier on
+    # 2026-11-05; JEV's existing judgments stay as history under their own model identity. TPM
+    # binds at about one 40k-token packet a minute per key, far above this lane's demand.
+    # Gemini is `google`: the judge stack gives no anchor to a Google-produced entry and draws
+    # siblings from the non-Google slot when the anchor is Google (citypods/judging/families.py).
+    models: ["gemini/gemini-decision-1"]
     dispatch_shape: per_model
     max_queued_jobs: 800
     # review/53 PR4: routine ~191 jobs/day x 4 units x 1.2.
@@ -275,6 +279,7 @@ llm_families:
   "gemini/gemini-3.6-flash": google
   "gemini/gemini-3.7-flash": google
   "gemini/gemini-3.8-flash": google
+  "gemini/gemini-decision-1": google
   "google/gemma-4-26b-a4b-it": google
   "google/gemma-4-31b-it": google
   "deepseek/deepseek-v4-flash": deepseek
