@@ -2813,3 +2813,13 @@ def test_queued_packets_of_a_removed_sibling_are_let_go_and_its_answers_stay():
     }
     [subject2] = _subjects(ep2)
     assert not [m for m in ledger.pending(subject2) if m.get("judge_model") == GEMMA_31B]
+
+
+def test_the_repository_config_caps_the_qwen_sibling_below_the_purpose_limit():
+    import yaml
+
+    config = yaml.safe_load(Path("config/site_config.yml").read_text())["judging"]
+    assert QWEN in REPO_SIBLING_LANE.models
+    per_model = config["max_outstanding_per_sibling"]
+    assert per_model == {QWEN: 40}
+    assert per_model[QWEN] < config["max_outstanding_packets"]["sibling"]
