@@ -56,7 +56,7 @@
       "daily_write_units": 5600,
       "max_queued_jobs": 800,
       "models": [
-        "typesafe/jev-1.13"
+        "gemini/gemini-decision-1"
       ],
       "backup_models": [],
       "backup_after_attempts": null,

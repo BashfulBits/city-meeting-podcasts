@@ -47,14 +47,26 @@ class Due:
     sample: str  # CONTESTED | CALIBRATION
 
 
-def _by_tier(subject: Subject, question_id: str, role: str, model: str | None) -> dict[str, Any]:
-    """Newest value per tier; only adjudicators require a passing quote check."""
+def _by_tier(
+    subject: Subject,
+    question_id: str,
+    role: str,
+    model: str | None,
+    *,
+    exclude_family: str | None = None,
+    families: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Newest value per tier; only adjudicators require a passing quote check.
+
+    ``exclude_family`` drops rows by judges of that family (with ``families``): a sibling of the
+    anchor's own family is not an independent second reading (review/58 WP9)."""
     found: dict[str, Any] = {}
     for row in ledger.judgments(subject):
         if (
             row.get("question_id") == question_id
             and row.get("judge_role") == role
             and (model is None or row.get("judge_model") == model)
+            and not _of_family(row.get("judge_model"), exclude_family, families)
             and ledger.usable_vote(row)
             and row.get("context_tier") in TIERS
         ):
@@ -62,14 +74,38 @@ def _by_tier(subject: Subject, question_id: str, role: str, model: str | None) -
     return found
 
 
+def _of_family(model: Any, family: str | None, families: Mapping[str, str] | None) -> bool:
+    if family is None or families is None or not model:
+        return False
+    return family_of(str(model), families) == family
+
+
+def _anchor_family(anchor_model: str | None, families: Mapping[str, str] | None) -> str | None:
+    if not anchor_model or families is None:
+        return None
+    return family_of(anchor_model, families)
+
+
 def _number(value: Any) -> float | None:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
-def sibling_model_of(subject: Subject, question_id: str) -> str | None:
-    """The sibling model that judged this question (the independence rule needs it)."""
+def sibling_model_of(
+    subject: Subject,
+    question_id: str,
+    *,
+    anchor_model: str | None = None,
+    families: Mapping[str, str] | None = None,
+) -> str | None:
+    """The sibling model that judged this question (the independence rule needs it); with
+    ``anchor_model`` and ``families``, only a sibling independent of the anchor counts."""
+    excluded = _anchor_family(anchor_model, families)
     for row in ledger.judgments(subject):
-        if row.get("question_id") == question_id and row.get("judge_role") == "sibling":
+        if (
+            row.get("question_id") == question_id
+            and row.get("judge_role") == "sibling"
+            and not _of_family(row.get("judge_model"), excluded, families)
+        ):
             return str(row.get("judge_model") or "") or None
     return None
 
@@ -133,15 +169,26 @@ def _contested(
 
 
 def due_questions(
-    subject: Subject, spec: TaskSpec, *, anchor_model: str, calibration_rate: float
+    subject: Subject,
+    spec: TaskSpec,
+    *,
+    anchor_model: str,
+    calibration_rate: float,
+    families: Mapping[str, str] | None = None,
 ) -> list[Due]:
-    """The per-subject questions (not ``choose``) whose adjudication is due, from judgments."""
+    """The per-subject questions (not ``choose``) whose adjudication is due, from judgments.
+
+    With ``families``, a sibling reading of the anchor's own family is ignored (review/58 WP9: a
+    Gemma reading recorded under the JEV anchor is not independent of the Gemini anchor)."""
+    excluded = _anchor_family(anchor_model, families)
     due: list[Due] = []
     for question in spec.questions:
         if question.kind == "choose":
             continue
         anchor = _by_tier(subject, question.id, "anchor", anchor_model)
-        sibling = _by_tier(subject, question.id, "sibling", None)
+        sibling = _by_tier(
+            subject, question.id, "sibling", None, exclude_family=excluded, families=families
+        )
         if not anchor or not sibling:
             continue  # nothing to compare yet
         if _awaiting_escalation(subject, spec, question, anchor, anchor_model):
@@ -154,15 +201,30 @@ def due_questions(
     return due
 
 
-def _winner(subject: Subject, question_id: str, role: str, model: str | None) -> str | None:
-    values = _by_tier(subject, question_id, role, model)
+def _winner(
+    subject: Subject,
+    question_id: str,
+    role: str,
+    model: str | None,
+    *,
+    exclude_family: str | None = None,
+    families: Mapping[str, str] | None = None,
+) -> str | None:
+    values = _by_tier(
+        subject, question_id, role, model, exclude_family=exclude_family, families=families
+    )
     if not values:
         return None
     return str(values[max(values, key=_tier_rank)])
 
 
 def choose_due(
-    subjects: Sequence[Subject], spec: TaskSpec, *, anchor_model: str, calibration_rate: float
+    subjects: Sequence[Subject],
+    spec: TaskSpec,
+    *,
+    anchor_model: str,
+    calibration_rate: float,
+    families: Mapping[str, str] | None = None,
 ) -> Due | None:
     """The meeting's ``choose`` question, when the anchor's or the judges' winners disagree."""
     question = next((q for q in spec.questions if q.kind == "choose"), None)
@@ -171,7 +233,14 @@ def choose_due(
     key = subjects[0]  # the group's rows live on its first subject (see runner._plan_choose)
     forward = _winner(key, question.id, "anchor", anchor_model)
     reverse = _winner(key, f"{question.id}_r", "anchor", anchor_model)
-    sibling = _winner(key, question.id, "sibling", None)
+    sibling = _winner(
+        key,
+        question.id,
+        "sibling",
+        None,
+        exclude_family=_anchor_family(anchor_model, families),
+        families=families,
+    )
     if forward is None or reverse is None or sibling is None:
         return None
     if forward != reverse or forward != sibling:
@@ -197,21 +266,35 @@ def adjudicator_for_group(
     sibling_model: str | None,
     adjudicator: LaneConfig,
     families: Mapping[str, str],
+    *,
+    anchor_model: str | None = None,
 ) -> str | None:
-    """An adjudicator independent of every producer in the meeting and of its sibling."""
+    """An adjudicator independent of every producer in the meeting, its sibling and the anchor."""
     excluded = {family_of(subject.producer_model, families) for subject in subjects}
     if UNKNOWN_FAMILY in excluded:
         return None
     if sibling_model:
         excluded.add(family_of(sibling_model, families))
+    if anchor_model:
+        excluded.add(family_of(anchor_model, families))
     return next((m for m in adjudicator.models if families.get(m) not in excluded), None)
 
 
 def subject_adjudicator(
-    subject: Subject, question_id: str, adjudicator: LaneConfig, families: Mapping[str, str]
+    subject: Subject,
+    question_id: str,
+    adjudicator: LaneConfig,
+    families: Mapping[str, str],
+    *,
+    anchor_model: str | None = None,
 ) -> str | None:
+    anchor = _anchor_family(anchor_model, families)
     return adjudicator_for(
-        subject.producer_model, sibling_model_of(subject, question_id), adjudicator, families
+        subject.producer_model,
+        sibling_model_of(subject, question_id, anchor_model=anchor_model, families=families),
+        adjudicator,
+        families,
+        exclude_families=frozenset({anchor}) if anchor else frozenset(),
     )
 
 
@@ -238,20 +321,36 @@ def pending_adjudication(
     for subject in subjects:
         skipped = ledger.unbuildable(subject)
         for due in due_questions(
-            subject, spec, anchor_model=anchor_model, calibration_rate=calibration_rate
+            subject,
+            spec,
+            anchor_model=anchor_model,
+            calibration_rate=calibration_rate,
+            families=families,
         ):
-            model = subject_adjudicator(subject, due.question.id, adjudicator, families)
+            model = subject_adjudicator(
+                subject, due.question.id, adjudicator, families, anchor_model=anchor_model
+            )
             if model is None or adjudicated(subject, due.question.id, model):
                 continue
             if skipped.get(adjudication_unbuildable_key(due.question, model)) == identity:
                 continue
             return True
-    group = choose_due(subjects, spec, anchor_model=anchor_model, calibration_rate=calibration_rate)
+    group = choose_due(
+        subjects,
+        spec,
+        anchor_model=anchor_model,
+        calibration_rate=calibration_rate,
+        families=families,
+    )
     if group is None:
         return False
     key = subjects[0]
     model = adjudicator_for_group(
-        subjects, sibling_model_of(key, group.question.id), adjudicator, families
+        subjects,
+        sibling_model_of(key, group.question.id, anchor_model=anchor_model, families=families),
+        adjudicator,
+        families,
+        anchor_model=anchor_model,
     )
     if model is None:
         return False

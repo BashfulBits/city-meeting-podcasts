@@ -272,9 +272,18 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
   // A route may speak a different endpoint than its provider's chat path (BeatAPI's JEV route
   // posts to /systemone under the same base, review/53 PR1); `request_path` then replaces both the
   // direct chat path and the AI Gateway path for that route only.
+  // `request_path` is the path under the AI Gateway provider base (as the provider's
+  // `ai_gateway_chat_path` is). The direct URL puts it under the same base, read from the provider's
+  // own chat URL: for BeatAPI that is `api_base` itself (`…/v1` + `/systemone`), for Google AI
+  // Studio, whose `api_base` ends in `/v1beta/openai`, it is the host (`…` + `/v1beta/decisions`).
   const requestPath = typeof route.request_path === "string" && route.request_path ? route.request_path : null;
-  const chatPath = requestPath || providerCfg.chat_path || "/v1/chat/completions";
-  const directUrlString = `${apiBase}${chatPath}`;
+  const chatPath = providerCfg.chat_path || "/v1/chat/completions";
+  const providerChatUrl = `${apiBase}${chatPath}`;
+  const gatewayChatPath = providerCfg.ai_gateway_chat_path;
+  const directRequestBase = requestPath && gatewayChatPath && providerChatUrl.endsWith(gatewayChatPath)
+    ? providerChatUrl.slice(0, providerChatUrl.length - gatewayChatPath.length)
+    : apiBase;
+  const directUrlString = requestPath ? `${directRequestBase}${requestPath}` : providerChatUrl;
 
   let parsedDirectUrl;
   try {
@@ -337,7 +346,8 @@ export async function callAiGateway({
   env, route, payload, dispatchLimits, idempotencyKey, signal, shaping, onRequestStart,
 }) {
   const creds = resolveProviderCredentials(env, route, dispatchLimits);
-  const upstreamPayload = apiShapeFor(route).buildRequest(payload, route, shaping);
+  const shape = apiShapeFor(route);
+  const upstreamPayload = shape.buildRequest(payload, route, shaping);
 
   const streaming = creds.streamResponse && (route.api_shape || "chat") === "chat";
   if (streaming) {
@@ -348,7 +358,12 @@ export async function callAiGateway({
     accept: streaming ? "text/event-stream, application/json" : "application/json",
     "content-type": "application/json",
   };
-  if (creds.apiKey) headers.authorization = `Bearer ${creds.apiKey}`;
+  // A shape may name its own key header (Google's native endpoints take `x-goog-api-key`).
+  if (creds.apiKey) {
+    Object.assign(headers, shape.authHeaders
+      ? shape.authHeaders(creds.apiKey)
+      : { authorization: `Bearer ${creds.apiKey}` });
+  }
   // Matches v1: only attach the gateway's own auth when this call actually goes through it, and
   // only when a token is configured -- a direct-to-provider call has no gateway edge to
   // authenticate against.
@@ -387,10 +402,19 @@ export async function callAiGateway({
       body = rawBody.slice(0, MAX_PROVIDER_ERROR_BODY_CHARS);
     }
   }
+  // A shape that renames things on the wire (decisions' question keys) maps a 2xx reply back here,
+  // so every reply check, the stored result and the producer see the request's own keys.
+  if (response.ok && parseError === null && shape.normalizeReply) {
+    body = shape.normalizeReply(payload, body);
+  }
   const retryAfterSeconds = parseRetryAfterSeconds(response, normalizeProviderBody(body));
+  // A shape whose provider reports rate limits under another status maps it to 429 here.
+  const status = !response.ok && shape.normalizeStatus
+    ? shape.normalizeStatus(response.status, body)
+    : response.status;
 
   return {
-    status: response.status,
+    status,
     ok: response.ok && parseError === null,
     // The output cap this request actually carried, so a reply cut off at it can be told apart
     // from one cut off lower (see the output_budget_exhausted result).

@@ -62,6 +62,11 @@ LANES["judge:sibling"] = dataclasses.replace(
 )
 FAMILIES = load_families()
 GEMINI = "gemini/gemini-3.1-flash-lite"
+# The judge mechanics below were written against JEV, whose family (typesafe) no producer or
+# sibling shares; they keep that anchor so they test the mechanics alone. The repository anchor is
+# Gemini Decision 1 (review/58 WP9), covered by the "Gemini Decision 1 anchor" tests at the end.
+DECISION_ANCHOR_LANE = LANES["judge:anchor"]
+LANES["judge:anchor"] = dataclasses.replace(DECISION_ANCHOR_LANE, models=("typesafe/jev-1.13",))
 
 
 def _segments(n=200, seconds=10.0, word="budget"):
@@ -882,9 +887,12 @@ def test_the_report_reads_agreement_escalation_and_backfill_from_stored_judgment
 
     from citypods.judging.report import summarize
 
-    def row(role, value, tier="T1", sample="routine"):
+    jev, gemini = "typesafe/jev-1.13", "gemini/gemini-decision-1"
+
+    def row(role, value, tier="T1", sample="routine", model=jev):
         return {
             "judge_role": role,
+            "judge_model": model if role == "anchor" else "openrouter/nvidia/x",
             "kind": "validate",
             "question_id": "supported",
             "context_tier": tier,
@@ -895,7 +903,15 @@ def test_the_report_reads_agreement_escalation_and_backfill_from_stored_judgment
 
     judging = {
         "subjects": {
-            "a": {"task": "tag", "judgments": [row("anchor", 0.9), row("sibling", True)]},
+            "a": {
+                "task": "tag",
+                "judgments": [
+                    row("anchor", 0.9),
+                    row("sibling", True),
+                    # Gemini Decision 1 on the same subject: its own series, never pooled.
+                    row("anchor", 0.2, model=gemini),
+                ],
+            },
             "b": {
                 "task": "tag",
                 "judgments": [
@@ -917,8 +933,13 @@ def test_the_report_reads_agreement_escalation_and_backfill_from_stored_judgment
         "judging": judging,
     }
     report = summarize([record], now=datetime(2026, 10, 9, tzinfo=UTC))
-    assert report["agreement"]["tag:supported@T1"] == {"agree": 1, "pairs": 2, "rate": 0.5}
-    assert report["escalation_rate"] == 0.5
+    assert report["agreement"][jev]["tag:supported@T1"] == {"agree": 1, "pairs": 2, "rate": 0.5}
+    assert report["agreement"][gemini]["tag:supported@T1"] == {
+        "agree": 0,
+        "pairs": 1,
+        "rate": 0.0,
+    }
+    assert report["escalation_rate"] == {jev: 0.5, gemini: 0.0}
     assert report["backfill_last_90_days"] == {
         "candidates": 3,
         "judged_by_both_at_first_tier": 2,
@@ -1124,7 +1145,10 @@ def test_stored_producer_identities_are_normalized_and_unknown_ones_fail_safe():
     ep = _episode(tags=[], llm=[_llm_tag(provider_model="acme/new-model")])
     result = runner.run([ep], _ctx(FakeDispatch()))
     assert result.counts["unknown_producer_family"] == 1
-    assert result.counts["packets:anchor"] == 1 and result.counts["packets:sibling"] == 0
+    # Nor with the anchor (review/58 WP9): the anchor is held to the same rule as every judge, so
+    # an unknown family, which might be the anchor's own, gets no anchor either.
+    assert result.counts["no_independent_anchor"] == 1
+    assert result.counts["packets:anchor"] == 0 and result.counts["packets:sibling"] == 0
 
 
 def test_tag_subjects_come_from_the_ledger_once_and_skip_historical_rows():
@@ -2462,3 +2486,259 @@ def test_typed_choose_reply_maps_both_orders_to_subjects_and_rejects_wrong_kind(
     answers[0] = {"id": items[0].qid, "reason": "e", "kind": "validate", "verdict": True}
     output["choices"][0]["message"]["content"] = json.dumps({"answers": answers})
     assert len(backend.parse(packet, output)) == 2
+
+
+# ---- Gemini Decision 1 anchor (review/58 WP9) --------------------------------------------------
+
+DECISION = "gemini/gemini-decision-1"
+JEV = "typesafe/jev-1.13"
+NEMOTRON = "openrouter/nvidia/nemotron-3.5-super-vl:free"
+DECISION_FIXTURE = Path(__file__).parent / "fixtures" / "gemini_decision" / "answers_shape.json"
+
+
+def _decision_ctx(dispatch, **extra):
+    return dataclasses.replace(_ctx(dispatch, **extra), anchor=DECISION_ANCHOR_LANE)
+
+
+def _decision_answer(kind):
+    answers = json.loads(DECISION_FIXTURE.read_text())["answers"]
+    return next(v for v in answers.values() if v["type"] == kind)
+
+
+def test_the_repository_anchor_is_gemini_decision_1_on_its_own_backend():
+    from citypods.judging.backends import (
+        DECISION_ROUTE_ID,
+        DecisionBackend,
+        anchor_backend_class,
+    )
+
+    assert DECISION_ANCHOR_LANE.models == (DECISION,)
+    assert anchor_backend_class(DECISION) is DecisionBackend
+    assert anchor_backend_class(JEV) is JevBackend  # JEV answers already in flight still parse
+    with pytest.raises(ValueError, match="no anchor backend"):
+        anchor_backend_class("acme/judge")
+    assert DecisionBackend.route_id == DECISION_ROUTE_ID
+    assert DecisionBackend.output_reservation == 1
+
+
+def test_the_decision_sizing_constants_match_the_route_catalog():
+    """The ceiling is the TPM budget the compiler admits per minute, not the 262,144 context."""
+    from citypods.judging.backends import DECISION_HARD_INPUT_CEILING, DECISION_ROUTE_ID
+
+    compiled = Path(__file__).parent.parent / "citypods" / "compute" / "llm_routes.json"
+    catalog = json.loads(compiled.read_text())
+    routes = {r["route_id"]: r for r in catalog["routes"] if r.get("model") == DECISION}
+    assert set(routes) == {DECISION_ROUTE_ID, "gemini_decision_1_secondary"}
+    for route in routes.values():
+        assert route["api_shape"] == "decisions"
+        assert route["request_path"] == "/v1beta/decisions"
+        assert route["hard_input_ceiling"] == DECISION_HARD_INPUT_CEILING
+        assert route["tpm"] >= DECISION_HARD_INPUT_CEILING
+        assert route["input_context_limit"] == 262_144
+        assert route["transports"] == []  # Worker only: never a chat canary or probe
+
+
+def test_decision_packets_carry_the_jev_payload_under_their_own_identity():
+    from citypods.judging.backends import DecisionBackend
+
+    subjects = tuple(Subject("moment", f"s{i}", "ep", "ep", None, {}) for i in range(2))
+    levels = ("1", "2", "3", "4", "5")
+    items = (
+        Item(
+            QuestionSpec("supported", "validate", "x"), "T1", make_evidence("T1", "e"), subjects[:1]
+        ),
+        Item(
+            QuestionSpec("usefulness", "grade", "x", levels),
+            "T1",
+            make_evidence("T1", "e"),
+            subjects[:1],
+        ),
+        Item(
+            QuestionSpec("best", "choose", "x"),
+            "T1",
+            make_evidence("T1", "A: q"),
+            subjects,
+            options=choose_options(subjects, reverse=False),
+        ),
+    )
+    gemini = Packet("judge:anchor", "anchor", DECISION, items)
+    jev = Packet("judge:anchor", "anchor", JEV, items)
+    # The same items asked of the new anchor are a new recipe; JEV's hashes are untouched.
+    assert gemini.recipe_hash != jev.recipe_hash
+    job = DecisionBackend().build(gemini)
+    assert job.inputs["systemone"] == JevBackend().build(jev).inputs["systemone"]
+    assert job.inputs["max_tokens"] == 1
+    assert job.inputs["llm_policy"].allowed_models == (DECISION,)
+    # The reply as the Worker hands it back: answers under the asked qids (fixture by type).
+    output = {
+        "answers": {
+            items[0].qid: _decision_answer("noul"),
+            items[1].qid: _decision_answer("score"),
+            items[2].qid: _decision_answer("choice"),
+        }
+    }
+    rows = DecisionBackend().parse(gemini, output)
+    by_q = {}
+    for _subject, row in rows:
+        by_q.setdefault(row["question_id"], []).append(row)
+    assert all(row["judge_model"] == DECISION for _s, row in rows)
+    noul = by_q["supported"][0]
+    assert noul["value"] == pytest.approx(0.87) and noul["confidence"] == pytest.approx(0.74)
+    assert by_q["usefulness"][0]["value"] == pytest.approx(2.4)
+    assert {row["value"] for row in by_q["best"]} == {dict(items[2].options)["B"]}
+    # A score given as the level's own text reads as its index; anything else gives no row.
+    named = {**output["answers"], items[1].qid: {"type": "score", "score": "4"}}
+    rows = DecisionBackend().parse(gemini, {"answers": named})
+    assert [r["value"] for _s, r in rows if r["question_id"] == "usefulness"] == [3.0]
+    bad = {**output["answers"], items[1].qid: {"type": "score", "score": "nine"}}
+    rows = DecisionBackend().parse(gemini, {"answers": bad})
+    assert not [r for _s, r in rows if r["question_id"] == "usefulness"]
+
+
+def test_decision_packets_fit_the_route_ceiling_as_the_producer_estimates_them():
+    from citypods.judging.backends import DECISION_HARD_INPUT_CEILING, DecisionBackend
+
+    backend = DecisionBackend(1.0)
+    assert backend.max_total_tokens == int(DECISION_HARD_INPUT_CEILING / 1.05)
+    units = [[_escaped_item(f"s{i}", 900)] for i in range(120)]
+    result = pack(units, backend, purpose="judge:anchor", role="anchor", judge_model=DECISION)
+    assert result.packets and result.payload_too_large == 0
+    for packet in result.packets:
+        assert _wire_tokens(backend, packet) <= DECISION_HARD_INPUT_CEILING
+
+
+def test_a_google_anchor_judges_no_google_entry_and_takes_no_google_sibling():
+    """Independence (review/49 4c) across all judges: the Gemini anchor and the Gemma sibling are
+    both ``google``, so a rule candidate's sibling moves to the non-Google slot and the
+    Gemini-produced tag gets no anchor at all. Nothing is relaxed."""
+    dispatch = FakeDispatch()
+    ep = _episode()
+    first = runner.run([ep], _decision_ctx(dispatch))
+    assert first.counts["no_independent_anchor"] == 1
+    assert first.counts["packets:anchor"] == 1
+    assert {packet.judge_model for packet, _job in dispatch.submitted.values()} == {
+        DECISION,
+        NEMOTRON,
+    }
+    dispatch.answer(anchor_p=0.9)
+    runner.run([ep], _decision_ctx(dispatch))
+    [rule] = [s for s in _subjects(ep) if s.payload.get("source_kind") == "rule"]
+    [llm] = [s for s in _subjects(ep) if s.payload.get("source_kind") == "llm"]
+    rule_judges = {(r["judge_role"], r["judge_model"]) for r in ledger.judgments(rule)}
+    assert rule_judges == {("anchor", DECISION), ("sibling", NEMOTRON)}
+    assert {(r["judge_role"], r["judge_model"]) for r in ledger.judgments(llm)} == {
+        ("sibling", NEMOTRON)
+    }
+    kwargs = {
+        "anchor": DECISION_ANCHOR_LANE,
+        "sibling": LANES["judge:sibling"],
+        "families": FAMILIES,
+        "all_tiers_sample_rate": 0.0,
+    }
+    assert not runner.episode_needs_judging(ep, [task("tag")], **kwargs)
+
+
+def test_jev_judgments_stay_and_its_queued_packets_stop_holding_anchor_room():
+    """The swap invalidates nothing: a JEV answer already recorded, or collected after the swap,
+    stays under JEV's identity. A JEV packet still queued can never be answered, so it is let go
+    and holds none of the new anchor's outstanding room."""
+    answered = FakeDispatch()
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(answered))  # the JEV era
+    answered.answer(anchor_p=0.9)
+    swapped = runner.run([ep], _decision_ctx(answered))
+    [subject] = _subjects(ep)
+    jev_rows = [r for r in ledger.judgments(subject) if r["judge_model"] == JEV]
+    assert jev_rows and all(r["judge_role"] == "anchor" for r in jev_rows)
+    # Gemini judges the subject afresh under its own identity: the two are never pooled.
+    assert swapped.counts["packets:anchor"] == 1
+
+    queued = FakeDispatch()
+    ep2 = _episode(uid="ep-2", llm=[])
+    runner.run([ep2], _ctx(queued))
+    jev_recipe = next(r for r, (p, _j) in queued.submitted.items() if p.judge_model == JEV)
+    queued.submitted.clear()
+    stats = runner.run([ep2], _decision_ctx(queued, max_outstanding={"judge:anchor": 1}))
+    assert stats.counts["retired_anchor_pending_dropped"] == 1
+    assert jev_recipe not in stats.outstanding.get("judge:anchor", set())
+    assert stats.counts["packets:anchor"] == 1  # the room was not held by the JEV packet
+    [subject2] = _subjects(ep2)
+    assert not [m for m in ledger.pending(subject2) if m.get("judge_model") == JEV]
+
+
+def test_adjudication_ignores_a_sibling_reading_of_the_anchors_family():
+    """A Gemma reading recorded under the JEV anchor is not independent of the Gemini anchor."""
+    from citypods.judging.adjudication import due_questions
+
+    ep = _episode(uid="adj", llm=[])
+    [subject] = _subjects(ep)
+
+    def add(role, model, value):
+        assert ledger.append_judgment(
+            subject,
+            {
+                "task": "tag",
+                "subject_id": subject.subject_id,
+                "question_id": "supported",
+                "kind": "validate",
+                "judge_model": model,
+                "judge_role": role,
+                "prompt_version": "1",
+                "context_tier": "T1",
+                "evidence_digest": "d",
+                "packet_id": f"p-{model}",
+                "sample": "routine",
+                "value": value,
+                "judged_at": "2026-11-12T00:00:00+00:00",
+            },
+        )
+
+    add("anchor", DECISION, 0.95)
+    add("sibling", GEMMA_31B, False)  # disagrees, but shares the anchor's family
+    spec = task("tag")
+    kwargs = {"anchor_model": DECISION, "calibration_rate": 0.0}
+    assert [d.sample for d in due_questions(subject, spec, **kwargs)] == ["contested"]
+    assert due_questions(subject, spec, families=FAMILIES, **kwargs) == []
+    add("sibling", NEMOTRON, False)  # an independent sibling that disagrees
+    assert [d.sample for d in due_questions(subject, spec, families=FAMILIES, **kwargs)] == [
+        "contested"
+    ]
+
+
+def test_the_report_pairs_each_anchor_with_its_own_independent_sibling():
+    """JEV keeps its historical Gemma pair after a Nemotron reading lands; Gemini never pairs
+    with Gemma (same family) and waits for Nemotron."""
+    from citypods.judging.report import summarize
+
+    def row(role, model, value):
+        return {
+            "judge_role": role,
+            "judge_model": model,
+            "kind": "validate",
+            "question_id": "supported",
+            "context_tier": "T1",
+            "value": value,
+            "sample": "routine",
+            "judged_at": "2026-11-12T00:00:00+00:00",
+        }
+
+    def report(judgments):
+        record = {
+            "published": "2026-11-01",
+            "llm_tag_candidates": [{"id": "a"}],
+            "judging": {"subjects": {"a": {"task": "tag", "judgments": judgments}}},
+        }
+        return summarize([record], families=FAMILIES)["agreement"]
+
+    before = [
+        row("anchor", JEV, 0.9),
+        row("sibling", GEMMA_31B, True),
+        row("anchor", DECISION, 0.1),
+    ]
+    agreement = report(before)
+    assert agreement[JEV]["tag:supported@T1"] == {"agree": 1, "pairs": 1, "rate": 1.0}
+    assert DECISION not in agreement  # only a Google sibling so far: no independent pair
+
+    agreement = report([*before, row("sibling", NEMOTRON, False)])
+    assert agreement[JEV]["tag:supported@T1"] == {"agree": 1, "pairs": 1, "rate": 1.0}
+    assert agreement[DECISION]["tag:supported@T1"] == {"agree": 1, "pairs": 1, "rate": 1.0}

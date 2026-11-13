@@ -1094,6 +1094,25 @@ def test_jev_posts_to_systemone_under_the_custom_beatapi_registration():
     assert jev["transports"] == []
 
 
+def test_gemini_decision_routes_are_worker_only_on_both_gemini_keys():
+    # review/58 WP9: the judge:anchor model speaks Google's /v1beta/decisions (api_shape
+    # decisions), so it has no direct transport and chat-only tooling (canary, context scan, rate
+    # probe, gateway contract) skips it via route_speaks_chat.
+    from citypods.compute.api_shape import route_speaks_chat
+
+    raw = json.loads(
+        (Path(__file__).resolve().parents[1] / "citypods/compute/llm_routes.json").read_text()
+    )
+    routes = [r for r in raw["routes"] if r["model"] == "gemini/gemini-decision-1"]
+    assert {r["account_id"] for r in routes} == {"project_primary", "project_secondary"}
+    for route in routes:
+        assert route["ai_gateway_slug"] == "google-ai-studio"
+        assert (route["api_shape"], route["request_path"]) == ("decisions", "/v1beta/decisions")
+        assert route["transports"] == []
+        assert not route_speaks_chat(route)
+        assert (route["rpm"], route["rpd"], route["concurrency"]) == (200, 10_000, 1)
+
+
 def test_every_custom_provider_records_how_it_is_registered():
     """A new custom provider must state its gateway path, since the rule cannot be inferred."""
     configured = {

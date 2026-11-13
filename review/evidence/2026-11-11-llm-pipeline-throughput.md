@@ -219,3 +219,18 @@ Read from AI Gateway logs and BeatAPI's `GET /v1/models` (no request bodies or k
 - Conclusion: BeatAPI withdrew the free model from the key; the 400s are not a defect in our
   request. The Worker classes this as `request_defect` (terminal for the job) although it is a
   route-level availability failure.
+
+## Gemini Decision 1 as anchor (WP9, 2026-11-12)
+
+Canonical: [review/49, "Gemini Decision 1 as the anchor"](../49-judge-consensus-admission.md#gemini-decision-1-as-the-anchor-2026-11-12-review58-wp9).
+This entry records only the figures this effort relied on.
+
+- BeatAPI retired the free JEV tier on 2026-11-05; the anchor is now `gemini-decision-1`, in the
+  same shadow state.
+- Replay of 6 stored JEV anchor requests (201 `noul` questions) against Gemini Decision 1:
+  same side of 0.5 as JEV on 166 (82.6%), none at opposite extremes; absolute difference median
+  0.087, p90 0.363; 64% of Gemini answers at or beyond 0.2/0.8 versus 38% for JEV; 0.6 to 0.8 s
+  per request; input tokens within about 3% of JEV's. This is agreement with JEV, not accuracy.
+- Free-tier limits per project, one key per project (200 RPM, 50,000 TPM, 10,000 RPD) are Google's published values, not
+  measured. Stored anchor requests are 19k to 41k tokens, so TPM allows about one request a minute
+  per key.

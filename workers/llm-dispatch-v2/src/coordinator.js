@@ -10,6 +10,10 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import { withTuning } from "./tuning.js";
 import {
+  healthClassFor, parseRouteHealth, recordRouteHealthFailure, recordRouteHealthSuccess,
+  routeHealthConfig, routeHealthEvent, routeHealthGate, serializeRouteHealth,
+} from "./route_health.js";
+import {
   GEMMA_COMBINED_TARGET, gemmaPackingStatus, recordGemmaPacking,
 } from "./gemma-packing.js";
 import { canonicalJson, sha256Hex, validateReserveRequest } from "./protocol.js";
@@ -303,6 +307,12 @@ const PACKED_STATE_SCHEDULER_COLUMNS = {
   packed_leases_json: "TEXT NOT NULL DEFAULT '{}'",
 };
 
+/** Route health ladder state (review/58 WP3b, route_health.js). Additive: a Worker that predates
+ * it never reads the column, and an empty map means every route is healthy. */
+const ROUTE_HEALTH_SCHEDULER_COLUMNS = {
+  route_health_json: "TEXT NOT NULL DEFAULT '{}'",
+};
+
 const CONTEXT_PROBE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS context_probe_weeks (
     week_start TEXT PRIMARY KEY, run_id TEXT NOT NULL, catalog_digest TEXT NOT NULL,
@@ -388,6 +398,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "packed_routes_json",
     "packed_estimates_json",
     "packed_leases_json",
+    "route_health_json",
     "catalog_digest",
     "catalog_rescue_cursor",
     "catalog_rescue_complete",
@@ -452,7 +463,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         item === "column:jobs.quota_excluded_routes" ||
         item === "column:jobs.response_timeout_routes" ||
         (item.startsWith("column:scheduler.") &&
-          Object.hasOwn(PACKED_STATE_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length))) ||
+          (Object.hasOwn(PACKED_STATE_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length)) ||
+            Object.hasOwn(ROUTE_HEALTH_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length)))) ||
         (item.startsWith("column:routes.") &&
           Object.hasOwn(ROUTE_QUOTA_COLUMNS, item.slice("column:routes.".length))));
       if ((readiness.compactActive || readiness.packedActive) && !additiveOnly) {
@@ -471,7 +483,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         if (readiness.missing.includes("column:jobs.response_timeout_routes")) {
           this._ensureColumn("jobs", "response_timeout_routes", "TEXT");
         }
-        for (const [column, definition] of Object.entries(PACKED_STATE_SCHEDULER_COLUMNS)) {
+        for (const [column, definition] of Object.entries({
+          ...PACKED_STATE_SCHEDULER_COLUMNS, ...ROUTE_HEALTH_SCHEDULER_COLUMNS,
+        })) {
           if (readiness.missing.includes(`column:scheduler.${column}`)) {
             this._ensureColumn("scheduler", column, definition);
           }
@@ -585,6 +599,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._txPackedProviders = undefined;
     this._txPackedProvidersDirty = false;
     this._txPacked = undefined;
+    this._txRouteHealth = undefined;
+    this._txRouteHealthRaw = undefined;
+    this._txRouteHealthDirty = false;
     this._txCutoverStaged = false;
     this._txRecoveryStaged = false;
     try {
@@ -609,6 +626,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._txPackedProvidersDirty = false;
       this._txPacked = undefined;
       this._readView = undefined;
+      this._txRouteHealth = undefined;
+      this._txRouteHealthRaw = undefined;
+      this._txRouteHealthDirty = false;
+      this._readRouteHealthRaw = undefined;
       this._txCutoverStaged = false;
       this._txRecoveryStaged = false;
     }
@@ -677,6 +698,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       sets.push({
         assignment: "active_bundles_json = ?",
         params: [JSON.stringify(Object.fromEntries(this._txBundles))],
+      });
+    }
+    // Written only when a route's ladder state changed (a tracked failure, or a success clearing
+    // it): never on a healthy route's success, and always on this one accounting row.
+    if (this._txRouteHealthDirty) {
+      sets.push({
+        assignment: "route_health_json = ?",
+        params: [serializeRouteHealth(this._txRouteHealth)],
       });
     }
     // Read-only calls and idle braked ticks remain write-free.
@@ -1263,7 +1292,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         packed_state_active                 INTEGER NOT NULL DEFAULT 0,
         packed_routes_json                  TEXT NOT NULL DEFAULT '{}',
         packed_estimates_json               TEXT NOT NULL DEFAULT '{}',
-        packed_leases_json                  TEXT NOT NULL DEFAULT '{}'
+        packed_leases_json                  TEXT NOT NULL DEFAULT '{}',
+        -- Route health ladder (route_health.js): failing routes only, rides the accounting UPDATE.
+        route_health_json                   TEXT NOT NULL DEFAULT '{}'
       );
 
       -- One small row per purpose/day makes ingress reservations durable without turning a
@@ -1474,6 +1505,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     for (const [column, definition] of Object.entries(PACKED_STATE_SCHEDULER_COLUMNS)) {
       this._ensureColumn("scheduler", column, definition);
     }
+    for (const [column, definition] of Object.entries(ROUTE_HEALTH_SCHEDULER_COLUMNS)) {
+      this._ensureColumn("scheduler", column, definition);
+    }
     this._runSchemaInitStep("move active bundles into the scheduler row", () =>
       this._migrateBundlesToScheduler()
     );
@@ -1646,6 +1680,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["packed_routes_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["packed_estimates_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["packed_leases_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["route_health_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["last_max_tokens_sent", "INTEGER"],
       ["last_output_tokens", "INTEGER"],
       ["max_output_tokens", "INTEGER"],
@@ -3981,6 +4016,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       if (provider) leasedByProvider.set(provider, (leasedByProvider.get(provider) || 0) + count);
     }
     const poolFractions = this._providerDailyFractions(routeRows, now, catalog);
+    // The ladder map came with the authority read above (_packed), so listing it costs no read.
+    const routeHealth = this._routeHealth();
     const routes = routeRows.map((row) => {
       const catalogRoute = catalog?.routes_by_id?.[row.route_id];
       const merged = catalogRoute ? { ...catalogRoute, ...row } : row;
@@ -4007,6 +4044,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           : 0,
         provider_concurrency: Number.isFinite(providerConcurrency) ? providerConcurrency : null,
         blocked_until: row.blocked_until,
+        // Route health ladder (review/58 WP3b): 0 = healthy; a cooldown end in the past with a
+        // rung above 0 is the half-open state (one call at a time until a success).
+        health_rung: routeHealth[row.route_id]?.rung ?? 0,
+        health_class: routeHealth[row.route_id]?.class || null,
+        health_until: routeHealth[row.route_id]?.until || null,
         buffer_seconds: row.buffer_seconds,
         buffer_remaining_seconds: effectiveBufferSeconds(row, now),
         throttle_streak: row.throttle_streak,
@@ -4441,6 +4483,58 @@ export class LLMSchedulerDO extends DurableObjectBase {
   // authoritative per committed transaction, selected by scheduler.packed_state_active.
   // ---------------------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------------------
+  // Route health ladder (review/58 WP3b; see route_health.js). The map is loaded by the authority
+  // read in _packed() and written by the accounting UPDATE, so it costs no statement of its own.
+  // ---------------------------------------------------------------------------------------
+
+  _routeHealthConfig() {
+    return routeHealthConfig((name, fallback) => this._envInt(name, fallback));
+  }
+
+  /** The ladder map: per transaction a mutable copy, outside one a read-only view. */
+  _routeHealth() {
+    const inTransaction = Array.isArray(this._txSchedulerSets);
+    if (inTransaction && this._txRouteHealth) return this._txRouteHealth;
+    this._packed();
+    const map = parseRouteHealth(inTransaction ? this._txRouteHealthRaw : this._readRouteHealthRaw);
+    if (inTransaction) this._txRouteHealth = map;
+    return map;
+  }
+
+  /**
+   * Fold one settled attempt into the route's ladder. `healthClass` is null for a success or an
+   * untracked failure. Sets the route's blocked_until on a rung change, flags the map for the
+   * accounting UPDATE, and logs a `route_health` event on every rung change and reset.
+   */
+  _settleRouteHealth(routeId, outcome, healthClass, now, detail = {}) {
+    const config = this._routeHealthConfig();
+    if (!config.enabled || !routeId) return;
+    const map = this._routeHealth();
+    if (outcome === "success") {
+      const cleared = recordRouteHealthSuccess(map, routeId);
+      if (!cleared) return; // a healthy route's success touches nothing
+      this._txRouteHealthDirty = true;
+      if (cleared.rung > 0) {
+        console.info(JSON.stringify(routeHealthEvent("reset", routeId, cleared, now)));
+      }
+      return;
+    }
+    if (!healthClass) return;
+    const { escalated, changed, entry, previousRung } =
+      recordRouteHealthFailure(map, routeId, healthClass, now, config, detail.startedAt);
+    if (!changed) return;
+    this._txRouteHealthDirty = true;
+    if (!escalated) return;
+    // The existing cooldown mechanism: the claim, the capacity ranking and the stats views all
+    // already treat a route with blocked_until in the future as unavailable.
+    this._updateRoute(routeId, { maxBlockedUntil: entry.until });
+    console.warn(JSON.stringify(routeHealthEvent("escalate", routeId, entry, now, {
+      previous_rung: previousRung, failure_class: detail.failureClass ?? null,
+      provider_status_code: detail.status ?? null, job_id: detail.jobId ?? null,
+    })));
+  }
+
   /** The transaction's packed view, or null while the legacy tables are authoritative. Outside a
    * transaction a fresh, never-flushed view is returned for read-only RPCs. */
   _packed() {
@@ -4450,10 +4544,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Read-only RPCs share one parsed view until the next transaction commits or rolls back.
     if (!inTransaction && this._readView !== undefined) return this._readView;
     const sql = this._getSql();
+    // route_health_json rides this authority read (both modes run it), so the route health ladder
+    // costs no extra statement on a claim, a completion or the route stats view.
     const [row] = [...sql.exec(
-      `SELECT packed_state_active, packed_routes_json, packed_estimates_json, packed_leases_json
+      `SELECT packed_state_active, packed_routes_json, packed_estimates_json, packed_leases_json,
+              route_health_json
          FROM scheduler WHERE id = 1`
     )];
+    if (inTransaction) this._txRouteHealthRaw = row?.route_health_json;
+    else this._readRouteHealthRaw = row?.route_health_json;
     if (!row || ![0, 1].includes(row.packed_state_active)) throw new Error("invalid packed state authority");
     const packed = row.packed_state_active === 0 ? null : new PackedTx(row, index => {
       const [shard] = [...sql.exec("SELECT json FROM packed_telemetry WHERE shard = ?", index)];
@@ -5595,6 +5694,42 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
+   * Calls the dispatcher could hold right now: every route the ranking scores above zero (not
+   * paused, cooling, blocked or out of quota) contributes its concurrency -- or, unlimited, what
+   * the active bundles could place on it -- capped per provider and by MAX_IN_FLIGHT_LLM_CALLS.
+   * A half-open laddered route counts one. A ceiling before per-job size fit and `yields_to`.
+   */
+  _admissibleCalls(modelPlans, dispatchLimits, routeHealth, now, limits) {
+    const byProvider = new Map();
+    const seen = new Set();
+    for (const plan of modelPlans) {
+      for (const [routeId, score] of plan.routeScores) {
+        if (!(score > 0) || seen.has(routeId)) continue;
+        seen.add(routeId);
+        const route = dispatchLimits?.routes_by_id?.[routeId];
+        if (!route) continue;
+        const concurrency = Number(route.concurrency);
+        const halfOpen = Number(routeHealth?.[routeId]?.rung) > 0;
+        const cap = halfOpen ? 1 : Number.isFinite(concurrency) && concurrency > 0
+          ? concurrency : limits.maxActiveBundles * limits.maxJobsPerRoutePerBundle;
+        const key = route.provider || `route:${routeId}`;
+        byProvider.set(key, (byProvider.get(key) || 0) + cap);
+      }
+    }
+    let total = 0;
+    for (const [provider, sum] of byProvider) {
+      const providerConcurrency = Number(
+        dispatchLimits?.providers?.[provider]?.concurrency ??
+          Object.values(dispatchLimits?.routes_by_id || {})
+            .find(route => route.provider === provider)?.provider_concurrency
+      );
+      total += Number.isFinite(providerConcurrency) && providerConcurrency > 0
+        ? Math.min(sum, providerConcurrency) : sum;
+    }
+    return Math.min(limits.maxInFlightCalls, total);
+  }
+
+  /**
    * Advance a route's ledger forward to account for one newly-admitted reservation taking effect
    * at `notBeforeAt`, mirroring pacing.js's earliestSafeStart read-side logic on the write side.
    * Returns the updated merged route object so the caller's in-memory lane-sequencing state (and
@@ -6024,11 +6159,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
           route_capacity: 0,
           dispatch_window_capacity: 0,
           route_yield: 0,
+          route_health: 0,
         },
         routes: {
           route_concurrency: {},
           provider_concurrency: {},
           route_capacity: {},
+          route_health: {},
         },
       };
       // Expired leases this tick returns to queued (set below); folded into the claim snapshot's
@@ -6337,6 +6474,25 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const oversizeJobs = [];
       const oversizeJobIds = new Set();
       const modelPlans = this._rankModelsByCapacity(now, windowSeconds, dispatchLimits);
+      // Route health ladder (review/58 WP3b): its map came with this claim's authority read.
+      const routeHealth = this._routeHealthConfig().enabled ? this._routeHealth() : null;
+      const healthGate = (route, extraInFlight) => routeHealth
+        ? routeHealthGate(routeHealth[route.route_id], now,
+          (inFlightByRoute.get(route.route_id) || 0) + extraInFlight)
+        : null;
+      // Every route the ladder is cooling, listed even when its blocked_until has already taken it
+      // out of the ranking (so an empty claim still says why); the route loop adds probe holds.
+      for (const [routeId, entry] of Object.entries(routeHealth || {})) {
+        if (routeHealthGate(entry, now, 0) === "cooling") {
+          diagnostics.routes.route_health[routeId] = "cooling";
+        }
+      }
+      // review/58 section 9 "in-flight / admissible": computed from the ranking just made, so it
+      // costs no read. Measured before this claim's own admissions.
+      diagnostics.admissible_calls = this._admissibleCalls(
+        modelPlans, dispatchLimits, routeHealth, now,
+        { maxInFlightCalls, maxActiveBundles, maxJobsPerRoutePerBundle }
+      );
       const modelPlansByModel = new Map(modelPlans.map((plan) => [plan.model, plan]));
       // `yields_to` (review/53 PR1): a route that yields steps aside while any named route's model
       // has queued work, so BeatAPI's free chat routes never take the single-flight account window
@@ -6510,6 +6666,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
               }
             }
 
+            // A laddered route: skipped while it cools, then one call at a time until a success
+            // resets it (half-open), so a returning route never takes a whole bundle at once.
+            const gated = healthGate(route, countInBundle);
+            if (gated) {
+              diagnostics.rejections.route_health += 1;
+              diagnostics.routes.route_health[route.route_id] = gated;
+              continue;
+            }
+
             const merged = getMergedRoute(route);
             const options = capacityOptions(route, job);
             const gate = {};
@@ -6648,6 +6813,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           if (chosen.length >= bundleJobLimit) break;
           if (seenRoutes.has(route.route_id)) continue;
           if (seenRoutes.size >= maxConcurrentLanes) break;
+          if (healthGate(route, 0)) continue;
           const providerCfg = dispatchLimits.providers?.[route.provider];
           const providerConcurrency = Number(
             providerCfg?.concurrency ?? route.provider_concurrency
@@ -7455,6 +7621,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
             isRateLimitTerminal ||
             isUpstreamRetryable;
 
+        // Route health ladder class (review/58 WP3b, route_health.js): only a call that reached
+        // the provider counts. A 4xx with no class is the request_defect the failure cells below
+        // record; a 429 is pacing, not route health (an upstream_capacity 429 still counts).
+        const status = result.provider_status_code;
+        const reachedProvider = uncountedAttempt === 0 &&
+          (result.outcome === "retryable_error" || result.outcome === "terminal_error");
+        const healthClass = reachedProvider ? healthClassFor({
+          isResponseTimeout,
+          // Checked after the timeout class, so a gateway 504/524 counts as a timeout only.
+          isCapacity: result.failure_class === "upstream_capacity" || isUpstreamCapacityFailure ||
+            isFinal5xx,
+          isDefect: result.failure_class === "request_defect" || (!result.failure_class &&
+            Number.isInteger(status) && status >= 400 && status < 500 &&
+            ![402, 429].includes(status) && !isUpstreamCapacityFailure),
+        }) : null;
+
         if (result.outcome === "retryable_error" || result.outcome === "terminal_error") {
           if (result.provider_status_code !== 429) {
             const failureClass =
@@ -7903,6 +8085,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
           } else if (result.provider_status_code != null) {
             this._updateRoute(job.lease_route_id, { last_provider_status: result.provider_status_code });
           }
+
+          // The route health ladder, after the class-specific cooldowns above: it only ever
+          // lengthens a route's blocked_until, and a success clears both together.
+          this._settleRouteHealth(job.lease_route_id, result.outcome, healthClass, now, {
+            failureClass: result.failure_class, status, jobId: job.id,
+            startedAt: result.actual_start_at,
+          });
 
           // Unit 7 calibration, now a bounded recent window of input ratios and output sizes
           // (calibration.js) rather than a never-decreasing total.

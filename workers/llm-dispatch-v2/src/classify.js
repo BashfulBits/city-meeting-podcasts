@@ -417,6 +417,91 @@ function isSystemoneProcessingFailed(body) {
   return code === "processing_failed";
 }
 
+// The `code` values Gemini Decision 1 uses for a content block (measured 2026-11-12, review/49).
+export const DECISIONS_SAFETY_CODES = Object.freeze([
+  "safety",
+  "prohibited_content",
+  "blocklist",
+  "image_safety",
+  "content_blocked",
+]);
+
+function decisionsErrorCodes(body) {
+  const codes = [];
+  const push = (value) => {
+    if (typeof value === "string" && value) codes.push(value.toLowerCase());
+  };
+  push(body?.code);
+  push(body?.reason);
+  push(body?.error?.code);
+  push(body?.error?.reason);
+  push(body?.error?.status);
+  const details = body?.error?.details;
+  if (Array.isArray(details)) {
+    for (const detail of details) push(detail?.reason);
+  }
+  return codes;
+}
+
+/**
+ * A Gemini Decision 1 HTTP 400 read by its body, or null to fall through to the generic rules.
+ * Safety blocks -> request_defect (this job's content; terminal). Size limits -> route_input_limit.
+ * Quotas -> own_tpm / own_rpd / own_rpm. A bad key -> route_unavailable (account). A model the key
+ * cannot use -> route_unavailable (route). Retry-after is added by the caller.
+ */
+export function classifyDecisions400(body) {
+  const codes = decisionsErrorCodes(body);
+  const msg = providerFailureMessage(body);
+  if (codes.some((code) => DECISIONS_SAFETY_CODES.includes(code))) {
+    return { failure_class: "request_defect", rule_id: "decisions-safety-block", scope: "route" };
+  }
+  const quota =
+    codes.includes("resource_exhausted") ||
+    msg.includes("quota") ||
+    msg.includes("rate limit") ||
+    msg.includes("per minute") ||
+    msg.includes("per day");
+  if (quota) {
+    if (msg.includes("per day") || msg.includes("perday") || msg.includes("daily")) {
+      return { failure_class: "own_rpd", rule_id: "decisions-quota-daily", scope: "route" };
+    }
+    if (msg.includes("token")) {
+      // One request above the per-minute token quota never fits by waiting.
+      if (requestExceedsTokenQuota(msg)) {
+        return { failure_class: "route_input_limit", rule_id: "decisions-request-over-tpm", scope: "route" };
+      }
+      return { failure_class: "own_tpm", rule_id: "decisions-quota-tokens", scope: "route" };
+    }
+    return { failure_class: "own_rpm", rule_id: "decisions-quota-requests", scope: "route" };
+  }
+  if (
+    isInputLimitMessage(msg) ||
+    msg.includes("too many questions") ||
+    (msg.includes("questions") && (msg.includes("at most") || msg.includes("maximum") || msg.includes("exceed")))
+  ) {
+    return { failure_class: "route_input_limit", rule_id: "decisions-input-limit", scope: "route" };
+  }
+  if (
+    codes.includes("api_key_invalid") ||
+    msg.includes("api key not valid") ||
+    msg.includes("api key expired") ||
+    msg.includes("invalid api key")
+  ) {
+    return { failure_class: "route_unavailable", rule_id: "decisions-key-invalid", scope: "account" };
+  }
+  if (
+    msg.includes("not available") ||
+    msg.includes("not found") ||
+    msg.includes("not supported") ||
+    msg.includes("permission") ||
+    codes.includes("permission_denied") ||
+    codes.includes("not_found")
+  ) {
+    return { failure_class: "route_unavailable", rule_id: "decisions-model-unavailable", scope: "route" };
+  }
+  return null;
+}
+
 export function classifyProviderFailure({ status, body, headers, route, inputTokens = null }) {
   // Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY -- `[{"error": {...}}]`
   // -- not a bare object. Every check below (`body.error`, upstreamCapacityFailure, the
@@ -500,6 +585,18 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
       retry_after_seconds: retryAfterSeconds,
       scope: "route",
     };
+  }
+
+  // 2b. Gemini Decision 1 (api_shape decisions, review/58 WP9) answers limits, key problems and
+  // safety blocks all as HTTP 400. Only a safety block (or a request the endpoint rejects for its
+  // own content) is this job's defect; a limit or quota is pacing, and a model or key the endpoint
+  // will not serve is the route's availability -- never a per-job request_defect (the generic
+  // 4xx fallback below), which would fail every queued job on a route-wide problem.
+  // gateway.js reports a quota 400 from this endpoint as 429 (api_shapes normalizeStatus), so the
+  // same reading applies to both statuses; a 429 it cannot read walks the signatures below.
+  if ((status === 400 || status === 429) && route?.api_shape === "decisions") {
+    const decision = classifyDecisions400(body);
+    if (decision) return { ...decision, retry_after_seconds: retryAfterSeconds };
   }
 
   // 3. Provider-side capacity errors that are misreported as client errors -> upstream_capacity

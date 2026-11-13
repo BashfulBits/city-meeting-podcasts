@@ -41,12 +41,40 @@ def family_of(model: str | None, families: Mapping[str, str]) -> str:
     return families.get(normalize_model(str(model)), UNKNOWN_FAMILY)
 
 
+def anchor_family(anchor_model: str | None, families: Mapping[str, str]) -> str | None:
+    """The anchor judge's family, which a sibling or adjudicator must not share (review/58 WP9).
+
+    JEV (``typesafe``) shared no family with any producer or sibling, so the rule was never
+    exercised; Gemini Decision 1 is ``google``, like the Gemini producers and the Gemma sibling."""
+    if not anchor_model:
+        return None
+    return family_of(anchor_model, families)
+
+
+def anchor_independent_of(
+    producer_models: Sequence[str | None], anchor_model: str, families: Mapping[str, str]
+) -> bool:
+    """Whether the anchor may judge entries of these producers: never one of its own family.
+
+    An unknown producer family cannot be shown independent, so it gets no anchor either (the same
+    rule ``sibling_candidates`` applies). A rule producer is independent of every model."""
+    anchor = family_of(anchor_model, families)
+    if anchor == UNKNOWN_FAMILY:
+        return False
+    for model in producer_models:
+        producer = family_of(model, families)
+        if producer == UNKNOWN_FAMILY or producer == anchor:
+            return False
+    return True
+
+
 def sibling_candidates(
     producer_model: str | None,
     sibling: LaneConfig,
     families: Mapping[str, str],
     *,
     allow_all_slots: bool = False,
+    exclude_families: frozenset[str] = frozenset(),
 ) -> tuple[str, ...]:
     """Every active sibling of the first slot that has one independent of the producer.
 
@@ -56,18 +84,20 @@ def sibling_candidates(
     by load (``runner._pick_sibling``); a later slot is used only when the earlier one has none.
     When ``allow_all_slots`` is True, all independent active models across all slots are returned,
     allowing load-balancing across slots (e.g. for rule-produced subjects with no LLM conflict).
+    ``exclude_families`` are the other judges' families (the anchor's): a sibling shares none.
     """
     producer = family_of(producer_model, families)
     if producer == UNKNOWN_FAMILY:
         return ()
+    excluded = {producer, *exclude_families}
     slots = sibling.slot_models or {"all": sibling.models}
     if allow_all_slots:
-        return tuple(model for model in sibling.models if families.get(model) != producer)
+        return tuple(model for model in sibling.models if families.get(model) not in excluded)
     for name in sorted(slots):
         found = tuple(
             model
             for model in slots[name]
-            if model in sibling.models and families.get(model) != producer
+            if model in sibling.models and families.get(model) not in excluded
         )
         if found:
             return found
@@ -75,10 +105,14 @@ def sibling_candidates(
 
 
 def sibling_for(
-    producer_model: str | None, sibling: LaneConfig, families: Mapping[str, str]
+    producer_model: str | None,
+    sibling: LaneConfig,
+    families: Mapping[str, str],
+    *,
+    exclude_families: frozenset[str] = frozenset(),
 ) -> str | None:
     """The first sibling candidate: the stable default when load is unknown."""
-    found = sibling_candidates(producer_model, sibling, families)
+    found = sibling_candidates(producer_model, sibling, families, exclude_families=exclude_families)
     return found[0] if found else None
 
 
@@ -88,12 +122,14 @@ def choose_sibling_candidates(
     families: Mapping[str, str],
     *,
     allow_all_slots: bool = False,
+    exclude_families: frozenset[str] = frozenset(),
 ) -> tuple[str, ...]:
     """Siblings independent of every producer in a meeting, from the first slot that has one."""
     producer_families = {family_of(model, families) for model in producer_models}
     if UNKNOWN_FAMILY in producer_families:
         return ()
-    independent = [m for m in sibling.models if families.get(m) not in producer_families]
+    excluded = producer_families | set(exclude_families)
+    independent = [m for m in sibling.models if families.get(m) not in excluded]
     if not independent:
         return ()
     if allow_all_slots:
@@ -112,13 +148,17 @@ def adjudicator_for(
     sibling_model: str | None,
     adjudicator: LaneConfig,
     families: Mapping[str, str],
+    *,
+    exclude_families: frozenset[str] = frozenset(),
 ) -> str | None:
-    """The first active adjudicator independent of both the producer and the sibling (PR5)."""
+    """The first active adjudicator independent of the producer, the sibling and the anchor (PR5;
+    the anchor's family arrives in ``exclude_families``)."""
     excluded = {family_of(producer_model, families)}
     if UNKNOWN_FAMILY in excluded:
         return None
     if sibling_model:
         excluded.add(family_of(sibling_model, families))
+    excluded.update(exclude_families)
     for model in adjudicator.models:
         if families.get(model) not in excluded:
             return model
