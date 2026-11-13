@@ -413,9 +413,9 @@ SLOs, measured over a UTC day while the DO queue is non-empty:
 | Response timeouts ÷ attempts | < 3% | 7.7% |
 | Collection lag, Worker completion to B2 record, p90 | ≤ 2 h | not measurable; up to 6 h+ by cadence |
 
-First reading with every package deployed (2026-11-13 02:15Z to 06:22Z, 202 bundles, 434 attempts;
-details and limits in the evidence file): slot productivity 60%, idle hold share 23%, failed
-attempts 9%, response timeouts 5%. Claims saw a mean of 5.4 calls in flight against 20 admissible.
+First reading with every package deployed (2026-11-13 02:15Z to 06:22Z, 203 bundles, 441 provider
+attempts including in-window retries; details and limits in the evidence file): slot productivity
+60%, idle hold share 23%, failed attempts 10.0%, response timeouts 5.2%. Claims saw a mean of 5.4 calls in flight against 20 admissible.
 Slot productivity and failed attempts meet their targets; idle hold and timeouts do not yet.
 
 "In-flight ÷ admissible" cannot be computed until WP1a logs admissible capacity per tick; that SLO

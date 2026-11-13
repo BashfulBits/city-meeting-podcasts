@@ -279,17 +279,19 @@ config deployed `citypods-llm-dispatch-v2` through the deploy workflow; every de
 
 ### Window 2026-11-13 02:15Z to 06:22Z (all packages deployed)
 
-202 bundles, 434 final attempts, from `bundle_completed` and `scheduled_claim`.
+203 bundles and 441 provider attempts, from `bundle_completed` and `scheduled_claim`. The attempt
+count is every call the Worker logged: 439 final attempts plus 2 in-window retries that were
+superseded (both HTTP 503). Jobs requeued to a later bundle appear again as new attempts.
 
 | Measure | 7 days to 2026-11-11 | This window | Target |
 |---|---:|---:|---:|
 | Slot productivity | 13% | 60% | ≥ 50% |
 | Idle hold share | 58% | 23% | ≤ 10% |
-| Failed attempts ÷ attempts | 45.5% | 9% (41) | < 20% |
-| Response timeouts ÷ attempts | 7.7% | 5% (22) | < 3% |
+| Failed attempts ÷ attempts | 45.5% | 10.0% (44) | < 20% |
+| Response timeouts ÷ attempts | 7.7% | 5.2% (23) | < 3% |
 
-- Early release: 102 of 202 bundles made their one partial commit; 128 of 434 calls were released
-  by a partial; no partial was refused for rows.
+- Early release: about half of the bundles made their one partial commit (102 of 202 at the first
+  count) and 128 calls were released by a partial; no partial was refused for rows.
 - Claims saw a mean of 5.4 calls in flight against 20 admissible and 2.7 active bundles, so the
   dispatcher was not slot-bound in this window.
 - Rows: 14,785 billed rows by 06:22Z, a pace of about 55,700 a day.
