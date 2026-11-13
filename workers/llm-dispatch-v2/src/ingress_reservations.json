@@ -69,8 +69,8 @@
       "daily_write_units": 8000,
       "max_queued_jobs": 2000,
       "models": [
-        "google/gemma-4-31b-it",
-        "openrouter/nvidia/nemotron-3.5-super-vl:free"
+        "openrouter/nvidia/nemotron-3.5-super-vl:free",
+        "qwen/qwen3.8-27b"
       ],
       "backup_models": [],
       "backup_after_attempts": null,

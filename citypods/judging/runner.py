@@ -101,6 +101,9 @@ SIBLING_CEILINGS: dict[str, tuple[int, int]] = {
     "google/gemma-4-26b-a4b-it": (8_500, 25),
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": (24_000, 25),
     "openrouter/nvidia/nemotron-3.5-super-vl:free": (24_000, 25),
+    # Groq's 7,000-token minute budget is also its hard input ceiling: (7,000 - ~1,900 forecast
+    # output) leaves about 5,000, and the Worker's own packing figure tightens this further.
+    "qwen/qwen3.8-27b": (4_500, 10),
 }
 DEFAULT_SIBLING_CEILING = (10_000, 20)
 # Transcripts one pass may read to quote-check collected answers
@@ -161,6 +164,9 @@ class JudgingContext:
     # model -> packets it may still take this pass under the sibling outstanding limit, which
     # applies to each judge model separately (set by _apply_backpressure; empty: unlimited).
     sibling_room: dict[str, int] = field(default_factory=dict)
+    # model -> a tighter outstanding limit for that sibling than the purpose's (review/58 12.6:
+    # a small-quota model must not queue more packets than it can drain in a day or two).
+    sibling_max_outstanding: dict[str, int] = field(default_factory=dict)
     # model -> the Worker's packing ceiling (chars/4 estimate) for the model's smallest route.
     sibling_pack_ceilings: dict[str, int] = field(default_factory=dict)
 
@@ -578,16 +584,16 @@ def _collect(
             if recipe not in outputs:
                 outputs[recipe] = _look_up(ctx, recipe, stats) if recipe else None
             record = outputs[recipe]
-            if _retired_anchor(marker, ctx) and (
-                record is _UNREADABLE or isinstance(record, JobHandle)
-            ):
-                # A packet for an anchor the lane no longer names (JEV, retired 2026-11-05) cannot
-                # be answered and must not hold the current anchor's outstanding room. A queued one
-                # is let go; an unreadable one keeps its marker until it can be read. An answer it
-                # already has is collected below and kept under JEV's own identity.
+            retired = _retired_role(marker, ctx)
+            if retired and (record is _UNREADABLE or isinstance(record, JobHandle)):
+                # A packet for a judge its lane no longer names (the JEV anchor, retired
+                # 2026-11-05; the Gemma sibling, removed 2026-11-13) must not hold the current
+                # judges' outstanding room. A queued one is let go; an unreadable one keeps its
+                # marker until it can be read. An answer it already has is collected below and
+                # kept under the retired model's own identity.
                 if isinstance(record, JobHandle):
                     ledger.drop_pending(subject, marker)
-                    stats.counts["retired_anchor_pending_dropped"] += 1
+                    stats.counts[f"retired_{retired}_pending_dropped"] += 1
                 continue
             if record is _UNREADABLE or isinstance(record, JobHandle):
                 stats.counts["still_pending"] += 1
@@ -735,12 +741,18 @@ def _add_probes(
             stats.counts[f"probes_asked:{role}"] += 1
 
 
-def _retired_anchor(marker: Mapping[str, Any], ctx: JudgingContext) -> bool:
-    """An anchor packet asked of a model the anchor lane no longer names (review/58 WP9)."""
-    return (
-        str(marker.get("judge_role") or "") == "anchor"
-        and str(marker.get("judge_model") or "") != ctx.anchor.primary_model
-    )
+def _retired_role(marker: Mapping[str, Any], ctx: JudgingContext) -> str | None:
+    """The role of a packet asked of a model its lane no longer names, else None.
+
+    An anchor packet for a model other than the lane's anchor (JEV, review/58 WP9), or a sibling
+    packet for a model the sibling lane no longer lists (Gemma 4 31B, review/58 12.6)."""
+    role = str(marker.get("judge_role") or "")
+    model = str(marker.get("judge_model") or "")
+    if role == "anchor" and model != ctx.anchor.primary_model:
+        return "anchor"
+    if role == "sibling" and model and model not in ctx.sibling.models:
+        return "sibling"
+    return None
 
 
 def _count_superseded_outstanding(
@@ -767,8 +779,8 @@ def _count_superseded_outstanding(
                     continue
                 if recipe not in outputs:
                     outputs[recipe] = _look_up(ctx, recipe, stats)
-                if _retired_anchor(marker, ctx):
-                    continue  # never answered; holds no room for the current anchor
+                if _retired_role(marker, ctx):
+                    continue  # never answered; holds no room for the current judges
                 if outputs[recipe] is _UNREADABLE or isinstance(outputs[recipe], JobHandle):
                     purpose = str(marker.get("purpose") or "")
                     stats.outstanding.setdefault(purpose, set()).add(recipe)
@@ -793,7 +805,11 @@ def _apply_backpressure(ctx: JudgingContext, stats: JudgingStats) -> None:
         if purpose == SIBLING_PURPOSE:
             ctx.sibling_room.update(
                 {
-                    model: max(0, int(limit) - len(ctx.sibling_recipes.get(model, ())))
+                    model: max(
+                        0,
+                        min(int(limit), int(ctx.sibling_max_outstanding.get(model, limit)))
+                        - len(ctx.sibling_recipes.get(model, ())),
+                    )
                     for model in ctx.sibling.models
                 }
             )
@@ -830,7 +846,11 @@ def _apply_backpressure(ctx: JudgingContext, stats: JudgingStats) -> None:
                 model=model,
                 outstanding=model_outstanding,
                 limit=(
-                    int(limit) if purpose != SIBLING_PURPOSE or model in ctx.sibling_room else None
+                    int(limit)
+                    if purpose != SIBLING_PURPOSE
+                    else min(int(limit), int(ctx.sibling_max_outstanding.get(model, limit)))
+                    if model in ctx.sibling_room
+                    else None
                 ),
                 room=model_room,
                 run_cap=ctx.run_caps.get(purpose),
