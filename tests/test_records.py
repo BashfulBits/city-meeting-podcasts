@@ -2507,3 +2507,107 @@ def test_exact_body_selectors_do_not_change_source_namespace_or_episode_uids():
     assign_uids(original, [episode])
     assign_uids(exact, [comparison])
     assert episode.uid == comparison.uid
+
+
+# review/58 §12.3: the chapter-locator lane owns every locator key, result metadata included.
+_STALE_LOCATOR_META = {
+    "locator_model": "gemini/gemini-3.5-flash-lite",
+    "locator_prompt_version": "locator-v2",
+    "locator_routing_version": "size-split-v1",
+}
+_CURRENT_LOCATOR_META = {
+    "locator_model": "deepseek/deepseek-v4-flash",
+    "locator_prompt_version": "locator-baseline-v3",
+    "locator_routing_version": "size-split-v1",
+}
+
+
+def _agenda_block(**extra):
+    return {"status": "completed", "recipe": "r-agenda", "items": [], **extra}
+
+
+def _push(remote, local, lane):
+    return merge_preserving_foreign(
+        {"u1": {"uid": "u1", "generated_agenda_candidates": remote}},
+        {"u1": {"uid": "u1", "generated_agenda_candidates": local}},
+        protected_blocks_for_lane(lane),
+        lane=lane,
+    )["u1"]["generated_agenda_candidates"]
+
+
+def test_locator_save_replaces_stale_locator_metadata_on_the_remote():
+    remote = _agenda_block(locator_status="completed", locator_recipe="r1", **_STALE_LOCATOR_META)
+    local = _agenda_block(locator_status="completed", locator_recipe="r1", **_CURRENT_LOCATOR_META)
+    merged = _push(remote, local, "chapter-locator")
+    for key, value in _CURRENT_LOCATOR_META.items():
+        assert merged[key] == value
+
+
+def test_locator_save_then_agenda_save_keeps_the_locator_metadata():
+    # The locator lane restamps; the agenda lane then pushes its snapshot from before that save.
+    remote = _agenda_block(locator_status="completed", locator_recipe="r1", **_STALE_LOCATOR_META)
+    after_locator = _push(
+        remote,
+        _agenda_block(locator_status="completed", locator_recipe="r1", **_CURRENT_LOCATOR_META),
+        "chapter-locator",
+    )
+    agenda_snapshot = _agenda_block(
+        locator_status="completed", locator_recipe="r1", **_STALE_LOCATOR_META
+    )
+    agenda_snapshot["recipe"] = "r-agenda-2"
+    after_agenda = _push(after_locator, agenda_snapshot, "chapter-agenda")
+    assert after_agenda["recipe"] == "r-agenda-2"  # the agenda lane's own key lands
+    for key, value in _CURRENT_LOCATOR_META.items():
+        assert after_agenda[key] == value
+
+
+def test_agenda_save_then_locator_save_keeps_both_lanes_keys():
+    remote = _agenda_block(locator_status="completed", locator_recipe="r1", **_STALE_LOCATOR_META)
+    after_agenda = _push(
+        remote,
+        {**remote, "recipe": "r-agenda-2", "locator_model": "stale/other"},
+        "chapter-agenda",
+    )
+    assert after_agenda["recipe"] == "r-agenda-2"
+    assert after_agenda["locator_model"] == _STALE_LOCATOR_META["locator_model"]
+    locator_snapshot = _agenda_block(
+        locator_status="completed", locator_recipe="r1", **_CURRENT_LOCATOR_META
+    )
+    after_locator = _push(after_agenda, locator_snapshot, "chapter-locator")
+    assert after_locator["recipe"] == "r-agenda-2"  # agenda key preserved from the remote
+    for key, value in _CURRENT_LOCATOR_META.items():
+        assert after_locator[key] == value
+
+
+def test_locator_lane_removal_of_its_keys_propagates():
+    remote = _agenda_block(
+        locator_status="completed",
+        locator_retry_count=1,
+        locator_retry_hint="repair anchors",
+        locator_retry_policy="p",
+        **_STALE_LOCATOR_META,
+    )
+    local = _agenda_block(locator_status="completed", **_CURRENT_LOCATOR_META)
+    merged = _push(remote, local, "chapter-locator")
+    for key in ("locator_retry_count", "locator_retry_hint", "locator_retry_policy"):
+        assert key not in merged
+
+
+def test_agenda_lane_does_not_resurrect_a_locator_key_the_locator_lane_removed():
+    remote = _agenda_block(locator_status="completed", **_CURRENT_LOCATOR_META)
+    stale_agenda_snapshot = _agenda_block(
+        locator_status="repair_pending", locator_retry_hint="old hint", **_STALE_LOCATOR_META
+    )
+    merged = _push(remote, stale_agenda_snapshot, "chapter-agenda")
+    assert "locator_retry_hint" not in merged
+    assert merged["locator_status"] == "completed"
+    for key, value in _CURRENT_LOCATOR_META.items():
+        assert merged[key] == value
+
+
+def test_agenda_lane_may_still_add_locator_status_where_the_remote_has_none():
+    remote = _agenda_block()
+    local = _agenda_block(status="not_applicable", locator_status="not_applicable")
+    merged = _push(remote, local, "chapter-agenda")
+    assert merged["status"] == "not_applicable"
+    assert merged["locator_status"] == "not_applicable"

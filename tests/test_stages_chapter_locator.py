@@ -21,6 +21,7 @@ from citypods.stages import (
     CHAPTER_LOCATOR_PIPELINE_VERSION,
     ChapterBoundaryLocatorStage,
     StageContext,
+    StageStats,
     _legacy_stage_complete,
     stage_input_fingerprint,
     stage_output_pointer,
@@ -1117,3 +1118,312 @@ def test_failed_cancellation_keeps_the_episode_waiting(tmp_path):
     assert ep.generated_agenda_candidates["locator_status"] == "pending"
     assert stats.defer_reasons == {"llm-pending": 1}
     assert stats.errors == ["retired-model locator cancellation: worker 503"]
+
+
+# --- review/58 §12.3: stale-recipe results are metadata, not work -------------------------------
+
+_GEMINI_STALE = {
+    "locator_model": "gemini/gemini-3.5-flash-lite",
+    "locator_prompt_version": "locator-v2",
+    "locator_routing_version": LOCATOR_ROUTING_VERSION,
+}
+
+
+def _anchor_output(*indices: int) -> dict:
+    anchors = [
+        {
+            "agenda_item_index": index,
+            "unit_id": f"u0000{index + 1}",
+            "transition_quote": "Meeting is called to order",
+            "confidence": 0.9,
+            "rationale": "start",
+        }
+        for index in indices
+    ]
+    return {"choices": [{"message": {"content": json.dumps({"anchors": anchors})}}]}
+
+
+def _completed_then_overwritten(tmp_path: Path, *, anchors=(0,), uid="ep-repair"):
+    """Produce a genuinely current locator result through the stage itself, then overwrite its
+    record metadata with the stale values the chapter-agenda lane used to write back."""
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode(uid)
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    result = JobResult(
+        task="agenda-chapter-locate", recipe_hash=f"recipe-{uid}", output=_anchor_output(*anchors)
+    )
+    ctx = _ctx(storage=storage)
+    ctx.chapter_llm_backend = FakeBackend(result)
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.ran == 1 and not stats.errors
+    # In production a result arrives through the pending path, which records its recipe; this
+    # direct-result double skips that step.
+    ep.generated_agenda_candidates["locator_recipe"] = ep.generated_chapters_spec_hash
+    ep.generated_agenda_candidates.update(_GEMINI_STALE)
+    return stage, city, storage, ep
+
+
+def _rerun(stage, city, storage, ep, **ctx_kwargs):
+    ctx = _ctx(storage=storage, **ctx_kwargs)
+    backend = FakeBackend(_pending_handle("replanned"))
+    ctx.chapter_llm_backend = backend
+    stats = stage.process(None, city, [ep], ctx)
+    return stats, backend, ctx
+
+
+def _kimi_policy() -> str:
+    from citypods.chapter_locator import DEEPSEEK_FREE_LOCATOR_MODEL, KIMI_LOCATOR_MODEL
+    from citypods.stages import _locator_policy_fingerprint
+
+    return _locator_policy_fingerprint([DEEPSEEK_FREE_LOCATOR_MODEL, KIMI_LOCATOR_MODEL])
+
+
+def test_proven_current_result_is_restamped_without_an_llm_call(tmp_path):
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+    from citypods.stages import episode_needs_chapter_locator
+
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path)
+    chapters_before = list(ep.generated_chapters)
+    assert episode_needs_chapter_locator(ep) is True
+
+    stats, backend, ctx = _rerun(stage, city, storage, ep)
+
+    assert backend.enqueue_calls == []
+    assert stats.reused == 1 and stats.ran == 0 and stats.skipped == 0
+    assert stats.quality_counts == {"locator-metadata-repaired": 1}
+    raw = ep.generated_agenda_candidates
+    assert raw["locator_model"] == LOCATOR_MODEL
+    assert raw["locator_prompt_version"] == LOCATOR_PROMPT_VERSION
+    assert raw["locator_routing_version"] == LOCATOR_ROUTING_VERSION
+    assert ep.generated_chapters == chapters_before  # the result itself is untouched
+    assert episode_needs_chapter_locator(ep) is False
+    purpose = ctx.llm_work.snapshot()["purposes"]["chapter-locator"]
+    assert purpose["states"] == {"reused": 1}
+    assert purpose["outcomes"] == {"metadata-repaired": 1}
+
+
+def test_repair_is_idempotent(tmp_path):
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path)
+    _rerun(stage, city, storage, ep)
+    stamped = dict(ep.generated_agenda_candidates)
+    stats, backend, _ = _rerun(stage, city, storage, ep)
+    assert backend.enqueue_calls == []
+    assert stats.reused == 1
+    assert stats.quality_counts == {}  # the plain reuse check takes it now
+    assert ep.generated_agenda_candidates == stamped
+
+
+def test_retired_v41_result_is_restamped_with_its_own_model(tmp_path):
+    from citypods.chapter_locator import DEEPSEEK_V41_LOCATOR_MODEL
+
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid="ep-v41")
+    key = ep.generated_agenda_candidates["boundary_artifact_key"]
+    boundary = json.loads(storage._path(key).read_bytes())
+    boundary["model"] = DEEPSEEK_V41_LOCATOR_MODEL
+    _put_storage_bytes(storage, key, json.dumps(boundary).encode())
+    for chapter in ep.generated_chapters:
+        chapter["model"] = DEEPSEEK_V41_LOCATOR_MODEL
+
+    stats, backend, _ = _rerun(stage, city, storage, ep)
+    assert backend.enqueue_calls == []
+    assert stats.quality_counts == {"locator-metadata-repaired": 1}
+    assert ep.generated_agenda_candidates["locator_model"] == DEEPSEEK_V41_LOCATOR_MODEL
+
+
+def test_genuinely_stale_result_is_not_restamped_and_is_planned(tmp_path):
+    """Old prompt version in the stored chapters (and the boundary file): no repair, re-plan."""
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid="ep-old")
+    key = ep.generated_agenda_candidates["boundary_artifact_key"]
+    boundary = json.loads(storage._path(key).read_bytes())
+    boundary["prompt_version"] = "locator-v2"
+    _put_storage_bytes(storage, key, json.dumps(boundary).encode())
+    for chapter in ep.generated_chapters:
+        chapter["prompt_version"] = "locator-v2"
+
+    stats, backend, ctx = _rerun(stage, city, storage, ep)
+
+    assert stats.quality_counts == {"locator-metadata-not-provable": 1}
+    assert len(backend.submitted_jobs) == 1  # planned normally
+    assert stats.defer_reasons == {"llm-pending": 1}
+    raw = ep.generated_agenda_candidates
+    assert raw["locator_status"] == "pending"
+    assert raw["locator_model"] == _GEMINI_STALE["locator_model"]
+    outcomes = ctx.llm_work.snapshot()["purposes"]["chapter-locator"]["outcomes"]
+    assert outcomes == {"metadata-not-provable": 1}
+
+
+def test_stale_prompt_in_stored_chapters_alone_blocks_the_repair(tmp_path):
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid="ep-old-chapters")
+    ep.generated_chapters[0]["prompt_version"] = "locator-v2"
+    stats, backend, _ = _rerun(stage, city, storage, ep)
+    assert stats.quality_counts == {"locator-metadata-not-provable": 1}
+    assert len(backend.submitted_jobs) == 1
+
+
+@pytest.mark.parametrize("mismatch", ["transcript", "agenda", "spec_hash", "missing_file", "key"])
+def test_result_without_matching_evidence_is_not_restamped(tmp_path, mismatch):
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid=f"ep-{mismatch}")
+    raw = ep.generated_agenda_candidates
+    if mismatch == "transcript":
+        _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT + b"\n")
+    elif mismatch == "agenda":
+        raw["recipe"] = "recipe-agenda-2"
+    elif mismatch == "spec_hash":
+        ep.generated_chapters_spec_hash = "other"
+    elif mismatch == "missing_file":
+        storage._path(raw["boundary_artifact_key"]).unlink()
+    else:
+        raw["boundary_artifact_key"] = "state/generated_chapters/boundary/elsewhere.json"
+    stats, backend, _ = _rerun(stage, city, storage, ep)
+    assert stats.quality_counts == {"locator-metadata-not-provable": 1}
+    assert ep.generated_agenda_candidates["locator_model"] == _GEMINI_STALE["locator_model"]
+    assert len(backend.submitted_jobs) == 1
+
+
+def test_no_chapter_result_needs_the_retry_policy_fingerprint(tmp_path):
+    # Anchor only on the rejected item: a completed result with zero chapters.
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, anchors=(1,), uid="ep-none")
+    assert ep.generated_chapters == []
+    stats, backend, _ = _rerun(stage, city, storage, ep)
+    assert stats.quality_counts == {"locator-metadata-not-provable": 1}
+    assert len(backend.submitted_jobs) == 1
+
+
+def test_no_chapter_result_with_a_current_policy_fingerprint_is_restamped(tmp_path):
+    from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION
+
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, anchors=(1,), uid="ep-nc")
+    ep.generated_agenda_candidates["locator_retry_policy"] = _kimi_policy()
+    stats, backend, _ = _rerun(stage, city, storage, ep)
+    assert backend.enqueue_calls == []
+    assert stats.quality_counts == {"locator-metadata-repaired": 1}
+    assert ep.generated_agenda_candidates["locator_prompt_version"] == LOCATOR_PROMPT_VERSION
+
+
+def test_unknown_routing_needs_the_policy_fingerprint(tmp_path):
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid="ep-routing")
+    ep.generated_agenda_candidates["locator_routing_version"] = None
+    stats, _, _ = _rerun(stage, city, storage, ep)
+    assert stats.quality_counts == {"locator-metadata-not-provable": 1}
+
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path / "b", uid="ep-routing-b")
+    ep.generated_agenda_candidates["locator_routing_version"] = None
+    ep.generated_agenda_candidates["locator_retry_policy"] = _kimi_policy()
+    stats, _, _ = _rerun(stage, city, storage, ep)
+    assert stats.quality_counts == {"locator-metadata-repaired": 1}
+
+
+def test_repair_switch_off_plans_normally(tmp_path, monkeypatch):
+    from citypods.stages import LOCATOR_METADATA_REPAIR_ENV
+
+    monkeypatch.setenv(LOCATOR_METADATA_REPAIR_ENV, "0")
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid="ep-off")
+    stats, backend, _ = _rerun(stage, city, storage, ep)
+    assert stats.quality_counts == {}
+    assert len(backend.submitted_jobs) == 1
+
+
+def test_repair_respects_the_stop_budget(tmp_path):
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid="ep-stop")
+    stats, backend, _ = _rerun(stage, city, storage, ep, stop=lambda: True)
+    assert stats.defer_reasons == {"stop-signal": 1}
+    assert stats.quality_counts == {}
+    assert backend.enqueue_calls == []
+    assert ep.generated_agenda_candidates["locator_model"] == _GEMINI_STALE["locator_model"]
+
+
+def test_stale_metadata_makes_the_stage_dirty_despite_a_clean_marker(tmp_path):
+    from citypods.stages import _mark_stage_complete, stage_is_dirty
+
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid="ep-marker")
+    _mark_stage_complete(stage, [ep], city, StageStats(stage.name))
+    assert stage_is_dirty(stage, ep, city) is True  # stale metadata: ready work, so dirty
+    _rerun(stage, city, storage, ep)
+    _mark_stage_complete(stage, [ep], city, StageStats(stage.name))
+    assert stage_is_dirty(stage, ep, city) is False
+
+
+def _zero_agenda(ep: Episode) -> None:
+    raw = dict(ep.generated_agenda_candidates)
+    raw["items"] = [{**item, "status": "rejected"} for item in raw["items"]]
+    ep.generated_agenda_candidates = raw
+
+
+def test_zero_agenda_episode_is_not_ready_and_its_result_is_untouched(tmp_path):
+    from citypods.stages import episode_needs_chapter_locator
+
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-zero")
+    _zero_agenda(ep)
+    ep.generated_agenda_candidates.update({"locator_status": "completed", **_GEMINI_STALE})
+    before = dict(ep.generated_agenda_candidates)
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    assert episode_needs_chapter_locator(ep) is False
+
+    ctx = _ctx(storage=storage)
+    ctx.chapter_llm_backend = backend = FakeBackend()
+    stage.census(city, [ep], ctx)
+    purpose = ctx.llm_work.snapshot()["purposes"]["chapter-locator"]
+    assert purpose["states"] == {"blocked": 1}
+    assert purpose["backlog"] == 0
+    assert purpose["outcomes"] == {"zero-agenda": 1}
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.quality_counts == {"locator-zero-agenda": 1}
+    assert backend.enqueue_calls == []
+    assert ep.generated_agenda_candidates == before
+
+
+def test_census_ready_count_matches_the_lane_prefilter(tmp_path):
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+    from citypods.stages import episode_needs_chapter_locator
+
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    fresh = _make_episode("ep-fresh")
+    stale = _make_episode("ep-stale")
+    stale.generated_agenda_candidates.update({"locator_status": "completed", **_GEMINI_STALE})
+    current = _make_episode("ep-current")
+    current.generated_agenda_candidates.update(
+        {
+            "locator_status": "completed",
+            "locator_model": LOCATOR_MODEL,
+            "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+            "locator_routing_version": LOCATOR_ROUTING_VERSION,
+        }
+    )
+    zero = _make_episode("ep-zero-2")
+    _zero_agenda(zero)
+    episodes = [fresh, stale, current, zero]
+    ctx = _ctx(storage=storage)
+    stage.census(city, episodes, ctx)
+    states = ctx.llm_work.snapshot()["purposes"]["chapter-locator"]["states"]
+    assert states == {"ready": 2, "reused": 1, "blocked": 1}
+    assert sum(episode_needs_chapter_locator(ep) for ep in episodes) == states["ready"]
+
+
+def test_stage_activity_event_carries_quality_counts(monkeypatch):
+    from citypods.compute import llm_submission_telemetry as telemetry
+
+    events = []
+    monkeypatch.setattr(telemetry, "record", lambda event, **fields: events.append(fields))
+    telemetry.record_stage_activity(
+        lane="chapter-locator",
+        stage="chapter_locator",
+        ran=0,
+        reused=3,
+        backlog=0,
+        errors=0,
+        seconds=1.0,
+        defer_reasons={},
+        quality_counts={"locator-metadata-repaired": 2, "locator-zero-agenda": 1},
+    )
+    assert events[0]["quality_counts"] == {
+        "locator-metadata-repaired": 2,
+        "locator-zero-agenda": 1,
+    }
