@@ -1061,7 +1061,8 @@ claimed tick: `bundle_id`, `claimed_jobs`, `route_ids`, `in_flight_calls_before`
 could hold, capped per provider and by `MAX_IN_FLIGHT_LLM_CALLS`; computed in the claim from the
 ranking it already made, so no read; null on a tick refused before ranking).
 `bundle_completed`, once per bundle after the final commit: `bundle_id`, `bundle_duration_ms`
-(claim to final commit), `commit_ok`, `partial_flushes` and `commits` (WP4), and `calls[]` with
+(claim to final commit), `commit_ok`, `partial_flushes` and `commits` (WP4: confirmed commits
+only) and `partial_refused` (the DO's reason when it refused a partial, else null), and `calls[]` with
 `route_id`, `purpose`, `final`, `outcome`, `failure_class`, `provider_status_code`,
 `call_duration_ms`, `response_timeout_ms` (the timeout the call ran under), `hold_ms` (call end to
 the commit that released its slot) and `released_by` (`partial` or `final`) for
@@ -1078,8 +1079,9 @@ Only a job's final result is flushed (in-window retries finish first). A partial
 through the same code as `completeBatch` (requeue, failure cells, cooldowns, the route health
 ladder, usage, logs), lowers the bundle entry's `active_call_count` and deletes those jobs' leases,
 so the next claim counts the slot and the route free; lease expiry and stale tokens are unchanged
-for the calls still running. Idempotency: the bundle entry records `settled_job_ids` and every
-later commit of the bundle skips a listed job (usage included), so a retried partial, or a final
+for the calls still running. Idempotency: the bundle entry records `settled_job_ids` (jobs a commit
+actually settled; a stale result is not recorded) and every later commit of the bundle skips a
+listed job (usage included), so a retried partial, or a final
 repeating a job whose partial was still in flight, settles nothing twice; a commit for a closed or
 reaped bundle is a no-op as before. The final is sent without waiting for an in-flight partial, so
 a partial never delays it or eats `FINALIZATION_RESERVE_SECONDS`; a partial opens a connection only

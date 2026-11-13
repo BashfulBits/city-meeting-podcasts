@@ -7469,9 +7469,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const resultJobId = String(result?.job_id);
         if (processed.has(resultJobId)) {
           duplicateCount += 1;
-          continue; // this bundle already reported this job (review/58 WP4)
+          continue; // this bundle already settled this job (review/58 WP4)
         }
-        processed.add(resultJobId);
         // Every reported call counts toward usage, including a stale/duplicate completion whose
         // lease has moved on: the provider was still called.
         const jobRows = [...sql.exec("SELECT * FROM jobs WHERE id = ?", result.job_id)];
@@ -7500,6 +7499,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             jobRows[0].state !== "leased") {
           continue; // stale/duplicate completion for an already-settled job
         }
+        // Recorded only once the result settles its job: a stale result must not hide a later
+        // valid one for the same job.
+        processed.add(resultJobId);
         // The claim (or a granted 429 retry) counted this attempt before it started. A result
         // that never reached a provider (deferred_late, unreadable payload, unknown route) gives
         // it back, in the job UPDATE below, so backup-model and retry thresholds count calls.

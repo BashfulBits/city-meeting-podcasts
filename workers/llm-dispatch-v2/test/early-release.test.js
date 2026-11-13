@@ -190,6 +190,12 @@ test("a partial for a job whose lease was already settled elsewhere settles noth
   assert.equal(reply.settled, 0);
   assert.equal(jobRow(f.sql, plan.jobs[0].id).state, "leased");
   assert.equal(activeBundles(f.sql)[plan.bundle_id].active_call_count, 2);
+  // The stale result is not recorded, so a valid one for the same job still settles it.
+  const valid = await f.coordinator.completePartial(plan.bundle_id, plan.execution_token,
+    [resultFor(f, plan.jobs[0])]);
+  assert.equal(valid.settled, 1);
+  assert.equal(jobRow(f.sql, plan.jobs[0].id).state, "completed");
+  assert.deepEqual(activeBundles(f.sql)[plan.bundle_id].settled_job_ids, [plan.jobs[0].id]);
 });
 
 test("the DO caps partials per bundle at MAX_COMMITS - 1", async t => {
@@ -453,9 +459,9 @@ test("settler: switched off, or MAX_COMMITS 1, it never sends a partial", async 
 });
 
 test("settler: a failed or refused partial goes into the final and stops further partials", async () => {
-  for (const partial of [
-    async () => { throw new Error("completePartial is not a method (older coordinator)"); },
-    async () => ({ accepted: false, reason: "disabled" }),
+  for (const [partial, expectErrors, expectRefused] of [
+    [async () => { throw new Error("completePartial is not a method (older coordinator)"); }, 1, null],
+    [async () => ({ accepted: false, reason: "daily_rows" }), 0, "daily_rows"],
   ]) {
     const clock = fakeClock();
     const coordinator = fakeCoordinator({ partial });
@@ -473,7 +479,10 @@ test("settler: a failed or refused partial goes into the final and stops further
     assert.deepEqual(coordinator.calls, [
       { kind: "partial", ids: ["a"] }, { kind: "final", ids: ["a", "b", "c", "d"] },
     ]);
-    assert.equal(errors.length, 1);
+    assert.equal(errors.length, expectErrors, "a refusal is reported, not logged as an error");
+    assert.equal(out.partialRefused, expectRefused);
+    assert.equal(out.partialFlushes, 0, "an unconfirmed partial is not a commit");
+    assert.equal(out.commits, 1);
     assert.equal(out.releases.get("a").releasedBy, "final");
   }
 });
@@ -611,6 +620,11 @@ async function enqueueTickJob(env, store, id, model) {
 }
 
 async function runHeldTick(t, workerOverrides = {}) {
+  // Real time runs on, but from 12:00 UTC: the prorated partial budget has headroom whatever
+  // time of day the suite runs (just after midnight it is still near zero).
+  const realNow = Date.now.bind(Date);
+  const offset = Date.UTC(2026, 10, 12, 12) - realNow();
+  t.mock.method(Date, "now", () => realNow() + offset);
   const store = new Map();
   const { env, coordinator, sql } = tickEnv(workerOverrides);
   const events = [];

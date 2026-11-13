@@ -137,7 +137,9 @@ export function createBundleSettler({
   const entries = [];
   let openLanes = laneCount;
   let lastFlushAt = startAt;
-  let partialsSent = 0;
+  let partialsSent = 0; // attempts, for the cap
+  let partialsAccepted = 0; // confirmed by the DO, for the report
+  let partialRefused = null; // the DO's reason, when it refused one
   let partialsDisabled = !config.enabled;
   let inflight = null;
   let timer = null;
@@ -163,13 +165,17 @@ export function createBundleSettler({
           bundleId, executionToken, batch.map(entry => entry.result)
         );
         accepted = response?.accepted === true;
-        if (!accepted) onError(new Error(`partial refused: ${response?.reason ?? "unknown"}`));
+        // A refusal (row budget, switch, commit cap) is expected, not an error: reported in
+        // bundle_completed, and the final carries the results.
+        if (!accepted) partialRefused = String(response?.reason ?? "unknown");
       } catch (err) {
         // An older coordinator has no completePartial; a lost reply may or may not have
-        // committed. Either way the final completeBatch carries these results (deduped by the DO).
+        // committed (not counted as a commit). Either way the final completeBatch carries these
+        // results, deduped by the DO.
         onError(err);
       }
       if (accepted) {
+        partialsAccepted += 1;
         const at = now();
         for (const entry of batch) if (entry.state === "inflight") entry.state = "committed";
         release(batch, at, "partial");
@@ -235,8 +241,9 @@ export function createBundleSettler({
       return {
         commitOk,
         commitAt,
-        partialFlushes: partialsSent,
-        commits: partialsSent + (batch.length > 0 ? 1 : 0),
+        partialFlushes: partialsAccepted,
+        commits: partialsAccepted + (batch.length > 0 ? 1 : 0),
+        partialRefused,
         releases: new Map(entries.map(entry => [entry.result.job_id, {
           releasedAt: entry.releasedAt, releasedBy: entry.releasedBy,
         }])),

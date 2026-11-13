@@ -1505,7 +1505,7 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
   logBundleCompleted({
     plan, results, attemptLog, claimNow, commitAt: commit.commitAt, commitOk: commit.commitOk,
     dispatchLimits, maxResponseMs, releases: commit.releases, partialFlushes: commit.partialFlushes,
-    commits: commit.commits,
+    commits: commit.commits, partialRefused: commit.partialRefused,
   });
 }
 
@@ -1518,7 +1518,7 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
  */
 function logBundleCompleted({
   plan, results, attemptLog = [], claimNow, commitAt, commitOk, dispatchLimits, maxResponseMs,
-  releases = new Map(), partialFlushes = 0, commits = 1,
+  releases = new Map(), partialFlushes = 0, commits = 1, partialRefused = null,
 }) {
   const jobsById = new Map(plan.jobs.map((job) => [job.id, job]));
   const attempts = [
@@ -1532,6 +1532,7 @@ function logBundleCompleted({
     commit_ok: commitOk,
     partial_flushes: partialFlushes,
     commits,
+    partial_refused: partialRefused,
     calls: attempts.map(({ result, final }) => {
       const job = jobsById.get(result.job_id);
       const started = Number.isFinite(result.actual_start_at) ? result.actual_start_at : null;
