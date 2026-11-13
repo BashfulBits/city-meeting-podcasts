@@ -50,14 +50,13 @@ jobs:
       # Worker response that the production runtime handles. Without ffmpeg this sub-check
       # self-skips, so require this install to succeed.
       - name: Install pinned static ffmpeg
+        timeout-minutes: 10
         # Built by scripts/build_ffmpeg_static.sh and vendored in our B2 bucket. Keep this URL
         # secret-derived to match the other workflows that pin it (review/22).
         env:
           FFMPEG_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends \
-            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+          bash scripts/ci/install_ffmpeg_libs.sh
           timeout 300 python scripts/install_static_ffmpeg.py \
             --url "${FFMPEG_URL}" \
             --sha256 "${FFMPEG_SHA256}" \

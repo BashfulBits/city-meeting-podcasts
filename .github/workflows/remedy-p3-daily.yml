@@ -117,9 +117,7 @@ jobs:
       - name: Install FFmpeg runtime libraries
         timeout-minutes: 5
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends \
-            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+          bash scripts/ci/install_ffmpeg_libs.sh
 
       - name: Install pinned ffmpeg
         timeout-minutes: 10

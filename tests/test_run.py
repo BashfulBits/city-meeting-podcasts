@@ -3598,6 +3598,11 @@ def test_chapter_lanes_pre_filter_candidate_episodes(tmp_path):
     """In chapter-agenda and chapter-locator lanes, _run_enrich_global_queue filters
     candidate_episodes to only items needing work, while retained_episodes remains intact.
     """
+    from citypods.chapter_jobs import (
+        LOCATOR_MODELS,
+        LOCATOR_PROMPT_VERSION,
+        LOCATOR_ROUTING_VERSION,
+    )
     from citypods.run import SourcePipeline, _run_enrich_global_queue
     from citypods.stages import StageContext, StageStats
 
@@ -3711,9 +3716,14 @@ def test_chapter_lanes_pre_filter_candidate_episodes(tmp_path):
         media_kind="hls",
         body="Council",
         transcript_words_key="transcript/words/loc2.json",
+        # Current metadata: since review/58 §12.3 a completed result with stale or missing locator
+        # metadata is ready work, and the completion marker no longer hides it.
         generated_agenda_candidates={
             "status": "completed",
             "locator_status": "completed",
+            "locator_model": LOCATOR_MODELS[0],
+            "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+            "locator_routing_version": LOCATOR_ROUTING_VERSION,
             "candidates": [{"title": "Item 1"}],
         },
     )

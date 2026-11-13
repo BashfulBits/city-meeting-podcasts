@@ -76,8 +76,17 @@ def record_stage_activity(
     errors: int,
     seconds: float,
     defer_reasons: Mapping[str, int],
+    quality_counts: Mapping[str, int] | None = None,
 ) -> None:
-    """Record final activity for an LLM-producing stage in an enrichment run."""
+    """Record final activity for an LLM-producing stage in an enrichment run.
+
+    ``quality_counts`` is additive (review/58 §12.3): the chapter-locator lane reports its
+    metadata repairs, unprovable results and zero-agenda episodes there."""
+    extra = (
+        {"quality_counts": {str(k): int(v) for k, v in sorted(quality_counts.items())}}
+        if quality_counts
+        else {}
+    )
     record(
         "llm_submission_stage",
         lane=lane or "(none)",
@@ -88,6 +97,7 @@ def record_stage_activity(
         errors=errors,
         seconds=round(seconds, 3),
         defer_reasons={str(key): int(value) for key, value in sorted(defer_reasons.items())},
+        **extra,
     )
 
 

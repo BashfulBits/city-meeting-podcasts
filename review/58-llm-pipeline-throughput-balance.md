@@ -145,7 +145,7 @@ Classification:
 | Lane | Class | Evidence |
 |---|---|---|
 | chapter-agenda | (a) input-starved | 152 eligible; 6,135 blocked on agenda text, flat all week. Was gated until 11-10 (493 of 512 candidates behind the terminal-retry gate), then 493 enqueued in one run |
-| chapter-locator | (b) producer-limited, then (c) | 1,723 stale-recipe episodes sit "ready" and are never submitted; six runs failed on `model_not_in_lane` (11-09 to 11-10); the >76k-token band has no working route (B3) |
+| chapter-locator | (b) producer-limited, then (c) | 1,723 stale-recipe episodes sit "ready" and are never submitted (corrected in §12.3: current results with stale record labels, not unlocated work); six runs failed on `model_not_in_lane` (11-09 to 11-10); the >76k-token band has no working route (B3) |
 | topic-tags:tagger | (c) dispatcher-limited; (e) budget-capped on 11-06 and 11-07 | 11,324 eligible; done grew 1,676, 3,074, ~600, ~300 per day; `purpose_write_budget_exceeded` deferred 639 to 753 on three runs, 2,205 refused once |
 | r6-moments | (a) input-starved | 145 eligible; 4,218 blocked on transcripts |
 | judge:* | (c) dispatcher-limited, (d) return-path-limited | stops on outstanding-packet caps (11 of 28 runs) and adjudication budget (15 of 28) while uncollected results count as outstanding; sibling lane 1.56M failed slot-seconds; anchor route returns 400 |
@@ -255,7 +255,8 @@ Classification:
   21 of 28 for the sweep. Median gap between runs is about 6 h, worst 14.5 h. No run was cancelled
   by a concurrency group.
 - Agenda and locator spend about 85% of each run on restore, load and a 7 to 8 minute state push.
-- Locator: 1,723 stale-recipe episodes are never submitted; a busy `chapter-record-write` lease
+- Locator: 1,723 stale-recipe episodes are never submitted (corrected in §12.3: about 1,800
+  current results whose record labels were stale, counted "ready" but not work); a busy `chapter-record-write` lease
   fails the run; the step timeout is 38 minutes against a 204-minute stop budget.
 - Tagger: 316 to 353 oversized chapter batches per run until 11-09 (17 since); the lane's
   2,057 jobs/day ceiling closed ingress on two days.
@@ -498,7 +499,7 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 and WP9 are merged and deployed (#2653 to #2661, #2665, #2666); this supersedes any "awaiting
 merge" or "PR pending" wording in the rows above. WP4 shipped with one partial commit per bundle
 after 60 s and a 3,000-row daily budget, not the 20 s and three commits proposed in B1. Not started:
-WP7 (optional 780 s) and the stale-recipe locator backfill under WP6.
+WP7 (optional 780 s). The stale-recipe locator backfill under WP6 was dropped: see §12.3.
 
 **WP6 status.** Part A is in the `fix/58-wp6a-producer-run-fixes` PR: the chapter-lane record-write
 lease skip (bounded wait, then a clean deferral stamped `record_write: skipped_lease_busy` on the
@@ -507,8 +508,9 @@ matching chapter-agenda) and the tag cadence (`19 */4 * * *`). Part B is in the
 `feat/58-wp6b-worker-cron-producer-trigger` PR: the Worker-cron `repository_dispatch` trigger
 (`config/producer_triggers.yml`, `src/producer_trigger.js`) and the self-skipping schedule fallback
 in the five producer workflows (`scripts/producer_schedule_guard.sh`); it does nothing until the
-owner sets the `GITHUB_DISPATCH_TOKEN` Worker secret. Still open under WP6: the stale-recipe
-locator backfill.
+owner sets the `GITHUB_DISPATCH_TOKEN` Worker secret. The stale-recipe locator backfill is not
+needed: those results were current and only mislabelled; §12.3 replaces it with a metadata repair
+that makes no LLM calls.
 
 
 ## 12. Follow-up round (2026-11-13)
@@ -561,3 +563,95 @@ moments a wall-clock window (as tag and judge have) rather than changing the gro
 **Owner follow-up.** Merging deploys the Worker (the trigger table changed). Verify
 `producer_trigger` log lines for `tag` and `moments` every two hours with status 204, and that
 moments run summaries show no per-pass cap line.
+
+### 12.3 Stale-recipe locator episodes: metadata, not work
+
+**Finding.** The "1,723 stale-recipe episodes" in section 4 and B5 are not unlocated work. In the
+2026-11-10 record snapshot, 1,824 completed locator results carried stale record metadata
+(1,815 labelled Gemini 3.5 Flash Lite / `locator-v2`), yet 1,816 of them were produced under the
+current prompt version by a reusable model. Their record labels were wrong, not their results. The
+1,723 in the 11-11 census is the same condition a day later (it cannot be reconciled exactly
+without that run's state). A capped LLM backfill would have re-sent about 1,800 current results.
+
+| Class (2026-11-10 snapshot) | Episodes | Evidence in the record |
+| --- | ---: | --- |
+| A. Chapters already current, V4 Flash | 1,631 | Stored chapters carry `locator-baseline-v3`; chapter hash equals `locator_recipe` |
+| A. Chapters already current, V4.1 (overflow band) | 41 | Same; 40 labelled Gemini, 1 labelled Kimi K3 |
+| B. Completed with no chapters | 144 | Planning-time policy fingerprint is v3 with V4 Flash and Kimi K3 |
+| C. Genuinely old (`locator-v1`, Gemini) | 8 | Zero accepted agenda items; markers from 2026-08-27/28 |
+
+All 1,824 had a chapter hash equal to `locator_recipe` and a boundary key naming that recipe; 1,816
+had the v3 policy fingerprint; 1,814 completion markers were stamped 2026-11-09 and 1,802 of them
+matched the stage's input fingerprint as of 11-10, so the stage skipped the episodes as clean. 709
+of the 1,824 also have canonical `ep.chapters`; generated chapters are shadow-only
+(`generated_chapters_enabled: false`), so listeners saw no difference either way.
+
+**Mechanism.** The record merge let the chapter-agenda lane own every `generated_agenda_candidates`
+key except six locator keys. `locator_model`, `locator_prompt_version`, `locator_routing_version`,
+`locator_error` and the five `locator_retry_*` keys were missing from the locator set, so the
+agenda lane wrote its stale copy back on every save, and the locator lane's own saves could never
+replace those keys (the merge keeps a remote key a lane does not own). The lane prefilter and the
+census read the stale labels and said "ready"; the completion marker said "clean"; the stage never
+saw the episodes.
+
+**What changed (this PR).**
+
+- Ownership (`citypods/records.py`): the chapter-locator lane owns every locator key, removals
+  included; the chapter-agenda lane can no longer overwrite them or add one back from a stale
+  snapshot, except `locator_status`, which it writes as `not_applicable` for provider chapters.
+  Sibling lanes (tags, moments, judge) own whole record blocks, not keys inside a shared block, so
+  they cannot have the same omission.
+- Repair without an LLM call (`ChapterBoundaryLocatorStage.process`): a completed result whose
+  labels are stale is restamped only when the stored evidence proves it current. Required: the
+  boundary file under the record's own `locator_recipe`, written for this episode, this agenda
+  recipe and this transcript hash by a reusable model under `locator-baseline-v3`; the stored
+  chapters hashed to that recipe and equal, chapter by chapter (item, start, title), to what that
+  file yields, each carrying the current prompt version, the file's model and its key; and the routing version shown
+  by the record or by a planning-time policy fingerprint for the current prompt and routing
+  versions (lane lists V4 Flash with Kimi K3, with V4.1, or the current list). A result with no
+  chapters must have that fingerprint. Anything else is reported "not provable" and planned as
+  before. The check runs after the stop check (so the wall-clock budget bounds it) and before
+  planning; a restamped result takes the plain reuse path on every later run. Switch:
+  `CITYPODS_LOCATOR_METADATA_REPAIR` (on by default; `0` turns it off). It is an environment
+  variable rather than a `site_config.yml` key so that switching it off does not deploy the Worker.
+- Census agreement: one helper defines "current metadata" for the stage, the lane prefilter and
+  the census. An agenda with zero accepted items is no longer "ready" (census state `blocked`); its
+  result is not touched. `stage_is_dirty` treats a locator episode the prefilter calls ready as
+  dirty, so a completion marker can no longer hide it.
+- Telemetry: the run event's `llm_work` purpose carries `outcomes` counts (`metadata-repaired`,
+  `metadata-not-provable`, `zero-agenda`), and the stage's quality counts
+  (`locator-metadata-repaired`, `locator-metadata-not-provable`, `locator-zero-agenda`) appear in
+  the run summary, its log line and the `llm_submission_stage` event. The zero-agenda count is
+  taken from the census, because the lane prefilter keeps those episodes away from the stage.
+
+**WP8 side effect (#2656, 2026-11-12).** Adding MiniMax to `LOCATOR_MODELS` changed the recipe
+string in every locator completion fingerprint, so every completion marker went dirty and the
+first locator run after the deploy (11-12 11:26Z) processed every eligible episode. Stale labels
+sent the stale-recipe results to planning:
+
+- V4 Flash band (up to 76k estimated tokens): the request recipe did not change, so the deferred
+  registry answered from its stored completions with no LLM call. The run log shows 1,689 "cached
+  complete" V4 Flash candidates and 14 fresh V4 Flash submissions; the stage reported 1,689 ran.
+  The replays rewrote identical boundary files and chapters, but the labels stayed stale (the
+  ownership bug), so those episodes stayed "ready". The registry keeps completions for 38 days;
+  once the 11-09 completions expire (mid-December), every further visit would have been a real
+  resubmission of about 1,700 results.
+- Over-76k band (the 41 V4.1-served results): the band now routes to MiniMax, so the request
+  recipe changed and the registry had nothing to replay. The same run made 95 fresh MiniMax
+  submissions, which is consistent with these 41 being re-sent alongside other overflow work; the
+  log does not name episodes, so the exact count is not established. The run also reported 41
+  "terminal retry limit" errors; whether these are the same 41 is not established.
+- Later runs (11-12 20:54Z, 11-13 01:54Z and 11:13Z) reported 1,690 to 1,813 reused, because
+  markers were restamped in sources with no errors; those episodes still read "ready".
+
+After this PR the repair runs before planning, so the proven-current results are restamped
+instead of replayed or re-sent. A V4.1-band episode whose MiniMax job is still pending is left to
+that job.
+
+**Owner checks.** The PR makes no LLM calls and enqueues nothing. The first locator run after
+merge rewrites the three label fields on up to about 1,800 episode records in B2. Merging does not
+deploy the Worker. Verify: the locator run summary's quality line shows
+`locator-metadata-repaired` near 1,800 on that run and near zero afterwards; the run event's
+`outcomes` agree; the `/admin/status` lane table's chapter-locator "ready" count falls to about the
+genuinely new work. To stop the repair, set `CITYPODS_LOCATOR_METADATA_REPAIR=0` on the locator
+workflow.

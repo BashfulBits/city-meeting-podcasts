@@ -73,15 +73,14 @@ jobs:
           key: ffmpeg-static-linux64-7.1.5-v2
 
       - name: Install pinned ffmpeg
+        timeout-minutes: 10
         # Self-built (scripts/build_ffmpeg_static.sh), vendored to our own B2 bucket -- not an
         # upstream/mirror host. FFMPEG_URL built from the B2 secret rather than hardcoded so it's
         # not duplicated across the 7 workflows that pin ffmpeg (review/22).
         env:
           FFMPEG_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends \
-            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+          bash scripts/ci/install_ffmpeg_libs.sh
           python scripts/install_static_ffmpeg.py \
             --url "${FFMPEG_URL}" \
             --sha256 "${FFMPEG_SHA256}" \

@@ -50,6 +50,9 @@ class _Item:
     first_seen: str = ""
     admission: dict[str, str] = field(default_factory=dict)
     polled: dict[str, str] = field(default_factory=dict)
+    # A producer-defined label for why the item ended where it did (review/58 §12.3), counted per
+    # purpose in the snapshot. One label per item, so re-visits in the same run never double-count.
+    outcome: str = ""
 
 
 class LLMWorkTracker:
@@ -218,6 +221,9 @@ class LLMWorkTracker:
                 }
                 if purpose in self._packets:
                     purposes[purpose]["packets"] = dict(self._packets[purpose])
+                outcomes = Counter(item.outcome for item in items.values() if item.outcome)
+                if outcomes:
+                    purposes[purpose]["outcomes"] = dict(sorted(outcomes.items()))
             return {"schema_version": SCHEMA_VERSION, "purposes": purposes}
 
 
@@ -251,6 +257,13 @@ class WorkItem:
             # A cached re-visit cannot erase consumption already completed in this run.
             item.consumed = item.consumed or not reused
             item.state = "consumed" if item.consumed else "reused"
+
+    def outcome(self, label: str) -> None:
+        """Label why this item ended where it did; the last label in a run wins."""
+        if not label:
+            raise ValueError("LLM work outcome label must be non-empty")
+        with self.tracker._lock:
+            self._item().outcome = label
 
     def job_outcome(self, recipe: str, status: str, reason: str | None = None) -> None:
         with self.tracker._lock:
