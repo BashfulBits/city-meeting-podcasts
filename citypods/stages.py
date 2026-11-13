@@ -9567,6 +9567,19 @@ def locator_metadata_is_current(raw_agenda: Mapping[str, Any]) -> bool:
     )
 
 
+def fold_locator_work_outcomes(stage_totals, snapshot: Mapping[str, Any]) -> None:
+    """Set the run's ``locator-zero-agenda`` quality count from the LLM work census.
+
+    The lane prefilter keeps zero-agenda episodes away from process(), so only the census sees
+    them all; it labels each episode once, so the count is never doubled. ``stage_totals`` is the
+    runner's per-stage totals mapping (a defaultdict)."""
+    purposes = snapshot.get("purposes") if isinstance(snapshot, Mapping) else None
+    locator = (purposes or {}).get("chapter-locator") or {}
+    zero = (locator.get("outcomes") or {}).get("zero-agenda", 0)
+    if zero:
+        stage_totals["chapter_locator"]["quality_counts"]["locator-zero-agenda"] = int(zero)
+
+
 def _locator_policy_fingerprint(models: Sequence[str]) -> str:
     """The ``locator_retry_policy`` value process() stamps when it plans a job under ``models``."""
     from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION, LOCATOR_ROUTING_VERSION
@@ -9645,8 +9658,9 @@ def prove_locator_result_current(
     ):
         return None
     items = {item.index: item for item in agenda.items}
+    # The chapters finalize would project from this file: same items, starts and titles.
     expected = [
-        anchor.get("agenda_item_index")
+        (item.index, anchor.get("start"), item.title)
         for anchor in boundary.anchors
         if (item := items.get(anchor.get("agenda_item_index"))) is not None
         and item.status == "accepted"
@@ -9655,10 +9669,12 @@ def prove_locator_result_current(
     chapters = ep.generated_chapters
     if not isinstance(chapters, list) or len(chapters) != len(expected):
         return None
-    for chapter, index in zip(chapters, expected, strict=True):
+    for chapter, (index, start, title) in zip(chapters, expected, strict=True):
         if not (
             isinstance(chapter, Mapping)
             and chapter.get("agenda_item_index") == index
+            and chapter.get("start") == start
+            and chapter.get("title") == title
             and chapter.get("prompt_version") == LOCATOR_PROMPT_VERSION
             and chapter.get("model") == boundary.model
             and chapter.get("artifact_key") == key

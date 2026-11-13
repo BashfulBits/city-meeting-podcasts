@@ -605,8 +605,8 @@ saw the episodes.
   labels are stale is restamped only when the stored evidence proves it current. Required: the
   boundary file under the record's own `locator_recipe`, written for this episode, this agenda
   recipe and this transcript hash by a reusable model under `locator-baseline-v3`; the stored
-  chapters hashed to that recipe and equal, chapter by chapter, to what that file yields, each
-  carrying the current prompt version, the file's model and its key; and the routing version shown
+  chapters hashed to that recipe and equal, chapter by chapter (item, start, title), to what that
+  file yields, each carrying the current prompt version, the file's model and its key; and the routing version shown
   by the record or by a planning-time policy fingerprint for the current prompt and routing
   versions (lane lists V4 Flash with Kimi K3, with V4.1, or the current list). A result with no
   chapters must have that fingerprint. Anything else is reported "not provable" and planned as
@@ -621,7 +621,8 @@ saw the episodes.
 - Telemetry: the run event's `llm_work` purpose carries `outcomes` counts (`metadata-repaired`,
   `metadata-not-provable`, `zero-agenda`), and the stage's quality counts
   (`locator-metadata-repaired`, `locator-metadata-not-provable`, `locator-zero-agenda`) appear in
-  the run summary, its log line and the `llm_submission_stage` event.
+  the run summary, its log line and the `llm_submission_stage` event. The zero-agenda count is
+  taken from the census, because the lane prefilter keeps those episodes away from the stage.
 
 **WP8 side effect (#2656, 2026-11-12).** Adding MiniMax to `LOCATOR_MODELS` changed the recipe
 string in every locator completion fingerprint, so every completion marker went dirty and the

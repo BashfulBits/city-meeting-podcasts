@@ -1427,3 +1427,27 @@ def test_stage_activity_event_carries_quality_counts(monkeypatch):
         "locator-metadata-repaired": 2,
         "locator-zero-agenda": 1,
     }
+
+
+@pytest.mark.parametrize("field", ["start", "title"])
+def test_stored_chapter_contents_must_match_the_boundary_projection(tmp_path, field):
+    stage, city, storage, ep = _completed_then_overwritten(tmp_path, uid=f"ep-{field}")
+    ep.generated_chapters[0][field] = 99.0 if field == "start" else "Edited title"
+    stats, backend, _ = _rerun(stage, city, storage, ep)
+    assert stats.quality_counts == {"locator-metadata-not-provable": 1}
+    assert len(backend.submitted_jobs) == 1
+
+
+def test_zero_agenda_count_comes_from_the_census_once():
+    from collections import defaultdict
+
+    from citypods.stages import fold_locator_work_outcomes
+
+    totals = defaultdict(lambda: {"quality_counts": {}})
+    totals["chapter_locator"]["quality_counts"]["locator-zero-agenda"] = 1  # process() saw one
+    snapshot = {"purposes": {"chapter-locator": {"outcomes": {"zero-agenda": 8}}}}
+    fold_locator_work_outcomes(totals, snapshot)
+    assert totals["chapter_locator"]["quality_counts"] == {"locator-zero-agenda": 8}
+    empty = defaultdict(lambda: {"quality_counts": {}})
+    fold_locator_work_outcomes(empty, {"purposes": {}})
+    assert dict(empty) == {}

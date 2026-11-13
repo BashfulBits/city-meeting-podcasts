@@ -164,6 +164,7 @@ from citypods.stages import (
     _materialize_set,
     default_stages,
     enrich_stages,
+    fold_locator_work_outcomes,
     judge_stages,
     r6_stages,
     r7_stages,
@@ -3926,6 +3927,9 @@ def _build_impl(
     # real tag-lane run's finalization tail (this block through push_state/reconcile_state below)
     # look like a silent ~7.5-minute hang with no trailing output before the job was cancelled --
     # the work may well have been happening, just never made it to the log.
+    # review/58 §12.3: the locator prefilter keeps zero-agenda episodes away from process(), so
+    # their count comes from the work census (one per episode, never double-counted).
+    fold_locator_work_outcomes(pipeline.stage_totals, ctx.llm_work.snapshot())
     record_producer_caps(ctx)
     for name, t in sorted(pipeline.stage_totals.items()):
         if not (t["ran"] or t["reused"] or t["backlog"] or t["errors"]):
