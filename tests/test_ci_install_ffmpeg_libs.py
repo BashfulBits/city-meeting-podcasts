@@ -92,7 +92,10 @@ def test_installs_when_a_library_is_missing_and_leaves_healthy_mirrors_alone(env
     assert len(calls) == 2 and calls[0].endswith("update")
     assert "install -y -qq --no-install-recommends libgnutls30 libopus0 libvpx9" in calls[1]
     assert "Acquire::Retries=2" in calls[0]
-    assert "azure.archive.ubuntu.com" in env["mirrors"].read_text()
+    # The healthy mirror list is left exactly as it was (both mirrors, in order).
+    assert env["mirrors"].read_text() == (
+        "http://azure.archive.ubuntu.com/ubuntu/\nhttp://archive.ubuntu.com/ubuntu/\n"
+    )
     assert env["hosts"].read_text() == "127.0.0.1 localhost\n"
 
 
