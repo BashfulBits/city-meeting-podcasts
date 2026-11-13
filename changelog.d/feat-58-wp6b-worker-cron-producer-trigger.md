@@ -10,5 +10,6 @@
   GitHub's `message` on failure; never the token). Inert until the owner sets the
   `GITHUB_DISPATCH_TOKEN` secret; `PRODUCER_TRIGGER_ENABLED=0` switches it off. Each workflow
   keeps its `schedule:` as a fallback; a schedule run skips itself (green) when a dispatched or
-  manual run of the same workflow succeeded and started within 45 min (sweep), 90 min (agenda,
-  locator, judge) or 180 min (tag) (`scripts/producer_schedule_guard.sh`, fail-open).
+  manual run of the same workflow on the same branch succeeded and started within 45 min (sweep),
+  90 min (agenda, locator, judge) or 180 min (tag) (`scripts/producer_schedule_guard.sh`,
+  fail-open).

@@ -59,10 +59,12 @@ export function triggerSettings(env) {
   return { token, repository };
 }
 
-function safeMessage(text) {
+/** GitHub's error `message`, bounded, with the token redacted should GitHub ever echo it. */
+function safeMessage(text, token) {
   try {
     const message = JSON.parse(text)?.message;
-    return typeof message === "string" ? message.slice(0, MAX_MESSAGE_CHARS) : null;
+    if (typeof message !== "string") return null;
+    return message.split(token).join("[redacted]").slice(0, MAX_MESSAGE_CHARS);
   } catch {
     return null;
   }
@@ -119,7 +121,7 @@ async function fireOne(entry, scheduledTime, settings, { fetchImpl, now, timeout
       record.status = outcome.response.status;
       record.ok = outcome.response.status === 204;
       if (!record.ok) {
-        const message = safeMessage(outcome.text);
+        const message = safeMessage(outcome.text, settings.token);
         if (message) record.message = message;
       }
     }

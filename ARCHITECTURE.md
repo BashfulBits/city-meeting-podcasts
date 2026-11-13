@@ -1093,9 +1093,9 @@ It is a silent no-op without the `GITHUB_DISPATCH_TOKEN` secret or with `PRODUCE
 never fires skips that trigger; a late tick keeps its `scheduledTime` and fires. The workflows keep
 their `schedule:` as the fallback: a schedule-triggered run first runs
 `scripts/producer_schedule_guard.sh`, which skips the rest of the job (green) when a
-`repository_dispatch` or `workflow_dispatch` run of the same workflow succeeded and started within
-45 min (sweep), 90 min (agenda, locator, judge) or 180 min (tag); schedule runs never count, and
-any API error runs the job normally.
+`repository_dispatch` or `workflow_dispatch` run of the same workflow on the same branch succeeded
+and started within 45 min (sweep), 90 min (agenda, locator, judge) or 180 min (tag); schedule runs
+never count (a skipped run also ends green), and any API error runs the job normally.
 Chat judge packing sizes the complete serialized messages and structured contract in the same
 raw units as enqueue. Google Gemma packing preflight also returns a separate model/prompt-family
 feedback target: Google successes and same-generation NVIDIA recoveries form a bounded 128-packet

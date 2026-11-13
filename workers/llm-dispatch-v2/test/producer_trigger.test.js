@@ -180,6 +180,15 @@ test("a GitHub error logs status and GitHub's message only, never the body or to
   assert.ok(!lines[0].includes("documentation_url"));
 });
 
+test("a token echoed in GitHub's message is redacted before logging", async () => {
+  const body = JSON.stringify({ message: `Bad credentials: ${TOKEN}` });
+  const { impl } = recordingFetch(401, body);
+  const { value, lines } = await captureConsole(() =>
+    runProducerTriggers(ENV, at(0, 52), { fetchImpl: impl }));
+  assert.equal(value[0].message, "Bad credentials: [redacted]");
+  assert.ok(!lines.join("\n").includes(TOKEN));
+});
+
 test("a non-JSON error body logs no message", async () => {
   const { impl } = recordingFetch(502, "<html>bad gateway</html>");
   const { value } = await captureConsole(() =>

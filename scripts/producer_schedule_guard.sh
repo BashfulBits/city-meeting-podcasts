@@ -17,15 +17,19 @@
 # Fail-open: any error (API, auth, parse) logs a warning and leaves skip unset, so the run does
 # its normal work; the workflow step also sets continue-on-error so even an unexpected failure of
 # this script cannot fail or skip the run. Inputs: GH_TOKEN (the job's GITHUB_TOKEN, needs
-# `actions: read`), GITHUB_REPOSITORY, WORKFLOW_FILE (e.g. tag.yml) and WINDOW_MINUTES.
+# `actions: read`), GITHUB_REPOSITORY, GITHUB_REF_NAME, WORKFLOW_FILE (e.g. tag.yml) and
+# WINDOW_MINUTES.
 set -o pipefail
 
 workflow="${WORKFLOW_FILE:-}"
 window="${WINDOW_MINUTES:-}"
 repository="${GITHUB_REPOSITORY:-}"
+# Only runs on the scheduled run's own branch (the default branch) count: a manual run on a
+# feature branch did not do the default branch's work.
+branch="${GITHUB_REF_NAME:-}"
 if [[ ! "$workflow" =~ ^[a-z0-9][a-z0-9-]*\.yml$ ]] || [[ ! "$window" =~ ^[1-9][0-9]*$ ]] \
-  || [[ ! "$repository" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]]; then
-  echo "::warning::schedule guard misconfigured (WORKFLOW_FILE/WINDOW_MINUTES/GITHUB_REPOSITORY); running normally"
+  || [[ ! "$repository" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] || [[ -z "$branch" ]]; then
+  echo "::warning::schedule guard misconfigured (WORKFLOW_FILE/WINDOW_MINUTES/GITHUB_REPOSITORY/GITHUB_REF_NAME); running normally"
   exit 0
 fi
 err="${RUNNER_TEMP:-/tmp}/schedule-guard.err"
@@ -36,7 +40,7 @@ filter='[.workflow_runs[]
   | ((now - (.run_started_at | fromdateiso8601)) / 60 | floor)]
   | min // empty'
 if ! age=$(gh api -X GET "repos/${repository}/actions/workflows/${workflow}/runs" \
-  -f status=success -f per_page=30 --jq "$filter" 2>"$err"); then
+  -f status=success -f branch="$branch" -f per_page=30 --jq "$filter" 2>"$err"); then
   echo "::warning::schedule guard could not list runs ($(head -c 300 "$err")); running normally"
   exit 0
 fi

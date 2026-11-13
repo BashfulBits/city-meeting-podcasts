@@ -2136,6 +2136,7 @@ def _run_guard(
     window="90",
     workflow="tag.yml",
     repository="example-owner/example-repo",
+    branch="main",
 ):
     import os
     import subprocess
@@ -2145,6 +2146,7 @@ def _run_guard(
     fake_gh = bin_dir / "gh"
     fake_gh.write_text(
         "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$@" > "{tmp_path}/gh-args.txt"\n'
         f"printf '%s' '{gh_stdout}'\n"
         f"[ {gh_exit} -eq 0 ] || echo 'HTTP 403: denied' >&2\n"
         f"exit {gh_exit}\n",
@@ -2157,6 +2159,7 @@ def _run_guard(
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "GITHUB_OUTPUT": str(output),
         "GITHUB_REPOSITORY": repository,
+        "GITHUB_REF_NAME": branch,
         "RUNNER_TEMP": str(tmp_path),
         "WORKFLOW_FILE": workflow,
         "WINDOW_MINUTES": window,
@@ -2181,6 +2184,7 @@ def _run_guard(
         ({"gh_stdout": "12", "window": ""}, False),  # misconfigured: fail open
         ({"gh_stdout": "12", "workflow": "../x"}, False),
         ({"gh_stdout": "12", "repository": ""}, False),
+        ({"gh_stdout": "12", "branch": ""}, False),
     ],
 )
 def test_schedule_guard_script_skips_only_on_a_recent_dispatched_success(tmp_path, kwargs, skips):
@@ -2189,6 +2193,13 @@ def test_schedule_guard_script_skips_only_on_a_recent_dispatched_success(tmp_pat
     assert ("skip=true" in output) is skips
     if skips:
         assert "::notice::Skipping this scheduled run" in result.stdout
+    args_file = tmp_path / "gh-args.txt"
+    assert args_file.exists() or not skips
+    if args_file.exists():
+        # Only successful runs on the scheduled run's own branch count.
+        args = args_file.read_text(encoding="utf-8").splitlines()
+        assert "status=success" in args
+        assert f"branch={kwargs.get('branch', 'main')}" in args
 
 
 def test_schedule_guard_filter_counts_only_dispatched_runs_by_start_time():
