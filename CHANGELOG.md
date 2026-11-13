@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/58 post-deploy results (docs).** The evidence file records the eleven merges and Worker
+  deploys of 2026-11-12/13, the production checks for each package, the first full window
+  (slot productivity 60%, idle hold 23%, failed attempts 10%, response timeouts 5%), and the
+  owner-approved cancellation of 240 queued JEV anchor jobs. Review/58 and the review/11 row carry
+  the current status.
+
 - **Early slot release in the dispatch Worker (review/58 WP4).** A bundle's settled calls are now
   committed through a partial completion (`completePartial`) while slower siblings still run, so a
   fast call frees its in-flight slot and route lease instead of holding them until the bundle's
