@@ -1098,9 +1098,15 @@ results then go in the final. `EARLY_SLOT_RELEASE_ENABLED: 0` (or `MAX_COMMITS: 
 single commit without a rollback. Rollback is safe in flight: an older coordinator has no
 `completePartial`, the call fails and the final carries those results; an older Worker against
 this coordinator commits once, as before.
-Response timeout (review/58 B2): `MAX_RESPONSE_SECONDS` (720) is the global ceiling. A route may set
-`response_timeout_seconds` in `config/provider_limits.yml` (a positive integer at most the ceiling,
-checked by `scripts/compile_llm_limits.py`; unset means the global value). The Worker's
+Response timeout (review/58 B2, §12.5): `MAX_RESPONSE_SECONDS` (780 since R2-F; was 720) is the
+global ceiling, with `FINALIZATION_RESERVE_SECONDS` 45 and `LEASE_DURATION_SECONDS` 870
+(30 + 780 + 45 = 855 ≤ 870 < 900). Every route sets `response_timeout_seconds` in
+`config/provider_limits.yml` (a positive integer at most the ceiling, checked by
+`scripts/compile_llm_limits.py`, which rejects a route without one while the ceiling is above
+720): only OrcaRouter GLM 5.3 Flash and the three Nemotron 3 Ultra legs use 780, every other route
+720 or lower, and catalog-added routes are written with 720. The B2 result write after a
+successful call is bounded by `RESULT_WRITE_TIMEOUT_SECONDS` (30, below the reserve; checked by
+`validateConfig`); a write that runs out settles as a retryable `server_error`. The Worker's
 `effectiveResponseMs` uses the smaller of the two for every call on that route, including in-window
 429 and Google 5xx retries, and clamps again at runtime. The failure class stays
 `provider_response_timeout`; requeue, retry accounting, lease and bundle-deadline arithmetic are
