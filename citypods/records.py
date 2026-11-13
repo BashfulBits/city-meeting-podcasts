@@ -1935,6 +1935,12 @@ RESET_GUARDED_AGENDA_LINK_KEYS: frozenset[str] = frozenset(
 # source_key) also touched by chapter-agenda/chapter-locator's own 15-minute-cron pushes.
 _TRANSCRIPT_LINK_LANES: frozenset[str] = frozenset({"transcribe", "align"})
 
+# Every ``generated_agenda_candidates`` key the chapter-locator stage (and its batch-submission
+# bookkeeping in run.py) writes or removes. Until review/58 §12.3 the result-metadata and retry
+# keys were missing, so the locator lane's own saves never replaced them (the merge keeps a remote
+# key a lane does not own) while the chapter-agenda lane, which owned them by default, wrote its
+# stale copy back: about 1,800 current-recipe results stayed labelled with an older model and
+# prompt version, failed the reuse check, and were counted "ready" without ever being planned.
 _LOCATOR_AGENDA_CANDIDATE_KEYS: frozenset[str] = frozenset(
     {
         "locator_status",
@@ -1943,15 +1949,28 @@ _LOCATOR_AGENDA_CANDIDATE_KEYS: frozenset[str] = frozenset(
         "boundary_artifact_key",
         "boundary_artifact_url",
         "transcript_unit_source",
+        "locator_error",
+        "locator_model",
+        "locator_prompt_version",
+        "locator_routing_version",
+        "locator_retry_count",
+        "locator_retry_hint",
+        "locator_retry_error",
+        "locator_retry_policy",
+        "locator_retry_input",
     }
 )
+# The one locator key the chapter-agenda stage writes itself (``not_applicable`` when provider
+# chapters make both chapter stages moot); it may still add it where the remote record has none.
+_AGENDA_LANE_ADDABLE_LOCATOR_KEYS: frozenset[str] = frozenset({"locator_status"})
 
 
 def _owned_agenda_candidate_keys(lane: str | None, local_agenda: dict) -> frozenset[str]:
     """Which keys of ``generated_agenda_candidates`` a scoped lane run may overwrite.
 
-    ``chapter-agenda`` owns extraction keys (everything except locator boundary fields);
-    ``chapter-locator`` owns locator boundary fields; an unscoped/full run or ``chapter`` lane
+    ``chapter-agenda`` owns extraction keys (everything except the locator keys);
+    ``chapter-locator`` owns every locator key, result metadata and retry bookkeeping included
+    (``_LOCATOR_AGENDA_CANDIDATE_KEYS``); an unscoped/full run or ``chapter`` lane
     owns everything; other scoped lanes own nothing here and preserve remote keys.
     """
     if lane == "chapter-agenda":
@@ -2191,8 +2210,24 @@ def merge_preserving_foreign(
                         else _owned_agenda_candidate_keys(lane, local_agenda or {})
                     )
                     for key, value in (local_agenda or {}).items():
-                        if key in owned_agenda_keys or key not in merged_agenda:
+                        if key in owned_agenda_keys:
                             merged_agenda[key] = value
+                        elif key not in merged_agenda and not (
+                            protected
+                            and lane == "chapter-agenda"
+                            and key in _LOCATOR_AGENDA_CANDIDATE_KEYS
+                            and key not in _AGENDA_LANE_ADDABLE_LOCATOR_KEYS
+                        ):
+                            # A key the remote lacks may be added -- except a locator key from
+                            # the agenda lane's stale snapshot, which would resurrect a value the
+                            # locator lane removed (a spent retry hint, say).
+                            merged_agenda[key] = value
+                    if protected and lane == "chapter-locator" and isinstance(local_agenda, dict):
+                        # The locator lane owns its keys outright, removals included: a key it
+                        # dropped (retry bookkeeping after a success, a dead recipe after a
+                        # failed finalize) must not survive from the remote copy.
+                        for key in _LOCATOR_AGENDA_CANDIDATE_KEYS - frozenset(local_agenda):
+                            merged_agenda.pop(key, None)
                     rec["generated_agenda_candidates"] = merged_agenda
             elif "generated_agenda_candidates" in remote_rec:
                 rec["generated_agenda_candidates"] = remote_rec["generated_agenda_candidates"]
