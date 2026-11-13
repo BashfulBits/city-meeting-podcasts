@@ -33,8 +33,8 @@ MAX_CANDIDATE_LOOKAHEAD: 32
 ROUTE_UNAVAILABLE_BLOCK_SECONDS: 21600
 MAX_JOBS_PER_ROUTE_PER_BUNDLE: 1
 MAX_CONCURRENT_ROUTE_LANES: 6
-# Raised 25 -> 30 on 2026-09-23: the largest value validateConfig's lease identity allows
-# (DISPATCH_WINDOW + MAX_RESPONSE 720 + FINALIZATION_RESERVE 90 <= LEASE_DURATION 840). The
+# Raised 25 -> 30 on 2026-09-23, within validateConfig's lease identity (DISPATCH_WINDOW +
+# MAX_RESPONSE 780 + FINALIZATION_RESERVE 45 = 855 <= LEASE_DURATION 870 since review/58 R2-F). The
 # window bounds only when a call may START; a started call is bounded separately by
 # MAX_RESPONSE_SECONDS, and waiting on a provider costs no Worker CPU time.
 DISPATCH_WINDOW_SECONDS: 30
@@ -104,9 +104,25 @@ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 38400
 # deliberate incident-time override of the compiled map.
 ENQUEUE_BATCH_MAX: 1000
 POLL_BATCH_MAX: 1000
-MAX_RESPONSE_SECONDS: 720
-FINALIZATION_RESERVE_SECONDS: 90
-LEASE_DURATION_SECONDS: 840
+# Response ceiling and lease (review/58 §12.5, R2-F, 2026-11-13). MAX_RESPONSE_SECONDS is the
+# CEILING for a route's `response_timeout_seconds` (config/provider_limits.yml): every route pins
+# its own value, and only the slow reasoning routes (OrcaRouter GLM 5.3 Flash and the three
+# Nemotron 3 Ultra legs) use the full 780; every other route stays at 720 or lower. Measured with
+# early release and the route ladder live (588 bundles since 2026-11-13 02:15Z): the claim
+# finishes at most 10.7 s after the invocation starts and the final commit takes p99 1.7 s after
+# the last call ends, so 10.7 + 30 (window) + 780 + 30 (bounded result write, below) + commit
+# fits the 870 s lease and the 900 s cron limit. FINALIZATION_RESERVE (45) must cover the result
+# write timeout plus the commit; validateConfig checks both identities. Revert: 720 / 90 / 840
+# (and the four 780 routes back to 720).
+MAX_RESPONSE_SECONDS: 780
+FINALIZATION_RESERVE_SECONDS: 45
+LEASE_DURATION_SECONDS: 870
+# The B2 result write after a successful call was an unbounded fetch; once in 588 bundles it took
+# 125 s, which at the 780 s ceiling would outlive the lease. A write that has not finished in this
+# many seconds is aborted and the attempt settles as a retryable server_error, exactly like a
+# failed write today (the job retries; the lease is never outlived). Must be
+# below FINALIZATION_RESERVE_SECONDS (validateConfig).
+RESULT_WRITE_TIMEOUT_SECONDS: 30
 CRON_EXECUTION_LIMIT_SECONDS: 900
 MAX_429_RETRIES: 1
 MAX_429_BACKOFF_SECONDS: 60

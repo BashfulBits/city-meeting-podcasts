@@ -36,6 +36,9 @@ PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
 TUNING_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_tuning.json"
 # Worker fallback when MAX_RESPONSE_SECONDS is unset (index.js).
 _DEFAULT_MAX_RESPONSE_SECONDS = 720
+# The response timeout an ordinary route pins (review/58 §12.5). Once MAX_RESPONSE_SECONDS is
+# above it, every route must declare its own `response_timeout_seconds`.
+ROUTE_RESPONSE_SECONDS_DEFAULT = 720
 
 # review/48 R10: the closed set of structured-output methods. Python's direct path and the v2
 # Worker each implement exactly these four shapes (asserted against one shared fixture), so a name
@@ -67,14 +70,23 @@ def _global_max_response_seconds() -> int:
 def _validate_response_timeout(route: dict[str, Any], ceiling: int) -> None:
     """Validate the optional per-route `response_timeout_seconds` (review/58 B2).
 
-    A positive integer no greater than the global MAX_RESPONSE_SECONDS; unset (or null) means the
-    route uses the global value, and the key is then left out of the route entirely.
+    A positive integer no greater than the global MAX_RESPONSE_SECONDS. Unset (or null) means the
+    route uses the global value -- allowed only while that value is the ordinary 720 s; above it,
+    every route must pin its own.
     """
     value = route.get("response_timeout_seconds")
+    name = route.get("route_id", route.get("model"))
     if value is None:
+        if ceiling > ROUTE_RESPONSE_SECONDS_DEFAULT:
+            # review/58 §12.5: the ceiling was raised for a few slow reasoning routes only. A
+            # route without its own value would silently inherit it and hold slots longer.
+            raise ValueError(
+                f"route {name!r} must pin response_timeout_seconds: the global "
+                f"MAX_RESPONSE_SECONDS ({ceiling}) is above the {ROUTE_RESPONSE_SECONDS_DEFAULT} s "
+                "every ordinary route uses"
+            )
         route.pop("response_timeout_seconds", None)
         return
-    name = route.get("route_id", route.get("model"))
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(
             f"route {name!r} has an invalid response_timeout_seconds: {value!r} "

@@ -104,6 +104,16 @@ export function validateConfig(env) {
     );
   }
 
+  // The bounded B2 result write runs after the call, inside the finalization reserve; the commit
+  // needs the rest (review/58 §12.5).
+  const resultWriteTimeout = Number(env.RESULT_WRITE_TIMEOUT_SECONDS || 30);
+  if (!(resultWriteTimeout > 0) || resultWriteTimeout >= finalizationReserve) {
+    throw new Error(
+      `Invalid config: RESULT_WRITE_TIMEOUT_SECONDS (${resultWriteTimeout}) must be > 0 and < ` +
+      `FINALIZATION_RESERVE_SECONDS (${finalizationReserve})`
+    );
+  }
+
   if (leaseDuration >= cronLimit) {
     throw new Error(
       `Invalid config: LEASE_DURATION_SECONDS (${leaseDuration}) must be < CRON_EXECUTION_LIMIT_SECONDS (${cronLimit})`
@@ -924,6 +934,16 @@ export function effectiveResponseMs(route, globalMs) {
 }
 
 /**
+ * How long the B2 result write after a successful call may take (review/58 §12.5). The write
+ * runs after the provider call, inside FINALIZATION_RESERVE_SECONDS; unbounded, one slow PUT
+ * (125 s observed) could outlive the lease at the 780 s response ceiling.
+ */
+export function resultWriteTimeoutMs(env) {
+  const seconds = Number(env?.RESULT_WRITE_TIMEOUT_SECONDS || 30);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : 30_000;
+}
+
+/**
  * Whether a call starting now can finish before the DO may reap this job's lease. The DO reaps
  * only leases past lease_expires_at, so this local check is the attempt fence: no DO round trip
  * or billed row per attempt. validateConfig already keeps the dispatch window plus the response
@@ -1149,7 +1169,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
     const usage = observedTokens(response.body);
     const resultKey = `results/${job.id}/${job.lease_token}.json`;
     try {
-      await b2.putJson(resultKey, response.body);
+      await b2.putJson(resultKey, response.body, { timeoutMs: resultWriteTimeoutMs(env) });
       return {
         result: {
           ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "success"),
