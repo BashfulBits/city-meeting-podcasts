@@ -10,6 +10,9 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import { withTuning } from "./tuning.js";
 import {
+  PARTIAL_ROWS_WORST, SETTLED_JOB_IDS_MAX, earlyReleaseConfig, partialRefusal,
+} from "./early_release.js";
+import {
   healthClassFor, parseRouteHealth, recordRouteHealthFailure, recordRouteHealthSuccess,
   routeHealthConfig, routeHealthEvent, routeHealthGate, serializeRouteHealth,
 } from "./route_health.js";
@@ -313,6 +316,12 @@ const ROUTE_HEALTH_SCHEDULER_COLUMNS = {
   route_health_json: "TEXT NOT NULL DEFAULT '{}'",
 };
 
+/** Early slot release day ledger (review/58 WP4, early_release.js): {utc_day, partial_rows}.
+ * Additive: a Worker that predates it never reads the column. */
+const EARLY_RELEASE_SCHEDULER_COLUMNS = {
+  early_release_json: "TEXT NOT NULL DEFAULT '{}'",
+};
+
 const CONTEXT_PROBE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS context_probe_weeks (
     week_start TEXT PRIMARY KEY, run_id TEXT NOT NULL, catalog_digest TEXT NOT NULL,
@@ -399,6 +408,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "packed_estimates_json",
     "packed_leases_json",
     "route_health_json",
+    "early_release_json",
     "catalog_digest",
     "catalog_rescue_cursor",
     "catalog_rescue_complete",
@@ -464,7 +474,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         item === "column:jobs.response_timeout_routes" ||
         (item.startsWith("column:scheduler.") &&
           (Object.hasOwn(PACKED_STATE_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length)) ||
-            Object.hasOwn(ROUTE_HEALTH_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length)))) ||
+            Object.hasOwn(ROUTE_HEALTH_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length)) ||
+            Object.hasOwn(EARLY_RELEASE_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length)))) ||
         (item.startsWith("column:routes.") &&
           Object.hasOwn(ROUTE_QUOTA_COLUMNS, item.slice("column:routes.".length))));
       if ((readiness.compactActive || readiness.packedActive) && !additiveOnly) {
@@ -485,6 +496,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         for (const [column, definition] of Object.entries({
           ...PACKED_STATE_SCHEDULER_COLUMNS, ...ROUTE_HEALTH_SCHEDULER_COLUMNS,
+          ...EARLY_RELEASE_SCHEDULER_COLUMNS,
         })) {
           if (readiness.missing.includes(`column:scheduler.${column}`)) {
             this._ensureColumn("scheduler", column, definition);
@@ -1294,7 +1306,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         packed_estimates_json               TEXT NOT NULL DEFAULT '{}',
         packed_leases_json                  TEXT NOT NULL DEFAULT '{}',
         -- Route health ladder (route_health.js): failing routes only, rides the accounting UPDATE.
-        route_health_json                   TEXT NOT NULL DEFAULT '{}'
+        route_health_json                   TEXT NOT NULL DEFAULT '{}',
+        -- Early slot release day ledger (early_release.js): rides the accounting UPDATE.
+        early_release_json                  TEXT NOT NULL DEFAULT '{}'
       );
 
       -- One small row per purpose/day makes ingress reservations durable without turning a
@@ -1505,7 +1519,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     for (const [column, definition] of Object.entries(PACKED_STATE_SCHEDULER_COLUMNS)) {
       this._ensureColumn("scheduler", column, definition);
     }
-    for (const [column, definition] of Object.entries(ROUTE_HEALTH_SCHEDULER_COLUMNS)) {
+    for (const [column, definition] of Object.entries({
+      ...ROUTE_HEALTH_SCHEDULER_COLUMNS, ...EARLY_RELEASE_SCHEDULER_COLUMNS,
+    })) {
       this._ensureColumn("scheduler", column, definition);
     }
     this._runSchemaInitStep("move active bundles into the scheduler row", () =>
@@ -1681,6 +1697,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["packed_estimates_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["packed_leases_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["route_health_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["early_release_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["last_max_tokens_sent", "INTEGER"],
       ["last_output_tokens", "INTEGER"],
       ["max_output_tokens", "INTEGER"],
@@ -7276,12 +7293,76 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * lease/bundle another attempt already reaped.
    */
   async completeBatch(bundleId, executionToken, results) {
+    return this._completeResults(bundleId, executionToken, results, false);
+  }
+
+  /**
+   * review/58 WP4 (early_release.js): settle some of a bundle's jobs while its other calls still
+   * run. Each result is settled exactly as completeBatch settles it; the bundle then counts that
+   * many fewer active calls, and the settled jobs' leases (route and provider in-flight) are gone.
+   * Refused, writing nothing, when the switch is off, when the bundle has used its partial
+   * allowance, or for a stale bundle; the executor then sends those results with its final
+   * completeBatch.
+   */
+  async completePartial(bundleId, executionToken, results) {
+    return this._completeResults(bundleId, executionToken, results, true);
+  }
+
+  _earlyReleaseConfig() {
+    return earlyReleaseConfig((name, fallback) => this._envInt(name, fallback));
+  }
+
+  /**
+   * The bundle map plus today's billed rows and partial-flush rows, from the one scheduler-row
+   * read the bundle lookup already makes (a partial reads nothing more than completeBatch does).
+   * First read of the transaction only.
+   */
+  _activeBundlesWithRowCount(now) {
+    const [row] = [...this._getSql().exec(
+      `SELECT active_bundles_json, utc_day, rows_written_today, early_release_json
+       FROM scheduler WHERE id = 1`
+    )];
+    const bundles = new Map(Object.entries(parseJsonObject(row?.active_bundles_json)));
+    if (this._txSchedulerSets) this._txBundles = bundles;
+    const ledger = parseJsonObject(row?.early_release_json);
+    const today = this._currentUtcDay(now);
+    return {
+      bundles,
+      today,
+      rowsToday: this._rowsWrittenToday(row),
+      partialRowsToday: ledger.utc_day === today ? Math.max(0, Number(ledger.partial_rows) || 0) : 0,
+    };
+  }
+
+  _completeResults(bundleId, executionToken, results, partial) {
     const sql = this._getSql();
     return this._transactionSync(() => {
-      const bundle = this._activeBundles().get(bundleId);
+      const rowsView = partial
+        ? this._activeBundlesWithRowCount(Date.now())
+        : { bundles: this._activeBundles() };
+      const { bundles } = rowsView;
+      const bundle = bundles.get(bundleId);
       if (!bundle || bundle.execution_token !== executionToken) {
-        return; // stale completion; no-op
+        return { accepted: false, reason: "stale_bundle" }; // stale completion; no-op
       }
+      const early = this._earlyReleaseConfig();
+      const partialFlushes = Number(bundle.partial_flushes) || 0;
+      if (partial && !early.enabled) return { accepted: false, reason: "disabled" };
+      if (partial && partialFlushes >= early.maxCommits - 1) {
+        return { accepted: false, reason: "commit_cap" };
+      }
+      // Row budget (review/58 section 8): a partial costs one or two extra rows. It is refused,
+      // writing nothing, once the day's partial rows reach their prorated daily budget, or while
+      // the day's rows are ahead of the row-pace line (early_release.js). The final
+      // completeBatch is never refused for rows here.
+      const refusal = partial ? partialRefusal({ ...rowsView, config: early, nowMs: Date.now() }) : null;
+      if (refusal) return { accepted: false, reason: refusal };
+      // Jobs an earlier commit of this bundle already processed: skipped entirely, usage included,
+      // so a retried partial or a final that repeats a partial's job settles nothing twice.
+      const processed = new Set(
+        Array.isArray(bundle.settled_job_ids) ? bundle.settled_job_ids.map(String) : []
+      );
+      let duplicateCount = 0;
 
       this._ensureQueuedJobCounter();
       const now = Date.now();
@@ -7385,6 +7466,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       const usageCells = new Map();
       for (const result of results || []) {
+        const resultJobId = String(result?.job_id);
+        if (processed.has(resultJobId)) {
+          duplicateCount += 1;
+          continue; // this bundle already settled this job (review/58 WP4)
+        }
         // Every reported call counts toward usage, including a stale/duplicate completion whose
         // lease has moved on: the provider was still called.
         const jobRows = [...sql.exec("SELECT * FROM jobs WHERE id = ?", result.job_id)];
@@ -7413,6 +7499,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             jobRows[0].state !== "leased") {
           continue; // stale/duplicate completion for an already-settled job
         }
+        // Recorded only once the result settles its job: a stale result must not hide a later
+        // valid one for the same job.
+        processed.add(resultJobId);
         // The claim (or a granted 429 retry) counted this attempt before it started. A result
         // that never reached a provider (deferred_late, unreadable payload, unknown route) gives
         // it back, in the job UPDATE below, so backup-model and retry thresholds count calls.
@@ -8129,14 +8218,43 @@ export class LLMSchedulerDO extends DurableObjectBase {
         );
       }
 
+      let bundleClosed = false;
       if (settledCount > 0) {
         if (this._leasedInBundle(bundleId) === 0) {
           // Removed, not marked 'completed' (P3): nothing reads a finished bundle. A late
           // duplicate completeBatch for it fails the execution-token check and no-ops -- every
           // job's lease was already settled. Written by this transaction's accounting UPDATE.
           this._deleteActiveBundle(bundleId);
+          bundleClosed = true;
         }
       }
+      // review/58 WP4: a bundle that stays open counts only its unsettled calls, and remembers
+      // which jobs it has reported. Rides the accounting UPDATE (active_bundles_json): no extra
+      // billed row. With the switch off a final completeBatch leaves the entry as it always did.
+      const reported = processed.size - (Array.isArray(bundle.settled_job_ids)
+        ? new Set(bundle.settled_job_ids.map(String)).size : 0);
+      if (!bundleClosed && reported > 0 && (partial || early.enabled)) {
+        this._setActiveBundle(bundleId, {
+          ...bundle,
+          active_call_count: Math.max(0, (Number(bundle.active_call_count) || 0) - settledCount),
+          settled_job_ids: [...processed].slice(-SETTLED_JOB_IDS_MAX),
+          partial_flushes: partialFlushes + (partial ? 1 : 0),
+        });
+      }
+      // Charge the day's partial-row ledger the worst case for a partial that wrote (on the same
+      // accounting row). A retried partial that only repeated settled jobs wrote nothing.
+      if (partial && reported > 0) {
+        this._stageSchedulerSet("early_release_json = ?", JSON.stringify({
+          utc_day: rowsView.today,
+          partial_rows: rowsView.partialRowsToday + PARTIAL_ROWS_WORST,
+        }));
+      }
+      return {
+        accepted: true,
+        settled: settledCount,
+        duplicates: duplicateCount,
+        bundle_closed: bundleClosed,
+      };
     });
   }
 

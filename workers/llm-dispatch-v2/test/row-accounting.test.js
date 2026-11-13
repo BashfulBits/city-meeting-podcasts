@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
+import {
+  EARLY_RELEASE_DEFAULTS, earlyReleaseConfigFromEnv, partialRefusal,
+} from "../src/early_release.js";
 import { createMockSqlStorage, withTestReservations } from "./helpers.js";
+import TUNING from "../src/dispatch_tuning.json" with { type: "json" };
 
 function fixture() {
   const { storage, sql } = createMockSqlStorage();
@@ -246,4 +250,165 @@ test("rate failure snapshot uses bounded primary-key reads and survives exhauste
   f.coordinator._dispatchLimits = () => ({ routes_by_id: { "route-a": {} } });
   f.sql.exec = () => { throw new Error("storage unavailable"); };
   await assert.rejects(f.coordinator.rateFailureStats(Date.parse(day)), /storage unavailable/);
+});
+
+// ---- review/58 WP4: what an early-release partial flush costs in DO rows ----------------------------
+
+// r-a, r-b, r-c, r-d hash to four different telemetry shards; r-a and r-i share shard 3.
+const wp4Catalog = routes => ({
+  model_aliases: {},
+  model_routes_map: { "acme/m": routes },
+  routes_by_id: Object.fromEntries(routes.map((id, i) => [id, {
+    model: "acme/m", provider: `p${i}`, upstream_model: id, rpm: 1000, rpd: 100000, free: true,
+    concurrency: 1, input_context_limit: 64000, output_context_limit: 4096,
+  }])),
+});
+const wp4Job = id => ({
+  id, idempotency_key: `k-${id}`, request_digest: `d-${id}`,
+  policy_json: JSON.stringify({ allowed_models: ["acme/m"] }), prompt_family: "tags",
+  input_token_estimate: 500, max_output_token_estimate: 200, payload_key: `payloads/${id}`,
+});
+
+/**
+ * Rows the completion side of ONE bundle writes (partials + final), in steady state (the second
+ * bundle of the day, so first-of-day usage cells already exist), for a bundle of `size` calls on
+ * distinct routes and providers settled in 1, 2 or 3 commits.
+ */
+async function completionRows(t, { packed, size, partials, routes = ["r-a", "r-b", "r-c", "r-d"] }) {
+  const clock = { value: Date.UTC(2026, 10, 12, 12) };
+  t.mock.method(Date, "now", () => clock.value);
+  const shared = createMockSqlStorage();
+  const c = new LLMSchedulerDO({ storage: shared.storage }, withTestReservations({
+    MAX_JOBS_PER_UTC_DAY: "500", DISPATCH_LIMITS_OVERRIDE: wp4Catalog(routes), MAX_BUNDLE_JOBS: String(size),
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1", MAX_IN_FLIGHT_LLM_CALLS: "20",
+    EARLY_SLOT_RELEASE_MAX_COMMITS: "3",
+  }));
+  await c.enqueueBatch(Array.from({ length: 2 * size }, (_, i) => wp4Job(`j${i}`)));
+  if (packed) {
+    await c.pauseDispatch({ scope: "global", seconds: 3600 }, clock.value - 960_000);
+    c._transactionSync(() => c._stagePackedCutover(clock.value, { maxJobs: 200, maxModelRows: 400,
+      maxGroups: 200, maxProviders: 20, maxStateRows: 500, reserveOtherWrites: 1000 }));
+    await c.resumeDispatch({ scope: "global" }, clock.value);
+  }
+  const rows = () => [...shared.sql.exec("SELECT rows_written_today FROM scheduler WHERE id=1")][0]
+    .rows_written_today;
+  let measured = null;
+  for (let round = 0; round < 2; round++) {
+    clock.value += 60_000;
+    const plan = await c.claimDispatchWindow(clock.value, 25);
+    assert.equal(plan.jobs.length, size);
+    const result = p => ({
+      job_id: p.id, lease_token: p.lease_token, attempt_id: `a-${p.id}`, planned_at: p.not_before_at,
+      actual_start_at: clock.value, actual_end_at: clock.value + 3000, observed_input_tokens: 400,
+      observed_output_tokens: 50, result_key: `r/${p.id}`, outcome: "success", provider_status_code: 200,
+    });
+    // Partials settle in catalog route order (so r-a goes first in the shard-collision case).
+    const ordered = [...plan.jobs].sort((a, b) => routes.indexOf(a.route_id) - routes.indexOf(b.route_id));
+    const groups = [...ordered.slice(0, partials).map(p => [p]), ordered.slice(partials)];
+    const before = rows();
+    for (const [i, group] of groups.entries()) {
+      clock.value += 1000;
+      const commit = i === groups.length - 1 ? c.completeBatch : c.completePartial;
+      const reply = await commit.call(c, plan.bundle_id, plan.execution_token, group.map(result));
+      assert.equal(reply.accepted, true);
+    }
+    measured = rows() - before;
+  }
+  return measured;
+}
+
+test("WP4 row cost: a partial flush adds one row, two in packed mode when it shares a shard with the final", async t => {
+  for (const level of ["log", "info", "warn"]) t.mock.method(console, level, () => {});
+  const table = [];
+  for (const packed of [false, true]) {
+    for (const size of [3, 4]) {
+      const cost = [];
+      for (const partials of [0, 1, 2]) cost.push(await completionRows(t, { packed, size, partials }));
+      table.push({ mode: packed ? "packed" : "legacy", size, rows: cost });
+    }
+  }
+  t.diagnostic(`completion rows per bundle [0,1,2 partials]: ${JSON.stringify(table)}`);
+  for (const { mode, size, rows } of table) {
+    assert.equal(rows[1] - rows[0], 1, `${mode} size ${size}: 1 partial`);
+    assert.equal(rows[2] - rows[0], 2, `${mode} size ${size}: 2 partials`);
+  }
+  // Worst case: the partial's route and a route left for the final hash to the same shard, so the
+  // shard row is written by both commits instead of once.
+  const collide = ["r-a", "r-i", "r-b"];
+  const legacy = [];
+  const packed = [];
+  for (const partials of [0, 1]) {
+    legacy.push(await completionRows(t, { packed: false, size: 3, partials, routes: collide }));
+    packed.push(await completionRows(t, { packed: true, size: 3, partials, routes: collide }));
+  }
+  t.diagnostic(`shard collision, size 3 [0,1 partials]: legacy ${legacy}, packed ${packed}`);
+  assert.equal(legacy[1] - legacy[0], 1);
+  assert.equal(packed[1] - packed[0], 2);
+});
+
+test("WP4 projection at 6,000 results/day: review/58's 20 s / 3 commits passes 85,000; the defaults stay under 90,000", t => {
+  // review/58 section 8: 10.7 rows per claim x 1.3 claims per result = 13.9 (rounded to 14) rows
+  // per result, so about 84,000 rows/day at 6,000 results before WP4; mean 3.3 jobs per bundle.
+  const base = 6000 * 14;
+  const bundles = Math.round((6000 * 1.3) / 3.3);
+  const ungated = (partials, rowsEach) => base + bundles * partials * rowsEach;
+  assert.equal(bundles, 2364);
+  assert.equal(ungated(2, 1), 88_728, "20 s / 3 commits, every bundle flushes twice, 1 row each");
+  assert.equal(ungated(2, 2), 93_456, "worst case: every partial shares a shard with the final");
+  assert.equal(ungated(1, 1), 86_364, "even one partial per bundle passes 85,000");
+  // The 2,364 bundles above exceed the claim's day cap; the cap is what bounds partials. At
+  // MAX_COMMITS 2 a bundle makes at most one partial (2 rows worst), and up to MAX_ACTIVE_BUNDLES
+  // bundles claimed before midnight may make theirs after it, so the most partials can write in
+  // a UTC day is (MAX_BUNDLES_PER_UTC_DAY + MAX_ACTIVE_BUNDLES) x 2. DAILY_ROWS sits above that
+  // (it does not refuse for budget) while still being a hard bound.
+  const dayCap = TUNING.values.MAX_BUNDLES_PER_UTC_DAY;
+  const maxPartialRows = (dayCap + TUNING.values.MAX_ACTIVE_BUNDLES)
+    * (EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_MAX_COMMITS - 1) * 2;
+  assert.equal(maxPartialRows, 2_824);
+  assert.ok(maxPartialRows <= EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_DAILY_ROWS);
+  // The day's ceiling: other work plus the whole budget stays under the 90,000 stop.
+  assert.ok(base + EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_DAILY_ROWS < 90_000);
+
+  // A day of 1,440 ticks, the other work spread by `weight`, every bundle asking for its
+  // MAX_COMMITS - 1 partials at the worst two rows each, the DO's gate (budget, then pace)
+  // deciding each one. Run at the day cap and at the uncapped 2,364 bundles.
+  const config = earlyReleaseConfigFromEnv({});
+  const simulate = (weight, bundles) => {
+    const day = Date.UTC(2026, 10, 12);
+    const total = Array.from({ length: 1440 }, (_, m) => weight(m)).reduce((a, b) => a + b, 0);
+    let rows = 0;
+    let partialRows = 0;
+    let asks = 0;
+    for (let minute = 0; minute < 1440; minute++) {
+      const share = weight(minute) / total;
+      rows += base * share;
+      asks += bundles * share * (config.maxCommits - 1);
+      for (; asks >= 1; asks -= 1) {
+        const nowMs = day + minute * 60_000 + 30_000;
+        if (partialRefusal({ rowsToday: rows, partialRowsToday: partialRows, config, nowMs })) continue;
+        rows += 2;
+        partialRows += 2;
+      }
+    }
+    return { rows: Math.round(rows), partialRows };
+  };
+  const days = {};
+  for (const [count, label] of [[dayCap, "cap"], [bundles, "uncapped"]]) {
+    for (const [name, weight] of Object.entries({
+      uniform: () => 1,
+      back_loaded_1_25: minute => (minute < 720 ? 1 : 1.25),
+      back_loaded_3: minute => (minute < 720 ? 1 : 3),
+      front_loaded_3: minute => (minute < 720 ? 3 : 1),
+      last_quarter_heavy: minute => (minute < 1080 ? 1 : 4),
+    })) {
+      const day = simulate(weight, count);
+      days[`${label}_${name}`] = day;
+      // The trade: a back-loaded heavy day may end above the 85,000 target, never at the stop.
+      assert.ok(day.rows <= 87_000, `${label} ${name} day ${day.rows}`);
+      assert.ok(day.partialRows <= EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_DAILY_ROWS);
+    }
+  }
+  t.diagnostic(`rows/day at 6,000 results with the default gate: ${JSON.stringify(days)}`);
+  // A uniformly heavy day sits on the pace line, so it stays at the 85,000 target.
+  assert.ok(days.cap_uniform.rows <= 85_000);
 });

@@ -18,6 +18,7 @@ import {
   validateReserveRequest,
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
+import { createBundleSettler, earlyReleaseConfigFromEnv } from "./early_release.js";
 import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
 import { apiShapeFor } from "./api_shapes.js";
 import {
@@ -1438,6 +1439,25 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
 
   const results = [];
   const attemptLog = []; // superseded attempts (in-window retries), for bundle_completed only
+  // review/58 WP4: each job's final result is handed to the settler, which commits settled
+  // results early through partial completions (early_release.js) and sends the rest with the
+  // final completeBatch. EARLY_SLOT_RELEASE_ENABLED 0 restores the single commit.
+  const settler = createBundleSettler({
+    coordinator,
+    bundleId: plan.bundle_id,
+    executionToken: plan.execution_token,
+    totalJobs: plan.jobs.length,
+    laneCount: lanes.size,
+    startAt: receivedAt,
+    config: earlyReleaseConfigFromEnv(env),
+    maxConnections: MAX_INVOCATION_CONNECTIONS,
+    onError: (err, { final = false } = {}) => {
+      console.error(
+        `scheduled: ${final ? "completeBatch" : "completePartial"} failed for bundle ` +
+        `${plan.bundle_id}: ${describeError(err)}`
+      );
+    },
+  });
   // Promise.allSettled over independent lanes -- safe without a separate concurrency limiter
   // because claimDispatchWindow already caps distinct routes at MAX_CONCURRENT_ROUTE_LANES (see
   // Unit 4/Unit 6's own guardrail on why this constant exists).
@@ -1468,34 +1488,37 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
           result = baseAttemptResult(job, crypto.randomUUID(), null, null, "retryable_error");
           laneState.predecessorActualStart = Date.now();
         }
-        if (result !== null) results.push(result);
+        if (result !== null) {
+          results.push(result);
+          settler.settle(result);
+        }
       }
       } finally {
         releaseSlot();
+        settler.laneClosed();
       }
     })
   );
 
   await networkObservation;
-  let commitOk = true;
-  try {
-    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results);
-  } catch (err) {
-    commitOk = false;
-    console.error(`scheduled: completeBatch failed for bundle ${plan.bundle_id}: ${describeError(err)}`, err);
-  }
+  const commit = await settler.finish();
   logBundleCompleted({
-    plan, results, attemptLog, claimNow, commitAt: Date.now(), commitOk, dispatchLimits, maxResponseMs,
+    plan, results, attemptLog, claimNow, commitAt: commit.commitAt, commitOk: commit.commitOk,
+    dispatchLimits, maxResponseMs, releases: commit.releases, partialFlushes: commit.partialFlushes,
+    commits: commit.commits, partialRefused: commit.partialRefused,
   });
 }
 
 /**
  * review/58 WP1a: one line per bundle once its calls settle, covering every call on every route
  * (successful non-Gemma calls are logged nowhere else). `hold_ms` is how long the call's slot
- * stayed held after the call ended, until the bundle commit. No payload, response or error text.
+ * stayed held after the call ended: until the commit that released it (review/58 WP4), named by
+ * `released_by` ("partial" or "final"). A superseded in-window attempt reports its job's release.
+ * No payload, response or error text.
  */
 function logBundleCompleted({
   plan, results, attemptLog = [], claimNow, commitAt, commitOk, dispatchLimits, maxResponseMs,
+  releases = new Map(), partialFlushes = 0, commits = 1, partialRefused = null,
 }) {
   const jobsById = new Map(plan.jobs.map((job) => [job.id, job]));
   const attempts = [
@@ -1507,10 +1530,15 @@ function logBundleCompleted({
     bundle_id: plan.bundle_id,
     bundle_duration_ms: commitAt - claimNow,
     commit_ok: commitOk,
+    partial_flushes: partialFlushes,
+    commits,
+    partial_refused: partialRefused,
     calls: attempts.map(({ result, final }) => {
       const job = jobsById.get(result.job_id);
       const started = Number.isFinite(result.actual_start_at) ? result.actual_start_at : null;
       const ended = Number.isFinite(result.actual_end_at) ? result.actual_end_at : null;
+      const release = releases.get(result.job_id);
+      const releasedAt = Number.isFinite(release?.releasedAt) ? release.releasedAt : commitAt;
       return {
         route_id: job?.route_id ?? null,
         purpose: job?.purpose ?? null,
@@ -1523,7 +1551,8 @@ function logBundleCompleted({
         response_timeout_ms: job
           ? effectiveResponseMs(routeForId(job.route_id, dispatchLimits), maxResponseMs)
           : null,
-        hold_ms: ended !== null ? commitAt - ended : null,
+        hold_ms: ended !== null ? Math.max(0, releasedAt - ended) : null,
+        released_by: release?.releasedBy ?? "final",
       };
     }),
   }));
