@@ -55,7 +55,7 @@ test("the chat shape is the pre-existing functions, unchanged", () => {
   assert.equal(chat.lengthTruncated(body), true);
   assert.equal(chat.replyProblem(payload, body), null, "an unstructured chat job has no reply schema");
   assert.equal(apiShapeFor({}).buildRequest, chat.buildRequest, "absent api_shape is chat");
-  assert.deepEqual(API_SHAPES, ["chat", "systemone"]);
+  assert.deepEqual(API_SHAPES, ["chat", "systemone", "decisions"]);
   assert.throws(() => apiShapeFor({ route_id: "x", api_shape: "fax" }), /unknown api_shape/);
 });
 

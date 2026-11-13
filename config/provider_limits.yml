@@ -779,6 +779,51 @@ routes:
     observed_burst: 1
     observed_input_ceiling: 234437
 
+  # Gemini Decision 1: Google's typed-judgment endpoint, the judge:anchor model since BeatAPI retired
+  # free JEV on 2026-11-05 (review/58 WP9; canonical design review/49 "Gemini Decision 1 as the
+  # anchor"). Not a chat model: `api_shape: decisions` posts to /v1beta/decisions (under the
+  # provider host, directly and through AI Gateway) and chat-only tooling skips these routes.
+  # Both keys list models/gemini-decision-1 (inputTokenLimit 262144, outputTokenLimit 1, method
+  # createDecision), checked 2026-11-12.
+  # rpm/tpm/rpd are Google's PUBLISHED free-tier limits as of 2026-11-12, NOT measured here:
+  # confirm them against the first day of Worker logs. Anchor packets are 19k-41k tokens, so TPM
+  # binds (about one request a minute per key). hard_input_ceiling is the TPM budget the compiler
+  # admits (tpm x token_estimate_buffer 0.9), not the 262,144 context: a larger packet could never
+  # fit one minute's budget.
+  - route_id: gemini_decision_1_primary
+    model: gemini/gemini-decision-1
+    provider: gemini
+    upstream_model: gemini-decision-1
+    api_shape: decisions
+    request_path: /v1beta/decisions
+    input_context_limit: 262144
+    output_context_limit: 1
+    hard_input_ceiling: 45000
+    account_id: project_primary
+    rpm: 200
+    tpm: 50000
+    rpd: 10000
+    concurrency: 1
+    free: true
+    observed_on: "2026-11-12"
+
+  - route_id: gemini_decision_1_secondary
+    model: gemini/gemini-decision-1
+    provider: gemini
+    upstream_model: gemini-decision-1
+    api_shape: decisions
+    request_path: /v1beta/decisions
+    input_context_limit: 262144
+    output_context_limit: 1
+    hard_input_ceiling: 45000
+    account_id: project_secondary
+    rpm: 200
+    tpm: 50000
+    rpd: 10000
+    concurrency: 1
+    free: true
+    observed_on: "2026-11-12"
+
   # ==========================================
   # SAMBANOVA GEMMA 4 ROUTE
   # ==========================================

@@ -1,0 +1,44 @@
+{
+ "_note": "Built from Gemini Decision 1's documented response shape (review/58 WP9, review/49 'Gemini Decision 1 as the anchor'); invented values, no transcript content. Keys are placeholders: the Worker maps Google's wire keys back to the asked qids before the producer reads a reply.",
+ "answers": {
+  "q-noul": {
+   "type": "noul",
+   "noul": 0.87,
+   "confidence": 0.74
+  },
+  "q-score": {
+   "type": "score",
+   "score": 2.4,
+   "legend": {
+    "0": "level one",
+    "1": "level two",
+    "2": "level three",
+    "3": "level four",
+    "4": "level five"
+   },
+   "probabilities": {
+    "0": 0.02,
+    "1": 0.1,
+    "2": 0.4,
+    "3": 0.38,
+    "4": 0.1
+   },
+   "confidence": 0.4
+  },
+  "q-choice": {
+   "type": "choice",
+   "choice": "B",
+   "probabilities": {
+    "A": 0.3,
+    "B": 0.7
+   },
+   "confidence": 0.7
+  }
+ },
+ "usage": {
+  "total_input_tokens": 21000,
+  "input_tokens_by_modality": [],
+  "total_output_tokens": 0,
+  "total_tokens": 21000
+ }
+}

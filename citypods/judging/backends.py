@@ -1,7 +1,8 @@
 """Packets to dispatch jobs, and replies back to judgments (review/53 PR3).
 
 ``JevBackend`` compiles questions to BeatAPI's systemone types (validate/gate -> ``noul``, grade ->
-``score``, choose -> ``choice``). ``ChatJudgeBackend`` asks sibling chat models through one
+``score``, choose -> ``choice``); ``DecisionBackend`` sends the same questions to Gemini Decision 1,
+the anchor since review/58 WP9. ``ChatJudgeBackend`` asks sibling chat models through one
 typed request contract, ``judge-answers-v3`` (legacy replies remain readable). Both return rows for
 :mod:`citypods.judging.ledger`; an unanswered or malformed item yields no row.
 """
@@ -251,6 +252,16 @@ JEV_UNMEASURED_RATIO = 1.25
 JEV_RATIO_MARGIN = 1.05
 
 
+# Gemini Decision 1 (review/58 WP9), the anchor since BeatAPI retired free JEV on 2026-11-05. Its
+# 262,144-token context is not the binding limit: the route's TPM is (50,000 published, 45,000 after
+# the compiler's estimate buffer), so the ceiling below is that budget and a test pins it to the
+# catalog. The Worker speaks the endpoint (api_shape ``decisions``); the job payload is JEV's.
+JEV_MODEL = "typesafe/jev-1.13"
+DECISION_MODEL = "gemini/gemini-decision-1"
+DECISION_ROUTE_ID = "gemini_decision_1_primary"
+DECISION_HARD_INPUT_CEILING = 45_000
+
+
 def _jev_question(item: Item) -> dict[str, Any]:
     kind = item.question.kind
     if kind in ("validate", "gate"):
@@ -269,10 +280,17 @@ def _jev_question(item: Item) -> dict[str, Any]:
 
 
 class JevBackend:
+    """The anchor's typed questions (noul / score / choice), as JEV's systemone endpoint takes them.
+
+    :class:`DecisionBackend` reuses all of it for Gemini Decision 1: the Worker's ``decisions``
+    shape turns the same payload into Google's request and maps the reply back (review/58 WP9)."""
+
     role = "anchor"
     max_question_tokens = 28_000
     max_items = 60
     output_reservation = 1_024  # within the route's 4,096 output reservation (Slice 3a fit)
+    hard_input_ceiling = JEV_HARD_INPUT_CEILING
+    route_id = JEV_ROUTE_ID
 
     def __init__(self, input_ratio: float | None = None) -> None:
         """Size packets so the Worker admits them: the whole packet, as the producer will
@@ -283,8 +301,8 @@ class JevBackend:
         anchor packets a run failed as ``job_unroutable`` or ``input_over_route_ceiling``)."""
         ratio = max(1.0, float(input_ratio)) if input_ratio else JEV_UNMEASURED_RATIO
         self.input_ratio = ratio
-        self.max_total_tokens = int(JEV_HARD_INPUT_CEILING / (ratio * JEV_RATIO_MARGIN))
-        self.max_question_tokens = min(JevBackend.max_question_tokens, self.max_total_tokens)
+        self.max_total_tokens = int(self.hard_input_ceiling / (ratio * JEV_RATIO_MARGIN))
+        self.max_question_tokens = min(type(self).max_question_tokens, self.max_total_tokens)
 
     def item_tokens(self, item: Item) -> int:
         """The item's share of the request the producer estimates: its question as serialized."""
@@ -317,9 +335,10 @@ class JevBackend:
                     value: Any = float(answer["noul"])
                     if not 0.0 <= value <= 1.0:
                         continue
-                    extra: dict[str, Any] = {}
+                    # Gemini Decision 1 gives a confidence on every answer; JEV gave none on noul.
+                    extra: dict[str, Any] = {"confidence": answer.get("confidence")}
                 elif kind == "grade":
-                    value = float(answer["score"])
+                    value = _score_value(answer["score"], item.question.levels)
                     extra = {
                         "probabilities": dict(answer.get("probabilities") or {}) or None,
                         "confidence": answer.get("confidence"),
@@ -339,6 +358,46 @@ class JevBackend:
             for subject in item.subjects:
                 rows.append((subject, _row(packet, item, subject, value=value, **extra)))
         return rows
+
+
+def _score_value(score: Any, levels: Sequence[str]) -> float:
+    """A ``score`` answer as a level index: a number as given (JEV), or a level's own name.
+
+    Gemini Decision 1 answers a score question with a ``legend`` beside the score; whether the
+    score is the index or the level text is not yet measured on a live grade reply, so both read
+    the same. Anything else raises ValueError, and the item gets no row."""
+    if isinstance(score, str) and score in levels:
+        return float(list(levels).index(score))
+    if isinstance(score, bool):
+        raise ValueError("boolean score")
+    return float(score)
+
+
+class DecisionBackend(JevBackend):
+    """The anchor on Gemini Decision 1 (review/58 WP9; review/49 "Gemini Decision 1 as the anchor").
+
+    The same questions and parser as JEV; the packet is sized for this route's TPM-bound ceiling,
+    and the output reservation is one token, the endpoint's whole output (it takes no max_tokens).
+    """
+
+    output_reservation = 1
+    hard_input_ceiling = DECISION_HARD_INPUT_CEILING
+    route_id = DECISION_ROUTE_ID
+
+
+# The anchor backend for each anchor model the judge lane may name.
+ANCHOR_BACKENDS: dict[str, type[JevBackend]] = {
+    JEV_MODEL: JevBackend,
+    DECISION_MODEL: DecisionBackend,
+}
+
+
+def anchor_backend_class(model: str) -> type[JevBackend]:
+    """The backend for an anchor model; an unknown model is a configuration error."""
+    try:
+        return ANCHOR_BACKENDS[model]
+    except KeyError:
+        raise ValueError(f"no anchor backend for judge model {model!r}") from None
 
 
 ANSWER_FIELD = {"validate": "verdict", "gate": "verdict", "grade": "level", "choose": "choice"}

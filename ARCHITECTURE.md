@@ -1572,8 +1572,9 @@ prefix is `…/google-ai-studio/v1beta`:
 | `mistral` | `…/mistral/v1` | `…/mistral/v1/chat/completions` |
 | `deepseek`, `zai`, … | `…/deepseek` | `…/deepseek/chat/completions` |
 
-**API shapes and yielding routes (review/53 PR1).** A route speaks `api_shape: chat` (default) or
-`systemone` (BeatAPI's JEV judge endpoint: `{model, state, questions}` in, `{answers, usage}` out);
+**API shapes and yielding routes (review/53 PR1).** A route speaks `api_shape: chat` (default),
+`systemone` (BeatAPI's JEV judge endpoint: `{model, state, questions}` in, `{answers, usage}` out) or
+`decisions` (Google's Gemini Decision 1, the anchor since 2026-11-12; see the judge paragraph below);
 `workers/llm-dispatch-v2/src/api_shapes.js` holds each shape's request builder and reply checks,
 keyed by shape, never by provider. `request_path` replaces the provider's chat path for one route
 (JEV posts to `/systemone` under the same `custom-beatapi` base). A non-chat route has no `direct`
@@ -1619,6 +1620,25 @@ pending or missing.
 Like `tag`, the lane runs unsharded but is a scoped, lane-owned writer: it pushes through the
 foreign-block-preserving `push_records_merged` (protecting every block but `judging`), skips the
 full-run reconcile, and checkpoints after its pass once its batched jobs are submitted.
+
+**Gemini Decision 1 anchor (review/58 WP9, 2026-11-12; canonical in review/49).** BeatAPI retired
+free JEV on 2026-11-05, so `judge:anchor` names `gemini/gemini-decision-1` (family `google`) in the
+same shadow state; JEV's route and family entry stay for its stored judgments. A third Worker API
+shape, `decisions`, reads the same `payload.systemone` the producer already sends and posts
+`{model, input, questions}` to `/v1beta/decisions` (`x-goog-api-key`; AI Gateway path
+`…/google-ai-studio/v1beta/decisions`) on routes `gemini_decision_1_primary` / `_secondary` (the
+existing two Gemini keys, `output_context_limit: 1`, `hard_input_ceiling` 45,000 = 90% of the
+published 50,000 TPM). It maps question keys to Google's `[A-Za-z0-9_-]{1,64}` charset and back,
+drops `criteria` from `noul`, and reads `total_input_tokens`. Shapes may define `authHeaders`,
+`normalizeReply` and `normalizeStatus`; `decisions` uses the last to report a quota 400 as 429 so it
+takes the rate path, while `classifyDecisions400` makes a safety block terminal, an input limit
+`route_input_limit` and a bad key or missing model `route_unavailable`. In Python,
+`DecisionBackend` (a `JevBackend` subclass with its own route and ceiling) is chosen by
+`anchor_backend_class(model)`; the anchor joins a plan only when its family is known and differs
+from every producer's, and siblings and adjudicators exclude the anchor's family (so rule
+candidates' siblings move from Gemma to Nemotron). A pending anchor marker for a retired anchor
+model is dropped, and `report.py` keys anchor agreement, escalation and audit cells by anchor model
+so JEV and Gemini telemetry never pool.
 Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
 state, conditional, and other storage reads continue to use their owning backend directly. For
 B2-backed runs, judge transcript reads try the configured public CDN URL through the guarded HTTP
