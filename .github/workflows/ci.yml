@@ -54,48 +54,10 @@ jobs:
 
       - name: Install FFmpeg runtime libraries
         timeout-minutes: 5
-        # These libraries are often already on the runner image, and apt hangs for the whole step
-        # when the runner cannot resolve the Ubuntu mirrors (seen 2026-11-11), so skip apt when
-        # every SONAME is present. Otherwise drop the Azure mirror if it does not resolve, bound
-        # apt with retries and request timeouts, and print resolver state if it still fails.
-        run: |
-          missing=""
-          for so in libgnutls.so.30 libopus.so.0 libvpx.so.9 libdav1d.so.7 libmp3lame.so.0; do
-            ldconfig -p | grep -q "$so" || missing="$missing $so"
-          done
-          if [ -z "$missing" ]; then
-            echo "FFmpeg runtime libraries already present; skipping apt"
-            exit 0
-          fi
-          echo "Missing:$missing"
-          if ! getent hosts azure.archive.ubuntu.com >/dev/null; then
-            echo "::warning::azure.archive.ubuntu.com does not resolve; using the fallback apt mirrors"
-            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
-          fi
-          # If the runner's resolver cannot see the Ubuntu archive at all, look the hosts up on a
-          # public resolver for this job. apt still verifies package signatures.
-          for host in archive.ubuntu.com security.ubuntu.com; do
-            if ! getent hosts "$host" >/dev/null; then
-              ip="$(dig +short +time=3 +tries=2 @1.1.1.1 A "$host" | grep -E '^[0-9.]+$' | head -1 || true)"
-              if [ -n "$ip" ]; then
-                echo "::warning::$host does not resolve on the runner; pinning it to $ip for this job"
-                echo "$ip $host" | sudo tee -a /etc/hosts >/dev/null
-              fi
-            fi
-          done
-          apt_opts="-o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
-          diagnose() {
-            echo "::error::apt could not install the FFmpeg runtime libraries"
-            cat /etc/apt/apt-mirrors.txt || true
-            for host in archive.ubuntu.com security.ubuntu.com pypi.org; do
-              getent hosts "$host" || echo "$host does not resolve"
-            done
-            resolvectl status 2>/dev/null | head -20 || true
-            exit 1
-          }
-          timeout 90 sudo apt-get $apt_opts update || diagnose
-          timeout 150 sudo apt-get $apt_opts install -y -qq --no-install-recommends \
-            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0 || diagnose
+        # Shared with every workflow that installs the pinned ffmpeg: skips apt when the
+        # libraries are present, and survives a runner that cannot resolve Ubuntu's mirrors
+        # (seen 2026-11-11). See the script header for the full behaviour.
+        run: bash scripts/ci/install_ffmpeg_libs.sh
 
       - name: Install pinned ffmpeg (matches production's audio.yml pin)
         # Bound the whole step as well as each socket read: urllib's timeout is an inactivity
@@ -156,7 +118,7 @@ jobs:
   # Dependency-pinning policy enforcement (review/22). Keeps pins from rotting.
   deps:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -197,6 +159,10 @@ jobs:
           fi
 
       - name: Constraints drift gate
+        # scripts/compile_constraints.sh bounds each pip-compile at 240 s (one retry on a
+        # timeout, then it fails), so a network stall ends here with diagnostics instead of
+        # running to the job limit (four PRs hit a silent ~10 min hang on 2026-11-12).
+        timeout-minutes: 12
         run: |
           if grep -q "NOT YET POPULATED" constraints/*.txt; then
             echo "::warning::constraints/*.txt not yet compiled — run the lock.yml workflow. Skipping drift gate (bootstrap)."
