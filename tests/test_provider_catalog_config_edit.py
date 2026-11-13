@@ -143,6 +143,7 @@ def test_real_additive_route_compiles_offline(tmp_path, monkeypatch):
         "rpm": 1,
         "concurrency": 1,
         "free": True,
+        "response_timeout_seconds": 720,  # catalog-added routes pin 720 (review/58 §12.5)
     }
     plan = EditPlan(
         "base",
