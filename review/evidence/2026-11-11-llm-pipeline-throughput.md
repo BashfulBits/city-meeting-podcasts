@@ -314,3 +314,41 @@ one listing and 240 record reads) and sent to `/v2/jobs:cancel-batch`: 240 cance
 0 not found. The B2 pointers and the judge ledger were not edited; the next judge run dropped the
 pending JEV markers and planned those subjects for Gemini Decision 1.
 
+
+## Stale-recipe locator results (2026-11-13, review/58 §12.3)
+
+Source: the 2026-11-10 local record snapshot (read-only) and the chapter-locator run logs
+(`gh run view --log`). Non-provider episodes with a completed agenda and a transcript, by
+`locator_status`: completed 2,396, pending 817, none 119. Of the 2,396 completed, 572 had current
+labels and 1,824 stale ones.
+
+| Stale record labels (model, prompt, routing) | Episodes |
+| --- | ---: |
+| Gemini 3.5 Flash Lite, `locator-v2`, `size-split-v1` | 1,815 |
+| none, none, none | 8 |
+| Kimi K3, `locator-baseline-v3`, `size-split-v1` | 1 |
+
+| What the stored result shows | Episodes | Policy fingerprint | Accepted items | Marker date |
+| --- | ---: | --- | --- | --- |
+| Chapters from V4 Flash under `locator-baseline-v3` | 1,631 | v3, V4 Flash + Kimi K3 | > 0 | 2026-11-09 |
+| No chapters | 144 | v3, V4 Flash + Kimi K3 | > 0 | 2026-11-09 |
+| Chapters from V4.1 under `locator-baseline-v3` | 41 | v3, V4 Flash + Kimi K3 | > 0 | 11-09 (40), 11-11 (1) |
+| Chapters from Gemini under `locator-v1` | 8 | none | 0 | 2026-08-27/28 |
+
+- All 1,824: chapter hash equals `locator_recipe`; boundary key names that recipe.
+- Completion markers: 1,814 stamped 2026-11-09; 1,802 matched the 11-10 input fingerprint.
+- Canonical `ep.chapters` present on 709 (635, 39, 34 and 1 by the rows above).
+- Meeting age: over five years 1,664; one to five years 104; 31 days to one year 56.
+
+Locator runs after WP8 (#2656):
+
+| Run start (UTC) | Stage ran / reused / deferred / errors | V4 Flash fresh / cached complete | MiniMax fresh |
+| --- | --- | --- | ---: |
+| 11-12 11:26 | 1,689 / 0 / 780 / 41 | 14 / 1,689 | 95 |
+| 11-12 20:54 | 133 / 1,690 / 535 / 153 | 2 / 125 | 370 |
+| 11-13 01:54 | 54 / 1,743 / 555 / 80 | 78 / 1 | 15 |
+| 11-13 11:13 | 31 / 1,813 / 331 / 127 | 23 / 45 | 5 |
+
+The 11-12 11:26Z errors were all "terminal retry limit or structural recovery gate blocks this
+recipe". The logs do not name episodes, so the overlap between the 95 MiniMax submissions and the
+41 V4.1-served results is not established.

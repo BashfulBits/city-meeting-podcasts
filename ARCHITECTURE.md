@@ -175,7 +175,14 @@ scope alone does not (`records.merge_preserving_foreign`; `stages.LANE_STAGES` k
 work-class stages so it never re-derives a foreign block — review/12 §H6). When transcribe runs
 per-episode, the same merge also preserves **across uids**: a shard passes its `owned_uids`, so it
 writes a `transcript` block only for the uids it owns and keeps the freshest remote for siblings'
-uids — the cross-*uid* lost update two shards splitting one source would otherwise hit (review/18 §3.2). The heavy
+uids — the cross-*uid* lost update two shards splitting one source would otherwise hit (review/18 §3.2). Most
+lanes own whole blocks (tags, moments, judging); the two chapter lanes share `generated_agenda_candidates`
+and merge it **key by key**: `chapter-locator` owns every locator key (`records._LOCATOR_AGENDA_CANDIDATE_KEYS`:
+status, recipe, job ref, boundary artifact, result labels `locator_model` / `locator_prompt_version` /
+`locator_routing_version`, and the `locator_retry_*` bookkeeping), removals included, and
+`chapter-agenda` owns the rest and may not add a locator key back from a stale snapshot (except
+`locator_status`, for provider chapters). Before review/58 §12.3 the result labels were missing from the
+locator set, so the agenda lane kept writing stale labels over current results. The heavy
 `enrich` phase processes its backlog as a **global, policy-ordered two-pass queue** (`ops/workqueue.py` +
 `run.py`): prepare every source, then run an on-runner **audio pass** (`chapters→timeline→remap→audio`,
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript
