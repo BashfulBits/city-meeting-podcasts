@@ -586,7 +586,7 @@ Mercury Decide was added as a candidate during the round. The evidence log has t
 | Model | Free route | Verdict |
 |---|---|---|
 | GLiDE 9B / 27B (Fastino) | None. The hosted API serves 27B only, on paid pay-as-you-go plans with no confirmed free tier. No inference provider hosts 9B. | Not available free. 9B fits a 32 GB Mac (about 16 GB bf16), but the owner prefers that machine for ASR. |
-| Inception Mercury Decide `:free` | Listed, but with no endpoint | 16 of 16 calls returned 404 "No endpoints found", 11:23Z to 14:19Z over three hours, about 0.15 s each. No 429 or 503 and no rate-limit headers. Not usable now. |
+| Inception Mercury Decide `:free` | Listed, but with no endpoint | 21 of 21 calls returned 404 "No endpoints found", 11:24Z to 14:19Z over three hours, about 0.15 s each. No 429 or 503 and no rate-limit headers. Not usable now. |
 | Perplexity Decider V1.3 `:free` and Flash `:free` | OpenRouter `/api/alpha/decisions`, price 0, 262k context | Qualified (see the replay table). Qwen3.8-27B base, so family `qwen`. |
 | Parallel decisions-fast `:free` | OpenRouter | Excluded: web-grounded by design. |
 | Respan span-01-lite `:free` | OpenRouter | Excluded: yes/no behaviour scoring only. Returned 400 on our questions. |

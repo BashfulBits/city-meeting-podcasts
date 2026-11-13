@@ -358,9 +358,9 @@ through. No request or response body is committed.
   and 152 on 11-13 by 13:20Z.
 - **Evaluation calls.**
   - 58 OpenRouter request attempts this round, all to free models:
-    - smoke: 3;
-    - replay of 8 Gemini and 6 JEV stored requests against Decider V1.3 and Flash: 44;
-    - Mercury Decide: 16 (2 smoke and 14 probe, 11:23Z to 14:19Z, all 404 "No endpoints found");
+    - Perplexity Decider V1.3 and Flash: 30 x 200 (smoke, plus a replay of 8 stored Gemini
+      requests and 6 stored JEV requests against both models);
+    - Mercury Decide: 21, from 11:24Z to 14:19Z, all 404 "No endpoints found";
     - Respan: 2 (400);
     - AI Gateway path checks: 5 (3 refused at the Cloudflare edge with 1010, 2 x 404).
   - Every replay call was accepted.
