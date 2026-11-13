@@ -7,6 +7,13 @@ import yaml as pyyaml
 
 from scripts import compile_llm_limits
 
+
+@pytest.fixture(autouse=True)
+def _fixture_routes_may_leave_the_timeout_unset(monkeypatch, request):
+    """Small fixture catalogs predate the pin rule (review/58 §12.5); tests of it opt back in."""
+    if "pin_rule" not in request.keywords:
+        monkeypatch.setattr(compile_llm_limits, "ROUTE_RESPONSE_SECONDS_DEFAULT", 10**6)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROVIDER_LIMITS_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 
@@ -1363,6 +1370,14 @@ def test_orcarouter_declares_its_one_shared_800_per_day_pool():
 
 
 # review/58 B2: optional per-route response timeout.
+# review/58 §12.5 (R2-F): every production route pins its timeout; only the slow reasoning
+# routes use the 780 s ceiling, every other route not listed here pins the ordinary 720 s.
+SLOW_REASONING_ROUTES = [
+    "orcarouter_zai_glm_5_3_flash_free",
+    "nvidia_nemotron_3_ultra_550b_a55b_free",
+    "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
+    "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
+]
 RESPONSE_TIMEOUT_ROUTES = {
     240: ["gemma_4_31b_primary", "gemma_4_31b_secondary"],
     300: [
@@ -1378,6 +1393,7 @@ RESPONSE_TIMEOUT_ROUTES = {
         "orcarouter_deepseek_v4_flash_free",
         "beatapi_deepseek_v4_flash_free",
     ],
+    780: SLOW_REASONING_ROUTES,
 }
 
 
@@ -1414,12 +1430,28 @@ def test_response_timeout_seconds_reaches_worker_and_python_catalogs():
 
 def test_production_response_timeouts_are_exactly_the_review_58_set():
     worker = compile_llm_limits._worker_catalog(compile_llm_limits.compile_limits())
-    expected = {rid: value for value, rids in RESPONSE_TIMEOUT_ROUTES.items() for rid in rids}
-    actual = {
-        rid: route["response_timeout_seconds"]
-        for rid, route in worker["routes_by_id"].items()
-        if route["response_timeout_seconds"] is not None
-    }
+    listed = {rid: value for value, rids in RESPONSE_TIMEOUT_ROUTES.items() for rid in rids}
+    actual = {rid: route["response_timeout_seconds"] for rid, route in worker["routes_by_id"].items()}
+    expected = {rid: listed.get(rid, 720) for rid in actual}
     assert actual == expected
     ceiling = compile_llm_limits._global_max_response_seconds()
+    assert ceiling == 780
     assert all(value <= ceiling for value in actual.values())
+    assert set(listed) <= set(actual)
+
+
+@pytest.mark.pin_rule
+def test_above_720_every_route_must_pin_its_response_timeout():
+    ceiling = compile_llm_limits._global_max_response_seconds()
+    assert ceiling > compile_llm_limits.ROUTE_RESPONSE_SECONDS_DEFAULT
+    with pytest.raises(ValueError, match="must pin response_timeout_seconds"):
+        _compile_raw([_route("a", "example/a")])
+    compiled = _compile_raw([_route("a", "example/a", response_timeout_seconds=720)])
+    assert compiled["routes_by_id"]["a"]["response_timeout_seconds"] == 720
+
+
+@pytest.mark.pin_rule
+def test_at_720_an_unset_timeout_still_means_the_global_value(monkeypatch):
+    monkeypatch.setattr(compile_llm_limits, "_global_max_response_seconds", lambda: 720)
+    compiled = _compile_raw([_route("a", "example/a")])
+    assert compiled["routes_by_id"]["a"].get("response_timeout_seconds") is None
