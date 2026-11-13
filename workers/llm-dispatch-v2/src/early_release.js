@@ -30,15 +30,17 @@
 /**
  * Code defaults; config/dispatch_tuning.yml carries the same values (tuning lockstep test).
  * review/58 proposed 20 s and three commits; at 6,000 results/day that projects past 85,000 rows
- * (row-accounting test), so the defaults are the smaller setting that fits: one partial per bundle
- * after 60 s, at most 1,000 partial rows a day.
+ * (row-accounting test), so the defaults are one partial per bundle after 60 s. DAILY_ROWS 3,000
+ * sits above the most partials can write in a day at MAX_COMMITS 2 (MAX_BUNDLES_PER_UTC_DAY 1,400,
+ * plus at most MAX_ACTIVE_BUNDLES 12 carried over midnight, x 2 rows = 2,824), so in practice it
+ * never refuses for budget, yet it stays a hard bound if MAX_COMMITS or the bundle cap is raised.
  */
 export const EARLY_RELEASE_DEFAULTS = Object.freeze({
   EARLY_SLOT_RELEASE_ENABLED: 1,
   EARLY_SLOT_RELEASE_DEBOUNCE_SECONDS: 60,
   EARLY_SLOT_RELEASE_MAX_COMMITS: 2,
   EARLY_SLOT_RELEASE_ROW_PACE: 85000,
-  EARLY_SLOT_RELEASE_DAILY_ROWS: 1000,
+  EARLY_SLOT_RELEASE_DAILY_ROWS: 3000,
 });
 
 /** review/58 section 8 budgets at most two extra commits per bundle. */

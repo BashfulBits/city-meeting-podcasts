@@ -1088,9 +1088,10 @@ a partial never delays it or eats `FINALIZATION_RESERVE_SECONDS`; a partial open
 when the open lanes plus the shared probe/cleanup slot leave one of the six free. Rows: a partial
 costs one billed row (the accounting UPDATE; a second in packed mode when it and the final touch
 the same telemetry shard), measured in `test/row-accounting.test.js`. The DO refuses a partial,
-writing nothing, once the day's partials have used `EARLY_SLOT_RELEASE_DAILY_ROWS` (charged at two
-rows each and prorated over the UTC day, in `scheduler.early_release_json`, which rides the same
-read and UPDATE), or while the day's rows are ahead of the `EARLY_SLOT_RELEASE_ROW_PACE` line; the
+writing nothing, once the day's partials have used `EARLY_SLOT_RELEASE_DAILY_ROWS` (3,000; charged
+at two rows each and prorated over the UTC day, in `scheduler.early_release_json`, which rides the
+same read and UPDATE; above the 2,824 that `MAX_BUNDLES_PER_UTC_DAY` plus carried-over bundles
+allow at `MAX_COMMITS` 2, so it is a hard bound that does not bind today), or while the day's rows are ahead of the `EARLY_SLOT_RELEASE_ROW_PACE` line; the
 results then go in the final. `EARLY_SLOT_RELEASE_ENABLED: 0` (or `MAX_COMMITS: 1`) restores the
 single commit without a rollback. Rollback is safe in flight: an older coordinator has no
 `completePartial`, the call fails and the final carries those results; an older Worker against

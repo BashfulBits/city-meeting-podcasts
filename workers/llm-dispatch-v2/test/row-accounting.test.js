@@ -5,6 +5,7 @@ import {
   EARLY_RELEASE_DEFAULTS, earlyReleaseConfigFromEnv, partialRefusal,
 } from "../src/early_release.js";
 import { createMockSqlStorage, withTestReservations } from "./helpers.js";
+import TUNING from "../src/dispatch_tuning.json" with { type: "json" };
 
 function fixture() {
   const { storage, sql } = createMockSqlStorage();
@@ -345,7 +346,7 @@ test("WP4 row cost: a partial flush adds one row, two in packed mode when it sha
   assert.equal(packed[1] - packed[0], 2);
 });
 
-test("WP4 projection at 6,000 results/day: review/58's 20 s / 3 commits passes 85,000; the defaults fit", t => {
+test("WP4 projection at 6,000 results/day: review/58's 20 s / 3 commits passes 85,000; the defaults stay under 90,000", t => {
   // review/58 section 8: 10.7 rows per claim x 1.3 claims per result = 13.9 (rounded to 14) rows
   // per result, so about 84,000 rows/day at 6,000 results before WP4; mean 3.3 jobs per bundle.
   const base = 6000 * 14;
@@ -355,13 +356,24 @@ test("WP4 projection at 6,000 results/day: review/58's 20 s / 3 commits passes 8
   assert.equal(ungated(2, 1), 88_728, "20 s / 3 commits, every bundle flushes twice, 1 row each");
   assert.equal(ungated(2, 2), 93_456, "worst case: every partial shares a shard with the final");
   assert.equal(ungated(1, 1), 86_364, "even one partial per bundle passes 85,000");
-  // Only (85,000 - 84,000) = 1,000 rows of headroom: that is EARLY_SLOT_RELEASE_DAILY_ROWS.
-  assert.equal(EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_DAILY_ROWS, 85_000 - base);
+  // The 2,364 bundles above exceed the claim's day cap; the cap is what bounds partials. At
+  // MAX_COMMITS 2 a bundle makes at most one partial (2 rows worst), and up to MAX_ACTIVE_BUNDLES
+  // bundles claimed before midnight may make theirs after it, so the most partials can write in
+  // a UTC day is (MAX_BUNDLES_PER_UTC_DAY + MAX_ACTIVE_BUNDLES) x 2. DAILY_ROWS sits above that
+  // (it does not refuse for budget) while still being a hard bound.
+  const dayCap = TUNING.values.MAX_BUNDLES_PER_UTC_DAY;
+  const maxPartialRows = (dayCap + TUNING.values.MAX_ACTIVE_BUNDLES)
+    * (EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_MAX_COMMITS - 1) * 2;
+  assert.equal(maxPartialRows, 2_824);
+  assert.ok(maxPartialRows <= EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_DAILY_ROWS);
+  // The day's ceiling: other work plus the whole budget stays under the 90,000 stop.
+  assert.ok(base + EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_DAILY_ROWS < 90_000);
 
-  // A day of 1,440 ticks, the other work spread by `weight`, every bundle asking for two partials
-  // at the worst two rows each, the DO's gate (budget, then pace) deciding each one.
+  // A day of 1,440 ticks, the other work spread by `weight`, every bundle asking for its
+  // MAX_COMMITS - 1 partials at the worst two rows each, the DO's gate (budget, then pace)
+  // deciding each one. Run at the day cap and at the uncapped 2,364 bundles.
   const config = earlyReleaseConfigFromEnv({});
-  const simulate = (weight) => {
+  const simulate = (weight, bundles) => {
     const day = Date.UTC(2026, 10, 12);
     const total = Array.from({ length: 1440 }, (_, m) => weight(m)).reduce((a, b) => a + b, 0);
     let rows = 0;
@@ -370,7 +382,7 @@ test("WP4 projection at 6,000 results/day: review/58's 20 s / 3 commits passes 8
     for (let minute = 0; minute < 1440; minute++) {
       const share = weight(minute) / total;
       rows += base * share;
-      asks += bundles * share * 2;
+      asks += bundles * share * (config.maxCommits - 1);
       for (; asks >= 1; asks -= 1) {
         const nowMs = day + minute * 60_000 + 30_000;
         if (partialRefusal({ rowsToday: rows, partialRowsToday: partialRows, config, nowMs })) continue;
@@ -381,16 +393,22 @@ test("WP4 projection at 6,000 results/day: review/58's 20 s / 3 commits passes 8
     return { rows: Math.round(rows), partialRows };
   };
   const days = {};
-  for (const [name, weight] of Object.entries({
-    uniform: () => 1,
-    back_loaded_1_25: minute => (minute < 720 ? 1 : 1.25),
-    back_loaded_3: minute => (minute < 720 ? 1 : 3),
-    front_loaded_3: minute => (minute < 720 ? 3 : 1),
-  })) {
-    days[name] = simulate(weight);
-    assert.ok(days[name].rows <= 85_000, `${name} day ${days[name].rows}`);
+  for (const [count, label] of [[dayCap, "cap"], [bundles, "uncapped"]]) {
+    for (const [name, weight] of Object.entries({
+      uniform: () => 1,
+      back_loaded_1_25: minute => (minute < 720 ? 1 : 1.25),
+      back_loaded_3: minute => (minute < 720 ? 1 : 3),
+      front_loaded_3: minute => (minute < 720 ? 3 : 1),
+      last_quarter_heavy: minute => (minute < 1080 ? 1 : 4),
+    })) {
+      const day = simulate(weight, count);
+      days[`${label}_${name}`] = day;
+      // The trade: a back-loaded heavy day may end above the 85,000 target, never at the stop.
+      assert.ok(day.rows <= 87_000, `${label} ${name} day ${day.rows}`);
+      assert.ok(day.partialRows <= EARLY_RELEASE_DEFAULTS.EARLY_SLOT_RELEASE_DAILY_ROWS);
+    }
   }
-  // A lighter day (today's volume) still gets the whole budget.
   t.diagnostic(`rows/day at 6,000 results with the default gate: ${JSON.stringify(days)}`);
-  assert.ok(days.uniform.partialRows >= 900);
+  // A uniformly heavy day sits on the pace line, so it stays at the 85,000 target.
+  assert.ok(days.cap_uniform.rows <= 85_000);
 });

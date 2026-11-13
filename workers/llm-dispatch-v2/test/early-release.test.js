@@ -528,7 +528,7 @@ test("settler: a partial opens a connection only when lanes leave room beside th
 
 test("config: compiled defaults, the switch, and the three-commit ceiling", () => {
   assert.deepEqual(earlyReleaseConfigFromEnv({}),
-    { enabled: true, debounceMs: 60_000, maxCommits: 2, rowPace: 85_000, dailyRows: 1000 });
+    { enabled: true, debounceMs: 60_000, maxCommits: 2, rowPace: 85_000, dailyRows: 3000 });
   assert.equal(earlyReleaseConfigFromEnv({ EARLY_SLOT_RELEASE_ENABLED: "0" }).enabled, false);
   assert.equal(earlyReleaseConfigFromEnv({ EARLY_SLOT_RELEASE_MAX_COMMITS: "1" }).enabled, false);
   assert.equal(earlyReleaseConfigFromEnv({ EARLY_SLOT_RELEASE_MAX_COMMITS: "9" }).maxCommits, 3);

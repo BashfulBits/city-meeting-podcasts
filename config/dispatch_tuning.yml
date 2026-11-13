@@ -167,18 +167,27 @@ ROUTE_HEALTH_RUNG_4_SECONDS: 3600
 # (charged at 2 each, prorated over the UTC day so they spread across it): a day therefore ends
 # at most DAILY_ROWS above what its other work wrote. It also refuses while today's billed rows
 # are ahead of ROW_PACE rows per day prorated to the time of day, so a heavy day falls back to one
-# commit per bundle. Sizing: at 6,000 results/day the other work is about 84,000 rows, so 1,000
-# partial rows keeps the day at 85,000; review/58's proposed 20 s / 3 commits would need about
-# 4,700 (88,700 rows). One partial per bundle after 60 s spends the 500 partials on the long
-# bundles that hold the idle slots. Raise DAILY_ROWS only while results/day are well under 6,000
-# (each 1,000 results less frees about 14,000 rows). Set EARLY_SLOT_RELEASE_ENABLED to 0 (or
-# MAX_COMMITS to 1) to restore the single commit without a code rollback; the DO then refuses any
-# partial it is sent.
+# commit per bundle. Sizing DAILY_ROWS 3,000 (review/58 section 8):
+# - Headroom: production wrote about 2,100 billed rows in the first 94 minutes of 2026-11-13 UTC
+#   (about 32,000 rows/day at that pace), and idle hold was still 43-49% of held slot-time on
+#   2026-11-12/13. The earlier 1,000 (about 500 partials) left most of that headroom unused.
+# - Hard bound: a bundle makes at most one partial at MAX_COMMITS 2, charged 2 rows, and the claim
+#   refuses past MAX_BUNDLES_PER_UTC_DAY (1,400, reset at UTC midnight). Up to MAX_ACTIVE_BUNDLES
+#   (12) bundles claimed before midnight may also make their partial after it, so partials write
+#   at most (1,400 + 12) x 2 = 2,824 rows a day. 3,000 therefore does not refuse for budget at any
+#   volume (except perhaps a few partials just after midnight, where the prorated line is lowest)
+#   and still bounds the day if MAX_COMMITS or the bundle cap is raised.
+# - Trade at 6,000 results/day (other work about 84,000 rows): a uniformly heavy day sits on the
+#   pace line, which refuses partials; a back-loaded day can spend up to 3,000, so it ends at or
+#   under about 87,000 rows (simulated: at most 86,950), above the 85,000 target but under the
+#   90,000 stop. If results/day approach 6,000, lower DAILY_ROWS back toward 1,000.
+# Set EARLY_SLOT_RELEASE_ENABLED to 0 (or MAX_COMMITS to 1) to restore the single commit without a
+# code rollback; the DO then refuses any partial it is sent.
 EARLY_SLOT_RELEASE_ENABLED: 1
 EARLY_SLOT_RELEASE_DEBOUNCE_SECONDS: 60
 EARLY_SLOT_RELEASE_MAX_COMMITS: 2
 EARLY_SLOT_RELEASE_ROW_PACE: 85000
-EARLY_SLOT_RELEASE_DAILY_ROWS: 1000
+EARLY_SLOT_RELEASE_DAILY_ROWS: 3000
 # A reply cut off at its output limit on a job pinned to one model (per_model judge lanes) recurs
 # on that model, so it gets this many retries, not the upstream budget, then fails to its producer.
 MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES: 1
