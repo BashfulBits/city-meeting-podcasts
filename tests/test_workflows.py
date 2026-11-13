@@ -1261,17 +1261,9 @@ def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
         if item.get("name") == "Produce bounded R6 moment candidates and judge assessments"
     )
 
-    assert [item["cron"] for item in _on(wf)["schedule"]] == [
-        "12 0 * * *",
-        "36 3 * * *",
-        "25 6 * * *",
-        "15 8 * * *",
-        "42 11 * * *",
-        "27 14 * * *",
-        "22 16 * * *",
-        "09 19 * * *",
-        "41 22 * * *",
-    ]
+    # One regular two-hourly fallback slot (review/58 section 12.1), not nine irregular crons.
+    assert [item["cron"] for item in _on(wf)["schedule"]] == ["28 1-23/2 * * *"]
+    assert _on(wf)["repository_dispatch"] == {"types": ["moments"]}
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
     assert wf["concurrency"] == {
         "group": "r7-speaker-evaluation-state",
@@ -1624,10 +1616,12 @@ def test_chapter_locator_stop_budget_fires_before_the_step_timeout_with_push_mar
     assert stop_budget + 15 <= step["timeout-minutes"] < job["timeout-minutes"]
 
 
-def test_tag_workflow_runs_every_four_hours():
+def test_tag_workflow_runs_every_two_hours():
     wf, _job_ = _job("tag.yml", "tag")
     crons = [item["cron"] for item in _on(wf)["schedule"]]
-    assert crons == ["19 */4 * * *"]
+    assert crons == ["19 */2 * * *"]
+    tag = next(entry for entry in _PRODUCER_TRIGGERS if entry["workflow"] == "tag.yml")
+    assert (tag["every_n_hours"], tag["minute"], tag["schedule_guard_minutes"]) == (2, 14, 90)
 
 
 def test_llm_deferred_sweep_is_hourly_with_a_45_minute_budget():
@@ -2049,6 +2043,7 @@ _PRODUCER_CONCURRENCY = {
     "chapter-locator.yml": "chapter-locator",
     "tag.yml": "llm-topic-tags",
     "judge.yml": "llm-judge",
+    "moments.yml": "r7-speaker-evaluation-state",
 }
 
 
@@ -2073,7 +2068,7 @@ def _expected_hours(entry: dict) -> list[int]:
     return list(range(entry.get("hour_offset", 0), 24, entry["every_n_hours"]))
 
 
-def test_producer_trigger_table_covers_exactly_the_five_producer_workflows():
+def test_producer_trigger_table_covers_exactly_the_six_producer_workflows():
     assert {entry["workflow"] for entry in _PRODUCER_TRIGGERS} == set(_PRODUCER_CONCURRENCY)
 
 
@@ -2120,6 +2115,34 @@ def test_producer_workflow_schedule_guard_skips_only_schedule_runs(entry):
         assert condition in (_GUARD_CONDITION, f"always() && {_GUARD_CONDITION}"), step.get(
             "name"
         ) or step.get("uses")
+
+
+def test_moments_has_no_per_pass_slot_budget_text():
+    """review/58 section 12.1: Worker-side admission replaces the per-pass slot counter."""
+    text = (WORKFLOWS / "moments.yml").read_text(encoding="utf-8")
+    assert "slots per pass" not in text
+    assert "passes/day" not in text
+
+
+def test_producer_triggers_are_regular_and_never_share_a_minute():
+    """Tag and moments sit on regular two-hourly slots with distinct Worker and fallback minutes."""
+    by_workflow = {entry["workflow"]: entry for entry in _PRODUCER_TRIGGERS}
+    for name in (
+        "tag.yml",
+        "moments.yml",
+        "judge.yml",
+        "chapter-agenda.yml",
+        "chapter-locator.yml",
+    ):
+        assert by_workflow[name]["every_n_hours"] == 2
+        assert by_workflow[name]["schedule_guard_minutes"] == 90
+    minutes = [entry["minute"] for entry in _PRODUCER_TRIGGERS]
+    assert len(minutes) == len(set(minutes))
+    fallback = []
+    for entry in _PRODUCER_TRIGGERS:
+        wf, _job_ = _job(entry["workflow"])
+        fallback.append(int(_on(wf)["schedule"][0]["cron"].split()[0]))
+    assert len(fallback) == len(set(fallback))
 
 
 def test_no_workflow_reads_repository_dispatch_client_payload():

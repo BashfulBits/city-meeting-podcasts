@@ -56,15 +56,25 @@ triggers:
     every_n_hours: 2
     hour_offset: 1
     schedule_guard_minutes: 90
-  # Every four hours (review/58 WP6 part A); GitHub cron "19 */4 * * *".
+  # Even UTC hours, every two hours (review/58 section 12.1; was every four hours); GitHub cron
+  # "19 */2 * * *".
   - event_type: tag
     workflow: tag.yml
     minute: 14
-    every_n_hours: 4
-    schedule_guard_minutes: 180
+    every_n_hours: 2
+    schedule_guard_minutes: 90
   # Every two hours (the judge window must equal this interval); GitHub cron "37 */2 * * *".
   - event_type: judge
     workflow: judge.yml
     minute: 33
     every_n_hours: 2
+    schedule_guard_minutes: 90
+  # Odd UTC hours (review/58 section 12.1; replaces nine irregular GitHub crons a day); GitHub cron
+  # "28 1-23/2 * * *". Shares the r7-speaker-evaluation-state concurrency group with speaker
+  # identity, so the group, not this table, serialises it against that workflow.
+  - event_type: moments
+    workflow: moments.yml
+    minute: 23
+    every_n_hours: 2
+    hour_offset: 1
     schedule_guard_minutes: 90

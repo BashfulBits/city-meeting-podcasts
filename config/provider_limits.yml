@@ -785,8 +785,8 @@ routes:
   # provider host, directly and through AI Gateway) and chat-only tooling skips these routes.
   # Both keys list models/gemini-decision-1 (inputTokenLimit 262144, outputTokenLimit 1, method
   # createDecision), checked 2026-11-12.
-  # rpm/tpm/rpd are Google's PUBLISHED free-tier limits as of 2026-11-12, NOT measured here:
-  # confirm them against the first day of Worker logs. Anchor packets are 19k-41k tokens, so TPM
+  # rpm/tpm/rpd (200 RPM, 50,000 TPM, 10,000 RPD per project) are owner-confirmed as of 2026-11-13;
+  # the weekly provider probes refine them. Anchor packets are 19k-41k tokens, so TPM
   # binds (about one request a minute per key). hard_input_ceiling is the TPM budget the compiler
   # admits (tpm x token_estimate_buffer 0.9), not the 262,144 context: a larger packet could never
   # fit one minute's budget.

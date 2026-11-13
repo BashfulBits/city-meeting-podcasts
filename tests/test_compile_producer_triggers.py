@@ -38,7 +38,8 @@ def test_every_n_hours_expands_to_explicit_utc_hours():
     assert by_type["llm-deferred-sweep"]["hours"] == list(range(24))
     assert by_type["chapter-agenda"]["hours"] == list(range(0, 24, 2))
     assert by_type["chapter-locator"]["hours"] == list(range(1, 24, 2))
-    assert by_type["tag"]["hours"] == [0, 4, 8, 12, 16, 20]
+    assert by_type["tag"]["hours"] == list(range(0, 24, 2))
+    assert by_type["moments"]["hours"] == list(range(1, 24, 2))
     assert by_type["judge"]["hours"] == list(range(0, 24, 2))
     assert table["max_triggers_per_tick"] <= compile_producer_triggers.MAX_TRIGGERS_PER_TICK_CEILING
     # The compiled table carries what the Worker needs and nothing the workflows own.

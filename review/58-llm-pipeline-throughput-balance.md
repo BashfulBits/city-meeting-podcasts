@@ -509,3 +509,55 @@ matching chapter-agenda) and the tag cadence (`19 */4 * * *`). Part B is in the
 in the five producer workflows (`scripts/producer_schedule_guard.sh`); it does nothing until the
 owner sets the `GITHUB_DISPATCH_TOKEN` Worker secret. Still open under WP6: the stale-recipe
 locator backfill.
+
+
+## 12. Follow-up round (2026-11-13)
+
+### 12.1 Producer cadence: tag every two hours, moments on the Worker trigger
+
+**Tag cadence history.** The tag workflow ran three times a day until 2026-11-12, then every four
+hours (WP6 part A). It was held at four hours because the tagger lane's daily ingress ceiling, not
+the cadence, was the limit; R2-D re-derives that ceiling separately. On 2026-11-13 the owner asked
+for every two hours. No lane cap changes here.
+
+**What changed.**
+
+- `tag`: Worker trigger `14` on every even UTC hour (was every fourth), GitHub fallback
+  `19 */2 * * *`, guard window 90 minutes (was 180), matching agenda, locator and judge.
+- `moments`: now a Worker-trigger entry like the other producers: minute 23 on odd UTC hours
+  (minute free of every other entry, not a cleanup minute), a `repository_dispatch` type
+  `moments`, one GitHub fallback `28 1-23/2 * * *` replacing nine irregular daily crons, and the
+  same `schedule_guard` step (id, `if:` conditions on every later step, window 90). Concurrency
+  group `r7-speaker-evaluation-state` is unchanged.
+- The compiled `producer_triggers.json` is regenerated; tests pin cadences, trigger types, guard
+  wiring and the absence of minute collisions.
+
+**Moments per-pass slot counter.** The workflow comment claimed a shared counter of 89 extraction
+and 445 judge slots per pass. Reading the code: `llm_lanes["r6-moments"]` sets no
+`max_dispatches_per_run` (removed with the other lanes' budgets; the lane keeps `max_queued_jobs`,
+`reserved_write_units` and `daily_write_units`), so `StageContext.moment_max_dispatches` is `None`
+in production and `_admit_r6_dispatch` never defers on it. The counter never shared a budget with
+the judge lanes: judge packets use `judge_run_caps`, filled from each judge lane's own (unset)
+`max_dispatches_per_run`. The only things left were the stale workflow comment and a telemetry
+row labelled `r6-shared-moments-and-judge`, which printed `None` as its slot cap. Both are removed;
+the row now appears only when ingress preflight closes the lane (cap 0). Kept: the meeting-family
+rollout filter, the lane daily caps and reservations, the preflight closure (it is Worker
+admission state, not a budget), and shadow and manual defaults. The `rollout-dispatch-cap` deferral
+reason still exists for the closure case. Moments has no wall-clock stop window (its run prints
+"Worker-admission-bounded"); its bound is the 165-minute step timeout.
+
+**Concurrency group starvation.** Moments shares `r7-speaker-evaluation-state` with diarization
+(four runs a day, 330-minute job) and the weekly speaker review. The group runs one job at a time
+and keeps one pending run: a newly queued run replaces an older pending one even across workflows.
+From the code, a moments run is bounded only by its 165-minute step and 180-minute job timeouts;
+there is no measured typical duration here (no production data was used). If a moments run lasts
+longer than two hours, the next slot's run and its fallback queue behind it and can displace a
+pending diarization run at its :31 slots (hours 0, 6, 12, 18); a run of an hour or less cannot.
+The Worker trigger fires at :23 and the fallback at :28 on odd hours, and diarization starts at
+:31 on even hours, so they do not share a slot. Owner check after the first day: diarization runs
+are not cancelled while pending, and moments run durations stay under two hours; if not, give
+moments a wall-clock window (as tag and judge have) rather than changing the group.
+
+**Owner follow-up.** Merging deploys the Worker (the trigger table changed). Verify
+`producer_trigger` log lines for `tag` and `moments` every two hours with status 204, and that
+moments run summaries show no per-pass cap line.

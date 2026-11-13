@@ -348,6 +348,14 @@ class TestRepositoryConfig:
             if lane.max_dispatches_per_run is not None:
                 assert lane.max_dispatches_per_run <= lane.max_jobs_per_day, lane.purpose
 
+    def test_moments_lane_has_no_per_run_slot_budget(self):
+        # review/58 section 12.1: the Worker's admission (daily_write_units, max_queued_jobs,
+        # reservations, row gates) is the only budget; no client-side per-pass counter.
+        lane = load_lanes()["r6-moments"]
+        assert lane.max_dispatches_per_run is None
+        site = yaml.safe_load(SITE_CONFIG.read_text())
+        assert not {k for k in site["moments"] if "dispatch" in k or "slot" in k}
+
     def test_site_config_no_longer_carries_duplicate_model_lists(self):
         # These keys moved into `llm_lanes`. Leaving a copy behind is how the two lists drifted
         # apart in the first place, so their absence is part of the contract.

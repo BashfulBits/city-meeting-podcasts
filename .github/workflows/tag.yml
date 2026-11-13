@@ -6,11 +6,11 @@ name: LLM topic tags
 # dispatch Worker, so this workflow enqueues work and a later deferred sweep consumes the result.
 on:
   schedule:
-    # Six producer passes (every four hours) give the tagger/pre-labeler lanes repeated chances
-    # to spend their daily ingress allowance while the Worker still owns provider pacing and
-    # quota admission (review/58 B5: GitHub drops a share of scheduled runs, so cadence is
-    # over-provisioned). Minute 19 avoids the deploy (:26), audio (:47) and moments slots.
-    - cron: "19 */4 * * *"
+    # Twelve producer passes (every two hours, review/58 section 12.1) give the tagger lane
+    # repeated chances to spend its daily ingress allowance while the Worker still owns provider
+    # pacing and quota admission (review/58 B5: GitHub drops a share of scheduled runs, so cadence
+    # is over-provisioned). Minute 19 avoids the deploy (:26), audio (:47) and moments (:28) slots.
+    - cron: "19 */2 * * *"
   workflow_dispatch: {}
   # review/58 WP6b: the dispatch Worker's cron fires this event (config/producer_triggers.yml);
   # the schedule above is the fallback. client_payload is untrusted and unused.
@@ -45,7 +45,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           WORKFLOW_FILE: tag.yml
-          WINDOW_MINUTES: "180"
+          WINDOW_MINUTES: "90"
         continue-on-error: true
         run: bash scripts/producer_schedule_guard.sh
 
