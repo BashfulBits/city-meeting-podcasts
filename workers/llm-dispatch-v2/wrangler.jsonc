@@ -46,7 +46,11 @@
     // the CLOUDFLARE_ACCOUNT_ID secret; if either is missing it silently calls each provider directly
     // (nothing would show up in the AI Gateway dashboard). AI_GATEWAY_BASE_URL, an optional full-URL
     // override that was declared empty, is intentionally not set: it is equivalent to absent.
-    "AI_GATEWAY_ID": "citypods-dispatch"
+    "AI_GATEWAY_ID": "citypods-dispatch",
+    // review/58 WP6b: the repository whose producer workflows the cron fires through
+    // repository_dispatch (src/producer_trigger.js). Not secret; inert until the
+    // GITHUB_DISPATCH_TOKEN secret below is set. A fork points this at its own repository.
+    "GITHUB_DISPATCH_REPOSITORY": "BashfulBits/city-meeting-podcasts"
   }
   // Secrets (never plain vars -- set with `wrangler secret put <NAME>`, one time, matching
   // the retired v1 Worker's pattern): BEARER_TOKEN (ingress auth), every provider's
@@ -58,4 +62,9 @@
   // least-privilege application key scoped to this design's own B2 prefix, e.g.
   // "llm-dispatch-v2/", per "B2-only payload storage and bounded cleanup" -- never the ingress
   // Worker's credentials, which does not and must not hold any).
+  // GITHUB_DISPATCH_TOKEN (review/58 WP6b, optional): a fine-grained personal access token
+  // limited to the one repository above with "Contents: read and write" (what
+  // POST /repos/{owner}/{repo}/dispatches requires) and nothing else. Absent or empty, the
+  // producer trigger is a silent no-op. Setting PRODUCER_TRIGGER_ENABLED to 0 (as a secret, so a
+  // deploy does not reset it) switches the trigger off without removing the token.
 }

@@ -2034,3 +2034,196 @@ def test_ffmpeg_native_jobs_pin_noble_runner(workflow_path):
         runs = "\n".join(str(step.get("run", "")) for step in job.get("steps", []))
         if "install_static_ffmpeg.py" in runs or "scripts/build_ffmpeg_static.sh" in runs:
             assert job["runs-on"] == "ubuntu-24.04", f"{workflow_path.name}:{name}"
+
+
+# ---- review/58 WP6b: Worker-cron repository_dispatch trigger + schedule fallback guard --------
+
+_PRODUCER_TRIGGERS = yaml.safe_load(
+    (REPO_ROOT / "config" / "producer_triggers.yml").read_text(encoding="utf-8")
+)["triggers"]
+_GUARD_CONDITION = "steps.schedule_guard.outputs.skip != 'true'"
+_GUARD_SCRIPT = REPO_ROOT / "scripts" / "producer_schedule_guard.sh"
+_PRODUCER_CONCURRENCY = {
+    "llm-deferred-sweep.yml": "llm-deferred-sweep",
+    "chapter-agenda.yml": "chapter-agenda",
+    "chapter-locator.yml": "chapter-locator",
+    "tag.yml": "llm-topic-tags",
+    "judge.yml": "llm-judge",
+}
+
+
+def _cron_hours(field: str) -> list[int]:
+    """Hours a cron hour field fires on (the forms the producer workflows use)."""
+    hours: set[int] = set()
+    for part in field.split(","):
+        span, _, step = part.partition("/")
+        if span == "*":
+            start, end = 0, 23
+        elif "-" in span:
+            start, end = (int(v) for v in span.split("-"))
+        else:
+            start = end = int(span)
+        hours.update(range(start, end + 1, int(step or "1")))
+    return sorted(hours)
+
+
+def _expected_hours(entry: dict) -> list[int]:
+    if "hours" in entry:
+        return sorted(entry["hours"])
+    return list(range(entry.get("hour_offset", 0), 24, entry["every_n_hours"]))
+
+
+def test_producer_trigger_table_covers_exactly_the_five_producer_workflows():
+    assert {entry["workflow"] for entry in _PRODUCER_TRIGGERS} == set(_PRODUCER_CONCURRENCY)
+
+
+@pytest.mark.parametrize("entry", _PRODUCER_TRIGGERS, ids=lambda e: e["workflow"])
+def test_producer_workflow_accepts_the_worker_dispatch_and_keeps_its_schedule(entry):
+    wf, _job_ = _job(entry["workflow"])
+    on = _on(wf)
+    assert on["repository_dispatch"] == {"types": [entry["event_type"]]}
+    assert "workflow_dispatch" in on
+    # The GitHub schedule stays as the fallback, at the hours the Worker fires, a few minutes
+    # after the Worker's minute so the two never coincide.
+    crons = [item["cron"] for item in on["schedule"]]
+    assert len(crons) == 1
+    minute, hour_field, *_rest = crons[0].split()
+    assert _cron_hours(hour_field) == _expected_hours(entry)
+    assert 1 <= int(minute) - entry["minute"] <= 10
+    assert wf["concurrency"] == {
+        "group": _PRODUCER_CONCURRENCY[entry["workflow"]],
+        "cancel-in-progress": False,
+    }
+    assert wf["permissions"] == {"contents": "read", "actions": "read"}
+
+
+@pytest.mark.parametrize("entry", _PRODUCER_TRIGGERS, ids=lambda e: e["workflow"])
+def test_producer_workflow_schedule_guard_skips_only_schedule_runs(entry):
+    _wf, job = _job(entry["workflow"])
+    steps = job["steps"]
+    assert "actions/checkout" in steps[0]["uses"]
+    assert "if" not in steps[0]
+    guard = steps[1]
+    assert guard["id"] == "schedule_guard"
+    assert guard["if"] == "github.event_name == 'schedule'"
+    assert guard["run"] == "bash scripts/producer_schedule_guard.sh"
+    assert guard["env"] == {
+        "GH_TOKEN": "${{ github.token }}",
+        "WORKFLOW_FILE": entry["workflow"],
+        "WINDOW_MINUTES": str(entry["schedule_guard_minutes"]),
+    }
+    # Fail-open twice over: the script never exits non-zero on its own, and a crash anyway must
+    # not fail the run or skip its steps.
+    assert guard["continue-on-error"] is True
+    for step in steps[2:]:
+        condition = step.get("if", "")
+        assert condition in (_GUARD_CONDITION, f"always() && {_GUARD_CONDITION}"), step.get(
+            "name"
+        ) or step.get("uses")
+
+
+def test_no_workflow_reads_repository_dispatch_client_payload():
+    """client_payload is caller-shaped data; no workflow interpolates or reads it."""
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        assert "event.client_payload" not in workflow.read_text(encoding="utf-8"), workflow.name
+
+
+def _run_guard(
+    tmp_path,
+    *,
+    gh_stdout="",
+    gh_exit=0,
+    window="90",
+    workflow="tag.yml",
+    repository="example-owner/example-repo",
+):
+    import os
+    import subprocess
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake_gh = bin_dir / "gh"
+    fake_gh.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s' '{gh_stdout}'\n"
+        f"[ {gh_exit} -eq 0 ] || echo 'HTTP 403: denied' >&2\n"
+        f"exit {gh_exit}\n",
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+    output = tmp_path / "out.txt"
+    output.write_text("", encoding="utf-8")
+    env = {
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "GITHUB_OUTPUT": str(output),
+        "GITHUB_REPOSITORY": repository,
+        "RUNNER_TEMP": str(tmp_path),
+        "WORKFLOW_FILE": workflow,
+        "WINDOW_MINUTES": window,
+    }
+    result = subprocess.run(
+        ["bash", str(_GUARD_SCRIPT)], env=env, capture_output=True, text=True, check=False
+    )
+    return result, output.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "skips"),
+    [
+        ({"gh_stdout": "12"}, True),
+        ({"gh_stdout": "0"}, True),
+        ({"gh_stdout": "89"}, True),
+        ({"gh_stdout": "90"}, False),
+        ({"gh_stdout": "400"}, False),
+        ({"gh_stdout": ""}, False),  # no dispatched run yet: the fallback runs
+        ({"gh_stdout": "null"}, False),  # unexpected output: fail open
+        ({"gh_stdout": "12", "gh_exit": 1}, False),  # API failure: fail open
+        ({"gh_stdout": "12", "window": ""}, False),  # misconfigured: fail open
+        ({"gh_stdout": "12", "workflow": "../x"}, False),
+        ({"gh_stdout": "12", "repository": ""}, False),
+    ],
+)
+def test_schedule_guard_script_skips_only_on_a_recent_dispatched_success(tmp_path, kwargs, skips):
+    result, output = _run_guard(tmp_path, **kwargs)
+    assert result.returncode == 0, result.stderr
+    assert ("skip=true" in output) is skips
+    if skips:
+        assert "::notice::Skipping this scheduled run" in result.stdout
+
+
+def test_schedule_guard_filter_counts_only_dispatched_runs_by_start_time():
+    """The jq filter ignores schedule runs (a skipped run also ends 'success') and takes the
+    youngest start among repository_dispatch and workflow_dispatch runs."""
+    import json
+    import shutil
+    import subprocess
+    from datetime import UTC, datetime, timedelta
+
+    jq = shutil.which("jq")
+    if jq is None:
+        pytest.skip("jq not installed")
+    match = re.search(r"filter='(.*?)'\n", _GUARD_SCRIPT.read_text(encoding="utf-8"), flags=re.S)
+    assert match is not None
+    now = datetime.now(UTC)
+
+    def stamp(minutes_ago: int) -> str:
+        return (now - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def age(runs: list[dict]) -> str:
+        out = subprocess.run(
+            [jq, match.group(1)],
+            input=json.dumps({"workflow_runs": runs}),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return out.stdout.strip()
+
+    runs = [
+        {"event": "schedule", "run_started_at": stamp(2)},
+        {"event": "repository_dispatch", "run_started_at": stamp(50)},
+        {"event": "workflow_dispatch", "run_started_at": stamp(30)},
+        {"event": "workflow_dispatch", "run_started_at": None},
+    ]
+    assert int(age(runs)) in (29, 30)
+    assert age([{"event": "schedule", "run_started_at": stamp(1)}]) == ""

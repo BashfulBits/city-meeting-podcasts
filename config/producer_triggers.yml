@@ -1,0 +1,70 @@
+# Producer workflow triggers fired by the LLM dispatch v2 Worker's own cron (review/58 B5,
+# owner decision 1, WP6 part B).
+#
+# GitHub drops most scheduled runs of the LLM producer workflows (7-day measurement: 3.9 of 12
+# a day for agenda, locator and judge, 14 of 21 for tag, 21 of 28 for the sweep, median start
+# delay 201 minutes). The Worker's cron fires every minute and does, so on the minutes below it
+# sends one `repository_dispatch` per due entry to GitHub. Each workflow keeps its `schedule:`
+# as a fallback; a schedule-triggered run skips itself (green, with a log line) when a
+# repository_dispatch or workflow_dispatch run of the same workflow succeeded and started less
+# than `schedule_guard_minutes` ago (scripts/producer_schedule_guard.sh).
+#
+# Compiled to workers/llm-dispatch-v2/src/producer_triggers.json by
+# scripts/compile_producer_triggers.py (drift-checked in llm-dispatch-v2-worker-deploy.yml).
+#
+# Stateless: the Worker decides from the cron event's scheduledTime alone (UTC minute and hour),
+# with no Durable Object read, write, row or alarm. A cron minute Cloudflare skips entirely skips
+# that trigger; the GitHub schedule fallback then runs, because the guard finds no recent
+# dispatched run. A late tick still carries its scheduled minute and fires normally.
+#
+# Rules the compiler enforces:
+# - `minute` is 0-59 and is never a cleanup minute (a multiple of CLEANUP_INTERVAL_MINUTES in
+#   dispatch_tuning.yml), so a trigger never shares a tick with cleanup's B2 deletes and the
+#   invocation's 50-subrequest budget keeps its headroom.
+# - Exactly one of `hours` (list of UTC hours) or `every_n_hours` (a divisor of 24, with an
+#   optional `hour_offset` below it).
+# - No more than `max_triggers_per_tick` entries fall on any one minute of the day. The Worker
+#   also caps at this count at runtime.
+# - `schedule_guard_minutes` is below the entry's cadence, so a dropped Worker trigger still lets
+#   the next GitHub schedule run through.
+#
+# Minutes are 3 to 5 minutes BEFORE the workflow's own GitHub cron minute: the dispatched run is
+# already running (or done) when a punctual schedule run arrives, which then queues behind it in
+# the workflow's concurrency group and skips itself.
+
+max_triggers_per_tick: 3
+# Per-request timeout for the GitHub API call. GitHub answers a dispatch in well under a second.
+timeout_seconds: 5
+
+triggers:
+  # Hourly collector (review/58 WP5); GitHub cron "57 * * * *".
+  - event_type: llm-deferred-sweep
+    workflow: llm-deferred-sweep.yml
+    minute: 52
+    every_n_hours: 1
+    schedule_guard_minutes: 45
+  # Even UTC hours; GitHub cron "06 */2 * * *".
+  - event_type: chapter-agenda
+    workflow: chapter-agenda.yml
+    minute: 3
+    every_n_hours: 2
+    schedule_guard_minutes: 90
+  # Odd UTC hours; GitHub cron "17 1-23/2 * * *".
+  - event_type: chapter-locator
+    workflow: chapter-locator.yml
+    minute: 13
+    every_n_hours: 2
+    hour_offset: 1
+    schedule_guard_minutes: 90
+  # Every four hours (review/58 WP6 part A); GitHub cron "19 */4 * * *".
+  - event_type: tag
+    workflow: tag.yml
+    minute: 14
+    every_n_hours: 4
+    schedule_guard_minutes: 180
+  # Every two hours (the judge window must equal this interval); GitHub cron "37 */2 * * *".
+  - event_type: judge
+    workflow: judge.yml
+    minute: 33
+    every_n_hours: 2
+    schedule_guard_minutes: 90

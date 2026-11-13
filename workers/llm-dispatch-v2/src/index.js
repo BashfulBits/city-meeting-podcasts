@@ -24,6 +24,7 @@ import {
   gatewayNetworkFacts, networkProbeAllowed, observeBundleNetwork,
 } from "./network_diagnostics.js";
 import { classifyProviderFailure, googleQuotaDiagnostics } from "./classify.js";
+import { runProducerTriggers } from "./producer_trigger.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
@@ -1611,6 +1612,8 @@ export default {
 
   async scheduled(event, rawEnv, ctx) {
     const env = withTuning(rawEnv);
+    // review/58 WP6b: fire due producer workflows. Detached, never throws, never awaited here.
+    ctx.waitUntil(runProducerTriggers(env, event?.scheduledTime));
     try {
       validateConfig(env);
     } catch (err) {
