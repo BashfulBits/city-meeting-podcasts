@@ -1701,6 +1701,17 @@ from every producer's, and siblings and adjudicators exclude the anchor's family
 candidates' siblings move from Gemma to Nemotron). A pending anchor marker for a retired anchor
 model is dropped, and `report.py` keys anchor agreement, escalation and audit cells by anchor model
 so JEV and Gemini telemetry never pool.
+**Sibling roster after Gemma (review/58 12.6, 2026-11-13).** `judge:sibling` is
+Nemotron 3.5 Super (slot `primary`, family `nvidia`) plus Qwen3.8-27B on Groq (slot `secondary`,
+family `qwen`). Slots are tried in sorted name order, so Qwen judges only the entries Nemotron cannot
+judge, such as Nemotron-produced ones. Rule subjects balance across both by headroom. Gemma 4 31B
+left the lane because a Google sibling can never sit beside the Google anchor. A pending sibling
+marker for a model the lane no longer lists is dropped in the same way as a retired anchor's
+(`_retired_role`, counter `retired_sibling_pending_dropped`); its stored judgments keep their own
+identity. `judging.max_outstanding_per_sibling` caps the outstanding packets of one sibling model
+below the purpose limit, set to 40 for Qwen, whose Groq quota is about 200k tokens a day. On
+DeepSeek V4.1 Flash for `judge:adjudicator`, the NVIDIA leg is stood down (`rpd: 0`) and the two
+BeatAPI legs serve the model.
 Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
 state, conditional, and other storage reads continue to use their owning backend directly. For
 B2-backed runs, judge transcript reads try the configured public CDN URL through the guarded HTTP
