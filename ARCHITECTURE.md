@@ -1055,10 +1055,19 @@ claimed tick: `bundle_id`, `claimed_jobs`, `route_ids`, `in_flight_calls_before`
 `candidate_jobs`. The claim response carries no admissible-capacity figure, so none is logged.
 `bundle_completed`, once per bundle after the commit: `bundle_id`, `bundle_duration_ms` (claim to
 commit), `commit_ok`, and `calls[]` with `route_id`, `purpose`, `final`, `outcome`,
-`failure_class`, `provider_status_code`, `call_duration_ms` and `hold_ms` (call end to commit) for
+`failure_class`, `provider_status_code`, `call_duration_ms`, `response_timeout_ms` (the timeout the
+call ran under) and `hold_ms` (call end to commit) for
 every call on every route, including superseded attempts (`final: false`: 429 retries and
 in-window Google 5xx retries) before each job's settled one (`final: true`). Empty ticks keep
 `scheduled_claim_empty`.
+Response timeout (review/58 B2): `MAX_RESPONSE_SECONDS` (720) is the global ceiling. A route may set
+`response_timeout_seconds` in `config/provider_limits.yml` (a positive integer at most the ceiling,
+checked by `scripts/compile_llm_limits.py`; unset means the global value). The Worker's
+`effectiveResponseMs` uses the smaller of the two for every call on that route, including in-window
+429 and Google 5xx retries, and clamps again at runtime. The failure class stays
+`provider_response_timeout`; requeue, retry accounting, lease and bundle-deadline arithmetic are
+unchanged (the lease check only gets easier). Set today on AI Studio Gemma 4 31B (240), Flash
+Lite 3.5 and 3.1 (300), Nemotron 3.5 Super and DeepSeek V4 Flash (420).
 Chat judge packing sizes the complete serialized messages and structured contract in the same
 raw units as enqueue. Google Gemma packing preflight also returns a separate model/prompt-family
 feedback target: Google successes and same-generation NVIDIA recoveries form a bounded 128-packet

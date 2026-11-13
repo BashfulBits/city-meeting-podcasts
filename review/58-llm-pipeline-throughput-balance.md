@@ -179,6 +179,14 @@ Classification:
   `MAX_RESPONSE_SECONDS`. Initial values: AI Studio Gemma 240; Gemini Flash Lite 300; Nemotron 3.5
   Super 420; DeepSeek V4 Flash 420; all others unset (720). For Gemma this gives up 0.5% of
   successes and returns 480 s on each of 1,556 timeouts (747k slot-seconds a week).
+- Implemented (WP2): values set on `gemma_4_31b_primary` and `gemma_4_31b_secondary` (240); the two
+  Gemini 3.5 and two 3.1 Flash Lite routes (300); `kilo_nemotron_3_5_super_vl_free`,
+  `openrouter_nvidia_nemotron_3_5_super_vl_free`, `nvidia_nemotron_3_5_super_vl_120b_a12b_free`,
+  `orcarouter_deepseek_v4_flash_free` and `beatapi_deepseek_v4_flash_free` (420). Left unset:
+  every DeepSeek V4.1 route, Nemotron 3 Ultra, other-provider Gemma routes (NVIDIA, OpenRouter,
+  SambaNova, Gemma 4 26B) and MiniMax M3.1 Flash. The evidence file has per-route latency only
+  for Gemma; the 300 and 420 values are the review's initial figures to tune from the new
+  `response_timeout_ms` and `call_duration_ms` fields of `bundle_completed`.
 
 ### B3. Failing routes are re-selected every tick
 
@@ -402,7 +410,7 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 |---|---|---|---|---|---|
 | WP1a | Worker logs: `scheduled_claim`, `bundle_completed` (`index.js` only) | Sonnet | — | Measurement for all later gates | Workers Logs: both events present on every claimed tick **Status: implemented in `feat/58-wp1a-dispatch-worker-logs` (PR open); owner deploys the Worker.** Admissible capacity is not in the claim response, so it is not logged; the in-flight ÷ admissible SLO still needs a coordinator change |
 | WP1b | Producer funnel telemetry + `/admin/status` lane table (**implemented, PR pending merge**: producer events carry `queue`, `admission`, `packets`, run-local first-seen times; the status table classes every lane; the waiting-vs-completed split, slot productivity and failed-attempt share read "not measured" because producers do not poll and those figures are dispatcher-side) | Sonnet | — | Closes the visibility gap | Status page shows a class for every lane |
-| WP2 | Per-route response timeout (config, compile script, `index.js`) | Sonnet, Opus review | WP1a | ~750k slot-seconds/week | Gemma timeouts end at 240 s; timeout share < 3% |
+| WP2 | Per-route response timeout (config, compile script, `index.js`) | Sonnet, Opus review | WP1a | ~750k slot-seconds/week | Gemma timeouts end at 240 s; timeout share < 3% **Status: implemented in `feat/58-wp2-per-route-response-timeout` (PR open); merging deploys the Worker.** `bundle_completed` calls carry `response_timeout_ms` |
 | WP3a | Stand down routes that cannot succeed; fix stale tuning comments. **Status: implemented in PR (branch `fix/58-wp3a-stand-down-failing-routes`), awaiting merge and owner deploy.** `rpd: 0` on `beatapi_jev_1_13_free` and both `beatapi*_glm_5_3_flash_free`; the primary BeatAPI chat routes' `yields_to` JEV removed (re-add when WP3c restores JEV). `judge:adjudicator` keeps GLM via OrcaRouter and DeepSeek V4.1 via NVIDIA, BeatAPI primary and secondary. | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
 | WP3b | Route health ladder (coordinator) | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day |
 | WP3c | JEV 400 diagnosis. **Done 2026-11-11:** BeatAPI withdrew `jev-1.13-free` from the key; restoring needs an owner decision on the anchor model (free model returns, paid route, or other anchor). | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
