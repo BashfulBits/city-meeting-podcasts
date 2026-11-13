@@ -11,9 +11,11 @@ on:
       - "config/provider_limits.yml"
       - "config/site_config.yml"
       - "config/dispatch_tuning.yml"
+      - "config/producer_triggers.yml"
       - "scripts/compile_llm_limits.py"
       - "scripts/compile_llm_lanes.py"
       - "scripts/compile_dispatch_tuning.py"
+      - "scripts/compile_producer_triggers.py"
       - ".github/workflows/llm-dispatch-v2-worker-deploy.yml"
   workflow_dispatch:
 
@@ -59,6 +61,10 @@ jobs:
 
       - name: Check for dispatch_tuning.json drift
         run: python scripts/compile_dispatch_tuning.py --check
+
+      # review/58 WP6b: the cron's producer workflow trigger table.
+      - name: Check for producer_triggers.json drift
+        run: python scripts/compile_producer_triggers.py --check
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:

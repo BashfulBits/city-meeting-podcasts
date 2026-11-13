@@ -12,6 +12,10 @@ on:
     # over-provisioned). Minute 19 avoids the deploy (:26), audio (:47) and moments slots.
     - cron: "19 */4 * * *"
   workflow_dispatch: {}
+  # review/58 WP6b: the dispatch Worker's cron fires this event (config/producer_triggers.yml);
+  # the schedule above is the fallback. client_payload is untrusted and unused.
+  repository_dispatch:
+    types: [tag]
 
 permissions:
   contents: read
@@ -32,15 +36,31 @@ jobs:
         with:
           persist-credentials: false
 
+      # review/58 WP6b: on a schedule run, skip the rest of the job (green) when a
+      # repository_dispatch/workflow_dispatch run of this workflow succeeded and started
+      # within the window, so the fallback schedule does not double runner time. Fail-open.
+      - name: Skip scheduled run when the Worker trigger already ran
+        id: schedule_guard
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_FILE: tag.yml
+          WINDOW_MINUTES: "180"
+        continue-on-error: true
+        run: bash scripts/producer_schedule_guard.sh
+
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        if: steps.schedule_guard.outputs.skip != 'true'
         with:
           python-version-file: .python-version
           cache: pip
 
       - name: Install
+        if: steps.schedule_guard.outputs.skip != 'true'
         run: pip install -e ".[storage,llm]" -c constraints/prod.txt
 
       - name: Capture starting LLM worker state
+        if: steps.schedule_guard.outputs.skip != 'true'
         env:
           CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE: ${{ runner.temp }}/llm-submission-telemetry.jsonl
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
@@ -50,6 +70,7 @@ jobs:
           python scripts/llm_submission_telemetry.py snapshot start
 
       - name: Produce bounded LLM topic-tag candidates
+        if: steps.schedule_guard.outputs.skip != 'true'
         # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
         # GitHub reports as a grey "cancelled" -- indistinguishable at a glance from someone
         # cancelling it by hand, and it skips every later step so nothing is persisted or
@@ -79,7 +100,7 @@ jobs:
         run: python -m citypods.cli enrich --lane tag
 
       - name: Summarize LLM submission telemetry
-        if: always()
+        if: always() && steps.schedule_guard.outputs.skip != 'true'
         env:
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
@@ -88,7 +109,7 @@ jobs:
           python scripts/llm_submission_telemetry.py report
 
       - name: Upload LLM submission telemetry
-        if: always()
+        if: always() && steps.schedule_guard.outputs.skip != 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: llm-submission-telemetry-${{ github.run_id }}
