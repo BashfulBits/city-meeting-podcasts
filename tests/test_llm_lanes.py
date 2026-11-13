@@ -537,8 +537,16 @@ class TestJudgePools:
         sibling = lanes["judge:sibling"]
         # The anchor is Google, so a non-Google sibling slot must exist for its subjects.
         assert load_families()["gemini/gemini-decision-1"] == "google"
-        assert sibling.eligible_models == ("qwen/qwen3.8-27b",)
-        assert "qwen/qwen3.8-27b" in sibling.slot_models["non_google"]
+        # review/58 12.6: Gemma left (a Google sibling can never judge beside a Google anchor);
+        # Nemotron is the primary sibling and Qwen3.8 judges what Nemotron produced.
+        assert sibling.models == (
+            "openrouter/nvidia/nemotron-3.5-super-vl:free",
+            "qwen/qwen3.8-27b",
+        )
+        assert sibling.slot_models == {
+            "primary": ("openrouter/nvidia/nemotron-3.5-super-vl:free",),
+            "secondary": ("qwen/qwen3.8-27b",),
+        }
         assert set(lanes["judge:adjudicator"].models) == {
             "zai/glm-5.3-flash",
             "deepseek/deepseek-v4.1-flash",
@@ -548,9 +556,8 @@ class TestJudgePools:
             assert lanes[purpose].dispatch_shape == "per_model"
             assert lanes[purpose].backup_models == ()
         families = load_families()
-        sibling_families = {families[m] for m in sibling.slot_models["non_google"]}
-        assert "google" not in sibling_families
-        assert {families[m] for m in sibling.slot_models["google"]} == {"google"}
+        sibling_families = {families[m] for m in sibling.models}
+        assert sibling_families == {"nvidia", "qwen"}  # two families, neither Google
         adjudicators = {families[m] for m in lanes["judge:adjudicator"].models}
         assert len(adjudicators) == 2 and not adjudicators & {
             families[m] for m in (*sibling.models, *sibling.eligible_models)
