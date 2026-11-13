@@ -164,8 +164,31 @@ now has these consequences:
 - An entry whose producer family is unknown gets no anchor (stricter; this also applies to JEV).
 - Siblings and adjudicators exclude the anchor's family, so **all rule-candidate sibling load moves
   from Gemma to Nemotron**. Subjects that a Gemma sibling judged before get a new Nemotron sibling.
-- An entry produced by Nemotron gets no sibling.
+- An entry produced by Nemotron gets no sibling. (2026-11-13: it now gets Qwen3.8-27B; see below.)
 - Adjudication ignores a stored sibling judgment from the anchor's family.
+
+**Sibling roster from 2026-11-13 ([review/58 12.6](58-llm-pipeline-throughput-balance.md)).**
+
+- Gemma 4 31B left `judge:sibling` (owner decision). It could not judge beside a Google anchor, and
+  4% of its queued sibling calls succeeded on 2026-11-12/13.
+- The lane is Nemotron 3.5 Super (slot `primary`) and Qwen3.8-27B on Groq (slot `secondary`,
+  family `qwen`). Qwen takes only what Nemotron cannot judge, such as Nemotron-produced entries.
+  Rule subjects balance across both by headroom, with Qwen capped at 40 outstanding packets.
+- Gemma's stored judgments keep their identity, and its pending markers are dropped like JEV's.
+- Google-produced entries still get no anchor. A second, non-Google decision anchor (Perplexity
+  Decider V1.3, free) is proposed in issue #2674.
+
+**Re-qualifying Qwen3.8-27B as a sibling.** Qwen has no judging record here, so it starts in shadow
+like every judge. Before its readings count:
+
+1. Read its per-judge probe results (section 4.2) once it has about 20 probes.
+2. Run the 2% stability sample, then check its agreement with the Gemini anchor on the
+   Nemotron-produced entries that both judged.
+3. Check the outstanding gauge `outstanding_model:qwen/qwen3.8-27b` against the 40 cap. If it
+   stays at 40, Groq's 200k tokens/day is the limit, and Nemotron-produced entries wait.
+
+Gemma returns only with a non-Google anchor for the entries it judges, and only after a parse fix
+is verified.
 
 ## Proposed design
 
@@ -384,10 +407,10 @@ tags. Marginal cases are Uncertain, which the lane and the audit both exclude fr
 | Role | Route | Why | To verify before relying on it |
 |---|---|---|---|
 | Anchor judge | **Gemini Decision 1** (`gemini_decision_1_primary` / `_secondary`, AI Studio) from 2026-11-12; JEV (`jev-1.13-free`, BeatAPI) until its free tier was retired on 2026-11-05 | Pinned (section 2) | Published free-tier limits unmeasured; Google family, so Google-produced entries get no anchor and siblings exclude Gemma (see "Gemini Decision 1 as the anchor") |
-| Sibling slot A, bulk | **Gemma 4 31B / 26B** (AI Studio, both projects) | Four 14,400 RPD pools at 30 RPM; the binding limit is about 16k tokens/minute and a 14,400-token ceiling, which fits T1 packets (about 25 items) and small T2 packets. Takes every rule candidate (99% of candidates today) and every entry not produced by a Google model. **2026-11-12:** with a Google anchor, Gemma is excluded as a sibling; this load moves to slot B | Daily token cap unrecorded; shares quota with the R5 pre-labeler lanes until P7 retires them; recorded AA is low (16.7 for 26B), which the probes and stability checks measure |
-| Sibling slot B, independent of Google | **Nemotron 3 Super 120B** (OpenRouter 200 RPD + NVIDIA leg) or **Qwen3.8-27B** (Groq) | Only needed for Gemini-produced LLM entries (tagger primary, moments primaries): a few dozen packets a day. Qwen's 200k TPD (about 25 six-thousand-token packets) makes Nemotron Super the steadier default; the league can trial both | Nemotron Super has no AA or judging record here; Qwen's TPD is shared with the existing `r6-judge` lane during migration |
+| Sibling slot A, bulk | **Gemma 4 31B / 26B** (AI Studio, both projects) | Four 14,400 RPD pools at 30 RPM; the binding limit is about 16k tokens/minute and a 14,400-token ceiling, which fits T1 packets (about 25 items) and small T2 packets. Takes every rule candidate (99% of candidates today) and every entry not produced by a Google model. **2026-11-12:** with a Google anchor, Gemma is excluded as a sibling; this load moves to slot B. **2026-11-13:** removed from the lane (review/58 12.6) | Daily token cap unrecorded; shares quota with the R5 pre-labeler lanes until P7 retires them; recorded AA is low (16.7 for 26B), which the probes and stability checks measure |
+| Sibling slot B, independent of Google | **Nemotron 3 Super 120B** (OpenRouter 200 RPD + NVIDIA leg) or **Qwen3.8-27B** (Groq) | Only needed for Gemini-produced LLM entries (tagger primary, moments primaries): a few dozen packets a day. Qwen's 200k TPD (about 25 six-thousand-token packets) makes Nemotron Super the steadier default; the league can trial both. **2026-11-13:** Nemotron 3.5 Super is slot `primary` and Qwen3.8-27B slot `secondary` (Nemotron-produced entries, capped at 40 outstanding) | Nemotron Super has no AA or judging record here; Qwen's TPD is shared with the existing `r6-judge` lane during migration |
 | Adjudicator 1 | **GLM 5.3 Flash** (OrcaRouter) | Highest recorded AA of the released routes (41.8), 1M context, 800 RPD, about 5 s, `json_object` verified | Orca's per-request free prompt cap (`err_free_prompt_cap`) at the adjudicator packet size; whether its 800 RPD is shared with Orca's other free models |
-| Adjudicator 2 | **DeepSeek V4.1 Flash**, NVIDIA leg | AA 39.5, 1M context, no RPD cap at 4 RPM; read long locator packets well (89.8% joint recall on the long slice) | Slow on long packets (about 502 s median); needs the `prompt_only` method on NVIDIA; the BeatAPI V4.1 leg must not serve adjudication (below) |
+| Adjudicator 2 | **DeepSeek V4.1 Flash**, NVIDIA leg | AA 39.5, 1M context, no RPD cap at 4 RPM; read long locator packets well (89.8% joint recall on the long slice) | Slow on long packets (about 502 s median); needs the `prompt_only` method on NVIDIA; the BeatAPI V4.1 leg must not serve adjudication (below). **2026-11-13:** JEV is retired, so the BeatAPI legs now carry V4.1; the NVIDIA leg is stood down (about 5% success, review/58 12.7) |
 
 Qwen and the Gemini 3.8/3.7 Flash pools are not needed as adjudicators at this volume; they remain league challengers.
 
