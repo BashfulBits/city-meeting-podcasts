@@ -176,6 +176,51 @@ test("a packed coordinator matches the legacy one claim for claim, failure class
   }
 });
 
+test("review/58 WP4: settling a bundle as partial + final leaves exactly the single-commit state", async t => {
+  // Every outcome class (retry/requeue, terminal, failure cells, route cooldowns, ladder,
+  // estimates, usage) through both paths, in both authorities.
+  const clock = { value: Date.UTC(2026, 9, 30, 12) };
+  const reseed = freeze(t, clock);
+  const env = { MAX_JOBS_PER_ROUTE_PER_BUNDLE: "4", MAX_BUNDLE_JOBS: "4", EARLY_SLOT_RELEASE_MAX_COMMITS: "3" };
+  const twins = { legacy: [make(env), make(env)], packed: [make(env), make(env)] };
+  const ids = Array.from({ length: 16 }, (_, i) => `s-${String(i).padStart(2, "0")}`);
+  for (const pair of Object.values(twins)) {
+    for (const f of pair) await f.coordinator.enqueueBatch(ids.map(job));
+  }
+  for (const f of twins.packed) await cutover(f, clock.value);
+  let split = 0;
+  for (let tick = 0; tick < 8; tick++) {
+    clock.value += 60_000;
+    for (const [mode, [single, parted]] of Object.entries(twins)) {
+      const [a, b] = [await single.coordinator.claimDispatchWindow(clock.value, 30),
+        await parted.coordinator.claimDispatchWindow(clock.value, 30)];
+      assert.deepEqual(b.jobs.map(j => j.id), a.jobs.map(j => j.id), `${mode} tick ${tick}`);
+      if (!a.jobs.length) continue;
+      const pick = index => outcomes[(index + tick) % outcomes.length];
+      await settle(single.coordinator, a, clock.value, pick, reseed);
+      // The same results, split: first job, then the second, then the rest in the final.
+      reseed();
+      const results = b.jobs.map((planned, index) => ({
+        job_id: planned.id, lease_token: planned.lease_token, attempt_id: `attempt-${planned.id}-${clock.value}`,
+        planned_at: planned.not_before_at, actual_start_at: clock.value + 100, actual_end_at: clock.value + 5000,
+        observed_input_tokens: 90, observed_output_tokens: 400, outcome: "success", provider_status_code: 200,
+        result_key: `results/${planned.id}.json`, ...pick(index),
+      }));
+      const groups = results.length >= 3 ? [results.slice(0, 1), results.slice(1, 2), results.slice(2)]
+        : results.length === 2 ? [results.slice(0, 1), results.slice(1)] : [results];
+      for (const [i, group] of groups.entries()) {
+        const last = i === groups.length - 1;
+        const reply = await (last ? parted.coordinator.completeBatch : parted.coordinator.completePartial)
+          .call(parted.coordinator, b.bundle_id, b.execution_token, group);
+        assert.equal(reply.accepted, true);
+      }
+      if (groups.length > 1) split += 1;
+      assert.deepEqual(materialize(parted), materialize(single), `${mode} state after tick ${tick}`);
+    }
+  }
+  assert.ok(split >= 4, "bundles were actually split");
+});
+
 test("restart keeps packed authority and an expired lease is reaped from the registry", async t => {
   const clock = { value: Date.UTC(2026, 9, 30, 12) };
   freeze(t, clock);

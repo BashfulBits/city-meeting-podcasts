@@ -960,7 +960,9 @@ same-route successes into one routes UPDATE per route, flushing a route's pendin
 any non-success write to it so the final backoff state matches per-job order ([PR
 #1843](https://github.com/BashfulBits/city-meeting-podcasts/pull/1843)). There is no
 `bundles` table (2026-10-07): the few active bundles are a map in the scheduler row
-(`active_bundles_json`), removed when a bundle's last job settles or its lease expires, and every
+(`active_bundles_json`; since review/58 WP4 an entry also carries `settled_job_ids` and
+`partial_flushes`, and its `active_call_count` falls as partial commits settle calls), removed
+when a bundle's last job settles or its lease expires, and every
 scheduler change a transaction makes (claim outcome, bundles, the requeue counter) rides on that
 transaction's one accounting UPDATE. A job may only name routes its own lane declares — ingress
 rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
@@ -1055,13 +1057,39 @@ claimed tick: `bundle_id`, `claimed_jobs`, `route_ids`, `in_flight_calls_before`
 `candidate_jobs`, and `admissible_calls` (WP3b: calls the routes the ranking scores above zero
 could hold, capped per provider and by `MAX_IN_FLIGHT_LLM_CALLS`; computed in the claim from the
 ranking it already made, so no read; null on a tick refused before ranking).
-`bundle_completed`, once per bundle after the commit: `bundle_id`, `bundle_duration_ms` (claim to
-commit), `commit_ok`, and `calls[]` with `route_id`, `purpose`, `final`, `outcome`,
-`failure_class`, `provider_status_code`, `call_duration_ms`, `response_timeout_ms` (the timeout the
-call ran under) and `hold_ms` (call end to commit) for
+`bundle_completed`, once per bundle after the final commit: `bundle_id`, `bundle_duration_ms`
+(claim to final commit), `commit_ok`, `partial_flushes` and `commits` (WP4), and `calls[]` with
+`route_id`, `purpose`, `final`, `outcome`, `failure_class`, `provider_status_code`,
+`call_duration_ms`, `response_timeout_ms` (the timeout the call ran under), `hold_ms` (call end to
+the commit that released its slot) and `released_by` (`partial` or `final`) for
 every call on every route, including superseded attempts (`final: false`: 429 retries and
 in-window Google 5xx retries) before each job's settled one (`final: true`). Empty ticks keep
 `scheduled_claim_empty`.
+Early slot release (review/58 B1, WP4; `workers/llm-dispatch-v2/src/early_release.js`): a bundle's
+calls used to settle in one `completeBatch` after the slowest ended, so a fast call held its
+in-flight slot and route lease for up to 12 minutes. The executor's settler now sends a
+`completePartial` DO RPC when at least one call has settled, another still runs, and
+`EARLY_SLOT_RELEASE_DEBOUNCE_SECONDS` have passed since the bundle started (or its last partial),
+with at most `EARLY_SLOT_RELEASE_MAX_COMMITS` commits per bundle including the final (ceiling 3).
+Only a job's final result is flushed (in-window retries finish first). A partial settles its jobs
+through the same code as `completeBatch` (requeue, failure cells, cooldowns, the route health
+ladder, usage, logs), lowers the bundle entry's `active_call_count` and deletes those jobs' leases,
+so the next claim counts the slot and the route free; lease expiry and stale tokens are unchanged
+for the calls still running. Idempotency: the bundle entry records `settled_job_ids` and every
+later commit of the bundle skips a listed job (usage included), so a retried partial, or a final
+repeating a job whose partial was still in flight, settles nothing twice; a commit for a closed or
+reaped bundle is a no-op as before. The final is sent without waiting for an in-flight partial, so
+a partial never delays it or eats `FINALIZATION_RESERVE_SECONDS`; a partial opens a connection only
+when the open lanes plus the shared probe/cleanup slot leave one of the six free. Rows: a partial
+costs one billed row (the accounting UPDATE; a second in packed mode when it and the final touch
+the same telemetry shard), measured in `test/row-accounting.test.js`. The DO refuses a partial,
+writing nothing, once the day's partials have used `EARLY_SLOT_RELEASE_DAILY_ROWS` (charged at two
+rows each and prorated over the UTC day, in `scheduler.early_release_json`, which rides the same
+read and UPDATE), or while the day's rows are ahead of the `EARLY_SLOT_RELEASE_ROW_PACE` line; the
+results then go in the final. `EARLY_SLOT_RELEASE_ENABLED: 0` (or `MAX_COMMITS: 1`) restores the
+single commit without a rollback. Rollback is safe in flight: an older coordinator has no
+`completePartial`, the call fails and the final carries those results; an older Worker against
+this coordinator commits once, as before.
 Response timeout (review/58 B2): `MAX_RESPONSE_SECONDS` (720) is the global ceiling. A route may set
 `response_timeout_seconds` in `config/provider_limits.yml` (a positive integer at most the ceiling,
 checked by `scripts/compile_llm_limits.py`; unset means the global value). The Worker's

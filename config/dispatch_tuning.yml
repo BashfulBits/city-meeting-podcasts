@@ -153,6 +153,32 @@ ROUTE_HEALTH_RUNG_1_SECONDS: 60
 ROUTE_HEALTH_RUNG_2_SECONDS: 300
 ROUTE_HEALTH_RUNG_3_SECONDS: 900
 ROUTE_HEALTH_RUNG_4_SECONDS: 3600
+# ---- Early slot release (review/58 B1, WP4; src/early_release.js) -----------------------------
+# A bundle used to commit once, when its slowest call ended, so a call that returned in 3 s held
+# its in-flight slot and its route lease for up to 12 minutes (58% of held slot-time was this idle
+# hold, 2026-11-04..11). The executor now commits settled calls early through a partial completion
+# once at least one call has settled, another is still running, and DEBOUNCE seconds have passed
+# since the bundle started or since its previous partial. MAX_COMMITS counts every commit of a
+# bundle including the final one (ceiling 3), so 3 means at most two partials. Each partial costs
+# one more DO RPC and one more billed row (the accounting row), two in packed mode when the
+# partial and the final touch routes on the same telemetry shard (measured in
+# test/row-accounting.test.js, see review/58 section 8). The DO refuses a partial (writing
+# nothing; the final carries its results) once the day's partials have written DAILY_ROWS rows
+# (charged at 2 each, prorated over the UTC day so they spread across it): a day therefore ends
+# at most DAILY_ROWS above what its other work wrote. It also refuses while today's billed rows
+# are ahead of ROW_PACE rows per day prorated to the time of day, so a heavy day falls back to one
+# commit per bundle. Sizing: at 6,000 results/day the other work is about 84,000 rows, so 1,000
+# partial rows keeps the day at 85,000; review/58's proposed 20 s / 3 commits would need about
+# 4,700 (88,700 rows). One partial per bundle after 60 s spends the 500 partials on the long
+# bundles that hold the idle slots. Raise DAILY_ROWS only while results/day are well under 6,000
+# (each 1,000 results less frees about 14,000 rows). Set EARLY_SLOT_RELEASE_ENABLED to 0 (or
+# MAX_COMMITS to 1) to restore the single commit without a code rollback; the DO then refuses any
+# partial it is sent.
+EARLY_SLOT_RELEASE_ENABLED: 1
+EARLY_SLOT_RELEASE_DEBOUNCE_SECONDS: 60
+EARLY_SLOT_RELEASE_MAX_COMMITS: 2
+EARLY_SLOT_RELEASE_ROW_PACE: 85000
+EARLY_SLOT_RELEASE_DAILY_ROWS: 1000
 # A reply cut off at its output limit on a job pinned to one model (per_model judge lanes) recurs
 # on that model, so it gets this many retries, not the upstream budget, then fails to its producer.
 MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES: 1

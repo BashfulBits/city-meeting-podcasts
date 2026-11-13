@@ -166,6 +166,16 @@ Classification:
   last flush, at most three commits per bundle. The DO decrements `active_call_count` and releases
   those jobs' route and provider leases. Lease expiry and stale-token handling are unchanged for
   the remaining calls.
+- Implemented (WP4, branch `feat/58-wp4-early-slot-release`): `completePartial` on the DO runs
+  the same settlement as `completeBatch`; the bundle entry keeps `settled_job_ids`, so a retried
+  partial or a final that repeats a job settles nothing twice; the final is never delayed by a
+  partial. The 20 s / three-commit setting above does not fit the row budget at 6,000 results a day
+  (section 8), so the defaults are one partial per bundle after 60 s
+  (`EARLY_SLOT_RELEASE_DEBOUNCE_SECONDS` 60, `EARLY_SLOT_RELEASE_MAX_COMMITS` 2), and the DO refuses
+  partials past `EARLY_SLOT_RELEASE_DAILY_ROWS` (1,000 rows a day, prorated) or while the day is
+  ahead of the 85,000-row pace. `EARLY_SLOT_RELEASE_ENABLED: 0` switches it off. `bundle_completed`
+  adds `partial_flushes`, `commits` and per call `released_by`; `hold_ms` now ends at the commit
+  that released the call.
 
 ### B2. Doomed calls run to the 720 s response timeout
 
@@ -326,11 +336,23 @@ results a day; at 62 s (pure success latency) it would be 16,000. So after the f
 limits are, in order:
 
 1. `MAX_JOBS_PER_UTC_DAY` 6,000.
-2. DO rows: 10.7 rows per claim × 1.3 claims per result ≈ 14 rows per result (18.5 today), plus up
-   to 2 extra commits per bundle from WP4. At 6,000 results a day that is about 84k rows before WP4's
-   overhead, against the 90,000 safe stop. WP4 must measure its row cost in
-   `row-accounting.test.js`; if a full day would pass 85k rows, the job cap comes down, not the
-   row stop.
+2. DO rows: 10.7 rows per claim × 1.3 claims per result ≈ 14 rows per result (18.5 today). At
+   6,000 results a day that is about 84k rows before WP4, against the 90,000 safe stop. WP4's cost,
+   measured in `row-accounting.test.js`: a partial commit adds exactly one row per bundle in legacy
+   and packed modes (completion rows for a three-call bundle with 0, 1, 2 partials: legacy 13, 14,
+   15; packed 7, 8, 9), and two in packed mode when the partial and the final touch routes on the
+   same telemetry shard. At 2,364 bundles a day, two partials per bundle would add 4,700 to 9,500
+   rows (88.7k to 93.5k), and even one per bundle 2,400 (86.4k): the proposed 20 s / three commits
+   does not fit 85k. No limit was raised. Defaults instead: one partial per bundle after 60 s, and a
+   daily partial budget of 1,000 rows (`EARLY_SLOT_RELEASE_DAILY_ROWS`, charged at two rows each,
+   prorated over the day), so a day ends at most 1,000 rows above its other work, about 85,000 at
+   6,000 results; partials also stop while the day is ahead of the 85,000-row pace. At today's
+   1,600 to 3,300 results (39k to 60k rows) the budget allows about 500 partials a day, roughly one
+   for every bundle that runs past 60 s. To spend more, raise `EARLY_SLOT_RELEASE_DAILY_ROWS` only
+   with headroom (each 1,000 results/day under 6,000 frees about 14,000 rows), or lower the job cap
+   as this section already provides. Worst-case DO RPCs per bundle: claim, one per authorized 429
+   retry, `MAX_COMMITS − 1` partials, final (one more than before at the default); per tick the same,
+   since a tick runs one bundle.
 3. Provider pools: AI Studio Gemma for `judge:sibling` (2,011 successes a week at a 7.5% recent
    success rate) and free-tier daily request limits per route.
 4. Upstream: 12,641 episodes waiting on ASR and 6,374 on agenda text.
@@ -424,7 +446,7 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP3a | Stand down routes that cannot succeed; fix stale tuning comments. **Status: implemented in PR (branch `fix/58-wp3a-stand-down-failing-routes`), awaiting merge and owner deploy.** `rpd: 0` on `beatapi_jev_1_13_free` and both `beatapi*_glm_5_3_flash_free`; the primary BeatAPI chat routes' `yields_to` JEV removed (re-add when WP3c restores JEV). `judge:adjudicator` keeps GLM via OrcaRouter and DeepSeek V4.1 via NVIDIA, BeatAPI primary and secondary. | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
 | WP3b | Route health ladder (coordinator). **Status: implemented in PR (branch `feat/58-wp3b-route-health-ladder`), awaiting merge; merging deploys the Worker.** Ladder state on `scheduler.route_health_json` (no extra row for a healthy route, no extra read); `admissible_calls` added to the claim diagnostics and `scheduled_claim`; rung in `/v2/stats?routes=1`; off switch `ROUTE_HEALTH_LADDER_ENABLED: 0` | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day; `route_health` events |
 | WP3c | JEV 400 diagnosis. **Done 2026-11-11:** BeatAPI withdrew `jev-1.13-free` from the key; restoring needs an owner decision on the anchor model (free model returns, paid route, or other anchor). | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
-| WP4 | Early slot release (coordinator + `index.js`) | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k |
+| WP4 | Early slot release (coordinator + `index.js`). **Status: implemented in PR (branch `feat/58-wp4-early-slot-release`), awaiting merge; merging deploys the Worker.** `completePartial` with per-bundle dedupe; defaults one partial after 60 s and 1,000 partial rows/day (section 8: 20 s / three commits does not fit 85k at 6,000 results); off switch `EARLY_SLOT_RELEASE_ENABLED: 0` | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k; `bundle_completed` `released_by`, `partial_flushes` |
 | WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
 | WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger) | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains | Run conclusions; locator `ready` count falls |
 | WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
