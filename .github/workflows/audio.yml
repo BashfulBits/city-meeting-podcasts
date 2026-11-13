@@ -162,6 +162,7 @@ jobs:
           key: ffmpeg-static-linux64-7.1.5-v2
 
       - name: Select audio runtime
+        timeout-minutes: 20
         id: runtime
         # Self-built (scripts/build_ffmpeg_static.sh), vendored to our own B2 bucket -- not an
         # upstream/mirror host. FFMPEG_URL built from the B2 secret rather than hardcoded so it's
@@ -178,10 +179,7 @@ jobs:
             echo "Using prebuilt audio runtime ${AUDIO_RUNNER_IMAGE}"
           else
             echo "::warning title=Audio runner image unavailable::Using checksum-pinned static ffmpeg fallback on the host runner."
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq --no-install-recommends \
-              libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0 \
-              poppler-utils tesseract-ocr
+            bash scripts/ci/install_ffmpeg_libs.sh poppler-utils tesseract-ocr
             timeout 300 python scripts/install_static_ffmpeg.py \
               --url "${FFMPEG_URL}" \
               --sha256 "${FFMPEG_SHA256}" \

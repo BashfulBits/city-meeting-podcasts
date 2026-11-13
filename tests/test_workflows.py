@@ -44,6 +44,12 @@ def test_workflow_has_no_duplicate_yaml_keys(workflow):
     check(yaml.compose(workflow.read_text()))
 
 
+# Every workflow that installs the pinned ffmpeg gets its dynamically linked libraries through one
+# shared, hardened script (review/58 R2-B) instead of an inline apt block.
+_FFMPEG_LIBS_CALL = "bash scripts/ci/install_ffmpeg_libs.sh"
+_FFMPEG_LIBS_SCRIPT = REPO_ROOT / "scripts" / "ci" / "install_ffmpeg_libs.sh"
+
+
 def _job(workflow_file: str, job_name: str | None = None) -> tuple[dict, dict]:
     wf = yaml.safe_load((WORKFLOWS / workflow_file).read_text())
     job = wf["jobs"][job_name] if job_name else next(iter(wf["jobs"].values()))
@@ -701,7 +707,7 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert "tesseract --version" in select["run"]
     # Runtime (non -dev) packages for the codec/TLS libraries build_ffmpeg_static.sh links
     # dynamically -- only needed on the host fallback path, not the container path.
-    assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in select["run"]
+    assert f"{_FFMPEG_LIBS_CALL} poppler-utils tesseract-ocr" in select["run"]
 
     runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
     assert "docker run --rm --init" in runs
@@ -774,7 +780,7 @@ def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
     assert '--sha256 "${FFMPEG_SHA256}"' in run
     assert '"${FFMPEG_DIR}/bin/ffmpeg" -version' in run
     assert '"${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"' in run
-    assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in run
+    assert _FFMPEG_LIBS_CALL in run
 
     runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
     assert "prepare_whisper.py" in runs
@@ -1325,7 +1331,7 @@ def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     assert "python scripts/install_static_ffmpeg.py" in install["run"]
     assert '--sha256 "${FFMPEG_SHA256}"' in install["run"]
     assert '"${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null' in install["run"]
-    assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in install["run"]
+    assert _FFMPEG_LIBS_CALL in install["run"]
 
     upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
     assert upload["if"] == "always()"
@@ -2238,3 +2244,61 @@ def test_schedule_guard_filter_counts_only_dispatched_runs_by_start_time():
     ]
     assert int(age(runs)) in (29, 30)
     assert age([{"event": "schedule", "run_started_at": stamp(1)}]) == ""
+
+
+def test_ffmpeg_lib_install_uses_the_shared_hardened_script_everywhere():
+    """No workflow may carry its own apt block for the ffmpeg libraries (it hangs when the
+    runner cannot resolve Ubuntu's mirrors); each one calls the shared script from a step with
+    its own timeout, after the repo is checked out."""
+    script = _FFMPEG_LIBS_SCRIPT.read_text()
+    assert "PACKAGES=(libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0)" in script
+    for so in (
+        "libgnutls.so.30",
+        "libopus.so.0",
+        "libvpx.so.9",
+        "libdav1d.so.7",
+        "libmp3lame.so.0",
+    ):
+        assert so in script
+    for needle in (
+        "Acquire::Retries",
+        "Acquire::http::Timeout",
+        "azure.archive.ubuntu.com",
+        "dig +short",
+    ):
+        assert needle in script
+
+    users = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        text = workflow.read_text()
+        assert "libgnutls30" not in text, f"{workflow.name}: inline ffmpeg-lib apt block"
+        wf = yaml.safe_load(text)
+        for job in wf["jobs"].values():
+            steps = job.get("steps", [])
+            for index, step in enumerate(steps):
+                if _FFMPEG_LIBS_CALL not in str(step.get("run", "")):
+                    continue
+                users.append(workflow.name)
+                assert "timeout-minutes" in step, f"{workflow.name}: {step.get('name')} unbounded"
+                assert any(
+                    "actions/checkout" in str(earlier.get("uses", "")) for earlier in steps[:index]
+                ), f"{workflow.name}: script called before checkout"
+    assert len(users) >= 12, users
+    assert "ci.yml" in users and "audio.yml" in users
+
+
+def test_constraints_drift_gate_is_bounded_and_never_skips_silently():
+    _wf, job = _job("ci.yml", job_name="deps")
+    gate = next(s for s in job["steps"] if s.get("name") == "Constraints drift gate")
+    assert gate["timeout-minutes"] < job["timeout-minutes"]
+    assert "scripts/compile_constraints.sh" in gate["run"]
+    assert "git diff --exit-code -- constraints/" in gate["run"]
+    script = (REPO_ROOT / "scripts" / "compile_constraints.sh").read_text()
+    # Bounded per lane, bounded retries, and every failure path ends in a non-zero exit.
+    assert "timeout --kill-after=10" in script
+    assert "PIP_DEFAULT_TIMEOUT" in script and "PIP_RETRIES" in script
+    assert "timeouts_left=1" in script
+    assert "exit 1" in script
+    # --pip-args would land in the generated header and so in the drift diff.
+    code = [ln for ln in script.splitlines() if not ln.lstrip().startswith("#")]
+    assert not any("--pip-args" in ln for ln in code)
