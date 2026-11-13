@@ -121,6 +121,38 @@ UPSTREAM_CAPACITY_SATURATED_MAX_COOLDOWN_SECONDS: 86400
 # Other generic 5xx errors get one durable fallback on a later cron. The route waits 60 seconds,
 # growing to at most five minutes if this outer retry budget is raised.
 MAX_UPSTREAM_CAPACITY_RETRIES: 8
+# ---- Route health ladder (review/58 B3, WP3b; src/route_health.js) ---------------------------
+# Failing routes were re-picked every tick: 58% of retries went back to the route that had just
+# failed, and 45.5% of provider attempts failed (2026-11-04..11). A route now counts consecutive
+# failures per class with no success in between -- response timeout (our deadline or a gateway
+# 504/524), upstream capacity (upstream_capacity, final 5xx) and request defect (any 4xx
+# request_defect, including BeatAPI's "model not available to this key" 400) -- and enters the
+# ladder when one class reaches its threshold. Each rung is a route cooldown (blocked_until):
+# jobs move to the model's other routes or stay queued; nothing fails because of it. When a
+# cooldown ends the route takes ONE call (half-open); success clears the ladder, any tracked
+# failure moves it a rung up, failures of calls already in flight while it cools do not.
+# Set ROUTE_HEALTH_LADDER_ENABLED to 0 to switch it off without a code rollback (cooldowns
+# already written run out on their own, at most RUNG_4 seconds); a threshold of 0 exempts a class.
+ROUTE_HEALTH_LADDER_ENABLED: 1
+# A timeout holds a slot for up to 720 s and rarely recovers on the same route (47 of 230 AI
+# Studio Gemma jobs), so the first one starts the ladder.
+ROUTE_HEALTH_TIMEOUT_THRESHOLD: 1
+# About half of the jobs that hit a Gemma 503 later succeeded (693 of 1,473), so one 503 keeps
+# the short class cooldowns above (Google: at most 5 s) and the second in a row starts the ladder.
+# AI Gateway `citypods-dispatch` retries a failed upstream call itself (3 attempts, 5 s delay,
+# exponential) unless a route sends cf-aig-max-attempts: AI Studio Gemma and SambaNova send 1, so
+# one failure there is one provider answer; every other provider's is already three.
+ROUTE_HEALTH_CAPACITY_THRESHOLD: 2
+# A single request defect is the job's (it still fails that job only). Three in a row on one
+# route with no success between are the route's: jev-1.13-free answered 717 x 400 because BeatAPI
+# withdrew the model, and 0 of 882 such jobs recovered.
+ROUTE_HEALTH_DEFECT_THRESHOLD: 3
+# Rung cooldowns. 60 s is one cron tick; the top rung allows at most 24 probes a day on a route
+# that never recovers. Rungs stop at the first 0.
+ROUTE_HEALTH_RUNG_1_SECONDS: 60
+ROUTE_HEALTH_RUNG_2_SECONDS: 300
+ROUTE_HEALTH_RUNG_3_SECONDS: 900
+ROUTE_HEALTH_RUNG_4_SECONDS: 3600
 # A reply cut off at its output limit on a job pinned to one model (per_model judge lanes) recurs
 # on that model, so it gets this many retries, not the upstream budget, then fails to its producer.
 MAX_SINGLE_MODEL_OUTPUT_BUDGET_RETRIES: 1

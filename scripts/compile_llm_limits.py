@@ -31,6 +31,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INPUT_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 V2_OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_limits.json"
 PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
+# The compiled tuning the Worker reads; its MAX_RESPONSE_SECONDS is the ceiling for a route's
+# `response_timeout_seconds` (review/58 B2).
+TUNING_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_tuning.json"
+# Worker fallback when MAX_RESPONSE_SECONDS is unset (index.js).
+_DEFAULT_MAX_RESPONSE_SECONDS = 720
 
 # review/48 R10: the closed set of structured-output methods. Python's direct path and the v2
 # Worker each implement exactly these four shapes (asserted against one shared fixture), so a name
@@ -48,6 +53,38 @@ def _json_default(value: object) -> str:
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     raise TypeError(f"{type(value).__name__} is not JSON serializable")
+
+
+def _global_max_response_seconds() -> int:
+    """The Worker's global response timeout, the ceiling for any per-route value."""
+    try:
+        values = json.loads(TUNING_JSON.read_text(encoding="utf-8"))["values"]
+        return int(values.get("MAX_RESPONSE_SECONDS", _DEFAULT_MAX_RESPONSE_SECONDS))
+    except (OSError, KeyError, ValueError, TypeError):
+        return _DEFAULT_MAX_RESPONSE_SECONDS
+
+
+def _validate_response_timeout(route: dict[str, Any], ceiling: int) -> None:
+    """Validate the optional per-route `response_timeout_seconds` (review/58 B2).
+
+    A positive integer no greater than the global MAX_RESPONSE_SECONDS; unset (or null) means the
+    route uses the global value, and the key is then left out of the route entirely.
+    """
+    value = route.get("response_timeout_seconds")
+    if value is None:
+        route.pop("response_timeout_seconds", None)
+        return
+    name = route.get("route_id", route.get("model"))
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(
+            f"route {name!r} has an invalid response_timeout_seconds: {value!r} "
+            "(expected a positive integer)"
+        )
+    if value > ceiling:
+        raise ValueError(
+            f"route {name!r} response_timeout_seconds ({value}) is above the global "
+            f"MAX_RESPONSE_SECONDS ({ceiling}); it can never bind and must be lowered or removed"
+        )
 
 
 def _validate_token_buffer(raw_buffer: Any) -> float:
@@ -433,6 +470,9 @@ _WORKER_ROUTE_FIELDS = (
     "output_context_limit",
     "hard_input_ceiling",
     "hard_input_ceiling_tolerance",
+    # Optional per-route response timeout in seconds, never above MAX_RESPONSE_SECONDS; null
+    # means the global value (review/58 B2). index.js effectiveResponseMs applies it.
+    "response_timeout_seconds",
     "input_token_ratio",
     "account_id",
     "rpm",
@@ -1051,7 +1091,9 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         canonical_models=set(model_routes_map),
     )
     resolved_methods = _resolve_structured_output_methods(normalized_routes, providers)
+    max_response_seconds = _global_max_response_seconds()
     for route in normalized_routes:
+        _validate_response_timeout(route, max_response_seconds)
         _validate_pricing_windows(route)
         if split_cap_multiplier != 1.0:
             if route.get("rpm") is not None:

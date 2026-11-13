@@ -909,6 +909,19 @@ function baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, outcome) 
 }
 
 /**
+ * The response timeout for one call on `route` (review/58 B2): the route's optional
+ * `response_timeout_seconds`, never above the global ceiling `globalMs` (MAX_RESPONSE_SECONDS).
+ * The compiler already rejects a value above the ceiling; this clamp keeps a wrong compiled
+ * config from lengthening a call past the lease arithmetic validateConfig proved. Anything that
+ * is not a positive finite number means the global value.
+ */
+export function effectiveResponseMs(route, globalMs) {
+  const seconds = Number(route?.response_timeout_seconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return globalMs;
+  return Math.min(globalMs, Math.round(seconds * 1000));
+}
+
+/**
  * Whether a call starting now can finish before the DO may reap this job's lease. The DO reaps
  * only leases past lease_expires_at, so this local check is the attempt fence: no DO round trip
  * or billed row per attempt. validateConfig already keeps the dispatch window plus the response
@@ -1251,6 +1264,8 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
     ? job.provider_idempotency_key || null
     : null;
   const jobWithPayload = { ...job, payload };
+  // Same bound for every attempt of this job, including in-window 429/5xx retries.
+  const routeMaxResponseMs = effectiveResponseMs(route, maxResponseMs);
   let inWindow5xxRetries = 0;
   const max5xxInWindowRetries = 4;
 
@@ -1264,7 +1279,7 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       job: jobWithPayload,
       attemptId,
       idempotencyKey,
-      maxResponseMs,
+      maxResponseMs: routeMaxResponseMs,
     });
 
     if (outcome.result) {
@@ -1373,8 +1388,9 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
   }
 
   // review/58 WP1a: one line per claimed tick, from the claim response alone (no extra DO call).
-  // in_flight_calls and active_bundles are the DO's counts BEFORE this bundle was added; the claim
-  // response carries no admissible-capacity figure, so none is logged.
+  // in_flight_calls and active_bundles are the DO's counts BEFORE this bundle was added;
+  // admissible_calls (review/58 WP3b) is the in-flight ceiling the routes allowed at that moment,
+  // so in_flight_calls_before / admissible_calls is section 9's "in-flight / admissible".
   const claimDiagnostics = plan.claim_diagnostics || {};
   console.info(JSON.stringify({
     event: "scheduled_claim",
@@ -1382,6 +1398,7 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
     claimed_jobs: plan.jobs.length,
     route_ids: [...new Set(plan.jobs.map((job) => job.route_id))],
     in_flight_calls_before: claimDiagnostics.in_flight_calls ?? null,
+    admissible_calls: claimDiagnostics.admissible_calls ?? null,
     active_bundles_before: claimDiagnostics.active_bundles ?? null,
     candidate_jobs: claimDiagnostics.candidate_jobs ?? null,
   }));
@@ -1466,7 +1483,9 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
     commitOk = false;
     console.error(`scheduled: completeBatch failed for bundle ${plan.bundle_id}: ${describeError(err)}`, err);
   }
-  logBundleCompleted({ plan, results, attemptLog, claimNow, commitAt: Date.now(), commitOk });
+  logBundleCompleted({
+    plan, results, attemptLog, claimNow, commitAt: Date.now(), commitOk, dispatchLimits, maxResponseMs,
+  });
 }
 
 /**
@@ -1474,7 +1493,9 @@ async function runScheduledDispatch(env, scheduledTime, releaseCleanup = () => {
  * (successful non-Gemma calls are logged nowhere else). `hold_ms` is how long the call's slot
  * stayed held after the call ended, until the bundle commit. No payload, response or error text.
  */
-function logBundleCompleted({ plan, results, attemptLog = [], claimNow, commitAt, commitOk }) {
+function logBundleCompleted({
+  plan, results, attemptLog = [], claimNow, commitAt, commitOk, dispatchLimits, maxResponseMs,
+}) {
   const jobsById = new Map(plan.jobs.map((job) => [job.id, job]));
   const attempts = [
     ...attemptLog.map(({ result }) => ({ result, final: false })),
@@ -1497,6 +1518,10 @@ function logBundleCompleted({ plan, results, attemptLog = [], claimNow, commitAt
         failure_class: result.failure_class ?? null,
         provider_status_code: result.provider_status_code ?? null,
         call_duration_ms: started !== null && ended !== null ? ended - started : null,
+        // The timeout this call ran under: the route's own value, capped by the global one.
+        response_timeout_ms: job
+          ? effectiveResponseMs(routeForId(job.route_id, dispatchLimits), maxResponseMs)
+          : null,
         hold_ms: ended !== null ? commitAt - ended : null,
       };
     }),
