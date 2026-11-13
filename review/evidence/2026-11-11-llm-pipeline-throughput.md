@@ -234,3 +234,83 @@ This entry records only the figures this effort relied on.
 - Free-tier limits per project, one key per project (200 RPM, 50,000 TPM, 10,000 RPD) are Google's published values, not
   measured. Stored anchor requests are 19k to 41k tokens, so TPM allows about one request a minute
   per key.
+
+## Deployment and first measurement (2026-11-12 to 2026-11-13)
+
+Eleven pull requests merged with merge commits. Each one that changed the Worker or its compiled
+config deployed `citypods-llm-dispatch-v2` through the deploy workflow; every deploy run succeeded.
+
+| PR | Package | Merged (UTC) | Worker deploy |
+|---|---|---|---|
+| #2653 | WP5 hourly sweep | 2026-11-12 03:52 | none |
+| #2654 | WP1a Worker logs | 2026-11-12 04:00 | yes |
+| #2658 | WP3a stand-downs, WP3c diagnosis | 2026-11-12 08:12 | yes |
+| #2655 | WP6a producer fixes | 2026-11-12 08:15 | none |
+| #2657 | WP1b funnel telemetry | 2026-11-12 08:16 | none |
+| #2656 | WP8 locator overflow to MiniMax | 2026-11-12 08:23 | yes |
+| #2660 | WP2 per-route timeouts | 2026-11-13 01:03 | yes |
+| #2661 | WP3b route health ladder | 2026-11-13 01:16 | yes |
+| #2659 | WP9 Gemini Decision anchor | 2026-11-13 01:28 | yes |
+| #2665 | WP6b Worker-cron producer trigger | 2026-11-13 01:45 | yes |
+| #2666 | WP4 early slot release | 2026-11-13 02:13 | yes |
+
+### Checks made from Workers Logs and run history
+
+- **Stand-downs (WP3a).** 215 bundles between 2026-11-12 08:25Z and 13:12Z: no attempt on
+  `beatapi_jev_1_13_free`, `beatapi_glm_5_3_flash_free` or `beatapi_secondary_glm_5_3_flash_free`
+  (41 of the 200 claims before the deploy had named one of them).
+- **Per-route timeouts (WP2).** The first AI Studio Gemma timeouts after the 01:03Z deploy ended at
+  240 s with `response_timeout_ms: 240000`.
+- **Locator overflow (WP8).** The 2026-11-12 11:26Z locator run submitted 95 jobs to MiniMax M3.1
+  Flash and 14 to V4 Flash and held 2 packets as `locator-over-input-cap`. In the first 90 minutes
+  MiniMax returned 6 successes and 8 HTTP 503 `upstream_capacity`; in the later window below it
+  returned 100 successes and no failures.
+- **Producer trigger (WP6b).** The owner set `GITHUB_DISPATCH_TOKEN` at about 01:48Z. The first
+  trigger (deferred sweep, scheduled 01:52:48Z) returned HTTP 204 in 351 ms and its run started 4 s
+  later. Through 06:03Z all 11 triggers returned 204 and every dispatched run succeeded: the sweep
+  ran at 01:52, 02:52, 03:52, 04:52 and 05:52. Between 2026-11-12 03:52Z and 13:00Z, on GitHub's
+  schedule alone, the hourly sweep had run once.
+- **Gemini Decision anchor (WP9).** The 02:33Z judge run submitted 240 anchor packets to
+  `gemini/gemini-decision-1` and 800 sibling packets to Nemotron 3.5 Super VL. Under the family
+  independence rule it gave no anchor to 2,913 subjects (`no_independent_anchor`, Google-produced
+  entries) and found no sibling for 740 (`no_independent_sibling`). The first call on each key
+  returned HTTP 400 "User location is not supported for the API use." (classed
+  `route_unavailable`, retried); the next 22 calls succeeded.
+
+### Window 2026-11-13 02:15Z to 06:22Z (all packages deployed)
+
+203 bundles and 441 provider attempts, from `bundle_completed` and `scheduled_claim`. The attempt
+count is every call the Worker logged: 439 final attempts plus 2 in-window retries that were
+superseded (both HTTP 503). Jobs requeued to a later bundle appear again as new attempts.
+
+| Measure | 7 days to 2026-11-11 | This window | Target |
+|---|---:|---:|---:|
+| Slot productivity | 13% | 60% | ≥ 50% |
+| Idle hold share | 58% | 23% | ≤ 10% |
+| Failed attempts ÷ attempts | 45.5% | 10.0% (44) | < 20% |
+| Response timeouts ÷ attempts | 7.7% | 5.2% (23) | < 3% |
+
+- Early release: about half of the bundles made their one partial commit (102 of 202 at the first
+  count) and 128 calls were released by a partial; no partial was refused for rows.
+- Claims saw a mean of 5.4 calls in flight against 20 admissible and 2.7 active bundles, so the
+  dispatcher was not slot-bound in this window.
+- Rows: 14,785 billed rows by 06:22Z, a pace of about 55,700 a day.
+- By route: MiniMax 100 of 100; Nemotron 3.5 Super (NVIDIA) 74 successes and 5 timeouts; V4 Flash
+  (OrcaRouter) 56 of 57; GLM 5.3 Flash (OrcaRouter) 22 successes and 7 timeouts; AI Studio Gemma 2
+  successes in 20 attempts across both keys.
+- Ladder: GLM on OrcaRouter and Nemotron 3.5 Super on NVIDIA each entered the 60 s rung five or six
+  times and were reset by a success each time; `gemma_4_31b_secondary` reached the 60-minute rung.
+
+Limits of this reading: it is four hours, and the traffic mix differs from the baseline week. With
+a Google anchor the sibling judge for most entries is now Nemotron 3.5 Super, so far fewer calls go
+to AI Studio Gemma, which produced most of the baseline's failures. The idle-hold and timeout
+targets are not met.
+
+### JEV anchor job cancellation (2026-11-13 01:33:53Z, owner-approved)
+
+The 240 `typesafe/jev-1.13` anchor jobs queued at the Worker could not drain after the stand-down.
+Their job ids were read from the B2 pending index (`state/llm_deferred_index/pending/typesafe/jev-1.13/`,
+one listing and 240 record reads) and sent to `/v2/jobs:cancel-batch`: 240 cancelled, 0 in flight,
+0 not found. The B2 pointers and the judge ledger were not edited; the next judge run dropped the
+pending JEV markers and planned those subjects for Gemini Decision 1.
+
