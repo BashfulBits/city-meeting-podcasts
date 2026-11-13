@@ -60,10 +60,17 @@ docs/  ──► GitHub Pages              ;   audio + transcripts + state ─�
 ```
 
 The production `chapter-locator` stage uses the baseline locator prompt and routes by the complete
-request's internal token estimate: DeepSeek V4 Flash at or below 76,000 tokens, Kimi K3 above it.
-Each request is pinned to one route, and its recipe records prompt and routing versions so a policy
-change requeues generated locator work gradually under the lane's 800-jobs-per-day budget. GLM 5.3
-Flash and DeepSeek V4.1 Flash remain documented optional capacity and are not production routes.
+request's internal token estimate: DeepSeek V4 Flash at or below 76,000 tokens, MiniMax M3.1 Flash
+(`nvidia_minimaxai_minimax_m3_1_flash`) from 76,001 up to `LOCATOR_OVERFLOW_MAX_INPUT_TOKENS`
+(500,000, set from the review/58 WP8a admission probe). A larger packet is not submitted: it is held
+as deferred (`locator-over-input-cap` in the run event, `policy_held` work state) and re-measured
+each run, so raising the cap releases it. Each request is pinned to one model, its `max_tokens` is
+clamped to that model's largest route output limit (12,800 for MiniMax), and its recipe records the
+model plus prompt and routing versions, so a policy change requeues generated locator work gradually
+under the lane's 800-jobs-per-day budget. DeepSeek V4.1 Flash left the locator lane in review/58 WP8
+(it remains a `judge:adjudicator` model): its accepted locator results stay reusable, and a still
+queued V4.1 locator job is cancelled at the Worker and re-planned, since the Worker checks lane
+membership only at ingress. GLM 5.3 Flash remains documented optional capacity.
 Provider-supplied chapters remain canonical; the locator runs only for episodes without them and
 does not alter audio bytes.
 The locator checks its current recipe in the deferred registry before reserving a producer slot.
@@ -1050,10 +1057,19 @@ could hold, capped per provider and by `MAX_IN_FLIGHT_LLM_CALLS`; computed in th
 ranking it already made, so no read; null on a tick refused before ranking).
 `bundle_completed`, once per bundle after the commit: `bundle_id`, `bundle_duration_ms` (claim to
 commit), `commit_ok`, and `calls[]` with `route_id`, `purpose`, `final`, `outcome`,
-`failure_class`, `provider_status_code`, `call_duration_ms` and `hold_ms` (call end to commit) for
+`failure_class`, `provider_status_code`, `call_duration_ms`, `response_timeout_ms` (the timeout the
+call ran under) and `hold_ms` (call end to commit) for
 every call on every route, including superseded attempts (`final: false`: 429 retries and
 in-window Google 5xx retries) before each job's settled one (`final: true`). Empty ticks keep
 `scheduled_claim_empty`.
+Response timeout (review/58 B2): `MAX_RESPONSE_SECONDS` (720) is the global ceiling. A route may set
+`response_timeout_seconds` in `config/provider_limits.yml` (a positive integer at most the ceiling,
+checked by `scripts/compile_llm_limits.py`; unset means the global value). The Worker's
+`effectiveResponseMs` uses the smaller of the two for every call on that route, including in-window
+429 and Google 5xx retries, and clamps again at runtime. The failure class stays
+`provider_response_timeout`; requeue, retry accounting, lease and bundle-deadline arithmetic are
+unchanged (the lease check only gets easier). Set today on AI Studio Gemma 4 31B (240), Flash
+Lite 3.5 and 3.1 (300), Nemotron 3.5 Super and DeepSeek V4 Flash (420).
 Chat judge packing sizes the complete serialized messages and structured contract in the same
 raw units as enqueue. Google Gemma packing preflight also returns a separate model/prompt-family
 feedback target: Google successes and same-generation NVIDIA recoveries form a bounded 128-packet

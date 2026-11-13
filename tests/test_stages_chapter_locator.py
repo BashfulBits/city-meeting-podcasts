@@ -13,7 +13,7 @@ from citypods.chapter_artifacts import (
     AgendaCandidate,
     AgendaCandidatesArtifact,
 )
-from citypods.chapter_jobs import LOCATOR_MODELS, build_locator_job
+from citypods.chapter_jobs import LOCATOR_MODELS, LOCATOR_REUSABLE_MODELS, build_locator_job
 from citypods.chapter_locator import LOCATOR_ROUTING_VERSION, build_locator_units
 from citypods.compute.base import JobHandle, JobResult
 from citypods.models import City, Episode
@@ -383,7 +383,7 @@ def test_locator_stage_reprocesses_a_completed_episode_under_stale_policy(
     assert ep.generated_agenda_candidates["locator_routing_version"] == LOCATOR_ROUTING_VERSION
 
 
-@pytest.mark.parametrize("model", LOCATOR_MODELS)
+@pytest.mark.parametrize("model", LOCATOR_REUSABLE_MODELS)
 @pytest.mark.parametrize("status", ["completed", "accepted"])
 def test_locator_stage_reuses_a_completed_episode_that_is_already_current(
     tmp_path: Path, model: str, status: str
@@ -636,7 +636,7 @@ def test_locator_stage_failed_batch_job_does_not_consume_dispatch_quota(tmp_path
     assert not ctx.chapter_locator_dispatch_exhausted.is_set()
 
 
-@pytest.mark.parametrize("model", LOCATOR_MODELS)
+@pytest.mark.parametrize("model", LOCATOR_REUSABLE_MODELS)
 def test_episode_needs_chapter_locator_evaluates_correctly(model: str):
     from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION
     from citypods.stages import episode_needs_chapter_locator
@@ -894,3 +894,226 @@ def test_locator_stage_defers_without_error_when_no_accepted_agenda_items(tmp_pa
     stats = stage.process(None, city, [ep], ctx)
     assert stats.defer_reasons.get("no-accepted-agenda-items") == 1
     assert not stats.errors
+
+
+# --- review/58 WP8: MiniMax overflow, over-cap deferral, retired V4.1 work ----------------------
+
+
+def test_v41_left_the_lane_but_its_completed_results_stay_reusable():
+    from citypods.chapter_locator import DEEPSEEK_V41_LOCATOR_MODEL, MINIMAX_LOCATOR_MODEL
+
+    assert DEEPSEEK_V41_LOCATOR_MODEL not in LOCATOR_MODELS
+    assert MINIMAX_LOCATOR_MODEL in LOCATOR_MODELS
+    assert DEEPSEEK_V41_LOCATOR_MODEL in LOCATOR_REUSABLE_MODELS
+
+
+def test_v4_flash_band_job_is_unchanged_by_wp8():
+    """A <=76k packet keeps its model, output reserve and routing version, so neither its accepted
+    results nor its pending submissions go stale (the recipe hash parts are unchanged)."""
+    ep = _make_episode("ep-recipe")
+    agenda = AgendaCandidatesArtifact.from_dict(ep.generated_agenda_candidates)
+    units, _ = build_locator_units(words_data=None, vtt_data=SAMPLE_VTT)
+    job = build_locator_job(episode_uid=ep.uid, agenda=agenda, transcript_hash="t", units=units)
+    assert LOCATOR_ROUTING_VERSION == "size-split-v1"
+    assert job.inputs["llm_policy"].allowed_models == ("deepseek/deepseek-v4-flash",)
+    assert job.inputs["max_tokens"] == 20_000
+
+
+def _shrink_bands(monkeypatch, *, v4_max: int, cap: int) -> None:
+    import citypods.chapter_locator as chapter_locator
+
+    monkeypatch.setattr(chapter_locator, "DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS", v4_max)
+    monkeypatch.setattr(chapter_locator, "LOCATOR_OVERFLOW_MAX_INPUT_TOKENS", cap)
+
+
+def _pending_handle(ref: str = "r") -> JobHandle:
+    return JobHandle(task="agenda-chapter-locate", ref=ref, recipe_hash="r", backend="fake")
+
+
+def test_locator_stage_sends_overflow_band_to_minimax(tmp_path, monkeypatch):
+    from citypods.chapter_locator import MINIMAX_LOCATOR_MODEL
+
+    _shrink_bands(monkeypatch, v4_max=10, cap=1_000_000)
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-overflow")
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    backend = FakeBackend(_pending_handle())
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+
+    ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+
+    (job,) = backend.submitted_jobs
+    assert job.inputs["llm_policy"].allowed_models == (MINIMAX_LOCATOR_MODEL,)
+    assert job.inputs["max_tokens"] == 12_800
+    assert job.inputs["max_tokens_mode"] == "route_max"
+
+
+def test_locator_stage_holds_over_cap_packets_as_deferred(tmp_path, monkeypatch):
+    _shrink_bands(monkeypatch, v4_max=10, cap=20)
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-over-cap")
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    before = json.loads(json.dumps(ep.generated_agenda_candidates))
+    backend = FakeBackend(_pending_handle())
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+    ctx.chapter_locator_max_dispatches = 5
+
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+
+    # Deferred, not failed: counted, nothing submitted, no error, no slot spent, no state change.
+    assert stats.defer_reasons == {"locator-over-input-cap": 1}
+    assert stats.defer_samples and stats.defer_samples[0].startswith("ep-over-cap: ")
+    assert not stats.errors
+    assert backend.enqueue_calls == []
+    assert ctx.chapter_locator_dispatches_count == 0
+    assert ctx.chapter_locator_dispatches_reserved == 0
+    assert ep.generated_agenda_candidates == before
+
+    # Raising the cap makes the same episode eligible on the next run, with no other change.
+    _shrink_bands(monkeypatch, v4_max=10, cap=1_000_000)
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+    assert len(backend.submitted_jobs) == 1
+    assert stats.defer_reasons == {"llm-pending": 1}
+
+
+class CancellingBackend(FakeBackend):
+    def __init__(self, outcome=None, *, cancel_result=None):
+        super().__init__(outcome)
+        self.cancel_calls: list[list[str]] = []
+        self.cancel_result = cancel_result or {}
+
+    def cancel_batch(self, refs):
+        self.cancel_calls.append(list(refs))
+        return self.cancel_result
+
+
+def _pending_on(storage, ep, *, model, ref="old-v41-ref", deferred_request=None) -> str:
+    from citypods.compute.llm_deferred import write_deferred
+
+    old_recipe = f"old-recipe-{ep.uid}"
+    write_deferred(
+        storage,
+        old_recipe,
+        JobHandle(
+            task="agenda-chapter-locate",
+            recipe_hash=old_recipe,
+            backend="llm-dispatch-v2",
+            ref=ref,
+            model=model,
+            deferred_request=deferred_request,
+        ),
+    )
+    ep.generated_agenda_candidates.update(
+        {"locator_status": "pending", "locator_recipe": old_recipe, "locator_job_ref": ref}
+    )
+    return old_recipe
+
+
+def test_queued_job_on_a_retired_model_is_cancelled_and_replanned(tmp_path):
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-v41-queued")
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    old_recipe = _pending_on(storage, ep, model="deepseek/deepseek-v4.1-flash")
+    backend = CancellingBackend(
+        _pending_handle("new-ref"),
+        cancel_result={"cancelled": ["old-v41-ref"], "in_flight": [], "not_found": []},
+    )
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+
+    assert backend.cancel_calls == [["old-v41-ref"]]
+    assert look_up_deferred(storage, old_recipe) is None
+    (job,) = backend.submitted_jobs
+    assert job.recipe_hash != old_recipe
+    assert set(job.inputs["llm_policy"].allowed_models) <= set(LOCATOR_MODELS)
+    assert ep.generated_agenda_candidates["locator_status"] == "pending"
+    assert ep.generated_agenda_candidates["locator_recipe"] == job.recipe_hash
+    assert not stats.errors
+
+
+@pytest.mark.parametrize("outcome", ["in_flight", "not_found"])
+def test_retired_model_job_not_cancellable_keeps_waiting(tmp_path, outcome):
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-v41-in-flight")
+    old_recipe = _pending_on(storage, ep, model="deepseek/deepseek-v4.1-flash")
+    backend = CancellingBackend(cancel_result={"cancelled": [], outcome: ["old-v41-ref"]})
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+
+    assert backend.cancel_calls == [["old-v41-ref"]]
+    assert backend.enqueue_calls == []
+    assert isinstance(look_up_deferred(storage, old_recipe), JobHandle)
+    assert ep.generated_agenda_candidates["locator_status"] == "pending"
+    assert stats.defer_reasons == {"llm-pending": 1}
+
+
+@pytest.mark.parametrize("model", [*LOCATOR_MODELS, None])
+def test_pending_job_on_a_lane_model_is_never_cancelled(tmp_path, model):
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-lane-pending")
+    _pending_on(storage, ep, model=model)
+    backend = CancellingBackend(cancel_result={"cancelled": ["old-v41-ref"]})
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+
+    assert backend.cancel_calls == []
+    assert backend.enqueue_calls == []
+    assert stats.defer_reasons == {"llm-pending": 1}
+
+
+def test_unsubmitted_retired_capsule_is_left_to_the_deferred_sweep(tmp_path):
+    from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
+
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-v41-capsule")
+    _pending_on(
+        storage,
+        ep,
+        model="deepseek/deepseek-v4.1-flash",
+        ref="deferred-capsule-x",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "x"},),
+            policy=LLMRequestPolicy(allowed_models=("deepseek/deepseek-v4.1-flash",)),
+        ),
+    )
+    backend = CancellingBackend(cancel_result={"cancelled": ["deferred-capsule-x"]})
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+
+    assert backend.cancel_calls == []
+    assert stats.defer_reasons == {"llm-pending": 1}
+
+
+def test_failed_cancellation_keeps_the_episode_waiting(tmp_path):
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-v41-cancel-error")
+    _pending_on(storage, ep, model="deepseek/deepseek-v4.1-flash")
+
+    class Broken(CancellingBackend):
+        def cancel_batch(self, refs):
+            raise RuntimeError("worker 503")
+
+    backend = Broken()
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), [ep], ctx)
+
+    assert backend.enqueue_calls == []
+    assert ep.generated_agenda_candidates["locator_status"] == "pending"
+    assert stats.defer_reasons == {"llm-pending": 1}
+    assert stats.errors == ["retired-model locator cancellation: worker 503"]
