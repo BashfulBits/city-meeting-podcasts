@@ -934,6 +934,14 @@ it protects, so holding it back only refuses work the day still had budget for
 *purpose* closed rather than the whole process: later batches for it yield retryable deferred
 handles without staging a payload or making a request, while another lane running in the same
 `build` keeps submitting.
+Lane caps are sized by one rule (review/58 section 12.4, 2026-11-13). New meetings need only tens
+of jobs a day, so caps size backlog drain: jobs/day = min(measured route supply, 1.3 × the lane's
+largest observed day, rounded up to 100), floor 200. Downstream lanes are then trimmed until every
+cap filled at once costs at most 85% of the 85,000-row pace, at about `1.5 × write units + 12`
+billed rows per job. Write units count enqueue only; claim, completion, retirement and cleanup add
+~12 per job. Queue caps hold two days of cap. The caps sum (17,100 units) under the 38,400-unit
+guard, so reservations cannot refuse a lane below its own cap; they act as floors. Judge packets
+are also bounded per run by `judging.max_outstanding_packets` (per role, per sibling model).
 `workers/llm-dispatch-v2/src/write_budget.js` records the measured per-phase costs
 (`bench/rows-written/`): a completed first-try job is ~20 billed rows. Because every index entry is billed, the
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`

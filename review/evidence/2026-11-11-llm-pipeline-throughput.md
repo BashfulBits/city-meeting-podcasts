@@ -314,3 +314,101 @@ one listing and 240 record reads) and sent to `/v2/jobs:cancel-batch`: 240 cance
 0 not found. The B2 pointers and the judge ledger were not edited; the next judge run dropped the
 pending JEV markers and planned those subjects for Gemini Decision 1.
 
+
+## Lane submission caps (R2-D, 2026-11-13)
+
+Read-only. Sources:
+
+- Workers Logs `do_row_write_budget`, `bundle_completed` and `scheduled_claim`, 00:00–13:20Z;
+- Cloudflare GraphQL `durableObjectsPeriodicGroups` (hourly `rowsWritten`);
+- 62 `run_events` objects since 2026-11-11 (one listing);
+- the cached Worker stats from 06:22Z;
+- the 2026-11-10 catalog snapshot (`episodes_reduced.csv`, 32,173 rows).
+
+The analysis is in review/58 section 12.4.
+
+**Billed DO rows per UTC day (GraphQL).**
+
+| Day | rowsWritten |
+|---|---:|
+| 2026-11-10 | 60,299 |
+| 2026-11-11 | 28,940 |
+| 2026-11-12 | 26,899 |
+| 2026-11-13 (to ~13:20Z) | 27,019 |
+
+**06:22Z check point.** The coordinator counter read 14,785. Logged deltas sum to 8,779. The
+remaining 6,006 is a single unlogged jump at 03:47–03:48Z (#2673).
+
+**Logged deltas by RPC.**
+
+| RPC | rows to 06:22Z | rows to 13:19Z |
+|---|---:|---:|
+| claimDispatchWindow | 2,174 | 5,203 |
+| enqueueBatch | 1,696 | 4,749 (+6,006 unlogged) |
+| completeBatch | 1,771 | 3,989 |
+| completePartial | 534 | 1,595 |
+| purgePendingBatch | 558 | 1,558 |
+| retireConsumed | 463 | 1,306 |
+| confirmPurge | 570 | 1,101 |
+| cancelBatch (240 JEV, one-off) | 703 | 703 |
+| schemaRetry (deploys) | 209 | 308 |
+| ackResults | 69 | 102 |
+| recountQueuedJobs | 28 | 50 |
+| authorizeRetry | 4 | 6 |
+
+**Rows per successful call to 13:19Z.** There were 1,281 successful calls out of 1,459 final
+attempts, in 653 bundles.
+
+| Phase | Rows per successful call |
+|---|---:|
+| Claim | 4.06 |
+| Completion, including partials | 4.36 |
+| Retire / ack | 1.10 |
+| Cleanup | 2.11 |
+| **Total** | **11.6** |
+
+Enqueue costs about 1.5 rows per write unit: about 6 rows per single-model job, ~9 for agenda,
+~10.5 for the tagger and ~7.5 for moments.
+
+**Route supply** (`bundle_completed`, 02:15Z + 9.14 h). Capacity is concurrency ÷ p50 latency,
+bounded by the requests-per-day limit.
+
+| Route | Lane | ok | fail | p50 s | capacity/day |
+|---|---|---:|---:|---:|---:|
+| nvidia nemotron-3.5-super | sibling | 254 | 8 | 120 | ~2,870 (shared NVIDIA 4) |
+| nvidia minimax-m3.1-flash | locator | 203 | 0 | 42 | 1,440 (1 rpm) |
+| orcarouter deepseek-v4-flash | locator | 142 | 2 | 139 | 800 |
+| openrouter nemotron-3.5-super | sibling | 108 | 2 | 116 | 200 |
+| kilo nemotron-3.5-super | sibling | 107 | 2 | 115 | 200 |
+| gemini-3.1-flash-lite ×2 | agenda | 110 | 9 | 8–9 | 2 × 500 |
+| orcarouter glm-5.3-flash | adjudicator | 28 | 7 | 401 | ~430 |
+| nvidia gemma-4-31b | sibling | 21 | 13 | 231 | ~374 |
+| AI Studio gemma-4-31b ×2 | sibling | 2 | 36 | n/a | n/a |
+| gemini-decision-1 ×2 | anchor | 28 | 4 | 1 | 2 × 10,000 nominal (route_unavailable blocks, #2672) |
+| nemotron-3-ultra (3 routes) | agenda | 20 | 10 | 249–303 | NVIDIA pool + 2 × 200 |
+| nvidia deepseek-v4.1-flash | adjudicator | 1 | 0 | 598 | ~144 |
+
+**Jobs submitted per day by lane** (sum of `queued` in run summaries), and backlog at the last run.
+
+| Lane | 11-11 | 11-12 | 11-13 | last ready / queued |
+|---|---:|---:|---:|---|
+| chapter-agenda | 176 | 68 | 149 | n/a / 61 |
+| chapter-locator | 743 | 527 | 182 | 1,812 / 230 |
+| topic-tags:tagger | 251 | 338 | 2 | 10,810 / 1 |
+| r6-moments | 78 | 5 | 0 | n/a / 14 |
+| judge:anchor | 133 | 175 | 291 | 13,463 subjects |
+| judge:sibling | 193 | 167 | 1,146 | 13,461 subjects |
+| judge:adjudicator | 75 | 49 | 11 | (as above) |
+
+**Arrivals** (catalog snapshot):
+
+- Published per day: 4.7 (7 d), 6.2 (30 d), 6.0 (90 d), 7.2 (365 d).
+- Weekly: median 42, p90 71, maximum 78.
+- 40 sources had arrivals in 90 days.
+- Last 365 days (2,616 episodes):
+  - 64% have provider chapters;
+  - of the 940 without, 23% have an agenda URL;
+  - 69% have a transcript.
+- Per episode: chapters median 5 / p90 20; judging subjects median 8 / p90 29 / mean 12.5; tag
+  candidates median 7 / p90 32.
+- The whole catalog holds 145,783 judging subjects across 11,120 episodes.
