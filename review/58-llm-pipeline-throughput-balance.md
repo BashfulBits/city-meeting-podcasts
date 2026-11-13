@@ -512,6 +512,7 @@ owner sets the `GITHUB_DISPATCH_TOKEN` Worker secret. The stale-recipe locator b
 needed: those results were current and only mislabelled; §12.3 replaces it with a metadata repair
 that makes no LLM calls.
 
+
 ## 12. Follow-up round (2026-11-13)
 
 ### 12.1 Producer cadence: tag every two hours, moments on the Worker trigger
