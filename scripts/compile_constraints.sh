@@ -30,11 +30,18 @@ if [[ "${IN_CONTAINER:-0}" != "1" ]]; then
   fi
   # Bound the image pull (cached on most runners; a stalled registry read must not run to the
   # job limit). A failed pull is retried once; a second failure fails the gate.
-  if ! timeout 180 docker pull --quiet "${BASE_IMAGE}" >/dev/null; then
-    echo "::warning::docker pull timed out or failed; retrying once"
-    timeout 180 docker pull --quiet "${BASE_IMAGE}" >/dev/null
+  # (Developer machines without GNU timeout, e.g. stock macOS, skip the bound.)
+  pull_timeout=()
+  if command -v timeout >/dev/null 2>&1; then
+    pull_timeout=(timeout 180)
+  elif command -v gtimeout >/dev/null 2>&1; then
+    pull_timeout=(gtimeout 180)
   fi
-  exec docker run --rm "${dns_args[@]}" -v "${REPO_ROOT}:/src" -w /src -e IN_CONTAINER=1 \
+  if ! ${pull_timeout[@]+"${pull_timeout[@]}"} docker pull --quiet "${BASE_IMAGE}" >/dev/null; then
+    echo "::warning::docker pull timed out or failed; retrying once"
+    ${pull_timeout[@]+"${pull_timeout[@]}"} docker pull --quiet "${BASE_IMAGE}" >/dev/null
+  fi
+  exec docker run --rm ${dns_args[@]+"${dns_args[@]}"} -v "${REPO_ROOT}:/src" -w /src -e IN_CONTAINER=1 \
     "${BASE_IMAGE}" bash scripts/compile_constraints.sh "$@"
 fi
 
