@@ -3940,6 +3940,7 @@ def _build_impl(
                 errors=t["errors"],
                 seconds=t["seconds"],
                 defer_reasons=t.get("defer_reasons") or {},
+                quality_counts=t.get("quality_counts") or {},
             )
         # Break ``ran`` into expensive encodes vs near-free storage re-credits when the stage
         # reports it (audio), so the per-episode time estimate's blend is visible at a glance.
