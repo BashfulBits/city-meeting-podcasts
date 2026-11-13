@@ -426,7 +426,7 @@ bounded by the requests-per-day limit.
 | nemotron-3-ultra (3 routes) | agenda | 20 | 10 | 249–303 | NVIDIA pool + 2 × 200 |
 | nvidia deepseek-v4.1-flash | adjudicator | 1 | 0 | 598 | ~144 |
 
-**Jobs submitted per day by lane** (sum of `queued` in run summaries), and backlog at the last run.
+**Jobs per day by lane** (sum of the `queued` job outcomes in run summaries), and backlog at the last run. Superseded as a sizing basis by the per-meeting derivation below: this count can include jobs carried over from earlier runs, and the locator's 11-11/12 days were replays of the stale-recipe episodes (§12.3).
 
 | Lane | 11-11 | 11-12 | 11-13 | last ready / queued |
 |---|---:|---:|---:|---|
@@ -450,3 +450,40 @@ bounded by the requests-per-day limit.
 - Per episode: chapters median 5 / p90 20; judging subjects median 8 / p90 29 / mean 12.5; tag
   candidates median 7 / p90 32.
 - The whole catalog holds 145,783 judging subjects across 11,120 episodes.
+
+**Per-meeting shares (revision, 365-day snapshot of 2,616 meetings).**
+
+| Measure | Count | Share |
+|---|---:|---:|
+| No provider chapters, has an agenda URL | 212 | 8.1% |
+| Agenda status set: 198 completed + 2 pending; the rest `not_applicable` 1,371, unset 1,045 | 200 | 7.6% |
+| Locator status on those 200: 93 completed, 27 pending, 78 unset; `not_applicable` 1,371 elsewhere | 200 | 7.6% |
+| Chapters > 0 | 1,593 | 61% |
+| LLM tag candidates | 1,645 | 63% |
+| Council or P&Z | 849 | 32.5% |
+| Council or P&Z with a transcript | 556 | 21% |
+| With judging subjects (16,136 subjects, mean 12.5) | 1,295 | 49.5% |
+
+Daily arrivals over the last 90 days: median 5, p90 14, maximum 28, mean 6.0.
+
+**Tagger batches per episode.** The 11-11 15:17Z and 11-12 01:28Z runs queued 251 + 174 = 425 jobs
+for 194 + 166 = 360 dispatched episodes, or 1.18 per episode.
+
+**Judge runs since 11-11** (run-event quality counts):
+
+| Window | items submitted | judgments appended | contested | calibration | packets anchor / sibling / adjudicator |
+|---|---:|---:|---:|---:|---|
+| 11-11 02:54Z to 11-13 04:57Z (9 runs) | 53,074 | 7,064 | 2,444 | 189 | 587 / 1,163 / 130 |
+| 11-13 07:15Z to 10:57Z (3 runs, Gemini anchor) | 8,973 | 8,376 | 56 | 6 | 12 / 343 / 5 |
+
+On the 11-13 03:55Z re-plan, 33,462 items went into 1,040 packets (anchor 240, sibling 800), about
+32 per packet. Since the anchor change, contested subjects are 56 / (8,376 / 2) = 1.3%.
+
+**Backlogs at the last runs before 23:00Z.**
+
+- agenda: 49–54 queued; errored flat at 51.
+- locator: 200–222 queued; nothing "ready" since #2676 (19:26Z and 21:20Z runs).
+- tagger: 10,810 ready.
+- moments: 14 queued.
+- judge planner at 22:59Z: 11,839 subjects ready to plan, 5,060 pending at the Worker, backlog
+  16,899.

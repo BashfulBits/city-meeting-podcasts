@@ -215,7 +215,8 @@ llm_lanes:
   # Every judge job is pinned to one model (per_model, 4 ingress units), so a judge's identity is
   # part of every judgment and calibration cell; per_model lanes cannot declare backup_models, so
   # the Slice 3a rescue never moves a judge packet to another model. Caps are sized per role from
-  # subjects per meeting and packing (review/58 section 12.4, 2026-11-13), not per model name. The judge workflow runs every two hours (12 runs/day).
+  # subjects per meeting and packing (review/58 section 12.4, 2026-11-13), not per model name.
+  # The judge workflow runs every two hours (12 runs/day).
   # Nothing enqueues to these lanes until the judge stage (PR3) and `judging.enabled` (PR4).
   judge:anchor:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
