@@ -999,6 +999,11 @@ def stage_is_dirty(
         return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
     if stage.name in {"chapter_locator", "generated_chapters"} and ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
+    # review/58 §12.3: the lane prefilter and the census call this episode ready work, so the
+    # completion marker must not hide it from process(). A marker stamped while the record kept a
+    # stale locator result's metadata otherwise strands the episode as "ready" but never planned.
+    if stage.name == "chapter_locator" and episode_needs_chapter_locator(ep):
+        return True
     marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
     if stage.name == "native_diarize" and isinstance(marker, dict):
         # A prior R7 run could have marked an unselected or prerequisite-missing episode complete
@@ -9019,15 +9024,24 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
         for ep in episodes:
             if ep.source_chapters or not (ep.uid or ep.guid):
                 continue
+            raw_agenda = ep.generated_agenda_candidates or {}
             state = "ready" if episode_needs_chapter_locator(ep) else "reused"
-            if (ep.generated_agenda_candidates or {}).get("status") not in {
-                "completed",
-                "accepted",
-            }:
+            zero_agenda = False
+            if raw_agenda.get("status") not in {"completed", "accepted"}:
                 state = "blocked"
             elif not (ep.transcript_key or ep.transcript_words_key):
                 state = "blocked"
+            elif raw_agenda.get(
+                "locator_status"
+            ) != "not_applicable" and not locator_agenda_has_accepted_items(raw_agenda):
+                # review/58 §12.3: nothing to locate, never planned, so not ready work.
+                state = "blocked"
+                zero_agenda = True
             yield "chapter-locator", ep.uid or ep.guid, state
+            if zero_agenda:
+                ctx.llm_work.item("chapter-locator", ep.uid or ep.guid, producer=self.name).outcome(
+                    "zero-agenda"
+                )
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -9036,7 +9050,6 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
         from citypods.chapter_jobs import (
             LOCATOR_MODELS,
             LOCATOR_PROMPT_VERSION,
-            LOCATOR_REUSABLE_MODELS,
             LOCATOR_ROUTING_VERSION,
             build_locator_job,
             finalize_locator_job,
@@ -9105,9 +9118,7 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
             # stale result anyway, and _mark_stage_complete would re-stamp it under the fresh
             # fingerprint, permanently laundering stale output as current.
             is_current_locator_artifact = locator_status == "not_applicable" or (
-                raw_agenda.get("locator_model") in LOCATOR_REUSABLE_MODELS
-                and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
-                and raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
+                locator_metadata_is_current(raw_agenda)
             )
             if (
                 locator_status in {"completed", "accepted", "not_applicable"}
@@ -9145,17 +9156,12 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
             # rejected, or a procedural-only agenda). There is nothing to locate, and
             # build_locator_request would raise on every run, so classify it as a deferral
             # instead of a recurring stage error.
-            try:
-                has_accepted_items = any(
-                    item.status == "accepted"
-                    for item in AgendaCandidatesArtifact.from_dict(raw_agenda).items
-                )
-            except Exception:  # noqa: BLE001 -- fall through; the build path below reports it
-                has_accepted_items = True
-            if not has_accepted_items:
+            if not locator_agenda_has_accepted_items(raw_agenda):
                 if work is not None:
                     work.defer("blocked")
+                    work.outcome("zero-agenda")
                 stats.defer("no-accepted-agenda-items")
+                stats.quality("locator-zero-agenda")
                 continue
 
             words = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
@@ -9171,6 +9177,39 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                     work.defer("stopped")
                 stats.defer("stop-signal")
                 continue
+            # review/58 §12.3: a completed result whose record metadata is stale (written over by
+            # the agenda lane before the locator lane owned those keys) is restamped, with no LLM
+            # call, only when its stored evidence proves it current. Runs after the stop check, so
+            # the wall-clock budget bounds it, and before any planning, so a proven result is never
+            # re-sent. Once restamped the reuse check above takes the episode, so it is idempotent.
+            if locator_status in {"completed", "accepted"} and locator_metadata_repair_enabled():
+                try:
+                    proof_agenda = AgendaCandidatesArtifact.from_dict(raw_agenda)
+                    proof_data = words if unit_source == "words" else vtt
+                    proven_model = prove_locator_result_current(
+                        ctx.storage,
+                        ep,
+                        raw_agenda,
+                        uid=uid,
+                        agenda=proof_agenda,
+                        transcript_hash=hashlib.sha256(proof_data or b"").hexdigest(),
+                    )
+                except Exception:  # noqa: BLE001 -- unprovable; the build path reports errors
+                    proven_model = None
+                if proven_model is not None:
+                    ep.generated_agenda_candidates = {
+                        **dict(raw_agenda),
+                        "locator_model": proven_model,
+                        "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+                        "locator_routing_version": LOCATOR_ROUTING_VERSION,
+                    }
+                    work.outcome("metadata-repaired")
+                    work.consumed(reused=True)
+                    stats.reused += 1
+                    stats.quality("locator-metadata-repaired")
+                    continue
+                work.outcome("metadata-not-provable")
+                stats.quality("locator-metadata-not-provable")
             try:
                 agenda = AgendaCandidatesArtifact.from_dict(raw_agenda)
                 selected_data = words if unit_source == "words" else vtt
@@ -9479,19 +9518,181 @@ def episode_needs_chapter_locator(ep: Episode) -> bool:
     if not ep.transcript_words_key and not ep.transcript_key:
         return False
     locator_status = raw_agenda.get("locator_status")
-    if locator_status not in {"completed", "accepted", "not_applicable"}:
-        return True
     if locator_status == "not_applicable":
         return False
-    from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION, LOCATOR_REUSABLE_MODELS
-    from citypods.chapter_locator import LOCATOR_ROUTING_VERSION
+    # review/58 §12.3: an agenda with zero accepted items has nothing to locate. process() defers
+    # it on every visit, so counting it here made the census report it as ready work forever.
+    if not locator_agenda_has_accepted_items(raw_agenda):
+        return False
+    if locator_status not in {"completed", "accepted"}:
+        return True
+    return not locator_metadata_is_current(raw_agenda)
 
-    is_current_locator_artifact = (
+
+# review/58 §12.3. One switch for the evidence-proven locator metadata repair in
+# ChapterBoundaryLocatorStage.process(). On unless set to 0/false/no/off; an environment variable
+# (not site_config.yml) so turning it off never deploys the Worker.
+LOCATOR_METADATA_REPAIR_ENV = "CITYPODS_LOCATOR_METADATA_REPAIR"
+
+
+def locator_metadata_repair_enabled() -> bool:
+    value = os.environ.get(LOCATOR_METADATA_REPAIR_ENV, "1").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def locator_agenda_has_accepted_items(raw_agenda: Mapping[str, Any]) -> bool:
+    """Whether a completed agenda result has any accepted item for the locator to place.
+
+    An unparseable agenda counts as having items, so the build path reports it as an error
+    instead of this check hiding it."""
+    from citypods.chapter_artifacts import AgendaCandidatesArtifact
+
+    try:
+        return any(
+            item.status == "accepted"
+            for item in AgendaCandidatesArtifact.from_dict(raw_agenda).items
+        )
+    except Exception:  # noqa: BLE001 -- see docstring
+        return True
+
+
+def locator_metadata_is_current(raw_agenda: Mapping[str, Any]) -> bool:
+    """The record says its locator result came from a reusable model under the current prompt and
+    routing versions. The one definition shared by process(), the lane prefilter and the census."""
+    from citypods.chapter_jobs import (
+        LOCATOR_PROMPT_VERSION,
+        LOCATOR_REUSABLE_MODELS,
+        LOCATOR_ROUTING_VERSION,
+    )
+
+    return (
         raw_agenda.get("locator_model") in LOCATOR_REUSABLE_MODELS
         and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
         and raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
     )
-    return not is_current_locator_artifact
+
+
+def fold_locator_work_outcomes(stage_totals, snapshot: Mapping[str, Any]) -> None:
+    """Set the run's ``locator-zero-agenda`` quality count from the LLM work census.
+
+    The lane prefilter keeps zero-agenda episodes away from process(), so only the census sees
+    them all; it labels each episode once, so the count is never doubled. ``stage_totals`` is the
+    runner's per-stage totals mapping (a defaultdict)."""
+    purposes = snapshot.get("purposes") if isinstance(snapshot, Mapping) else None
+    locator = (purposes or {}).get("chapter-locator") or {}
+    zero = (locator.get("outcomes") or {}).get("zero-agenda", 0)
+    if zero:
+        stage_totals["chapter_locator"]["quality_counts"]["locator-zero-agenda"] = int(zero)
+
+
+def _locator_policy_fingerprint(models: Sequence[str]) -> str:
+    """The ``locator_retry_policy`` value process() stamps when it plans a job under ``models``."""
+    from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION, LOCATOR_ROUTING_VERSION
+
+    return hashlib.sha256(
+        json.dumps([LOCATOR_PROMPT_VERSION, LOCATOR_ROUTING_VERSION, models]).encode()
+    ).hexdigest()
+
+
+def _current_prompt_policy_fingerprints() -> frozenset[str]:
+    """Retry-policy fingerprints of every lane model list used under the current prompt and routing
+    versions: the lane now, and the two earlier ones (V4 Flash with Kimi K3 until 2026-10-15, then
+    with V4.1 until review/58 WP8). A stored policy outside this set proves nothing."""
+    from citypods.chapter_jobs import LOCATOR_MODELS
+    from citypods.chapter_locator import (
+        DEEPSEEK_FREE_LOCATOR_MODEL,
+        DEEPSEEK_V41_LOCATOR_MODEL,
+        KIMI_LOCATOR_MODEL,
+    )
+
+    return frozenset(
+        _locator_policy_fingerprint(list(models))
+        for models in (
+            tuple(LOCATOR_MODELS),
+            (DEEPSEEK_FREE_LOCATOR_MODEL, KIMI_LOCATOR_MODEL),
+            (DEEPSEEK_FREE_LOCATOR_MODEL, DEEPSEEK_V41_LOCATOR_MODEL),
+        )
+    )
+
+
+def prove_locator_result_current(
+    storage,
+    ep: Episode,
+    raw_agenda: Mapping[str, Any],
+    *,
+    uid: str,
+    agenda,
+    transcript_hash: str,
+) -> str | None:
+    """Return the model that produced ``ep``'s stored locator result when the stored evidence
+    proves the result is what the current lane would accept, else None (review/58 §12.3).
+
+    Proof needs all of: the boundary artifact the record points at, stored under the record's own
+    recipe, written for this episode, this agenda and this transcript by a reusable model under the
+    current prompt version; the stored chapters hashed to that recipe and being exactly the
+    chapters that artifact yields; and the routing version shown either by every stored chapter's
+    record metadata or by the planning-time retry-policy fingerprint. A result with no chapters must
+    carry that fingerprint. Nothing weaker counts: anything unproven is planned normally.
+    """
+    from citypods.chapter_artifacts import BoundaryResultArtifact, artifact_key
+    from citypods.chapter_jobs import (
+        LOCATOR_PROMPT_VERSION,
+        LOCATOR_REUSABLE_MODELS,
+        LOCATOR_ROUTING_VERSION,
+    )
+
+    recipe = raw_agenda.get("locator_recipe")
+    if not isinstance(recipe, str) or not recipe or ep.generated_chapters_spec_hash != recipe:
+        return None
+    key = artifact_key("boundary", uid, recipe)
+    if raw_agenda.get("boundary_artifact_key") != key:
+        return None
+    try:
+        data = _read_storage_bytes(storage, key)
+        boundary = BoundaryResultArtifact.from_dict(json.loads(data or b"null") or {})
+    except Exception:  # noqa: BLE001 -- unreadable or invalid evidence proves nothing
+        return None
+    if not (
+        boundary.recipe == recipe
+        and boundary.episode_uid == uid
+        and boundary.status == "completed"
+        and boundary.model in LOCATOR_REUSABLE_MODELS
+        and boundary.prompt_version == LOCATOR_PROMPT_VERSION
+        and boundary.agenda_recipe == agenda.recipe
+        and boundary.transcript_hash == transcript_hash
+    ):
+        return None
+    items = {item.index: item for item in agenda.items}
+    # The chapters finalize would project from this file: same items, starts and titles.
+    expected = [
+        (item.index, anchor.get("start"), item.title)
+        for anchor in boundary.anchors
+        if (item := items.get(anchor.get("agenda_item_index"))) is not None
+        and item.status == "accepted"
+        and anchor.get("start") is not None
+    ]
+    chapters = ep.generated_chapters
+    if not isinstance(chapters, list) or len(chapters) != len(expected):
+        return None
+    for chapter, (index, start, title) in zip(chapters, expected, strict=True):
+        if not (
+            isinstance(chapter, Mapping)
+            and chapter.get("agenda_item_index") == index
+            and chapter.get("start") == start
+            and chapter.get("title") == title
+            and chapter.get("prompt_version") == LOCATOR_PROMPT_VERSION
+            and chapter.get("model") == boundary.model
+            and chapter.get("artifact_key") == key
+        ):
+            return None
+    policy_proven = raw_agenda.get("locator_retry_policy") in _current_prompt_policy_fingerprints()
+    if chapters:
+        routing_proven = (
+            policy_proven or raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
+        )
+    else:
+        routing_proven = policy_proven
+    return boundary.model if routing_proven else None
 
 
 def default_stages() -> list[EnrichmentStage]:
