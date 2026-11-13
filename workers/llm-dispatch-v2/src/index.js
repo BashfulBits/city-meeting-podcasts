@@ -105,9 +105,12 @@ export function validateConfig(env) {
   }
 
   // The bounded B2 result write runs after the call, inside the finalization reserve; the commit
-  // needs the rest (review/58 §12.5).
-  const resultWriteTimeout = Number(env.RESULT_WRITE_TIMEOUT_SECONDS || 30);
-  if (!(resultWriteTimeout > 0) || resultWriteTimeout >= finalizationReserve) {
+  // needs the rest (review/58 §12.5). Checked when set; the compiled tuning always sets it.
+  const resultWriteTimeout = Number(env.RESULT_WRITE_TIMEOUT_SECONDS);
+  if (
+    env.RESULT_WRITE_TIMEOUT_SECONDS !== undefined &&
+    (!(resultWriteTimeout > 0) || resultWriteTimeout >= finalizationReserve)
+  ) {
     throw new Error(
       `Invalid config: RESULT_WRITE_TIMEOUT_SECONDS (${resultWriteTimeout}) must be > 0 and < ` +
       `FINALIZATION_RESERVE_SECONDS (${finalizationReserve})`
