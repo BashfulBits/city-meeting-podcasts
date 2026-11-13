@@ -47,8 +47,9 @@ test("each table entry fires exactly on its minutes and hours across a simulated
     "llm-deferred-sweep": Array.from({ length: 24 }, (_, h) => h * 60 + 52),
     "chapter-agenda": Array.from({ length: 12 }, (_, i) => i * 120 + 3),
     "chapter-locator": Array.from({ length: 12 }, (_, i) => (2 * i + 1) * 60 + 13),
-    tag: Array.from({ length: 6 }, (_, i) => i * 240 + 14),
+    tag: Array.from({ length: 12 }, (_, i) => i * 120 + 14),
     judge: Array.from({ length: 12 }, (_, i) => i * 120 + 33),
+    moments: Array.from({ length: 12 }, (_, i) => (2 * i + 1) * 60 + 23),
   };
   assert.deepEqual(Object.fromEntries(fired), expected);
 });
@@ -70,10 +71,13 @@ test("UTC boundaries: midnight and day rollover use UTC hours, not local time", 
   // Odd hour: agenda, tag and judge are even-hour only.
   assert.deepEqual(dueTriggers(at(1, 3)), []);
   assert.deepEqual(dueTriggers(at(1, 33)), []);
-  // Tag every four hours: 04:14 fires, 02:14 and 06:14 do not.
+  // Tag every two hours on even hours: 02:14 and 04:14 fire, 03:14 does not.
   assert.equal(dueTriggers(at(4, 14)).length, 1);
-  assert.equal(dueTriggers(at(2, 14)).length, 0);
-  assert.equal(dueTriggers(at(6, 14)).length, 0);
+  assert.equal(dueTriggers(at(2, 14)).length, 1);
+  assert.equal(dueTriggers(at(3, 14)).length, 0);
+  // Moments every two hours on odd hours at :23.
+  assert.deepEqual(dueTriggers(at(1, 23)).map((e) => e.event_type), ["moments"]);
+  assert.equal(dueTriggers(at(2, 23)).length, 0);
 });
 
 test("seconds inside the minute do not matter; a missing scheduledTime fires nothing", () => {

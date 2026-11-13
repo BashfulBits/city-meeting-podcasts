@@ -128,6 +128,23 @@ def test_runner_accounting_surfaces_stuck_slots(tmp_path, monkeypatch):
     assert "fresh_admitted" not in tagger
 
 
+def test_moments_reports_no_slot_cap_unless_preflight_closed_the_lane(tmp_path, monkeypatch):
+    destination = tmp_path / "telemetry.jsonl"
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(destination))
+    ctx = SimpleNamespace(lane="moments", moment_max_dispatches=None, moment_dispatches=7)
+    record_producer_caps(ctx)
+    events = [json.loads(line) for line in destination.read_text().splitlines()]
+    assert not [e for e in events if e["purpose"] in ("r6-moments", "r6-shared-moments-and-judge")]
+    assert "r6-shared-moments-and-judge" not in render_markdown(events)
+
+    destination.write_text("", encoding="utf-8")
+    ctx = SimpleNamespace(lane="moments", moment_max_dispatches=0, moment_dispatches=0)
+    record_producer_caps(ctx)
+    events = [json.loads(line) for line in destination.read_text().splitlines()]
+    closed = next(e for e in events if e["purpose"] == "r6-moments")
+    assert closed["limit"] == 0
+
+
 def test_reconciliation_summary_preserves_unknowns_and_model_independence():
     events = [
         {

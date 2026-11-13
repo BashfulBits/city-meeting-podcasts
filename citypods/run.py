@@ -3363,9 +3363,10 @@ def _build_impl(
             )
             tag_llm_deadline = None
         elif lane == "moments":
-            # Moments lane only prepares queue-only v2 requests and is count-bounded.
+            # Moments lane only prepares queue-only v2 requests. It has no per-pass slot budget
+            # (review/58 section 12.1): the dispatch Worker's admission gates bound what it takes.
             stop = StopSignal(superseded=_newer_run_queued)
-            print(f"budget: {lane} count-bounded (+ yield if superseded)")
+            print(f"budget: {lane} Worker-admission-bounded (+ yield if superseded)")
             tag_llm_deadline = None
         elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
             # Chapter jobs are queued rather than held on a runner. The wall-clock stop bounds

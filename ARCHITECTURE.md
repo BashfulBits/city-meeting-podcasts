@@ -503,8 +503,10 @@ waits up to 10 minutes, then skips only its record commit (log line plus `record
 skipped_lease_busy` on the run event) and exits successfully, and the next run redoes the work;
 `MaintenanceLeaseUnavailable` and storage errors still fail the run. The locator workflow's job
 (240 min) and step (225 min) timeouts mirror chapter-agenda so the 204-minute stop budget fires
-first, leaving room for the state push. The tagger producer runs every four hours. All five LLM
-producers (agenda, locator, tag, judge, deferred sweep) are started by the dispatch Worker's cron
+first, leaving room for the state push. The tagger producer runs every two hours. The moments
+producer has no per-pass slot budget: it submits what the Worker admits (lane daily write units,
+queue cap, reservations, DO row gates), and keeps the meeting-family rollout filter. All six LLM
+producers (agenda, locator, tag, moments, judge, deferred sweep) are started by the dispatch Worker's cron
 through `repository_dispatch`, with their GitHub `schedule:` kept as a self-skipping fallback
 (review/58 WP6 part B; see the dispatch Worker's "Producer trigger" note).
 
@@ -1112,8 +1114,9 @@ compiled by `scripts/compile_producer_triggers.py` into `src/producer_triggers.j
 hours per entry; drift-checked in the deploy workflow) and matched against the cron event's
 `scheduledTime` alone, so it costs no DO read, write, row or alarm: `llm-deferred-sweep` at :52
 every hour, `chapter-agenda` :03 on even hours, `chapter-locator` :13 on odd hours, `tag` :14
-every four hours, `judge` :33 on even hours, each 3 to 5 minutes before the workflow's own GitHub
-cron minute. The compiler rejects a cleanup minute (multiple of `CLEANUP_INTERVAL_MINUTES`) and more
+on even hours, `moments` :23 on odd hours, `judge` :33 on even hours, each 3 to 5 minutes before
+the workflow's own GitHub cron minute (`moments` shares the `r7-speaker-evaluation-state`
+concurrency group with speaker identity). The compiler rejects a cleanup minute (multiple of `CLEANUP_INTERVAL_MINUTES`) and more
 than `max_triggers_per_tick` (3) entries on one minute; today no two share a minute, so a trigger
 tick adds one subrequest (at most 3) and never coincides with cleanup's B2 deletes. Requests run one
 at a time (`POST /repos/{GITHUB_DISPATCH_REPOSITORY}/dispatches`, 5 s timeout, `client_payload`

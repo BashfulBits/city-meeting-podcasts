@@ -101,12 +101,17 @@ def record_producer_caps(ctx: Any) -> None:
         ("topic-tags:tagger", "tag", "tag_llm_dispatch_exhausted"),
         ("chapter-agenda", "chapter_agenda", "chapter_agenda_dispatch_exhausted"),
         ("chapter-locator", "chapter_locator", "chapter_locator_dispatch_exhausted"),
-        ("r6-shared-moments-and-judge", "moment", None),
+        ("r6-moments", "moment", None),
     ):
         cap = getattr(ctx, f"{prefix}_max_dispatches", None)
         used = getattr(ctx, f"{prefix}_dispatches_count", 0)
         if prefix == "moment":
             used = getattr(ctx, "moment_dispatches", 0)
+        if prefix == "moment" and cap is None:
+            # Moments has no per-pass slot budget (review/58 section 12.1): the Worker's own
+            # admission decides what is accepted. A row appears only when ingress preflight
+            # closed the lane for this run (cap 0), so no stale or empty cap is reported.
+            continue
         reserved = getattr(ctx, f"{prefix}_dispatches_reserved", 0)
         exhausted = getattr(ctx, exhausted_name, None) if exhausted_name else None
         closed = bool(exhausted and exhausted.is_set())
