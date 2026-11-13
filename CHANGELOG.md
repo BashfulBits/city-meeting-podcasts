@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Per-route response timeout (review/58 WP2).** `config/provider_limits.yml` routes may set
+  `response_timeout_seconds` (positive integer, at most `MAX_RESPONSE_SECONDS`, validated by the
+  compile script); the dispatch Worker uses the smaller of it and the global 720 s for every call
+  on that route, with the same `provider_response_timeout` failure class and unchanged requeue,
+  retry and lease handling. Set on AI Studio Gemma 4 31B (240), Gemini Flash Lite (300), Nemotron
+  3.5 Super and DeepSeek V4 Flash (420). `bundle_completed` calls now carry `response_timeout_ms`.
+
 - **Review/58 WP8: chapter-locator overflow moves to MiniMax M3.1 Flash.** Locator packets of
   76,001 to 500,000 estimated tokens now route to `minimaxai/minimax-m3.1-flash`
   (`nvidia_minimaxai_minimax_m3_1_flash`) with the unchanged production prompt; the 76,000 split
