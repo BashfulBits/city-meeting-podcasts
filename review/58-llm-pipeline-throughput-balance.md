@@ -216,6 +216,16 @@ Classification:
 - Fix (WP3a config, WP3b coordinator): stand down the routes that cannot succeed; add a route health
   ladder that escalates cooldown on consecutive same-class failures with no intervening success
   (request defect, response timeout, upstream capacity), reset by the first success.
+- WP3b as built (PR open, branch `feat/58-wp3b-route-health-ladder`): thresholds timeout 1,
+  capacity 2, request defect 3 consecutive; rungs 60 s / 300 s / 900 s / 3600 s on the route's
+  `blocked_until`, then one half-open probe; the first success resets. A single request defect
+  still fails only its job. The "not available to this key" 400 is still classed `request_defect`
+  (`classify.js` rule 10): a route-scoped class is not a one-line change, because the auth block
+  stands down the whole account, so the three-in-a-row rule is what stands JEV down. AI Gateway
+  retries: the Worker sends `cf-aig-max-attempts: 1` only for AI Studio Gemma (both keys) and
+  SambaNova; every other route uses the gateway's own policy (3 attempts, 5 s exponential), so one
+  Worker-visible failure there is up to three provider attempts. For Google Gemma the ladder
+  supersedes review/56's 5 s availability cap from the second consecutive 503 on a route.
 
 ### B4. The return path collects about three times a day
 
@@ -412,7 +422,7 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP1b | Producer funnel telemetry + `/admin/status` lane table (**implemented, PR pending merge**: producer events carry `queue`, `admission`, `packets`, run-local first-seen times; the status table classes every lane; the waiting-vs-completed split, slot productivity and failed-attempt share read "not measured" because producers do not poll and those figures are dispatcher-side) | Sonnet | — | Closes the visibility gap | Status page shows a class for every lane |
 | WP2 | Per-route response timeout (config, compile script, `index.js`) | Sonnet, Opus review | WP1a | ~750k slot-seconds/week | Gemma timeouts end at 240 s; timeout share < 3% **Status: implemented in `feat/58-wp2-per-route-response-timeout` (PR open); merging deploys the Worker.** `bundle_completed` calls carry `response_timeout_ms` |
 | WP3a | Stand down routes that cannot succeed; fix stale tuning comments. **Status: implemented in PR (branch `fix/58-wp3a-stand-down-failing-routes`), awaiting merge and owner deploy.** `rpd: 0` on `beatapi_jev_1_13_free` and both `beatapi*_glm_5_3_flash_free`; the primary BeatAPI chat routes' `yields_to` JEV removed (re-add when WP3c restores JEV). `judge:adjudicator` keeps GLM via OrcaRouter and DeepSeek V4.1 via NVIDIA, BeatAPI primary and secondary. | Sonnet | — | ~350k slot-seconds/week; stops 882 terminal failures | Zero attempts on the stood-down routes |
-| WP3b | Route health ladder (coordinator) | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day |
+| WP3b | Route health ladder (coordinator). **Status: implemented in PR (branch `feat/58-wp3b-route-health-ladder`), awaiting merge; merging deploys the Worker.** Ladder state on `scheduler.route_health_json` (no extra row for a healthy route, no extra read); `admissible_calls` added to the claim diagnostics and `scheduled_claim`; rung in `/v2/stats?routes=1`; off switch `ROUTE_HEALTH_LADDER_ENABLED: 0` | Opus | WP1a | Failed attempts < 20% | `attempt_outcome` counts per route per day; `route_health` events |
 | WP3c | JEV 400 diagnosis. **Done 2026-11-11:** BeatAPI withdrew `jev-1.13-free` from the key; restoring needs an owner decision on the anchor model (free model returns, paid route, or other anchor). | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
 | WP4 | Early slot release (coordinator + `index.js`) | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k |
 | WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
