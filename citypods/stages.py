@@ -1556,23 +1556,23 @@ class JudgeStage(LLMProducerStage):
 
         anchor = lane_for("judge:anchor")
         sibling = lane_for("judge:sibling")
-        # Size JEV packets with the Worker's own input ratio for the route (None when it cannot be
-        # read: the packer then assumes the unmeasured default and errs small).
+        # Size anchor packets with the Worker's own input ratio for the anchor's route (None when
+        # it cannot be read: the packer then assumes the unmeasured default and errs small).
         from citypods.compute.llm import (
             dispatch_v2_learned_input_ratio,
             dispatch_v2_model_headroom,
             dispatch_v2_pack_ceilings,
         )
-        from citypods.judging.backends import JEV_ROUTE_ID
+        from citypods.judging.backends import anchor_backend_class
 
+        anchor_backend = anchor_backend_class(anchor.primary_model)
         anchor_ratio = dispatch_v2_learned_input_ratio(
-            JEV_ROUTE_ID, "judge", backend=getattr(backend, "_backend", backend)
+            anchor_backend.route_id, "judge", backend=getattr(backend, "_backend", backend)
         )
-        from citypods.judging.backends import JevBackend
-
         print(
-            f"[judge] jev input ratio={anchor_ratio if anchor_ratio else 'unread'} "
-            f"packet ceiling={JevBackend(anchor_ratio).max_total_tokens} tokens",
+            f"[judge] anchor {anchor.primary_model} input ratio="
+            f"{anchor_ratio if anchor_ratio else 'unread'} "
+            f"packet ceiling={anchor_backend(anchor_ratio).max_total_tokens} tokens",
             flush=True,
         )
         config = ctx.judging_config or {}

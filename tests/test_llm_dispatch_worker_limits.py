@@ -39,6 +39,8 @@ FIXED_SECRETS = {
     "B2_KEY_ID",
     "B2_APP_KEY",
     "B2_BUCKET",
+    # review/58 WP6b producer trigger (optional; the trigger is a no-op without it).
+    "GITHUB_DISPATCH_TOKEN",
 }
 # Headroom for a secret that is set before its config lands, or a stale one not yet deleted.
 RESERVED_HEADROOM = 2

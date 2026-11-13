@@ -15,6 +15,33 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Worker-cron producer trigger (review/58 WP6 part B).** The dispatch Worker's per-minute cron
+  now starts the five LLM producer workflows (deferred sweep, chapter-agenda, chapter-locator, tag,
+  judge) through GitHub `repository_dispatch`, because GitHub dropped most of their scheduled
+  runs. The schedule is `config/producer_triggers.yml` (compiled to
+  `src/producer_triggers.json`, drift-checked on deploy), matched statelessly against the tick's
+  `scheduledTime` with no Durable Object access, 3 to 5 minutes before each workflow's GitHub
+  cron minute and never on a cleanup minute. One request per due workflow, run one at a time
+  under `ctx.waitUntil` with a 5 s timeout and at most 3 per tick, never awaited ahead of the
+  claim; one `producer_trigger` log line per attempt (event type, status, duration, ok, and
+  GitHub's `message` on failure; never the token). Inert until the owner sets the
+  `GITHUB_DISPATCH_TOKEN` secret; `PRODUCER_TRIGGER_ENABLED=0` switches it off. Each workflow
+  keeps its `schedule:` as a fallback; a schedule run skips itself (green) when a dispatched or
+  manual run of the same workflow on the same branch succeeded and started within 45 min (sweep),
+  90 min (agenda, locator, judge) or 180 min (tag) (`scripts/producer_schedule_guard.sh`,
+  fail-open).
+
+- **Gemini Decision 1 as the judge anchor (review/58 WP9; canonical in review/49).** BeatAPI
+  retired free JEV on 2026-11-05, so `judge:anchor` now names `gemini/gemini-decision-1` in the
+  same shadow state (no new switch, no added authority). The dispatch Worker gains a `decisions`
+  API shape (`/v1beta/decisions`, `x-goog-api-key`, key mapping to Google's charset, no `criteria`
+  on `noul`, body-classified 400s with quota reported as 429) and two routes on the existing Gemini
+  keys at a 45,000-token ceiling. `DecisionBackend` packs for that ceiling and records answer
+  confidence. Judge independence now covers the anchor: Google-produced or unknown-family entries
+  get no anchor, and siblings and adjudicators exclude the anchor's family. Pending JEV anchor
+  markers are dropped, and the judge report keys anchor statistics by model so JEV and Gemini
+  telemetry are never pooled.
+
 - **Route health ladder in the dispatch coordinator (review/58 WP3b).** A route that fails the same
   way repeatedly, with no success between, is stood down for longer each time instead of being
   re-picked every tick: one response timeout, two upstream-capacity failures or three request

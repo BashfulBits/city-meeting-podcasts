@@ -262,6 +262,16 @@ Classification:
 - Fix (WP6): treat a busy lease as a clean skip; align the locator step timeout with its budget;
   submit the stale-recipe locator backfill; tag every four hours. The cron drop rate itself needs an
   owner decision (section 10).
+- Implemented (WP6 part B, owner decision 1): the dispatch Worker's cron fires
+  `repository_dispatch` for the five producer workflows from `config/producer_triggers.yml`
+  (sweep :52 hourly; agenda :03 even hours; locator :13 odd hours; tag :14 every four hours;
+  judge :33 even hours; each 3 to 5 minutes before its GitHub cron minute and never on a cleanup
+  minute). Stateless (decided from `scheduledTime`; no DO access), one subrequest per due
+  workflow, sequential, 5 s timeout, at most 3 per tick, detached from the claim, one
+  `producer_trigger` log line per attempt. A cron minute Cloudflare skips is a skipped trigger;
+  the GitHub `schedule:` stays as the fallback and a schedule run skips itself when a dispatched
+  run succeeded and started within 45 min (sweep), 90 min (agenda, locator, judge) or 180 min
+  (tag). Inert until the owner sets the `GITHUB_DISPATCH_TOKEN` Worker secret.
 
 ### Not bottlenecks (measured)
 
@@ -393,7 +403,10 @@ is added then.
 
 1. **Producer triggering: decided.** The Worker's cron fires `repository_dispatch` for the producer
    workflows. This needs a GitHub token as a Worker secret (owner sets it) and one subrequest per
-   trigger. Added to WP6.
+   trigger. Added to WP6. Implemented as WP6 part B (`feat/58-wp6b-worker-cron-producer-trigger`):
+   the token is `GITHUB_DISPATCH_TOKEN`, a fine-grained personal access token for this repository
+   only with "Contents: read and write" (what the dispatches endpoint requires); the repo uses no
+   GitHub App today. `PRODUCER_TRIGGER_ENABLED=0` switches it off.
 2. **Locator packets above 76k tokens: decided, MiniMax M3.1 Flash.**
    - Why it matters: 494 of the 716 pending locator packets (69%) are above the 76,000 cutoff, and
      the only approved route for them, V4.1 on NVIDIA, succeeded on about 5% of calls this week.
@@ -428,6 +441,11 @@ is added then.
    400s are not a defect in our request (see the evidence file's "JEV 400 diagnosis (WP3c)").
    Restoring anchor judging now needs an owner decision on the anchor model: wait for a free jev
    model, approve a paid `jev-1.13`/`jev-1.14` route, or choose a different anchor.
+   **Decided 2026-11-12 (owner correction): a different anchor.** BeatAPI retired the free JEV
+   tier on 2026-11-05, so the anchor moves to Google's Gemini Decision 1 in the same shadow state, with
+   no new switch and no added authority (WP9). The API, replay against JEV, independence
+   consequences and what must be re-measured are canonical in
+   [review/49](49-judge-consensus-admission.md#gemini-decision-1-as-the-anchor-2026-11-12-review58-wp9).
 4. **Tagger daily ceiling: approved** to raise once WP4 shows the dispatcher drains it, within the
    6,000 global cap.
 5. **AI Gateway read permission: granted** on the ops token. Gateway retry, rate-limit and error
@@ -448,13 +466,18 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP3c | JEV 400 diagnosis. **Done 2026-11-11:** BeatAPI withdrew `jev-1.13-free` from the key; restoring needs an owner decision on the anchor model (free model returns, paid route, or other anchor). | Opus | owner Q3 | Restores `judge:anchor` | Anchor success rate |
 | WP4 | Early slot release (coordinator + `index.js`). **Status: implemented in PR (branch `feat/58-wp4-early-slot-release`), awaiting merge; merging deploys the Worker.** `completePartial` with per-bundle dedupe; defaults one partial after 60 s and 1,000 partial rows/day (section 8: 20 s / three commits does not fit 85k at 6,000 results); off switch `EARLY_SLOT_RELEASE_ENABLED: 0` | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k; `bundle_completed` `released_by`, `partial_flushes` |
 | WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
-| WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger) | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains | Run conclusions; locator `ready` count falls |
+| WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger). **Status:** part A in PR; part B (Worker-cron trigger) implemented in `feat/58-wp6b-worker-cron-producer-trigger` (PR open), inert until the owner sets `GITHUB_DISPATCH_TOKEN`; locator backfill open | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains; producers run on cadence | Run conclusions; locator `ready` count falls; `repository_dispatch` runs at the table's minutes and `producer_trigger` logs with status 204 |
 | WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
 | WP8 | **Done 2026-11-11.** Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 500,000 estimated tokens (cap from WP8a), hold larger packets as deferred, drop V4.1 from the lane, route output limit check. Result: locator lane is V4 Flash + MiniMax; V4.1 stays only in `judge:adjudicator`; locator `max_tokens` clamps to MiniMax's 12,800; queued V4.1 locator jobs are cancelled and re-planned; no routing-version bump, so V4 Flash results stand | Opus | — (owner deploys the compiled route config) | 487 of 494 overflow packets get a working route; 7 held | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; `locator-over-input-cap` deferred count reported (expected 7) |
 | WP8a | **Done 2026-11-11.** MiniMax input-size probe (approved by the owner 2026-11-11): with the route paused, send real pending locator packets of increasing size above 191,294 estimated tokens through the evaluation runner until one is rejected or times out; record admitted and rejected provider token counts and latency; update `hard_input_ceiling` and the WP8 cap from the result. Result: admitted up to 941,663 provider tokens (610,831 estimated), rejected 709,545 estimated (HTTP 400); `hard_input_ceiling` 941,663, cap 500,000; 2 of 5 admitted large answers invalid; two route pauses logged and released | Lead (holds the pause) | — | 145 more packets (191,295 to 500,000) | Evidence file, "MiniMax input-size probe (WP8a) and pause log" |
+| WP9 | Gemini Decision 1 as the `judge:anchor` model (owner correction 2026-11-12): Worker `decisions` API shape, two routes on the existing Gemini keys, `DecisionBackend`, anchor independence across all judges, per-anchor-model report; canonical in [review/49](49-judge-consensus-admission.md#gemini-decision-1-as-the-anchor-2026-11-12-review58-wp9) | Opus | WP3a (JEV stood down) | Restores `judge:anchor` in shadow at about one request a minute per key | Attempts on `gemini_decision_1_*` succeed; anchor judgments carry `judge_model: gemini/gemini-decision-1`; first-day 429s match the published limits |
 
 **WP6 status.** Part A is in the `fix/58-wp6a-producer-run-fixes` PR: the chapter-lane record-write
 lease skip (bounded wait, then a clean deferral stamped `record_write: skipped_lease_busy` on the
 run event), the locator timeouts (job 240 and step 225 minutes against the 204-minute stop budget,
-matching chapter-agenda) and the tag cadence (`19 */4 * * *`). Still open under WP6: the stale-recipe
-locator backfill and the Worker-cron `repository_dispatch` trigger.
+matching chapter-agenda) and the tag cadence (`19 */4 * * *`). Part B is in the
+`feat/58-wp6b-worker-cron-producer-trigger` PR: the Worker-cron `repository_dispatch` trigger
+(`config/producer_triggers.yml`, `src/producer_trigger.js`) and the self-skipping schedule fallback
+in the five producer workflows (`scripts/producer_schedule_guard.sh`); it does nothing until the
+owner sets the `GITHUB_DISPATCH_TOKEN` Worker secret. Still open under WP6: the stale-recipe
+locator backfill.

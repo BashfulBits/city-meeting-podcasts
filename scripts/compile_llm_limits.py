@@ -454,7 +454,7 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-API_SHAPES = ("chat", "systemone")
+API_SHAPES = ("chat", "systemone", "decisions")
 
 _WORKER_ROUTE_FIELDS = (
     "route_id",

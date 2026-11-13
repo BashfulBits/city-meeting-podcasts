@@ -210,6 +210,12 @@ MAX_ATTEMPT_PRUNE_PER_TICK: 50
 # rise (subrequests), so the cadence does.
 CLEANUP_INTERVAL_MINUTES: 10
 PURGE_BATCH_LIMIT: 14
+# review/58 WP6b kill switch for the cron's producer workflow triggers (src/producer_trigger.js,
+# schedule in config/producer_triggers.yml, whose minutes may never be cleanup minutes). 1 = on
+# once the GITHUB_DISPATCH_TOKEN secret exists; the trigger is a no-op without it. To stop it
+# without a code change, `wrangler secret put PRODUCER_TRIGGER_ENABLED` with the value 0: a
+# secret overrides this default and, unlike a dashboard variable, survives the next deploy.
+PRODUCER_TRIGGER_ENABLED: 1
 # Admission-time allowance subtracted from the dispatch window: a job is admitted only if its
 # planned start + this value <= the window's end. Lowered 20 -> 2 on 2026-09-23. At 20 it
 # left only the first 5s of the then 25s window usable (30s since the raise above), although nothing downstream needs the CALL to
