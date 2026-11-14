@@ -448,7 +448,11 @@ unusable primaries unlock already-declared backups while preserving paid/free po
 temporary quota exhaustion cannot cause structural failure. Python records the original handle,
 catalog identity and eligible route generations before removing a matching terminal handle;
 structural recovery preserves failure/schema-correction counts and blocks unchanged resubmissions.
-Completed recipes remain reusable; no pipeline version changes. The recovery canary accepted in #2220 completes the
+The tagger re-plans a recipe whose marker records an `unadmissible` terminal (the Worker's
+oversize reaper: over every live route's learned ceiling) instead of rebuilding it: the refused
+request is split at the chapter boundary nearest its middle, or a single chapter's timestamped
+segments are halved, under new child recipes, recursively; one segment that is still refused is
+an oversized deferral (review/58 §12.13, #2671). Completed recipes remain reusable; no pipeline version changes. The recovery canary accepted in #2220 completes the
 prerequisite for Slice 3b retirement. Its pure planner (PR #2193) checks complete fresh absence and
 independent exact-account confirmation, preserves surviving pools, and repairs new-job lanes using
 existing free, unpaused backups. No safe backup means the removal is held for review. Exact YAML

@@ -14,6 +14,7 @@ from citypods.tags import (
     merge_tag_sources,
     rollup_tags,
     rule_phrase_audit,
+    split_unadmissible_tag_request,
     tag_episode,
     tag_input_fingerprint,
     taxonomy_from_dict,
@@ -1386,3 +1387,176 @@ def test_the_frozen_admission_policy_is_the_retired_matrix_digest():
     from citypods.tags import TAG_ADMISSION_POLICY
 
     assert TAG_ADMISSION_POLICY == "624ceafe8f6480c1"
+
+
+# ---- #2671: re-plan a tag recipe the Worker failed as unadmissible ---------------------------
+
+_UNADMISSIBLE = '{"status":"structural_blocked","terminal_reason":"unadmissible","failure_count":0}'
+
+
+def _refusing_backend(blocked, *, marker=_UNADMISSIBLE):
+    """A backend that refuses ``blocked(recipe)`` recipes, as the structural gate does, and stores
+    ``marker`` as their deferred-failure record (the object the producer reads)."""
+    import json as _json
+    from pathlib import Path
+
+    from citypods.compute.base import JobResult
+    from citypods.compute.llm import LLMBackendError
+    from citypods.compute.llm_deferred import DEFERRED_FAILURE_PREFIX
+
+    class Config:
+        model = "gemini/gemini-3.5-flash-lite"
+        additional_models = ()
+
+    class Storage:
+        cas_capable = True
+
+        def get_file(self, key, path):
+            recipe = key.removeprefix(DEFERRED_FAILURE_PREFIX).removesuffix(".json")
+            if key.startswith(DEFERRED_FAILURE_PREFIX) and blocked(recipe):
+                Path(path).write_text(marker)
+                return True
+            return False
+
+    class Backend:
+        storage = Storage()
+        config = Config()
+
+        def __init__(self):
+            self.jobs = []
+
+        def run_inference(self, job):
+            self.jobs.append(job)
+            if blocked(job.recipe_hash):
+                raise LLMBackendError(
+                    "LLM terminal retry limit or structural recovery gate blocks this recipe"
+                )
+            content = job.inputs["messages"][1]["content"]
+            quote = "housing alpha" if "housing alpha" in content else "housing beta"
+            tags = [
+                {
+                    "id": "housing",
+                    "chapter_id": "c1",
+                    "confidence": 0.9 if quote.endswith("alpha") else 0.7,
+                    "explanation": "discussed",
+                    "evidence": [{"where": "transcript", "quote": quote}],
+                }
+            ]
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": _json.dumps({"tags": tags})}}]},
+                model="gemini/gemini-3.5-flash-lite",
+            )
+
+    return Backend()
+
+
+def _housing_taxonomy():
+    return taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+
+
+def _one_long_chapter():
+    segments = [
+        {"start": 0, "end": 1, "text": "housing alpha"},
+        {"start": 1, "end": 2, "text": "first half"},
+        {"start": 2, "end": 3, "text": "housing beta"},
+        {"start": 3, "end": 4, "text": "second half"},
+    ]
+    return [
+        {
+            "chapter_id": "c1",
+            "title": "Chapter",
+            "agenda_text": "agenda",
+            "transcript_text": "\n".join(segment["text"] for segment in segments),
+            "transcript_segments": segments,
+        }
+    ]
+
+
+def _tag(backend, chapters, metadata=None):
+    return llm_tag_suggestions(
+        backend,
+        taxonomy=_housing_taxonomy(),
+        agenda_item_titles="",
+        agenda_text="",
+        transcript_text="",
+        recipe_hash="episode-recipe",
+        chapter_inputs=chapters,
+        call_metadata_out=metadata,
+    )
+
+
+def test_unadmissible_tag_recipe_is_replanned_into_smaller_new_recipes():
+    """2026-11-12: the Worker reaped about 258 oversized tag jobs as `unadmissible`. The tagger
+    rebuilt the same recipes every run and the structural gate refused each one (204 errors)."""
+    backend = _refusing_backend(lambda recipe: recipe == "episode-recipe")
+    metadata: dict[str, object] = {}
+    _tags, chapter_tags, pending, resolved_model = _tag(backend, _one_long_chapter(), metadata)
+
+    assert pending is False
+    assert resolved_model == "gemini/gemini-3.5-flash-lite"
+    children = [job for job in backend.jobs if job.recipe_hash != "episode-recipe"]
+    assert len(children) == 2
+    assert all(job.recipe_hash.startswith("episode-recipe-replan-") for job in children)
+    assert len({job.recipe_hash for job in children}) == 2
+    first, second = (job.inputs["messages"][1]["content"] for job in children)
+    assert "housing alpha" in first and "housing beta" not in first
+    assert "housing beta" in second and "housing alpha" not in second
+    # One suggestion per chapter and tag: the more confident half, with both halves' quotes.
+    assert [tag["id"] for tag in chapter_tags["c1"]] == ["housing"]
+    assert chapter_tags["c1"][0]["confidence"] == 0.9
+    assert [item["quote"] for item in chapter_tags["c1"][0]["evidence"]] == [
+        "housing alpha",
+        "housing beta",
+    ]
+    assert metadata["tagger_replanned_from"] == "episode-recipe"
+    assert metadata["job_recipe_hashes"] == [job.recipe_hash for job in children]
+
+
+def test_a_refused_part_splits_again_and_a_single_segment_defers_as_oversized():
+    backend = _refusing_backend(lambda recipe: True)
+    _tags, chapter_tags, pending, resolved_model = _tag(backend, _one_long_chapter())
+
+    assert (chapter_tags, pending, resolved_model) == ({}, True, "payload-too-large")
+    # The parent, two halves, four single-segment quarters: bounded by the segment count.
+    assert len(backend.jobs) == 7
+
+
+def test_split_unadmissible_tag_request_shapes():
+    chapter = _one_long_chapter()
+    halves = split_unadmissible_tag_request(chapter)
+    assert halves is not None
+    assert [len(half[0]["transcript_segments"]) for half in halves] == [2, 2]
+    assert halves[0][0]["transcript_text"] == "housing alpha\nfirst half"
+    assert halves[0][0]["agenda_text"] == "agenda"
+    single = [{**chapter[0], "transcript_segments": chapter[0]["transcript_segments"][:1]}]
+    assert split_unadmissible_tag_request(single) is None
+    chapters = [
+        {"chapter_id": f"c{index}", "title": "t", "transcript_text": "x" * size}
+        for index, size in enumerate((10, 10, 10, 30))
+    ]
+    first, second = split_unadmissible_tag_request(chapters)
+    assert [item["chapter_id"] for item in first] == ["c0", "c1", "c2"]
+    assert [item["chapter_id"] for item in second] == ["c3"]
+
+
+def test_other_gate_refusals_still_raise():
+    """An exhausted retry budget is not a size problem; it stays an error for the stage."""
+    import pytest
+
+    from citypods.compute.llm import LLMBackendError
+
+    backend = _refusing_backend(
+        lambda recipe: recipe == "episode-recipe",
+        marker='{"status":"exhausted","failure_count":3}',
+    )
+    with pytest.raises(LLMBackendError):
+        _tag(backend, _one_long_chapter())
+    assert [job.recipe_hash for job in backend.jobs] == ["episode-recipe"]

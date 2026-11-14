@@ -1160,3 +1160,75 @@ issue [#2682](https://github.com/BashfulBits/city-meeting-podcasts/issues/2682).
   `route_unavailable`.
 - `route_health` escalations for these routes stay on rungs 1 to 2.
 - Anchor packets per day: about 100 calls in the 33 h measured, against 2 x 10,000 rpd.
+
+### 12.13 Tag producer stall (#2671)
+
+**Symptom.** From the 2026-11-13 01:21Z tag run, the producer queued 0 to 1 tagger jobs per run
+and reported 204 errors, against 174 to 251 queued and 37 to 54 errors on 11-11 and 11-12. The
+funnel still said about 10,810 `ready`. Two separate things are behind those figures.
+
+**Cause 1: the drop (fixed here).** Every one of the 204 errors is the structural recovery gate's
+refusal ("LLM terminal retry limit or structural recovery gate blocks this recipe"). The chain:
+
+- On 2026-11-12 the Worker's oversize reaper (`claim_failed_oversize_jobs`) failed 331 queued jobs
+  as `unadmissible`, meaning over every live route's learned ceiling: 60 at 01:17 to 01:32Z, 270 at
+  11:59 to 13:01Z, and 1 at 17:14Z.
+- The deferred sweep recorded those failures as `structural_blocked` markers. A read of 520 markers
+  written 11-12 20Z to 11-13 02Z found 258 tag markers with `terminal_reason: unadmissible`, and all
+  258 name a job id from those reaper events.
+- The refused tag requests were 120,063 to 185,560 estimated input tokens (median 174,145). That is
+  above the tagger's batch target for its primary, Gemini 3.5 Flash Lite: 218,875 tokens at ratio
+  2.15 is 101,802, and 93% of that is 94,676. The producer still admitted them because the
+  Nemotron routes' static ceiling (249,027 at ratio 1.0) fits them. The Worker sizes with learned
+  values: admission ratios, size exclusions, and an OrcaRouter DeepSeek V4 Flash prompt-cap
+  estimate of 69,855 in the 11-11 stats cache. By those values no live route took them.
+- The reaper's comment says the producer then re-plans the work smaller. The tagger did not. Its
+  batches are deterministic, so every run rebuilt the same recipes. The producer's own recovery
+  context still found a fitting route generation unchanged, so the gate refused every one.
+
+**Fix.** `llm_tag_suggestions` catches the backend's refusal. If the recipe's marker records
+`structural_blocked` / `unadmissible`, it re-plans instead of raising:
+
+- Several chapters split at the chapter boundary nearest the middle of their transcript text.
+- A single chapter's timestamped segments are halved. Each half keeps the chapter id, title and
+  agenda evidence.
+- Each part goes out under a new child recipe, `<recipe>-replan-<i>-<digest>`. A part that is
+  refused again splits again. A single segment that is still refused is a `payload-too-large`
+  (oversized) deferral, not an error.
+- Results merge to one suggestion per chapter and tag: the most confident part's, with the other
+  parts' evidence appended up to eight items.
+- Other gate refusals, such as an exhausted retry budget, still raise.
+- The marker is read only after a refusal, so a normal submission makes no extra storage read.
+
+The marker's own `recovery_disposition` already reads `await_eligible_generation_or_rebatch`, and
+the judge runner re-plans the same way (Slice 3a). Nothing in the Worker, the lane caps or
+`compile_llm_lanes.py` changes.
+
+**Cause 2: the `ready` figure (not changed here; issue
+[#2686](https://github.com/BashfulBits/city-meeting-podcasts/issues/2686)).** The about 10,810
+`ready` episodes are not work the stage skips by mistake today, and they did not cause the drop:
+the same figure (10,816) stood on 11-11 and 11-12, while those runs queued normally.
+
+- In the 2026-11-10 record snapshot, 10,681 episodes with chapters carry a stored tag fingerprint
+  computed under the lane's previous primary, Gemini 3.1 Flash Lite. The primary changed in
+  0deb798e on 11-04.
+- The census and the lane prefilter recompute the fingerprint with the current route, so they say
+  `ready`. The global queue held 19,451 and 19,428 candidates.
+- The tags completion marker hashes the stored fingerprint, so it stays clean. Those runs skipped
+  19,196 episodes as `completion-cache`.
+
+Whether a primary-model change should re-tag the catalog (about 10,700 jobs) or be treated as
+throughput only is an owner decision, set out in #2686.
+
+**Deploy.** Python only. Merging does not deploy the Worker, and nothing needs a production
+action: the blocked markers stay as the audit record, and the producer routes around them.
+
+**What to watch.**
+
+- On the first tag run after merge, `errors` falls from about 204 toward the 37 to 54 of 11-11 and
+  11-12. Those are gate refusals of recipes whose retry budget is `exhausted`, which this PR leaves
+  alone.
+- `queued` rises by up to about 200 jobs, now under `-replan-` child recipes.
+- `tag-llm-oversized` rises by the parts that cannot split further.
+- No new `claim_failed_oversize_jobs` events for `-replan-` recipes. If some appear, the
+  next run splits those parts again.
