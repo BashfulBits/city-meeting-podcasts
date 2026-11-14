@@ -656,6 +656,313 @@ deploy the Worker. Verify: the locator run summary's quality line shows
 genuinely new work. To stop the repair, set `CITYPODS_LOCATOR_METADATA_REPAIR=0` on the locator
 workflow.
 
+### 12.4 Lane submission caps
+
+**Question.** The per-lane caps in `config/site_config.yml` `llm_lanes` (`reserved_write_units`,
+`daily_write_units`, `max_queued_jobs`) came from a planning case of 800 meetings a day. Filled at
+once, they would cost about 2.3 times the 85,000-row pace. This section sizes each lane from what
+one meeting needs, then adds a separately stated allowance for the backlog the lane carries today.
+
+Sources, all read-only:
+
+- Workers Logs and Cloudflare GraphQL to 2026-11-13 ~13:20Z;
+- run events to 23:00Z;
+- the 2026-11-10 catalog snapshot.
+
+The evidence tables are in `review/evidence/2026-11-11-llm-pipeline-throughput.md`, under "Lane
+submission caps (R2-D)".
+
+**Revision (2026-11-13 evening, after owner review).** The first version of this PR sized every
+cap as 1.3 × the largest day submitted since 11-11. Those days were not demand:
+
+- the locator's 743 and 527 were mostly registry replays of the stale-recipe episodes (§12.3);
+- the sibling's 1,146 was the one-off re-plan after the anchor swap.
+
+The caps came out 40 to 400 times the steady state. The owner chose two numbers per lane with
+separate jobs, and that is what follows.
+
+**Demand: new meetings.** Published per day: 4.7 (last 7 days), 6.2 (30 days), 6.0 (90 days),
+7.2 (365 days). Over the last 90 days, daily counts have a median of 5, **p90 of 14** and a maximum
+of 28. By family over 365 days: other 68%, council 22%, P&Z 11%.
+
+**Demand: jobs per meeting.** From the 365-day snapshot of 2,616 meetings:
+
+| Lane | Definition of one job | Share of meetings | Jobs per meeting |
+|---|---|---:|---:|
+| chapter-agenda | one call per meeting that needs generated chapters (no provider chapters, has an agenda) | 212 / 2,616 = 8.1% | 0.081 |
+| chapter-locator | one call per meeting with a completed agenda; corrective resubmits measured at about 0 (errored counts flat at 75–79 across runs, no resubmit loop) | 200 / 2,616 = 7.6% | 0.076 |
+| topic-tags:tagger | 1.18 batches per tagged meeting (measured 11-11/12: 425 jobs for 360 episodes; batches split by size, not chapter count) × the 63% of meetings with LLM tag candidates | 63% | 0.742 |
+| r6-moments | one per eligible meeting (council or P&Z, with a transcript) | 556 / 2,616 = 21% | 0.213 |
+| judge:anchor | 49.5% of meetings have judging subjects (mean 12.5, p90 29). One packet holds ~32 items (the 45k-token ceiling binds before the 60-item maximum). Items include escalation re-asks and the 5% all-tiers sample; the escalation rate is not logged separately, so ≤ 35% extra is assumed. Packets pack within one source and one pass, so a judged meeting costs ~1.2 packets (p90: 2) | 49.5% | 0.594 |
+| judge:sibling | one sibling per subject, ~24.5 items per Nemotron packet. Since §12.6, Qwen3.8 takes the Nemotron-produced entries in packets of at most 10 items, so a judged meeting can need a packet on each slot: ~1.5 packets, both models together | 49.5% | 0.742 |
+| judge:adjudicator | contested subjects (1.3% since the anchor change: 56 contested in 8,376 judgments, two per subject) plus the 3% calibration sample = ~0.5 items per judged meeting, which costs a packet about half the time | 49.5% | 0.247 |
+
+**Reconciling the locator figure.** The first version used 0.7 locator jobs per meeting. That was
+wrong: it counted every meeting with chapters, including the 64% whose chapters come from the
+provider, and those are locator `not_applicable`. The lead's count is right. 200 of 2,613 meetings
+have the locator completed, pending or still to run, and all 200 are meetings with a completed
+agenda (198 completed + 2 pending; their locator status is 93 completed, 27 pending, 78 not yet
+run).
+
+**Supply.** Measured from `bundle_completed`, 02:15Z plus 9.1 h. Route capacity is the most each
+route could take in a day at its limits and measured latency. Lanes share provider concurrency:
+
+- NVIDIA (4) is shared by MiniMax (locator), Nemotron 3.5 Super (sibling, tagger) and Nemotron
+  Ultra (agenda). Since §12.6 and §12.7, Gemma is no longer a sibling and V4.1's NVIDIA leg is
+  stood down (`rpd: 0`).
+- OrcaRouter (2) is shared by V4 Flash (locator, tagger, moments), GLM 5.3 (moments, adjudicator)
+  and hy3 (agenda).
+
+| Lane | successful / attempts | measured pace/day | route capacity/day |
+|---|---|---:|---|
+| sibling | 492 / 554 (89%) | 1,292 (Nemotron alone: 469 ok, ~1,230/day) | Re-derived for the §12.6 roster: Nemotron Super (NVIDIA) ~2,870 if alone, Kilo 200, OpenRouter 200; Qwen3.8 on Groq ~200k tokens/day at ≤ 4,500 tokens per packet = ~44 packets/day (40 outstanding at most). Gemma's ~370 is gone |
+| locator | 345 / 347 (99%) | 906 | MiniMax 1,440 (1 rpm), V4 Flash 800 |
+| agenda | 130 / 149 (87%) | 342 | Gemini 3.1 Flash Lite 2 × 500, Nemotron Ultra (NVIDIA + 2 × 200), hy3 |
+| adjudicator | 29 / 36 (81%) | 76 | Re-derived for the §12.7 roster: GLM 5.3 (OrcaRouter) ~430; V4.1 on the two BeatAPI legs about 60–120 packets/day (§12.7); the NVIDIA V4.1 leg (~144) is at `rpd: 0` |
+| anchor | 28 / 32 (88%) | 74 | 2 × 10,000 nominal; ~74 in practice (problem (b)) |
+| tagger | 1 / 1 | 3 | Gemini 3.5 Flash Lite 1,000, Nemotron Super pool, V4 Flash |
+
+**Row model.** Billed DO rows per day from Cloudflare GraphQL: 11-10 60,299; 11-11 28,940;
+11-12 26,899; 11-13 27,019 by 13:20Z.
+
+The check point is 14,785 rows on the coordinator's counter at 06:22Z. Of those, 8,779 are
+logged `do_row_write_budget` deltas. The other 6,006 are one unlogged write at 03:47Z (problem
+(c)), most likely the judge run's enqueue of ~1,049 jobs. The logged rows break down as:
+
+- claimDispatchWindow 2,174, completeBatch 1,771, enqueueBatch 1,696;
+- cancelBatch 703 (the one-off 240-job JEV cancellation);
+- confirmPurge 570, purgePendingBatch 558, completePartial 534, retireConsumed 463;
+- schemaRetry 209 (deploys);
+- ackResults, recountQueuedJobs and authorizeRetry, about 100 together.
+
+Through 13:19Z there were 1,281 successful calls out of 1,459 final attempts, in 653 bundles. The
+Worker-side execution rows per successful call were:
+
+| Execution phase | Rows per successful call |
+|---|---:|
+| Claim | 4.06 |
+| Completion, including early-release partials | 4.36 |
+| Retire / ack | 1.10 |
+| Cleanup (purge + confirm) | 2.11 |
+| **Total** | **11.6** |
+
+Enqueue costs about 1.5 rows per write unit, which is `ROWS_PER_INGRESS_WRITE_UNIT`.
+
+**What write units are.** A lane's "write units" (`3 + indexed models` per job: 4 for single-model
+lanes, 5 for moments, 6 for agenda, 7 for the tagger) are a pessimistic currency that counts
+enqueue only. Billed rows per admitted job come to about `1.5 × units + 12`: 18 for single-model
+lanes, 19.5 for moments, 21 for agenda and 22.5 for the tagger. A fixed ~1,500 rows a day comes
+from recounts and deploy schema retries. Check: on 11-12, 1,329 submitted jobs cost 26,899 rows,
+or 20.2 per job including the fixed part.
+
+**Rule (option 1).** Each lane gets two numbers with different jobs.
+
+1. **Reservation (`reserved_write_units`): the guaranteed steady-state share.**
+   - Jobs per meeting × 14 new meetings a day (the p90 day) × a headroom factor, rounded up to 10
+     jobs, × units per job.
+   - The headroom factor carries the priority for when rows are short: ×4 for the feeders (agenda,
+     locator), ×3 for tagger and moments, ×2 for the judge lanes.
+   - Headroom also covers days above p90 (the 90-day maximum, 28, is 2 × p90) and retries.
+2. **Ceiling (`daily_write_units`; `max_queued_jobs` = two days of it).**
+   - Reservation + a backlog-drain allowance.
+   - The allowance is the lane's one-time backlog divided by a stated drain target: 2 days for
+     feeders and moments, 21 days for the tagger, 7 days for the judge lanes.
+   - The allowance is at least 100 jobs a day, so a recipe-change re-run can start without a
+     config change. A planned large backfill raises one lane's ceiling for its duration.
+   - The ceiling is bounded by measured route supply.
+
+**One-time backlogs, re-measured at 23:00Z** (after #2676 removed the replayed locator backlog):
+
+- **agenda:** ~50 jobs queued (49–54 at the last runs). The errored count is flat at 51 and is not
+  resubmitted.
+- **locator:** ~200 queued; nothing "ready" since #2676.
+- **tagger:** 10,810 episodes ready × 1.18 = ~12,760 jobs (blocked by #2671).
+- **moments:** 14.
+- **judge:** the planner reports 11,839 subjects ready to plan and ~5,060 already pending at the
+  Worker, about 16,900 not yet judged. That works out per role to:
+  - anchor: 11,839 × 1.35 / 32 = ~500 packets;
+  - sibling: 11,838 / 24.5 = ~480 packets;
+  - adjudicator: 4.3% / 20 per packet = ~25 packets.
+
+The whole catalog holds 145,783 judging subjects (11,120 meetings), which would be ~6,150 anchor
+packets at 32 per packet. The planner's 16,900 says most of them are already judged or not eligible
+(about 3,000 per run are reported `no_independent_anchor`). This was not reconciled subject by
+subject.
+
+| Lane | units/job | steady jobs/day (× 14) | headroom | **reserved** jobs (units) | backlog (jobs) | drain target | allowance | **ceiling** jobs (units) | queue | drain at the ceiling | rows at the ceiling |
+|---|---:|---:|---:|---|---:|---|---:|---|---:|---|---:|
+| chapter-agenda | 6 | 1.1 | ×4 | **10 (60)** | ~50 | 2 d | 100 | **110 (660)** | 220 | < 1 day | 2,310 |
+| chapter-locator | 4 | 1.1 | ×4 | **10 (40)** | ~200 | 2 d | 100 | **110 (440)** | 220 | 2 days | 1,980 |
+| topic-tags:tagger | 7 | 10.4 | ×3 | **40 (280)** | ~12,760 | 21 d | 610 | **650 (4,550)** | 1,300 | ~21 days (once #2671 is fixed) | 14,625 |
+| r6-moments | 5 | 3.0 | ×3 | **10 (50)** | 14 | 2 d | 100 | **110 (550)** | 220 | same day | 2,145 |
+| judge:anchor | 4 | 8.3 | ×2 | **20 (80)** | ~500 | 7 d | 100 | **120 (480)** | 240 | 5 days (~7 at today's 74/day supply, #2672) | 2,160 |
+| judge:sibling | 4 | 10.4 | ×2 | **30 (120)** | ~480 | 7 d | 100 | **130 (520)** | 260 | 5 days | 2,340 |
+| judge:adjudicator | 4 | 3.5 | ×2 | **10 (40)** | ~25 | 7 d | 100 | **110 (440)** | 220 | same day | 1,980 |
+| remedy:p3 | 4 | — | — | 0 (closed research lane, unchanged) | — | — | — | 200 (800) | 800 | — | 3,600 |
+| **total** | | | | **130 (670)** | | | | **1,540 (8,440)** | | | **31,140 + 1,500 fixed = 32,640** |
+
+Before this PR the same columns read: reserved 16,116 units, ceilings 10,097 jobs, 49,600 units and
+~195,600 rows. Every ceiling is within measured supply:
+
+- The tagger's 650 is under Gemini 3.5 Flash Lite's 1,000/day primary.
+- With the §12.6 and §12.7 rosters, the sibling's 130 is far under Nemotron's ~1,230/day.
+- The adjudicator's 110 is under GLM 5.3's ~430/day plus BeatAPI V4.1's 60–120/day.
+
+One sub-share is tight. The Nemotron-produced entries can only go to Qwen3.8, at ~44 packets a day
+(40 outstanding). Those few drain at that rate whatever the lane ceiling.
+
+**The tagger cap has no effect today.** The producer submits 0–1 jobs per run (#2671), so neither
+number changes anything until that is fixed. Both are sized for the fixed producer.
+
+**Worst case: every lane at its ceiling.** The Worker's global guards would stop admission at:
+
+- 6,000 jobs (`MAX_JOBS_PER_UTC_DAY`);
+- 38,400 units (`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`);
+- 90,000 rows. The enqueue, claim and optional row stops all clamp to the account-safe stop,
+  100,000 − 10,000 reserve, in `_enqueueRowStop` and its siblings.
+
+With every lane at its ceiling, admission reaches 1,540 jobs, 8,440 units and ~32,600 rows, so
+**none of those guards is reached**. The day sits at about 38% of the 85,000 pace.
+
+Each lane also gets its reservation, and in fact its whole ceiling. Admission refuses a job when
+`ingressWriteUnits + newlyAdmitted + job > 38,400 − _withheldReservationUnits(otherUnspent)`, where
+`_withheldReservationUnits(u) = ceil(u × (1 − f))` and `f` = `_reservationBorrowFraction`: 0 with
+more than 12 hours left in the UTC day, 0.5 with 6 to 12 hours left, 1 with 6 hours or less.
+
+- The worst case for any lane is `f = 0`, so before 12:00Z.
+- Every other lane is then already at its ceiling, and its unspent reservation is 0. If none has
+  started, the unspent total is at most 670 units.
+- The left side is at most 8,440. The right side is at least 38,400 − 670 = 37,730.
+- So `ingress_write_budget_reserved` cannot refuse any lane below its ceiling at any hour.
+
+**If ceilings are raised later.** At this lane mix (~5.5 units and ~20 rows per job), the 90,000
+row stop is reached first, at about 4,400 jobs a day. The 38,400-unit guard would bind at about
+7,000 jobs and the 6,000-job limit at about 120,000 rows. Neither the row stop nor the job limit
+withholds reservations; only the unit guard does. So once the sum of the ceilings' rows exceeds
+about 90,000 − ~2,600 (the reservations' rows), a lane's reservation is guaranteed in units but not
+in rows. At that point the guard to change is the enqueue row gate, which would need to be
+reservation-aware. Nothing needs changing today.
+
+**The owner's two questions.**
+
+1. *Why did agenda (300) and locator (1,000) differ, when each meeting needs one of each?*
+   - Per meeting they do not differ: 8.1% of meetings need an agenda call and 7.6% a locator call.
+     That is about one of each a day at the p90 day.
+   - The first design took the locator's size from 743 and 527 submission days. Those were registry
+     replays of mislabelled results (§12.3), not new work.
+   - The first design also mis-stated the locator at 0.7 jobs per meeting, by counting meetings
+     whose chapters come from the provider.
+   - The small remaining gap has one cause. The locator also needs the agenda to have accepted
+     items (68 meetings blocked with none) and a timed transcript (3 blocked), while the agenda
+     needs only the agenda document.
+   - Both lanes now reserve 10 jobs and have a 110-job ceiling.
+2. *Why is the anchor so high when one call judges many subjects?*
+   - One anchor call judges about 32 items, and half of new meetings have judging subjects (mean
+     12.5).
+   - The steady need is therefore about one packet per judged meeting. It is not 12.5 / 32 of one,
+     because packets pack within one source and one pass. A p90 meeting (29 subjects plus
+     escalations) needs two.
+   - That is ~8 packets a day at the p90 day, reserved at 20.
+   - The first design's 400 came from the post-swap re-plan day (291 submitted). The new ceiling
+     of 120 drains the measured ~500-packet anchor backlog in about five days. Today the anchor's
+     supply (~74/day) binds before its cap, because of #2672.
+
+**The trade, for the owner.** Ceilings above the reservations are drain speed. Rows are the shared
+currency: about 18 per single-model job and 22.5 per tagger job. With the worst case at ~32,600
+rows there is room to drain faster. For example:
+
+- Tagger at 1,000/day (its primary route's limit): drain ~13 days instead of ~21, for +7,900 rows.
+- Anchor and sibling at 300/day each: drain ~2 days instead of ~5, for +6,300 rows.
+
+Both together would leave the worst case near 47,000 rows, still with every lane getting its whole
+ceiling.
+
+**Judge per-run caps (`run_caps`, `judging.max_outstanding_packets`).** No lane sets
+`max_dispatches_per_run`; it was removed from every lane on 2026-10-19. So `judge_run_caps` starts
+unset, and the only per-run limit is `_apply_backpressure` (`citypods/judging/runner.py`). It
+shrinks each role's cap to the room under `max_outstanding_packets` {anchor 240, sibling 800,
+adjudicator 66}. That limit protects three things the Worker's per-purpose `max_queued_jobs` does
+not:
+
+- **Per-model fairness.** Sibling room is counted per model, so one slow model cannot take the
+  whole lane.
+- **Uncollected results.** The outstanding count includes completed but uncollected packets.
+- **Planning work.** `_item_budget` bounds the transcripts a pass reads.
+
+`_closed_llm_lanes` (`citypods/run.py`) already zeroes a cap when the Worker reports a lane closed.
+**Recommendation: keep the outstanding-only limit, with no code change.**
+
+The new ceilings change how the two limits interact:
+
+- The anchor's queue cap (240) equals its outstanding limit.
+- The adjudicator's queue cap (220) is above its outstanding limit of 66.
+- Sibling's outstanding limit (800 per model, 1,600 together) is far above its new queue cap (260).
+  A pass that tries to fill that room gets admitted up to the lane's daily units (130 packets).
+  The Worker then closes the purpose, and the rest defer without staging a payload.
+- On a day that starts with more than 260 sibling packets already queued, each submission is
+  instead refused `purpose_queue_full`. That refusal does not close the purpose, so each refused
+  packet's payload is staged for nothing.
+
+Follow-up for the judge-lane owner: set `judging.max_outstanding_packets.sibling` to at most 130
+per model. This PR does not touch the `judging` block.
+
+**Adjacent problems found (not fixed here; one issue each).**
+
+**(a) Tag producer submits about 0 jobs with ~10,810 ready (#2671).**
+
+- *Measured:* tag runs on 11-11 and 11-12 queued 251 and 174 jobs. From 11-13 01:21Z, runs queue
+  1, 1, then 0, while `ready` stays at 10,810 and `errored` jumps from 43 to 204. There are no
+  `tag-llm-no-quota` or `tag-llm-stop` deferrals, and the Worker refused nothing (2 tagger jobs
+  ingested by 06:22Z).
+- *Code:* `citypods/stages.py` ~2401–2420. Only one episode per run reaches the dispatch branch.
+- *Not established:* the cause. Suspects are the jump to 204 errored episodes, or a `ready` count
+  that does not match the set the stage visits.
+
+**(b) The Decisions endpoint's "User location is not supported for the API use" HTTP 400 blocks
+the anchor for 6 hours (#2672).**
+
+- *Measured:* both Gemini Decision routes ran 03:52–04:08Z (28 ok, ~1 s each). The 400 at 04:08Z
+  was classified `route_unavailable`; the route was blocked until 10:07Z and blocked again at
+  10:13Z. That leaves ~74 packets/day against 20,000 nominal.
+- *Rule:* `classify.js` ~493–500, `decisions-model-unavailable`. Any message containing "not
+  supported" maps to `route_unavailable`, scope route.
+- *Cooldown:* `coordinator.js` ~8057–8062 blocks the route for `ROUTE_UNAVAILABLE_BLOCK_SECONDS`,
+  default 21,600 s = 6 h.
+- *Not established:* which egress location is refused, and whether a quick retry succeeds.
+
+**(c) A 6,006-row write with no log line (#2673).**
+
+- *Measured:* `rows_written_today` jumped by 6,006 between two consecutive `do_row_write_budget`
+  events at 03:47–03:48Z, while the logged deltas sum to 8,779 of the 14,785 by 06:22Z. The
+  platform GraphQL total agrees with the counter, so these are real billed rows.
+- *Attribution:* by timing, the 02:33Z judge run's ~1,049-job enqueue (~5.7 rows/job).
+- *Code:* the wrapper in `coordinator.js` ~8660–8700 logs only after public `async` prototype
+  methods.
+- *Not established:* the writer, or whether the line was emitted and then dropped.
+
+Also noted:
+
+- `r6-moments` costs 5 units per job. Its config comment said 6, which is corrected here.
+- The locator "stale-recipe backfill" is gone. #2676 (§12.3) showed those ~1,800 episodes needed
+  a metadata repair, not LLM work.
+
+**What to watch on day one** (merging deploys the Worker):
+
+- **Rows.** Billed DO rows per day against 85,000 (GraphQL `durableObjectsPeriodicGroups`, plus
+  the coordinator's `rows_written_today`). Expect them to fall from 27–29k, since admission now
+  stops at the ceilings.
+- **Lane closures.** `purpose_write_budget_exceeded` / `purpose_queue_full` per lane, from the run
+  summaries' ingress lines. The judge lanes and the locator will close daily while they drain. A
+  closure is a deferral, not a failure.
+  - Sibling starts above its 260 queue cap, so expect `purpose_queue_full` refusals until it drains.
+- **Queue depth per lane** (`python -m citypods.cli llm-ingress-status`), which should fall toward
+  two days of ceiling.
+- **Sweep collection** keeping pace with completions.
+
+**To revert:** revert this PR's `site_config.yml` hunk, run `python scripts/compile_llm_lanes.py`,
+and merge. Merging redeploys the Worker with the old caps. To drain faster without reverting, raise
+one lane's `daily_write_units` (and its queue cap) by the trade figures above.
+
 ### 12.6 Judge siblings and free decision models
 
 **Owner brief.** Remove Gemma from the sibling lane. Find a free decision model, from GLiDE 9B

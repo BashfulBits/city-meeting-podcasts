@@ -353,6 +353,141 @@ The 11-12 11:26Z errors were all "terminal retry limit or structural recovery ga
 recipe". The logs do not name episodes, so the overlap between the 95 MiniMax submissions and the
 41 V4.1-served results is not established.
 
+## Lane submission caps (R2-D, 2026-11-13)
+
+Read-only. Sources:
+
+- Workers Logs `do_row_write_budget`, `bundle_completed` and `scheduled_claim`, 00:00–13:20Z;
+- Cloudflare GraphQL `durableObjectsPeriodicGroups` (hourly `rowsWritten`);
+- 62 `run_events` objects since 2026-11-11 (one listing);
+- the cached Worker stats from 06:22Z;
+- the 2026-11-10 catalog snapshot (`episodes_reduced.csv`, 32,173 rows).
+
+The analysis is in review/58 section 12.4.
+
+**Billed DO rows per UTC day (GraphQL).**
+
+| Day | rowsWritten |
+|---|---:|
+| 2026-11-10 | 60,299 |
+| 2026-11-11 | 28,940 |
+| 2026-11-12 | 26,899 |
+| 2026-11-13 (to ~13:20Z) | 27,019 |
+
+**06:22Z check point.** The coordinator counter read 14,785. Logged deltas sum to 8,779. The
+remaining 6,006 is a single unlogged jump at 03:47–03:48Z (#2673).
+
+**Logged deltas by RPC.**
+
+| RPC | rows to 06:22Z | rows to 13:19Z |
+|---|---:|---:|
+| claimDispatchWindow | 2,174 | 5,203 |
+| enqueueBatch | 1,696 | 4,749 (+6,006 unlogged) |
+| completeBatch | 1,771 | 3,989 |
+| completePartial | 534 | 1,595 |
+| purgePendingBatch | 558 | 1,558 |
+| retireConsumed | 463 | 1,306 |
+| confirmPurge | 570 | 1,101 |
+| cancelBatch (240 JEV, one-off) | 703 | 703 |
+| schemaRetry (deploys) | 209 | 308 |
+| ackResults | 69 | 102 |
+| recountQueuedJobs | 28 | 50 |
+| authorizeRetry | 4 | 6 |
+
+**Rows per successful call to 13:19Z.** There were 1,281 successful calls out of 1,459 final
+attempts, in 653 bundles.
+
+| Phase | Rows per successful call |
+|---|---:|
+| Claim | 4.06 |
+| Completion, including partials | 4.36 |
+| Retire / ack | 1.10 |
+| Cleanup | 2.11 |
+| **Total** | **11.6** |
+
+Enqueue costs about 1.5 rows per write unit: about 6 rows per single-model job, ~9 for agenda,
+~10.5 for the tagger and ~7.5 for moments.
+
+**Route supply** (`bundle_completed`, 02:15Z + 9.14 h). Capacity is concurrency ÷ p50 latency,
+bounded by the requests-per-day limit.
+
+| Route | Lane | ok | fail | p50 s | capacity/day |
+|---|---|---:|---:|---:|---:|
+| nvidia nemotron-3.5-super | sibling | 254 | 8 | 120 | ~2,870 (shared NVIDIA 4) |
+| nvidia minimax-m3.1-flash | locator | 203 | 0 | 42 | 1,440 (1 rpm) |
+| orcarouter deepseek-v4-flash | locator | 142 | 2 | 139 | 800 |
+| openrouter nemotron-3.5-super | sibling | 108 | 2 | 116 | 200 |
+| kilo nemotron-3.5-super | sibling | 107 | 2 | 115 | 200 |
+| gemini-3.1-flash-lite ×2 | agenda | 110 | 9 | 8–9 | 2 × 500 |
+| orcarouter glm-5.3-flash | adjudicator | 28 | 7 | 401 | ~430 |
+| nvidia gemma-4-31b | sibling | 21 | 13 | 231 | ~374 |
+| AI Studio gemma-4-31b ×2 | sibling | 2 | 36 | n/a | n/a |
+| gemini-decision-1 ×2 | anchor | 28 | 4 | 1 | 2 × 10,000 nominal (route_unavailable blocks, #2672) |
+| nemotron-3-ultra (3 routes) | agenda | 20 | 10 | 249–303 | NVIDIA pool + 2 × 200 |
+| nvidia deepseek-v4.1-flash | adjudicator | 1 | 0 | 598 | ~144 |
+
+**Jobs per day by lane** (sum of the `queued` job outcomes in run summaries), and backlog at the last run. Superseded as a sizing basis by the per-meeting derivation below: this count can include jobs carried over from earlier runs, and the locator's 11-11/12 days were replays of the stale-recipe episodes (§12.3).
+
+| Lane | 11-11 | 11-12 | 11-13 | last ready / queued |
+|---|---:|---:|---:|---|
+| chapter-agenda | 176 | 68 | 149 | n/a / 61 |
+| chapter-locator | 743 | 527 | 182 | 1,812 / 230 |
+| topic-tags:tagger | 251 | 338 | 2 | 10,810 / 1 |
+| r6-moments | 78 | 5 | 0 | n/a / 14 |
+| judge:anchor | 133 | 175 | 291 | 13,463 subjects |
+| judge:sibling | 193 | 167 | 1,146 | 13,461 subjects |
+| judge:adjudicator | 75 | 49 | 11 | (as above) |
+
+**Arrivals** (catalog snapshot):
+
+- Published per day: 4.7 (7 d), 6.2 (30 d), 6.0 (90 d), 7.2 (365 d).
+- Weekly: median 42, p90 71, maximum 78.
+- 40 sources had arrivals in 90 days.
+- Last 365 days (2,616 episodes):
+  - 64% have provider chapters;
+  - of the 940 without, 23% have an agenda URL;
+  - 69% have a transcript.
+- Per episode: chapters median 5 / p90 20; judging subjects median 8 / p90 29 / mean 12.5; tag
+  candidates median 7 / p90 32.
+- The whole catalog holds 145,783 judging subjects across 11,120 episodes.
+
+**Per-meeting shares (revision, 365-day snapshot of 2,616 meetings).**
+
+| Measure | Count | Share |
+|---|---:|---:|
+| No provider chapters, has an agenda URL | 212 | 8.1% |
+| Agenda status set: 198 completed + 2 pending; the rest `not_applicable` 1,371, unset 1,045 | 200 | 7.6% |
+| Locator status on those 200: 93 completed, 27 pending, 78 unset; `not_applicable` 1,371 elsewhere | 200 | 7.6% |
+| Chapters > 0 | 1,593 | 61% |
+| LLM tag candidates | 1,645 | 63% |
+| Council or P&Z | 849 | 32.5% |
+| Council or P&Z with a transcript | 556 | 21% |
+| With judging subjects (16,136 subjects, mean 12.5) | 1,295 | 49.5% |
+
+Daily arrivals over the last 90 days: median 5, p90 14, maximum 28, mean 6.0.
+
+**Tagger batches per episode.** The 11-11 15:17Z and 11-12 01:28Z runs queued 251 + 174 = 425 jobs
+for 194 + 166 = 360 dispatched episodes, or 1.18 per episode.
+
+**Judge runs since 11-11** (run-event quality counts):
+
+| Window | items submitted | judgments appended | contested | calibration | packets anchor / sibling / adjudicator |
+|---|---:|---:|---:|---:|---|
+| 11-11 02:54Z to 11-13 04:57Z (9 runs) | 53,074 | 7,064 | 2,444 | 189 | 587 / 1,163 / 130 |
+| 11-13 07:15Z to 10:57Z (3 runs, Gemini anchor) | 8,973 | 8,376 | 56 | 6 | 12 / 343 / 5 |
+
+On the 11-13 03:55Z re-plan, 33,462 items went into 1,040 packets (anchor 240, sibling 800), about
+32 per packet. Since the anchor change, contested subjects are 56 / (8,376 / 2) = 1.3%.
+
+**Backlogs at the last runs before 23:00Z.**
+
+- agenda: 49–54 queued; errored flat at 51.
+- locator: 200–222 queued; nothing "ready" since #2676 (19:26Z and 21:20Z runs).
+- tagger: 10,810 ready.
+- moments: 14 queued.
+- judge planner at 22:59Z: 11,839 subjects ready to plan, 5,060 pending at the Worker, backlog
+  16,899.
+
 ## Judge lanes: siblings, decision models, adjudicator (2026-11-13, review/58 12.6 to 12.8)
 
 These are read-only production sources: Workers Logs `bundle_completed` events from 2026-11-12 04Z
