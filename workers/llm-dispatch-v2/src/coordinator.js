@@ -9,6 +9,7 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import { withTuning } from "./tuning.js";
+import { GOOGLE_LOCATION_RULE_ID } from "./classify.js";
 import {
   PARTIAL_ROWS_WORST, SETTLED_JOB_IDS_MAX, earlyReleaseConfig, partialRefusal,
 } from "./early_release.js";
@@ -8156,8 +8157,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
               Number(ledger.blocked_until) > now;
             const streak = (ledger.upstream_capacity_streak || 0) + (alreadyCooling ? 0 : 1);
             const failedRoute = this._dispatchLimits().routes_by_id?.[job.lease_route_id];
+            // A location refusal (#2672, classify.js) follows the invocation's Cloudflare location,
+            // not the route: the same seconds-scale Google cooldown, never the saturated ladder.
+            // Consecutive refusals still climb the route health ladder (capacity class) below.
             const googleAvailability = failedRoute?.provider === "gemini" &&
-              [500, 503].includes(result.provider_status_code);
+              ([500, 503].includes(result.provider_status_code) ||
+                result.rule_id === GOOGLE_LOCATION_RULE_ID);
             const nextBlock = googleAvailability
               ? this._googleGemmaAvailabilityBlockedUntil(streak, now, result.retry_after_seconds)
               : this._upstreamCapacityBlockedUntil(

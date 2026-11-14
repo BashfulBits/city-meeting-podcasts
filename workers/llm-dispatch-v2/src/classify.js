@@ -426,6 +426,23 @@ export const DECISIONS_SAFETY_CODES = Object.freeze([
   "content_blocked",
 ]);
 
+/**
+ * Google's refusal of one request by where it reached Google from (issue #2672):
+ *   400 {"error":{"message":"User location is not supported for the API use.","code":"invalid_request"}}
+ * on /v1beta/decisions, and the same message with status FAILED_PRECONDITION on the OpenAI-compatible
+ * chat path. On 2026-11-13 every Google request the AI Gateway logged from its HKG colo (14) got it
+ * and no request from any other colo did: it follows the Cloudflare location the scheduled
+ * invocation ran in, not the key or the model. The next invocation usually runs elsewhere, so it is
+ * upstream capacity on a short Google cooldown (coordinator.js), never a withdrawn model's six-hour
+ * route_unavailable block nor this job's request_defect.
+ */
+export const GOOGLE_LOCATION_RULE_ID = "google-location-unsupported";
+
+export function isGoogleLocationRefusal(status, body, route) {
+  return status === 400 && route?.provider === "gemini" &&
+    providerFailureMessage(body).includes("user location is not supported");
+}
+
 function decisionsErrorCodes(body) {
   const codes = [];
   const push = (value) => {
@@ -447,11 +464,16 @@ function decisionsErrorCodes(body) {
  * A Gemini Decision 1 HTTP 400 read by its body, or null to fall through to the generic rules.
  * Safety blocks -> request_defect (this job's content; terminal). Size limits -> route_input_limit.
  * Quotas -> own_tpm / own_rpd / own_rpm. A bad key -> route_unavailable (account). A model the key
- * cannot use -> route_unavailable (route). Retry-after is added by the caller.
+ * cannot use -> route_unavailable (route). A refusal of the request's location (#2672) ->
+ * upstream_capacity (route, short cooldown). Retry-after is added by the caller.
  */
 export function classifyDecisions400(body) {
   const codes = decisionsErrorCodes(body);
   const msg = providerFailureMessage(body);
+  // Checked before the "not supported" model rule below, which it would otherwise fall into.
+  if (isGoogleLocationRefusal(400, body, { provider: "gemini" })) {
+    return { failure_class: "upstream_capacity", rule_id: GOOGLE_LOCATION_RULE_ID, scope: "route" };
+  }
   if (codes.some((code) => DECISIONS_SAFETY_CODES.includes(code))) {
     return { failure_class: "request_defect", rule_id: "decisions-safety-block", scope: "route" };
   }
@@ -594,6 +616,18 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
   // 4xx fallback below), which would fail every queued job on a route-wide problem.
   // gateway.js reports a quota 400 from this endpoint as 429 (api_shapes normalizeStatus), so the
   // same reading applies to both statuses; a 429 it cannot read walks the signatures below.
+  // 2a. Google refused the request for the location it arrived from (issue #2672): any Gemini
+  // route, either API shape. Before 2b (whose "not supported" rule reads it as a withdrawn model)
+  // and before the generic 4xx fallback (which failed the job as request_defect).
+  if (isGoogleLocationRefusal(status, body, route)) {
+    return {
+      failure_class: "upstream_capacity",
+      rule_id: GOOGLE_LOCATION_RULE_ID,
+      retry_after_seconds: retryAfterSeconds,
+      scope: "route",
+    };
+  }
+
   if ((status === 400 || status === 429) && route?.api_shape === "decisions") {
     const decision = classifyDecisions400(body);
     if (decision) return { ...decision, retry_after_seconds: retryAfterSeconds };

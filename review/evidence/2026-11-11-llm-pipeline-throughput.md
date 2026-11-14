@@ -539,3 +539,41 @@ through. No request or response body is committed.
   - Every replay call was accepted.
   - Response headers carried only `X-Generation-Id` and `X-Provider-Name`, with no rate-limit
     headers.
+
+## Google location refusals and the anchor block (2026-11-13 to 11-14, review/58 12.10, #2672)
+
+Sources: AI Gateway logs for provider `google-ai-studio`, 2026-11-13 00:00Z to 11-14 08:58Z
+(636 requests, listed in 6-hour windows and deduplicated by log ID), with the response bodies of the
+400s; Workers Logs `bundle_completed` and `route_health` for 2026-11-13.
+
+**Google 400s by Gateway colo.**
+
+| Gateway colo | Requests | HTTP 400 | Other statuses |
+|---|---:|---:|---:|
+| HKG | 19 | 19 | 0 |
+| All other colos (27) | 617 | 0 | 617 |
+
+All 19 bodies say "User location is not supported for the API use.". On `/v1beta/decisions` the
+body is `{"error":{"message":…,"code":"invalid_request"}}`. On the chat path it is a one-element
+array with `"status":"FAILED_PRECONDITION"`. The decisions 400s took about 15.5 s each, against
+about 0.7 s for a 200.
+
+**What the Worker did with them (2026-11-13).**
+
+| Route kind | Refusals | Classified | Effect |
+|---|---:|---|---|
+| `gemini_decision_1_primary/_secondary` | 8 (4 times, both keys in the same second) | `route_unavailable` (`decisions-model-unavailable`) | Both routes blocked 6 h each time |
+| Gemma 4 31B, Gemini 3.1 Flash Lite (chat) | 6 | `request_defect` | Job failed |
+
+**Anchor activity windows (Decisions calls through the Gateway).**
+
+| Window (UTC) | Calls | 200 | Ended by |
+|---|---:|---:|---|
+| 11-13 03:48 to 04:04 | 24 | 22 | HKG 400 at 04:04:06 |
+| 11-13 10:05 to 10:11 | 8 | 6 | HKG 400 at 10:11:07 |
+| 11-13 16:12 to 16:21 | 14 | 12 | HKG 400 at 16:21:08 |
+| 11-13 22:22 to 23:16 | 64 | 62 | HKG 400 at 23:16:07 |
+| 11-14 05:17 to 05:21 | 6 | 4 | HKG 400 at 05:21:07 |
+
+Each window opens about 6 h after the previous refusal, when the block lapses. In about 33 h the
+anchor made 106 successful calls, against a nominal 2 x 10,000 a day.
