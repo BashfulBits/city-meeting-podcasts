@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
+import { GOOGLE_LOCATION_RULE_ID } from "../src/classify.js";
 import TUNING from "../src/dispatch_tuning.json" with { type: "json" };
 import {
   ROUTE_HEALTH_DEFAULTS, parseRouteHealth, recordRouteHealthFailure, recordRouteHealthSuccess,
@@ -428,4 +429,62 @@ test("row accounting: a healthy success costs nothing extra; an escalation one l
   assert.equal(await measure("1", SUCCESS, true), await measure("0", SUCCESS, true));
   assert.equal(await measure("1", TIMEOUT, true) - await measure("0", TIMEOUT, true), 0,
     "packed: an escalation rides the accounting row too");
+});
+
+// ---- Google location refusals (issue #2672) -----------------------------------------------------
+
+const GOOGLE_CATALOG = {
+  model_aliases: {},
+  model_routes_map: { "gemini/gemini-decision-1": ["gdec-a"] },
+  routes_by_id: {
+    "gdec-a": {
+      model: "gemini/gemini-decision-1", provider: "gemini", upstream_model: "gemini-decision-1",
+      api_shape: "decisions", account_id: "project_primary", rpm: 200, rpd: 10000, free: true,
+      input_context_limit: 262144, output_context_limit: 1,
+    },
+  },
+};
+// What attemptProviderCall reports for the exact bodies (decisions_shape.test.js).
+const LOCATION = {
+  outcome: "retryable_error", failure_class: "upstream_capacity", provider_status_code: 400,
+  rule_id: GOOGLE_LOCATION_RULE_ID, scope: "route",
+};
+const MODEL_GONE = {
+  outcome: "retryable_error", failure_class: "route_unavailable", provider_status_code: 400,
+  rule_id: "decisions-model-unavailable", scope: "route",
+};
+const SIX_HOURS = 21_600_000;
+
+test("a location refusal cools its route for seconds; repeats climb the short ladder, never 6 h", async t => {
+  const f = make(t, { DISPATCH_LIMITS_OVERRIDE: GOOGLE_CATALOG });
+  await f.coordinator.enqueueBatch([job("g1", "gemini/gemini-decision-1")]);
+  await claimAndSettle(f, LOCATION);
+  assert.equal(jobState(f.sql, "g1"), "queued", "the job is retried, not failed");
+  assert.ok(blockedUntil(f.sql, "gdec-a") <= f.clock.value + 5000, "seconds, not the 6 h block");
+  assert.deepEqual([health(f.sql)["gdec-a"].capacity, health(f.sql)["gdec-a"].rung], [1, 0]);
+
+  // Consecutive refusals with no success between them: the ladder's 60 s, then 300 s, then 900 s.
+  for (const [rung, seconds] of [[1, 60], [2, 300], [3, 900]]) {
+    f.clock.value = Math.max(f.clock.value, blockedUntil(f.sql, "gdec-a") ?? 0) + 1000;
+    const plan = await claimAndSettle(f, LOCATION);
+    assert.equal(plan.jobs.length, 1, `rung ${rung}: the route is probed again`);
+    const entry = health(f.sql)["gdec-a"];
+    assert.deepEqual([entry.rung, entry.class, entry.until], [rung, "capacity", f.clock.value + seconds * 1000]);
+    assert.ok(blockedUntil(f.sql, "gdec-a") < f.clock.value + SIX_HOURS);
+    assert.equal(jobState(f.sql, "g1"), "queued");
+  }
+
+  // The next invocation is served: the ladder and the cooldown clear.
+  f.clock.value = blockedUntil(f.sql, "gdec-a") + 1000;
+  await claimAndSettle(f, SUCCESS);
+  assert.equal(jobState(f.sql, "g1"), "completed");
+  assert.deepEqual(health(f.sql), {});
+});
+
+test("a genuine model-unavailable 400 on the same route still stands it down for 6 h", async t => {
+  const f = make(t, { DISPATCH_LIMITS_OVERRIDE: GOOGLE_CATALOG });
+  await f.coordinator.enqueueBatch([job("g2", "gemini/gemini-decision-1")]);
+  await claimAndSettle(f, MODEL_GONE);
+  assert.equal(jobState(f.sql, "g2"), "queued");
+  assert.ok(blockedUntil(f.sql, "gdec-a") >= f.clock.value + SIX_HOURS);
 });

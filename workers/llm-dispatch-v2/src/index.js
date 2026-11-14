@@ -24,7 +24,7 @@ import { apiShapeFor } from "./api_shapes.js";
 import {
   gatewayNetworkFacts, networkProbeAllowed, observeBundleNetwork,
 } from "./network_diagnostics.js";
-import { classifyProviderFailure, googleQuotaDiagnostics } from "./classify.js";
+import { classifyProviderFailure, GOOGLE_LOCATION_RULE_ID, googleQuotaDiagnostics } from "./classify.js";
 import { runProducerTriggers } from "./producer_trigger.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
@@ -1209,6 +1209,9 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
         // the coordinator requeues it (classify.js rule 8).
         cls.failure_class === "route_unavailable" ||
         (response.status === 404 && cls.failure_class === "upstream_capacity") ||
+        // Google refused this request for where it arrived from (issue #2672): not the job's
+        // fault, and a later invocation from another location is served.
+        cls.rule_id === GOOGLE_LOCATION_RULE_ID ||
         upstreamCapacityFailure(response.status, response.body)
           ? "retryable_error"
           : "terminal_error"
