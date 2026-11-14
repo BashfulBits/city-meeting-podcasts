@@ -1160,3 +1160,61 @@ issue [#2682](https://github.com/BashfulBits/city-meeting-podcasts/issues/2682).
   `route_unavailable`.
 - `route_health` escalations for these routes stay on rungs 1 to 2.
 - Anchor packets per day: about 100 calls in the 33 h measured, against 2 x 10,000 rpd.
+
+### 12.11 Lane caps that scale with meetings per day
+
+**Question.** The owner asked that the §12.4 caps adjust on their own as cities are added and
+meetings per day grow. In §12.4 the caps were hand-derived numbers in `config/site_config.yml`.
+
+**Change.** The seven production lanes no longer state `reserved_write_units`,
+`daily_write_units` or `max_queued_jobs`. Each carries the §12.4 inputs as a `sizing` entry:
+`jobs_per_meeting`, `headroom`, `backlog_jobs`, `drain_days`. A shared `llm_lane_sizing` block
+holds the one tunable, `meetings_per_day_p90: 14`, and the constants: `backlog_floor_jobs` 100,
+`queue_days` 2, `round_jobs_to` 10, and the row model (1.5 rows per unit, 12 execution rows per
+job, 1,500 fixed rows a day). `citypods/compute/llm_lanes.py` computes the caps with the §12.4
+rule:
+
+- reserved jobs = `jobs_per_meeting` × meetings/day × `headroom`, rounded up to 10;
+- ceiling jobs = reserved + max(100, `backlog_jobs` / `drain_days` rounded up to 10);
+- `max_queued_jobs` = 2 × ceiling; units = jobs × the lane's units per job.
+
+The client (`load_lanes`) and `scripts/compile_llm_lanes.py` share this code, so the producer and
+the Worker see the same caps. `remedy:p3` keeps its stated caps. With today's inputs the compiled
+`ingress_reservations.json` is byte-for-byte unchanged (`tests/test_lane_sizing.py` pins every
+lane's §12.4 numbers).
+
+**How the figure follows the catalog.** The episode catalog that gave the p90 lives in B2, not in
+the repository, so the compiler cannot count meetings. Nothing the producers already send the
+Worker counts new meetings either, so a runtime scale in the Worker would need new producer
+reports and new coordinator admission code. What the repository does hold is the feed registry.
+Adding a city adds its feed configs to `config/feeds`. So:
+
+- `basis_active_feeds: 155` records how many feeds were active (`lifecycle.status` active) when
+  the p90 of 14 was measured.
+- The compiler counts active feeds now. The effective figure is 14 × active / 155, never below 14.
+- The configured p90 is therefore a floor. Retiring or pausing feeds never lowers a cap.
+
+This is a proxy, not a measurement: it assumes a new feed publishes about as often as today's
+average active feed. Feeds differ a lot (a combined "all boards" feed against a TIF board), so a
+large city can be under- or over-estimated. When the p90 is re-measured, update both numbers
+together.
+
+**What scales.** Only the reservation follows meetings per day. The backlog allowance is a
+one-time drain and stays fixed. At 2 × today's feeds (28 meetings/day) the reservations go from
+130 to 220 jobs: tagger 70, sibling 50, anchor 40, moments and adjudicator 20, agenda and locator
+still 10 (the rounding to 10 absorbs the small lanes). Ceilings rise by the same amounts.
+
+**Budget check.** The compiler now fails, with the numbers, if every lane at its ceiling at once
+would exceed `MAX_JOBS_PER_UTC_DAY`, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` or
+`EARLY_SLOT_RELEASE_ROW_PACE` (85,000 rows) in `config/dispatch_tuning.yml`. That is the §12.4
+guarantee that every lane gets its whole ceiling. It does not clamp: past the budget the fix is a
+decision (lower a headroom or a backlog, or raise a budget). Today the row pace binds first, at
+about 410 meetings a day (29 × today). The compile prints the effective meetings/day, the active
+feed count and the all-ceilings totals.
+
+**Workflow.** Because the caps round to 10 jobs, most feed additions change nothing compiled. One
+that crosses a step changes `ingress_reservations.json`. `test_compiled_map_matches_the_yaml` then
+fails on that PR until `python scripts/compile_llm_lanes.py` is run and the JSON committed. The
+JSON is under `workers/llm-dispatch-v2/src/**`, so merging it deploys the Worker with the new caps.
+The first steps, in active feeds (155 today): moments at 174, the anchor at 187, the tagger at
+199, the sibling at 224 and the adjudicator at 225.

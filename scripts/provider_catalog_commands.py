@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# Active feeds scale the sized lanes' caps (review/58 section 12.11).
+FEEDS_DIR = ROOT / "config" / "feeds"
 RECONCILE_WORKFLOW_PATH = ".github/workflows/provider-catalog-reconcile.yml"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -22,7 +24,7 @@ if str(ROOT) not in sys.path:
 import requests  # noqa: E402
 
 from citypods.compute.llm_dispatch_pause import DispatchPauseError  # noqa: E402
-from citypods.compute.llm_lanes import parse_lanes  # noqa: E402
+from citypods.compute.llm_lanes import parse_site_lanes  # noqa: E402
 from citypods.github_permissions import (  # noqa: E402
     RepositoryPermissionError,
     require_repository_write,
@@ -163,7 +165,7 @@ def prepare(body, base_commit, proposal_kind=None):
     decisions = tuple(d for d in decisions if d.action not in {"increase_rate", "context"})
     texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
     limits = load_config(texts[SOURCE_PATHS[0]])
-    lanes = parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"])
+    lanes = parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), feeds_dir=FEEDS_DIR)
     config = ApplyConfig(limits, lanes, texts, base_commit, datetime.now(UTC).date())
     selected = {d.key for d in decisions if d.action == "add"}
     # Ignores spend no provider quota. Already-configured selections require no new-route proof.
@@ -236,7 +238,7 @@ def prepare_limits(base_commit, *, selected=(), automatic=False):
     now = datetime.now(UTC)
     config = ApplyConfig(
         limits,
-        parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"]),
+        parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), feeds_dir=FEEDS_DIR),
         texts,
         base_commit,
         now.date(),
@@ -281,7 +283,7 @@ def prepare_context(base_commit, *, selected=()):
         raise ValueError("context history unavailable; no cap changes prepared")
     config = ApplyConfig(
         limits,
-        parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"]),
+        parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), feeds_dir=FEEDS_DIR),
         texts,
         base_commit,
         now.date(),
@@ -304,7 +306,7 @@ def prepare_retirements(base_commit):
     texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
     limits = load_config(texts[SOURCE_PATHS[0]])
     # Rebuilds must use this main snapshot, rather than the process-level lane cache.
-    lanes = parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"])
+    lanes = parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), feeds_dir=FEEDS_DIR)
     config = ApplyConfig(limits, lanes, texts, base_commit, datetime.now(UTC).date())
     control = _control(False)
     if isinstance(control, NoDispatchControl):

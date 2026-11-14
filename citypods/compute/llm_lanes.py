@@ -24,6 +24,7 @@ is the point -- see the block comment in ``config/site_config.yml``.
 
 from __future__ import annotations
 
+import math
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -187,6 +188,169 @@ def _coerce_bool(raw: Any, *, purpose: str, field: str) -> bool:
     return raw
 
 
+def _coerce_number(raw: Any, *, where: str, positive: bool = False) -> float:
+    """Read one non-negative (or, with ``positive``, strictly positive) real number."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw != raw:
+        raise ValueError(f"{where} must be a number, got {raw!r}")
+    if raw < 0 or (positive and raw == 0):
+        kind = "positive" if positive else "non-negative"
+        raise ValueError(f"{where} must be {kind}, got {raw}")
+    return float(raw)
+
+
+# ---------------------------------------------------------------------------------------------
+# Lane caps derived from meetings per day (review/58 section 12.11).
+#
+# A lane with a ``sizing`` entry does not state its three caps; they are computed from its demand
+# per meeting and ONE shared input, new meetings per day, so adding cities raises them without a
+# hand edit. The shared block is ``llm_lane_sizing`` in the same site config.
+# ---------------------------------------------------------------------------------------------
+
+LANE_SIZING_FIELDS = frozenset({"jobs_per_meeting", "headroom", "backlog_jobs", "drain_days"})
+_SHARED_SIZING_FIELDS = frozenset(
+    {
+        "meetings_per_day_p90",
+        "basis_active_feeds",
+        "backlog_floor_jobs",
+        "queue_days",
+        "round_jobs_to",
+        "rows_per_write_unit",
+        "execution_rows_per_job",
+        "fixed_rows_per_day",
+    }
+)
+_CAP_FIELDS = ("reserved_write_units", "daily_write_units", "max_queued_jobs")
+
+
+@dataclass(frozen=True)
+class LaneSizing:
+    """The shared inputs that turn each sized lane's per-meeting demand into caps.
+
+    ``meetings_per_day_p90`` is the measured p90 of daily new meetings when the catalog had
+    ``basis_active_feeds`` active feed configs. ``active_feeds`` is the count in the committed
+    ``config/feeds`` today. The effective figure scales the measured p90 by the growth in active
+    feeds and never falls below it, so the configured number is a floor.
+    """
+
+    meetings_per_day_p90: float
+    basis_active_feeds: int
+    backlog_floor_jobs: int
+    queue_days: int
+    round_jobs_to: int
+    rows_per_write_unit: float
+    execution_rows_per_job: float
+    fixed_rows_per_day: int
+    active_feeds: int = 0
+
+    @property
+    def meetings_per_day(self) -> float:
+        """Effective new meetings per day: the measured p90, scaled up with active feeds."""
+        if self.active_feeds <= self.basis_active_feeds:
+            return self.meetings_per_day_p90
+        return self.meetings_per_day_p90 * self.active_feeds / self.basis_active_feeds
+
+    def rows_per_job(self, units_per_job: int) -> float:
+        """Estimated billed DO rows per admitted job (enqueue rows plus execution rows)."""
+        return self.rows_per_write_unit * units_per_job + self.execution_rows_per_job
+
+
+def parse_lane_sizing(raw: Any, *, active_feeds: int = 0) -> LaneSizing | None:
+    """Validate the ``llm_lane_sizing`` block; ``None`` when the site config has none."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ValueError("llm_lane_sizing must be a mapping")
+    keys = set(raw)
+    if keys != _SHARED_SIZING_FIELDS:
+        raise ValueError(
+            "llm_lane_sizing must define exactly "
+            f"{sorted(_SHARED_SIZING_FIELDS)}; missing {sorted(_SHARED_SIZING_FIELDS - keys)}, "
+            f"unknown {sorted(keys - _SHARED_SIZING_FIELDS)}"
+        )
+
+    def whole(field: str, *, positive: bool) -> int:
+        value = _coerce_int(raw[field], purpose="llm_lane_sizing", field=field)
+        if positive and value == 0:
+            raise ValueError(f"llm_lane_sizing.{field} must be positive")
+        return value
+
+    return LaneSizing(
+        meetings_per_day_p90=_coerce_number(
+            raw["meetings_per_day_p90"], where="llm_lane_sizing.meetings_per_day_p90", positive=True
+        ),
+        basis_active_feeds=whole("basis_active_feeds", positive=True),
+        backlog_floor_jobs=whole("backlog_floor_jobs", positive=False),
+        queue_days=whole("queue_days", positive=True),
+        round_jobs_to=whole("round_jobs_to", positive=True),
+        rows_per_write_unit=_coerce_number(
+            raw["rows_per_write_unit"], where="llm_lane_sizing.rows_per_write_unit"
+        ),
+        execution_rows_per_job=_coerce_number(
+            raw["execution_rows_per_job"], where="llm_lane_sizing.execution_rows_per_job"
+        ),
+        fixed_rows_per_day=whole("fixed_rows_per_day", positive=False),
+        active_feeds=active_feeds,
+    )
+
+
+def count_active_feeds(feeds_dir: str | Path) -> int:
+    """Feed configs in ``feeds_dir`` whose ``lifecycle.status`` is ``active`` (the default).
+
+    Paused, dormant and retired feeds publish no or few new meetings, so they do not count.
+    Files whose name starts with ``_`` are templates. A missing directory counts zero, which
+    leaves the effective meetings per day at its configured floor.
+    """
+    directory = Path(feeds_dir)
+    if not directory.is_dir():
+        return 0
+    import yaml
+
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    count = 0
+    for path in sorted(directory.glob("*.yml")):
+        if path.name.startswith("_"):
+            continue
+        feed = yaml.load(path.read_text(encoding="utf-8"), Loader=loader) or {}
+        lifecycle = feed.get("lifecycle") if isinstance(feed, Mapping) else None
+        status = lifecycle.get("status") if isinstance(lifecycle, Mapping) else None
+        if status in (None, "active"):
+            count += 1
+    return count
+
+
+def _round_up(value: float, step: int) -> int:
+    # Rounded to 9 places first so float noise (e.g. 30.000000000004) does not add a whole step.
+    return step * math.ceil(round(value / step, 9))
+
+
+def sized_caps(
+    entry: Mapping[str, Any], sizing: LaneSizing, *, units_per_job: int, purpose: str
+) -> tuple[int, int, int]:
+    """``(reserved_write_units, daily_write_units, max_queued_jobs)`` for one sized lane.
+
+    reservation jobs = jobs_per_meeting x meetings/day x headroom, rounded up to round_jobs_to;
+    ceiling jobs = reservation + max(backlog_floor_jobs, backlog_jobs / drain_days rounded up);
+    queue = queue_days x ceiling jobs. Units are jobs x the lane's ingress units per job.
+    """
+    where = f"llm_lanes[{purpose!r}].sizing"
+    if not isinstance(entry, Mapping) or set(entry) != LANE_SIZING_FIELDS:
+        raise ValueError(f"{where} must define exactly {sorted(LANE_SIZING_FIELDS)}")
+    jobs_per_meeting = _coerce_number(entry["jobs_per_meeting"], where=f"{where}.jobs_per_meeting")
+    headroom = _coerce_number(entry["headroom"], where=f"{where}.headroom", positive=True)
+    backlog_jobs = _coerce_number(entry["backlog_jobs"], where=f"{where}.backlog_jobs")
+    drain_days = _coerce_number(entry["drain_days"], where=f"{where}.drain_days", positive=True)
+
+    step = sizing.round_jobs_to
+    reserved_jobs = _round_up(jobs_per_meeting * sizing.meetings_per_day * headroom, step)
+    allowance = max(sizing.backlog_floor_jobs, _round_up(backlog_jobs / drain_days, step))
+    ceiling_jobs = reserved_jobs + allowance
+    return (
+        reserved_jobs * units_per_job,
+        ceiling_jobs * units_per_job,
+        sizing.queue_days * ceiling_jobs,
+    )
+
+
 REASONING_LEVELS = frozenset({"off", "low"})
 
 
@@ -292,11 +456,12 @@ def parse_families(raw: Any, lanes: Mapping[str, LaneConfig]) -> dict[str, str]:
     return families
 
 
-def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
+def parse_lanes(raw_block: Any, *, sizing: LaneSizing | None = None) -> dict[str, LaneConfig]:
     """Validate and normalize a raw ``llm_lanes`` mapping.
 
     Split from :func:`load_lanes` so the compiler and the tests can validate a block without
-    touching the filesystem or the module-level cache.
+    touching the filesystem or the module-level cache. ``sizing`` is required only when a lane
+    has a ``sizing`` entry; :func:`parse_site_lanes` resolves it from a whole site config.
     """
     if not isinstance(raw_block, Mapping) or not raw_block:
         raise ValueError("site config must define a non-empty 'llm_lanes' block")
@@ -330,22 +495,50 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
         if len(set(models)) != len(models):
             raise ValueError(f"llm_lanes[{purpose!r}].models contains duplicates: {models}")
 
-        reserved = _coerce_int(
-            entry.get("reserved_write_units", 0), purpose=purpose, field="reserved_write_units"
-        )
-        daily = _coerce_int(
-            entry.get("daily_write_units"), purpose=purpose, field="daily_write_units"
-        )
-        if reserved > daily:
-            raise ValueError(
-                f"llm_lanes[{purpose!r}] reserves {reserved} write units but caps its day at "
-                f"{daily}; a reservation it can never spend strands capacity from every other lane"
-            )
         shape = entry.get("dispatch_shape", "pooled")
         if shape not in {"pooled", "per_model"}:
             raise ValueError(
                 f"llm_lanes[{purpose!r}].dispatch_shape must be 'pooled' or 'per_model', "
                 f"got {shape!r}"
+            )
+        max_queued_jobs = (
+            _coerce_int(entry.get("max_queued_jobs"), purpose=purpose, field="max_queued_jobs")
+            if entry.get("max_queued_jobs") is not None
+            else None
+        )
+        if "sizing" in entry:
+            # review/58 section 12.11: the caps are derived, so stating them too would leave two
+            # sources for one number.
+            stated = [field for field in _CAP_FIELDS if field in entry]
+            if stated:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}] has a sizing entry and also states {stated}; "
+                    "a sized lane's caps are computed, so remove the stated values"
+                )
+            if sizing is None:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}] has a sizing entry but the site config has no "
+                    "llm_lane_sizing block (meetings per day) to size it with"
+                )
+            reserved, daily, max_queued_jobs = sized_caps(
+                entry["sizing"],
+                sizing,
+                units_per_job=3 + (1 if shape == "per_model" else len(models)),
+                purpose=purpose,
+            )
+        else:
+            reserved = _coerce_int(
+                entry.get("reserved_write_units", 0),
+                purpose=purpose,
+                field="reserved_write_units",
+            )
+            daily = _coerce_int(
+                entry.get("daily_write_units"), purpose=purpose, field="daily_write_units"
+            )
+        if reserved > daily:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}] reserves {reserved} write units but caps its day at "
+                f"{daily}; a reservation it can never spend strands capacity from every other lane"
             )
 
         raw_backup_models = entry.get("backup_models")
@@ -444,15 +637,7 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 if entry.get("max_dispatches_per_run") is not None
                 else None
             ),
-            max_queued_jobs=(
-                _coerce_int(
-                    entry.get("max_queued_jobs"),
-                    purpose=purpose,
-                    field="max_queued_jobs",
-                )
-                if entry.get("max_queued_jobs") is not None
-                else None
-            ),
+            max_queued_jobs=max_queued_jobs,
             reserved_write_units=reserved,
             daily_write_units=daily,
             dispatch_shape=shape,
@@ -489,6 +674,31 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             )
         lanes[purpose] = lane
     return lanes
+
+
+def feeds_dir_for(site_config_path: str | Path) -> Path:
+    """The feed-config directory that sits beside a site config (``config/feeds``)."""
+    return Path(site_config_path).parent / "feeds"
+
+
+def resolve_lane_sizing(raw_site: Mapping[str, Any], *, feeds_dir: str | Path) -> LaneSizing | None:
+    """The site config's ``llm_lane_sizing`` with today's active feed count filled in."""
+    raw = raw_site.get("llm_lane_sizing")
+    if raw is None:
+        return None
+    return parse_lane_sizing(raw, active_feeds=count_active_feeds(feeds_dir))
+
+
+def parse_site_lanes(
+    raw_site: Mapping[str, Any], *, feeds_dir: str | Path
+) -> dict[str, LaneConfig]:
+    """Parse ``llm_lanes`` from a whole site config, sizing lanes from ``llm_lane_sizing``.
+
+    ``feeds_dir`` is the committed feed registry whose active count scales meetings per day.
+    """
+    return parse_lanes(
+        raw_site.get("llm_lanes"), sizing=resolve_lane_sizing(raw_site, feeds_dir=feeds_dir)
+    )
 
 
 _CACHE: dict[str, dict[str, LaneConfig]] = {}
@@ -529,7 +739,7 @@ def load_lanes(*, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> dict[str, Lane
     import yaml
 
     raw = yaml.safe_load(Path(key).read_text()) or {}
-    lanes = parse_lanes(raw.get("llm_lanes"))
+    lanes = parse_site_lanes(raw, feeds_dir=feeds_dir_for(key))
     with _CACHE_LOCK:
         _CACHE[key] = lanes
     return lanes
@@ -597,9 +807,16 @@ __all__ = [
     "DEFAULT_SITE_CONFIG_PATH",
     "NON_DISPATCHING_PURPOSES",
     "LaneConfig",
+    "LaneSizing",
     "UnregisteredLaneError",
     "clear_cache",
+    "count_active_feeds",
+    "feeds_dir_for",
     "lane_for",
     "load_lanes",
+    "parse_lane_sizing",
     "parse_lanes",
+    "parse_site_lanes",
+    "resolve_lane_sizing",
+    "sized_caps",
 ]

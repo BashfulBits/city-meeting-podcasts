@@ -60,12 +60,28 @@ def _load_llm_lanes():
 
 _llm_lanes = _load_llm_lanes()
 LaneConfig = _llm_lanes.LaneConfig
+LaneSizing = _llm_lanes.LaneSizing
 parse_lanes = _llm_lanes.parse_lanes
 parse_families = _llm_lanes.parse_families
+parse_lane_sizing = _llm_lanes.parse_lane_sizing
+count_active_feeds = _llm_lanes.count_active_feeds
 
 INPUT_YAML = REPO_ROOT / "config" / "site_config.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "ingress_reservations.json"
 TUNING_YAML = REPO_ROOT / "config" / "dispatch_tuning.yml"
+FEEDS_DIR = REPO_ROOT / "config" / "feeds"
+
+
+def _tuning_int(name: str) -> int:
+    """Read one positive integer from ``config/dispatch_tuning.yml``."""
+    raw = yaml.safe_load(TUNING_YAML.read_text(encoding="utf-8")) or {}
+    value = raw.get(name)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise SystemExit(
+            f"{TUNING_YAML} does not define a positive integer {name}; "
+            "the lane caps cannot be validated against a budget that is not declared"
+        )
+    return value
 
 
 def _global_ingress_budget() -> int:
@@ -76,15 +92,47 @@ def _global_ingress_budget() -> int:
     Worker will actually enforce. It was a ``wrangler.jsonc`` var until the tunables moved out of
     Cloudflare's 64-variable limit.
     """
-    raw = yaml.safe_load(TUNING_YAML.read_text(encoding="utf-8")) or {}
-    value = raw.get("MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY")
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+    return _tuning_int("MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY")
+
+
+def check_ceilings_fit(
+    lanes: dict[str, LaneConfig],
+    sizing: LaneSizing,
+    *,
+    unit_budget: int,
+    job_budget: int,
+    row_pace: int,
+) -> dict[str, float]:
+    """Fail unless every lane can reach its whole ceiling on the same day (review/58 12.11).
+
+    The sized caps grow with meetings per day. Section 12.4's guarantee is that every lane at its
+    ceiling at once stays under the Worker's shared job and unit guards and the daily row pace,
+    so no lane's reservation is withheld. Growth that would break that fails the compile, naming
+    the numbers, instead of being clamped silently: the fix is a decision (lower a headroom or a
+    backlog, or raise a budget), not arithmetic.
+    """
+    jobs = sum(lane.max_jobs_per_day for lane in lanes.values())
+    units = sum(lane.daily_write_units for lane in lanes.values())
+    rows = sizing.fixed_rows_per_day + sum(
+        lane.max_jobs_per_day * sizing.rows_per_job(lane.ingress_write_units_per_job)
+        for lane in lanes.values()
+    )
+    over = []
+    if jobs > job_budget:
+        over.append(f"{jobs} jobs > MAX_JOBS_PER_UTC_DAY {job_budget}")
+    if units > unit_budget:
+        over.append(f"{units} write units > MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY {unit_budget}")
+    if rows > row_pace:
+        over.append(f"~{rows:,.0f} DO rows > EARLY_SLOT_RELEASE_ROW_PACE {row_pace}")
+    if over:
         raise SystemExit(
-            f"{TUNING_YAML} does not define a positive integer "
-            "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY; "
-            "the reservation total cannot be validated against a budget that is not declared"
+            "llm_lanes ceilings at "
+            f"{sizing.meetings_per_day:.1f} meetings/day ({sizing.active_feeds} active feeds) "
+            "no longer fit the day: " + "; ".join(over) + ". Lower a lane's headroom or "
+            "backlog_jobs in config/site_config.yml, or raise the budget in "
+            "config/dispatch_tuning.yml (review/58 section 12.11)."
         )
-    return value
+    return {"jobs": jobs, "units": units, "rows": rows}
 
 
 def compile_reservations(lanes: dict[str, LaneConfig], budget: int) -> dict[str, object]:
@@ -154,10 +202,33 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     raw = yaml.safe_load(INPUT_YAML.read_text(encoding="utf-8")) or {}
-    lanes = parse_lanes(raw.get("llm_lanes"))
+    sizing = None
+    if raw.get("llm_lane_sizing") is not None:
+        active_feeds = count_active_feeds(FEEDS_DIR)
+        if active_feeds == 0:
+            raise SystemExit(
+                f"{FEEDS_DIR.relative_to(REPO_ROOT)} has no active feed configs; lane sizing "
+                "scales meetings per day by them, so an empty count means a broken checkout"
+            )
+        sizing = parse_lane_sizing(raw["llm_lane_sizing"], active_feeds=active_feeds)
+    lanes = parse_lanes(raw.get("llm_lanes"), sizing=sizing)
     # Judge independence is decided by family (review/53); a lane model without one fails here.
     parse_families(raw.get("llm_families"), lanes)
     compiled = compile_reservations(lanes, _global_ingress_budget())
+    if sizing is not None:
+        totals = check_ceilings_fit(
+            lanes,
+            sizing,
+            unit_budget=_global_ingress_budget(),
+            job_budget=_tuning_int("MAX_JOBS_PER_UTC_DAY"),
+            row_pace=_tuning_int("EARLY_SLOT_RELEASE_ROW_PACE"),
+        )
+        print(
+            f"lane sizing: {sizing.meetings_per_day:.2f} meetings/day "
+            f"(p90 {sizing.meetings_per_day_p90:g} at {sizing.basis_active_feeds} active feeds; "
+            f"{sizing.active_feeds} active now); every ceiling at once = {totals['jobs']} jobs, "
+            f"{totals['units']} units, ~{totals['rows']:,.0f} rows"
+        )
     rendered = json.dumps(compiled, indent=2, sort_keys=False) + "\n"
 
     if args.check:

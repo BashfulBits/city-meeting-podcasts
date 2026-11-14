@@ -96,19 +96,36 @@ tagging:
 # review/57 packed-state cutover). Reserved capacity is protected for its lane; all
 # reservations must fit the shared write-unit guard. Judge packets may use multiple jobs for one
 # meeting and share the same global budget.
-# Sizing (2026-11-13, review/58 section 12.4; replaces the old 800-meetings planning case). Each
-# lane carries two numbers with different jobs:
-# - reserved_write_units = the guaranteed steady-state share: jobs per new meeting for this lane x
-#   14 new meetings/day (p90 of 90 daily counts) x a headroom factor that encodes priority when
-#   rows are short (feeders agenda/locator x4, tagger/moments x3, judge lanes x2), rounded up to
-#   10 jobs, x units per job.
-# - daily_write_units / max_queued_jobs = the ceiling: reservation + a backlog-drain allowance
-#   (the lane's measured one-time backlog / a stated drain target, at least 100 jobs/day so a
-#   recipe-change re-run can start), bounded by measured route supply; queue = two days of it.
-# At every ceiling at once: 1,540 jobs, 8,440 units, ~32,600 DO rows (about 1.5 rows per write
-# unit at enqueue plus ~12 per job to execute), so no global guard (6,000 jobs, 38,400 units,
-# the 90,000-row stops) is reached and every lane gets its whole ceiling. A planned backfill
-# raises one lane's ceiling here for its duration.
+# Sizing (2026-11-13, review/58 sections 12.4 and 12.11; replaces the old 800-meetings planning
+# case). A lane with a `sizing` entry does not state its caps: `compile_llm_lanes.py` (and the
+# client's `load_lanes`) derive them from `llm_lane_sizing` below, so they follow the catalog:
+# - reserved_write_units = the guaranteed steady-state share: jobs_per_meeting x new meetings/day
+#   x headroom (the priority when rows are short: feeders agenda/locator x4, tagger/moments x3,
+#   judge lanes x2), rounded up to round_jobs_to jobs, x units per job.
+# - daily_write_units = the ceiling: reservation + a backlog-drain allowance (backlog_jobs /
+#   drain_days rounded up, at least backlog_floor_jobs a day so a recipe-change re-run can start);
+#   max_queued_jobs = queue_days x the ceiling in jobs.
+# At every ceiling at once (14 meetings/day): 1,540 jobs, 8,440 units, ~32,600 DO rows, so no
+# global guard (6,000 jobs, 38,400 units, the 90,000-row stops) is reached and every lane gets
+# its whole ceiling. The compiler fails, rather than clamping, if growth ever breaks that. A
+# planned backfill raises one lane's backlog_jobs here for its duration.
+llm_lane_sizing:
+  # The one tunable. Measured p90 of daily new meetings over the 90 days to the 2026-11-10 catalog
+  # snapshot (median 5, max 28), when config/feeds held `basis_active_feeds` active feeds. The
+  # compiler counts active feeds (lifecycle status active) in config/feeds and scales this figure
+  # by their growth, never below it, so adding cities raises every sized lane's caps without an
+  # edit here. When the p90 is re-measured, update both numbers together.
+  meetings_per_day_p90: 14
+  basis_active_feeds: 155
+  backlog_floor_jobs: 100
+  queue_days: 2
+  round_jobs_to: 10
+  # Row model for the compile-time check against the 85,000-row pace (review/58 section 12.4):
+  # billed rows per admitted job = rows_per_write_unit x units + execution_rows_per_job, plus a
+  # fixed daily amount from recounts and deploy schema retries.
+  rows_per_write_unit: 1.5
+  execution_rows_per_job: 12
+  fixed_rows_per_day: 1500
 llm_lanes:
   # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
   chapter-agenda:
@@ -139,13 +156,11 @@ llm_lanes:
       - "tencent/hy3"
       - "gemini/gemini-3.1-flash-lite"
     backup_after_attempts: 12
-    # Caps 2026-11-13 (review/58 section 12.4). One job per meeting that needs generated chapters
-    # (no provider chapters, has an agenda: 212 of 2,616 meetings in 365 days, 8.1%) x 14/day =
-    # 1.1/day; x4 (first feeder) -> 10 jobs = 60 units reserved. Ceiling 10 + 100 (backlog ~50
-    # queued; 100-job floor) = 110 jobs = 660 units; queue two days.
-    max_queued_jobs: 220
-    reserved_write_units: 60
-    daily_write_units: 660
+    # Caps (review/58 sections 12.4, 12.11). One job per meeting that needs generated chapters (no
+    # provider chapters, has an agenda: 212 of 2,616 meetings in 365 days, 8.1%); x4 (first
+    # feeder). Backlog ~50 queued over 2 days. At 14 meetings/day: 10 jobs (60 units) reserved,
+    # ceiling 110 jobs (660 units), queue 220.
+    sizing: {jobs_per_meeting: 0.081, headroom: 4, backlog_jobs: 50, drain_days: 2}
   chapter-locator:
     telemetry: {producer: chapter_locator, unit: episode, completion: consumed, scope: retained_catalog}
     # Production selection is size-aware in citypods/chapter_locator.py. DeepSeek V4 Flash is the
@@ -161,14 +176,12 @@ llm_lanes:
     # Each request is pinned to its size band: V4 Flash alone (one model index) or, above 76,000
     # tokens, MiniMax M3.1 Flash alone (one model index). Kimi K3 was retired upstream 2026-10-15.
     dispatch_shape: per_model
-    # Caps 2026-11-13 (review/58 section 12.4). One job per meeting with a completed agenda (200 of
-    # 2,616, 7.6%; provider-chapter meetings are not_applicable) x 14/day = 1.1/day; no corrective
-    # resubmit loop is visible (errored counts flat), x4 (second feeder) -> 10 jobs = 40 units
-    # reserved. Ceiling 10 + 100 (~200 queued after #2676 removed the stale-recipe replays; 2-day
-    # target) = 110 jobs = 440 units; queue two days.
-    max_queued_jobs: 220
-    reserved_write_units: 40
-    daily_write_units: 440
+    # Caps (review/58 sections 12.4, 12.11). One job per meeting with a completed agenda (200 of
+    # 2,616, 7.6%; provider-chapter meetings are not_applicable); no corrective resubmit loop is
+    # visible (errored counts flat); x4 (second feeder). Backlog ~200 queued after #2676 removed
+    # the stale-recipe replays, 2-day target. At 14 meetings/day: 10 jobs (40 units) reserved,
+    # ceiling 110 jobs (440 units), queue 220.
+    sizing: {jobs_per_meeting: 0.076, headroom: 4, backlog_jobs: 200, drain_days: 2}
   topic-tags:tagger:
     telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
     # Primary recipe route is Gemini 3.5 Flash Lite (AA 11.7, 1000/day, unshared quota).
@@ -181,14 +194,12 @@ llm_lanes:
       - "openrouter/nvidia/nemotron-3.5-super-vl:free"
       - "deepseek/deepseek-v4-flash"
       - "gemini/gemini-3.1-flash-lite"
-    # Caps 2026-11-13 (review/58 section 12.4). 1.18 batches per tagged meeting (measured 11-11/12:
-    # 425 jobs for 360 episodes) x 63% of meetings with LLM tag candidates x 14/day = 10.4/day; x3
-    # -> 40 jobs = 280 units reserved. Ceiling 40 + 610 (10,810 ready episodes x 1.18 = ~12,760
-    # jobs over 21 days) = 650 jobs = 4,550 units, under Gemini 3.5 Flash Lite's 1,000/day. Moot
-    # until the producer submits again (#2671); sized for the fixed producer. Queue two days.
-    max_queued_jobs: 1300
-    reserved_write_units: 280
-    daily_write_units: 4550
+    # Caps (review/58 sections 12.4, 12.11). 1.18 batches per tagged meeting (measured 11-11/12:
+    # 425 jobs for 360 episodes) x 63% of meetings with LLM tag candidates; x3. Backlog 10,810
+    # ready episodes x 1.18 = ~12,760 jobs over 21 days (610/day). At 14 meetings/day: 40 jobs
+    # (280 units) reserved, ceiling 650 jobs (4,550 units, under Gemini 3.5 Flash Lite's
+    # 1,000/day), queue 1,300. Moot until the producer submits again (#2671).
+    sizing: {jobs_per_meeting: 0.742, headroom: 3, backlog_jobs: 12760, drain_days: 21}
   r6-moments:
     telemetry: {producer: moments, unit: episode, completion: consumed, scope: retained_catalog}
     # Size-aware routing selects the shortest model fitting the prompt for small packets (<= 45k)
@@ -205,12 +216,10 @@ llm_lanes:
       - "gemini/gemini-3.6-flash"
       - "gemini/gemini-3.5-flash"
     backup_after_attempts: 2
-    # Caps 2026-11-13 (review/58 section 12.4). One job per eligible meeting (council or P&Z with a
-    # transcript: 556 of 2,616, 21%) x 14/day = 3.0/day; x3 -> 10 jobs = 50 units reserved.
-    # Ceiling 10 + 100 (backlog 14; 100-job floor) = 110 jobs = 550 units; queue two days.
-    max_queued_jobs: 220
-    reserved_write_units: 50
-    daily_write_units: 550
+    # Caps (review/58 sections 12.4, 12.11). One job per eligible meeting (council or P&Z with a
+    # transcript: 556 of 2,616, 21%); x3. Backlog 14. At 14 meetings/day: 10 jobs (50 units)
+    # reserved, ceiling 110 jobs (550 units), queue 220.
+    sizing: {jobs_per_meeting: 0.213, headroom: 3, backlog_jobs: 14, drain_days: 2}
   # --- Judge stack (review/49, review/53) ----------------------------------------------------
   # Every judge job is pinned to one model (per_model, 4 ingress units), so a judge's identity is
   # part of every judgment and calibration cell; per_model lanes cannot declare backup_models, so
@@ -229,14 +238,12 @@ llm_lanes:
     # siblings from the non-Google slot when the anchor is Google (citypods/judging/families.py).
     models: ["gemini/gemini-decision-1"]
     dispatch_shape: per_model
-    # Caps 2026-11-13 (review/58 section 12.4). Half the meetings have judging subjects (49.5%,
-    # mean 12.5); one packet holds ~32 items (45k-token ceiling, 60 max) and packs within a source
-    # and pass, so ~1.2 packets per judged meeting x 0.495 x 14/day = 8.3/day; x2 -> 20 packets =
-    # 80 units reserved. Ceiling 20 + 100 (11,839 ready subjects x ~1.35 items / 32 = ~500
-    # packets over 7 days, ~72/day) = 120 packets = 480 units; queue 240 = two days.
-    max_queued_jobs: 240
-    reserved_write_units: 80
-    daily_write_units: 480
+    # Caps (review/58 sections 12.4, 12.11). Half the meetings have judging subjects (49.5%, mean
+    # 12.5); one packet holds ~32 items (45k-token ceiling, 60 max) and packs within a source and
+    # pass, so ~1.2 packets per judged meeting x 0.495 = 0.594; x2. Backlog 11,839 ready subjects x
+    # ~1.35 items / 32 = ~500 packets over 7 days. At 14 meetings/day: 20 packets (80 units)
+    # reserved, ceiling 120 packets (480 units), queue 240.
+    sizing: {jobs_per_meeting: 0.594, headroom: 2, backlog_jobs: 500, drain_days: 7}
   judge:sibling:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
     # Slots are tried in sorted name order. Nemotron (``primary``) judges every entry it is
@@ -253,14 +260,12 @@ llm_lanes:
       primary: ["openrouter/nvidia/nemotron-3.5-super-vl:free"]
       secondary: ["qwen/qwen3.8-27b"]
     dispatch_shape: per_model
-    # Caps 2026-11-13 (review/58 section 12.4), per role, both slots together. One sibling per
+    # Caps (review/58 sections 12.4, 12.11), per role, both slots together. One sibling per
     # subject, ~24.5 items per packet, a judged meeting often needing a packet on each slot: ~1.5
-    # packets x 0.495 x 14/day = 10.4/day; x2 -> 30 packets = 120 units reserved. Ceiling 30 + 100
-    # (~11,840 ready subjects / 24.5 = ~480 packets over 7 days) = 130 packets = 520 units; queue
-    # 260 = two days.
-    max_queued_jobs: 260
-    reserved_write_units: 120
-    daily_write_units: 520
+    # packets x 0.495 = 0.742; x2. Backlog ~11,840 ready subjects / 24.5 = ~480 packets over 7
+    # days. At 14 meetings/day: 30 packets (120 units) reserved, ceiling 130 packets (520 units),
+    # queue 260.
+    sizing: {jobs_per_meeting: 0.742, headroom: 2, backlog_jobs: 480, drain_days: 7}
   judge:adjudicator:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
     # Contested subjects plus a 3% calibration sample (review/53 PR5). Two families, so every entry
@@ -271,13 +276,11 @@ llm_lanes:
       - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4.1-flash"
     dispatch_shape: per_model
-    # Caps 2026-11-13 (review/58 section 12.4). Contested subjects (1.3% since the anchor change)
+    # Caps (review/58 sections 12.4, 12.11). Contested subjects (1.3% since the anchor change)
     # plus the 3% calibration sample = ~0.5 items per judged meeting, ~0.5 packets per judged
-    # meeting x 0.495 x 14/day = 3.5/day; x2 -> 10 packets = 40 units reserved. Ceiling 10 + 100
-    # (backlog ~25 packets; 100-job floor) = 110 packets = 440 units; queue two days.
-    max_queued_jobs: 220
-    reserved_write_units: 40
-    daily_write_units: 440
+    # meeting x 0.495 = 0.247; x2. Backlog ~25 packets. At 14 meetings/day: 10 packets (40 units)
+    # reserved, ceiling 110 packets (440 units), queue 220.
+    sizing: {jobs_per_meeting: 0.247, headroom: 2, backlog_jobs: 25, drain_days: 7}
   remedy:p3:
     telemetry: {producer: remedy, unit: finding, completion: consumed, scope: sample}
     # P3 consensus is daily but remains closed until config/remedy.yml admits each exact route.
