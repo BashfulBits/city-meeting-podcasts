@@ -1264,6 +1264,11 @@ provider through the gateway when one is configured. So the route needs a custom
 `perplexity/pplx-decider-v1.3` from `eligible_models` to `models` (after Gemini) in
 `judge:anchor`, and recompile.
 
+**Enabled 2026-11-14 (owner decision).** The owner registered the gateway provider (custom provider
+slug `openrouter-api`, reached as `custom-openrouter-api`; the operations token has no AI Gateway
+Edit permission, so this stays an owner step), and the route went to `rpd: 40` with the Decider in
+`judge:anchor.models` after Gemini. Mercury Decide was pulled by its provider and is not pursued.
+
 **What is in place.**
 
 - **Worker shape `openrouter_decisions`** (`api_shapes.js`). JEV's `{model, state, questions}` body

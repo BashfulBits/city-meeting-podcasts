@@ -56,7 +56,8 @@
       "daily_write_units": 23046,
       "max_queued_jobs": 1352,
       "models": [
-        "gemini/gemini-decision-1"
+        "gemini/gemini-decision-1",
+        "perplexity/pplx-decider-v1.3"
       ],
       "backup_models": [],
       "backup_after_attempts": null,

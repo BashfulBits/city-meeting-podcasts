@@ -67,7 +67,12 @@ GEMINI = "gemini/gemini-3.1-flash-lite"
 # The judge mechanics below were written against JEV, whose family (typesafe) no producer or
 # sibling shares; they keep that anchor so they test the mechanics alone. The repository anchor is
 # Gemini Decision 1 (review/58 WP9), covered by the "Gemini Decision 1 anchor" tests at the end.
-DECISION_ANCHOR_LANE = LANES["judge:anchor"]
+REPO_ANCHOR_LANE = LANES["judge:anchor"]
+# The single-anchor (Gemini only) lane most tests reason about; the repository lane adds the
+# Perplexity Decider as a second anchor (enabled 2026-11-14, review/58 12.9).
+DECISION_ANCHOR_LANE = dataclasses.replace(
+    REPO_ANCHOR_LANE, models=(REPO_ANCHOR_LANE.models[0],), eligible_models=()
+)
 LANES["judge:anchor"] = dataclasses.replace(DECISION_ANCHOR_LANE, models=("typesafe/jev-1.13",))
 
 
@@ -2514,7 +2519,8 @@ def test_the_repository_anchor_is_gemini_decision_1_on_its_own_backend():
         anchor_backend_class,
     )
 
-    assert DECISION_ANCHOR_LANE.models == (DECISION,)
+    # Gemini first; Perplexity Decider is the second anchor (enabled 2026-11-14, review/58 12.9).
+    assert REPO_ANCHOR_LANE.models == (DECISION, "perplexity/pplx-decider-v1.3")
     assert anchor_backend_class(DECISION) is DecisionBackend
     assert anchor_backend_class(JEV) is JevBackend  # JEV answers already in flight still parse
     with pytest.raises(ValueError, match="no anchor backend"):
@@ -2835,12 +2841,12 @@ def _two_anchor_ctx(dispatch, **extra):
     return dataclasses.replace(_repo_sibling_ctx(dispatch, **extra), anchor=TWO_ANCHOR_LANE)
 
 
-def test_the_repository_holds_the_decider_as_an_eligible_anchor_on_a_paused_route():
-    """Wired but paused until the owner registers the custom-openrouter-api gateway provider."""
+def test_the_repository_runs_the_decider_as_the_second_anchor():
+    """Enabled 2026-11-14 once the custom-openrouter-api gateway provider existed."""
     from citypods.judging.backends import DECIDER_ROUTE_ID, DeciderBackend, anchor_backend_class
 
-    assert DECISION_ANCHOR_LANE.models == (DECISION,)
-    assert DECISION_ANCHOR_LANE.eligible_models == (DECIDER,)
+    assert REPO_ANCHOR_LANE.models == (DECISION, DECIDER)
+    assert REPO_ANCHOR_LANE.eligible_models == ()
     assert FAMILIES[DECIDER] == "qwen"  # a Qwen3.8-27B checkpoint
     assert anchor_backend_class(DECIDER) is DeciderBackend
     assert DeciderBackend.output_reservation == 1
@@ -2851,7 +2857,7 @@ def test_the_repository_holds_the_decider_as_an_eligible_anchor_on_a_paused_rout
     assert route["api_shape"] == "openrouter_decisions"
     assert route["request_path"] == "/alpha/decisions"
     assert route["ai_gateway_slug"] == "custom-openrouter-api"
-    assert route["free"] is True and route["rpd"] == 0
+    assert route["free"] is True and route["rpd"] == 40
     assert route["hard_input_ceiling"] == DeciderBackend.hard_input_ceiling
     assert route["transports"] == []
 

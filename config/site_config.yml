@@ -226,11 +226,9 @@ llm_lanes:
     # siblings from the non-Google slot when the anchor is Google (citypods/judging/families.py).
     # Anchors are tried in lane order per entry (review/58 12.9): Gemini judges every entry it is
     # independent of; Perplexity Decider V1.3 (family qwen, OpenRouter /api/alpha/decisions)
-    # is the second anchor for the Google-produced entries. It stays eligible-only until the owner
-    # registers the `custom-openrouter-api` AI Gateway provider (base https://openrouter.ai/api)
-    # and raises its route's rpd from 0; then move it into `models` after Gemini.
-    models: ["gemini/gemini-decision-1"]
-    eligible_models: ["perplexity/pplx-decider-v1.3"]
+    # is the second anchor for the Google-produced entries. Enabled 2026-11-14 (owner decision) once
+    # the `custom-openrouter-api` AI Gateway provider (base https://openrouter.ai/api) existed.
+    models: ["gemini/gemini-decision-1", "perplexity/pplx-decider-v1.3"]
     dispatch_shape: per_model
     # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
     # ~1.2 packets per judged meeting (49.5% of meetings), ~32 items per packet.

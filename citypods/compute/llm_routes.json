@@ -1128,7 +1128,7 @@
       "hard_input_ceiling": 45000,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 0,
+      "rpd": 40,
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
