@@ -9,6 +9,7 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import { withTuning } from "./tuning.js";
+import { GOOGLE_LOCATION_RULE_ID } from "./classify.js";
 import {
   PARTIAL_ROWS_WORST, SETTLED_JOB_IDS_MAX, earlyReleaseConfig, partialRefusal,
 } from "./early_release.js";
@@ -37,6 +38,7 @@ import {
 import {
   DO_ROWS_ACCOUNT_RESERVE,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
+  effectiveIngressWriteUnits,
   ROWS_PER_BUNDLE,
   ROWS_PER_CLEANUP_JOB,
   ROWS_PER_INGRESS_WRITE_UNIT,
@@ -1753,9 +1755,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Historical deployments set only MAX_JOBS_PER_UTC_DAY.  Preserve that protective bound
     // until the explicit write budget is configured, using four writes/job as its conservative
     // estimate (job row, model pointer, purpose counter, scheduler counter).
-    return Number.isFinite(configured) && configured > 0
+    const guard = Number.isFinite(configured) && configured > 0
       ? configured
       : this._maxJobsPerUtcDay() * 4;
+    // review/58 section 12.11: never admit past the lanes' reserved total, which is split from
+    // the daily row cap; anything above it is borrowed from unspent reservations, not new slack.
+    return effectiveIngressWriteUnits(guard, this._ingressPurposeReservations());
   }
 
   /**
@@ -2743,7 +2748,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
   static ATTEMPT_USAGE_SAMPLE_CAP = 2000;
   static CALIBRATION_STATS_LIMIT = 200;
   static FILTERED_FAILURE_LIMIT = 1000;
-  // A call at or past this share of MAX_RESPONSE_SECONDS (720 s) counts as slow: 600 s.
+  // A call at or past 600 s counts as slow: 5/6 of the 720 s most routes pin, and kept at 600 s
+  // when the slow reasoning routes moved to the 780 s ceiling (review/58 §12.5) so the series
+  // stays comparable.
   static SLOW_CALL_MS = 600_000;
 
   *_chunks(items, size = LLMSchedulerDO.MAX_SQL_BOUND_PARAMS) {
@@ -3208,7 +3215,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // run work (`_reservationBorrowFraction`).
         const otherReservations = Object.entries(ingressReservations).reduce(
           (sum, [otherPurpose, config]) => {
-            if (otherPurpose === purpose) return sum;
+            // `_`-prefixed keys are metadata, as in ingressStatus and the reserved-total clamp.
+            if (otherPurpose === purpose || otherPurpose.startsWith("_")) return sum;
             const reserved = Number(config?.reserved_write_units);
             if (!Number.isFinite(reserved) || reserved <= 0) return sum;
             return sum + Math.max(0, reserved - (purposeUsage.get(otherPurpose)?.write_units || 0));
@@ -3422,7 +3430,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return { status: "purpose_write_budget_exceeded" };
       }
       const otherReservations = Object.entries(reservations).reduce((sum, [otherPurpose, config]) => {
-        if (otherPurpose === purpose) return sum;
+        if (otherPurpose === purpose || otherPurpose.startsWith("_")) return sum;
         const reserved = Number(config?.reserved_write_units);
         if (!Number.isFinite(reserved) || reserved <= 0) return sum;
         const used = [...sql.exec(
@@ -8156,8 +8164,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
               Number(ledger.blocked_until) > now;
             const streak = (ledger.upstream_capacity_streak || 0) + (alreadyCooling ? 0 : 1);
             const failedRoute = this._dispatchLimits().routes_by_id?.[job.lease_route_id];
+            // A location refusal (#2672, classify.js) follows the invocation's Cloudflare location,
+            // not the route: the same seconds-scale Google cooldown, never the saturated ladder.
+            // Consecutive refusals still climb the route health ladder (capacity class) below.
             const googleAvailability = failedRoute?.provider === "gemini" &&
-              [500, 503].includes(result.provider_status_code);
+              ([500, 503].includes(result.provider_status_code) ||
+                result.rule_id === GOOGLE_LOCATION_RULE_ID);
             const nextBlock = googleAvailability
               ? this._googleGemmaAvailabilityBlockedUntil(streak, now, result.retry_after_seconds)
               : this._upstreamCapacityBlockedUntil(

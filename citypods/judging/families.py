@@ -68,6 +68,21 @@ def anchor_independent_of(
     return True
 
 
+def anchor_for(
+    producer_models: Sequence[str | None],
+    anchor_models: Sequence[str],
+    families: Mapping[str, str],
+) -> str | None:
+    """The first anchor model (lane order) independent of every producer, or None (review/58 12.9).
+
+    Gemini Decision 1 comes first and judges every entry it is independent of; a later anchor (a
+    non-Google decision model) takes only the Google-produced entries the first cannot."""
+    for model in anchor_models:
+        if anchor_independent_of(producer_models, model, families):
+            return model
+    return None
+
+
 def sibling_candidates(
     producer_model: str | None,
     sibling: LaneConfig,

@@ -60,12 +60,27 @@ def _load_llm_lanes():
 
 _llm_lanes = _load_llm_lanes()
 LaneConfig = _llm_lanes.LaneConfig
+LaneBudget = _llm_lanes.LaneBudget
 parse_lanes = _llm_lanes.parse_lanes
 parse_families = _llm_lanes.parse_families
+resolve_lane_budget = _llm_lanes.resolve_lane_budget
+jobs_per_ratio_point = _llm_lanes.jobs_per_ratio_point
 
 INPUT_YAML = REPO_ROOT / "config" / "site_config.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "ingress_reservations.json"
 TUNING_YAML = REPO_ROOT / "config" / "dispatch_tuning.yml"
+
+
+def _tuning_int(name: str) -> int:
+    """Read one positive integer from ``config/dispatch_tuning.yml``."""
+    raw = yaml.safe_load(TUNING_YAML.read_text(encoding="utf-8")) or {}
+    value = raw.get(name)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise SystemExit(
+            f"{TUNING_YAML} does not define a positive integer {name}; "
+            "the lane caps cannot be validated against a budget that is not declared"
+        )
+    return value
 
 
 def _global_ingress_budget() -> int:
@@ -76,15 +91,42 @@ def _global_ingress_budget() -> int:
     Worker will actually enforce. It was a ``wrangler.jsonc`` var until the tunables moved out of
     Cloudflare's 64-variable limit.
     """
-    raw = yaml.safe_load(TUNING_YAML.read_text(encoding="utf-8")) or {}
-    value = raw.get("MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY")
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+    return _tuning_int("MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY")
+
+
+def check_reservations_fit(
+    lanes: dict[str, LaneConfig], budget: LaneBudget, *, unit_budget: int, job_budget: int
+) -> dict[str, float]:
+    """Fail unless the ratio-split reservations fit the Worker's daily guards (review/58 12.11).
+
+    The split already keeps their rows within ``DO_ROWS_ENQUEUE_STOP``; this also holds the total
+    to ``MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`` and ``MAX_JOBS_PER_UTC_DAY``. A row cap that would
+    pass either fails the compile, naming the numbers, instead of being clamped silently.
+    """
+    jobs = sum(
+        lane.reserved_write_units // lane.ingress_write_units_per_job for lane in lanes.values()
+    )
+    units = sum(lane.reserved_write_units for lane in lanes.values())
+    rows = budget.fixed_rows_per_day + sum(
+        lane.reserved_write_units
+        // lane.ingress_write_units_per_job
+        * budget.rows_per_job(lane.ingress_write_units_per_job)
+        for lane in lanes.values()
+    )
+    over = []
+    if jobs > job_budget:
+        over.append(f"{jobs} jobs > MAX_JOBS_PER_UTC_DAY {job_budget}")
+    if units > unit_budget:
+        over.append(f"{units} write units > MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY {unit_budget}")
+    if rows > budget.row_cap:
+        over.append(f"~{rows:,.0f} DO rows > DO_ROWS_ENQUEUE_STOP {budget.row_cap}")
+    if over:
         raise SystemExit(
-            f"{TUNING_YAML} does not define a positive integer "
-            "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY; "
-            "the reservation total cannot be validated against a budget that is not declared"
+            f"llm_lanes reservations split from DO_ROWS_ENQUEUE_STOP {budget.row_cap} do not fit "
+            "the day: " + "; ".join(over) + ". Lower DO_ROWS_ENQUEUE_STOP or raise the guard in "
+            "config/dispatch_tuning.yml (review/58 section 12.11)."
         )
-    return value
+    return {"jobs": jobs, "units": units, "rows": rows}
 
 
 def compile_reservations(lanes: dict[str, LaneConfig], budget: int) -> dict[str, object]:
@@ -154,10 +196,31 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     raw = yaml.safe_load(INPUT_YAML.read_text(encoding="utf-8")) or {}
-    lanes = parse_lanes(raw.get("llm_lanes"))
+    try:
+        budget = resolve_lane_budget(raw, tuning_path=TUNING_YAML)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    lanes = parse_lanes(raw.get("llm_lanes"), budget=budget)
     # Judge independence is decided by family (review/53); a lane model without one fails here.
     parse_families(raw.get("llm_families"), lanes)
     compiled = compile_reservations(lanes, _global_ingress_budget())
+    if budget is not None:
+        totals = check_reservations_fit(
+            lanes,
+            budget,
+            unit_budget=_global_ingress_budget(),
+            job_budget=_tuning_int("MAX_JOBS_PER_UTC_DAY"),
+        )
+        # A live-only registry has no ratio point to report (jobs_per_ratio_point would raise).
+        split = (
+            f"{jobs_per_ratio_point(lanes, budget):.2f} jobs per ratio point split from "
+            if any(not lane.live for lane in lanes.values())
+            else f"live pool of {budget.live_reservation_jobs} jobs within "
+        )
+        print(
+            f"lane reservations: {split}DO_ROWS_ENQUEUE_STOP {budget.row_cap} = "
+            f"{totals['jobs']} jobs, {totals['units']} units, ~{totals['rows']:,.0f} rows"
+        )
     rendered = json.dumps(compiled, indent=2, sort_keys=False) + "\n"
 
     if args.check:

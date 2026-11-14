@@ -19,12 +19,13 @@ import {
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
 import { createBundleSettler, earlyReleaseConfigFromEnv } from "./early_release.js";
+import { handlePlacedEgress } from "./placed_egress.js";
 import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
 import { apiShapeFor } from "./api_shapes.js";
 import {
   gatewayNetworkFacts, networkProbeAllowed, observeBundleNetwork,
 } from "./network_diagnostics.js";
-import { classifyProviderFailure, googleQuotaDiagnostics } from "./classify.js";
+import { classifyProviderFailure, GOOGLE_LOCATION_RULE_ID, googleQuotaDiagnostics } from "./classify.js";
 import { runProducerTriggers } from "./producer_trigger.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
@@ -101,6 +102,19 @@ export function validateConfig(env) {
     throw new Error(
       `Invalid config: DISPATCH_WINDOW_SECONDS (${dispatchWindow}) + MAX_RESPONSE_SECONDS (${maxResponse}) + ` +
       `FINALIZATION_RESERVE_SECONDS (${finalizationReserve}) must be <= LEASE_DURATION_SECONDS (${leaseDuration})`
+    );
+  }
+
+  // The bounded B2 result write runs after the call, inside the finalization reserve; the commit
+  // needs the rest (review/58 §12.5). Checked when set; the compiled tuning always sets it.
+  const resultWriteTimeout = Number(env.RESULT_WRITE_TIMEOUT_SECONDS);
+  if (
+    env.RESULT_WRITE_TIMEOUT_SECONDS !== undefined &&
+    (!(resultWriteTimeout > 0) || resultWriteTimeout >= finalizationReserve)
+  ) {
+    throw new Error(
+      `Invalid config: RESULT_WRITE_TIMEOUT_SECONDS (${resultWriteTimeout}) must be > 0 and < ` +
+      `FINALIZATION_RESERVE_SECONDS (${finalizationReserve})`
     );
   }
 
@@ -277,6 +291,9 @@ export function validateConfig(env) {
     }
     return sum + value;
   }, 0);
+  // The coordinator admits at most min(MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY, reserved), review/58
+  // section 12.11 (effectiveIngressWriteUnits). The checks above bound the configured guard, which
+  // is never below that, so they also hold for the clamped budget.
   if (reserved > maxIngressWriteUnits) {
     throw new Error("Invalid config: ingress reservations exceed the global write budget");
   }
@@ -924,15 +941,28 @@ export function effectiveResponseMs(route, globalMs) {
 }
 
 /**
+ * How long the B2 result write after a successful call may take (review/58 §12.5). The write
+ * runs after the provider call, inside FINALIZATION_RESERVE_SECONDS; unbounded, one slow PUT
+ * (125 s observed) could outlive the lease at the 780 s response ceiling.
+ */
+export function resultWriteTimeoutMs(env) {
+  const seconds = Number(env?.RESULT_WRITE_TIMEOUT_SECONDS || 30);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : 30_000;
+}
+
+/**
  * Whether a call starting now can finish before the DO may reap this job's lease. The DO reaps
  * only leases past lease_expires_at, so this local check is the attempt fence: no DO round trip
  * or billed row per attempt. validateConfig already keeps the dispatch window plus the response
  * ceiling inside the lease, so it fails only on a misconfigured override or a stalled invocation.
+ * `settleMs` is the bounded result write that follows a success (review/58 §12.5): a call that
+ * starts late must still leave that write inside the lease, or a recovery tick could reap the
+ * job while its result is being stored.
  */
-export function leaseCoversCall(job, now, maxResponseMs) {
+export function leaseCoversCall(job, now, maxResponseMs, settleMs = 0) {
   const leaseExpiresAt = Number(job.lease_expires_at);
   // No deadline means no fence: decline rather than risk a call the DO may already have reaped.
-  return Number.isFinite(leaseExpiresAt) && now + maxResponseMs <= leaseExpiresAt;
+  return Number.isFinite(leaseExpiresAt) && now + maxResponseMs + settleMs <= leaseExpiresAt;
 }
 
 /**
@@ -1010,7 +1040,7 @@ function logGemmaAttempt({
  * longer cover the call -- see leaseCoversCall).
  */
 export async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
-  if (!leaseCoversCall(job, Date.now(), maxResponseMs)) {
+  if (!leaseCoversCall(job, Date.now(), maxResponseMs, resultWriteTimeoutMs(env))) {
     return { result: baseAttemptResult(job, attemptId, null, null, "deferred_late") };
   }
 
@@ -1149,7 +1179,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
     const usage = observedTokens(response.body);
     const resultKey = `results/${job.id}/${job.lease_token}.json`;
     try {
-      await b2.putJson(resultKey, response.body);
+      await b2.putJson(resultKey, response.body, { timeoutMs: resultWriteTimeoutMs(env) });
       return {
         result: {
           ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "success"),
@@ -1209,6 +1239,9 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
         // the coordinator requeues it (classify.js rule 8).
         cls.failure_class === "route_unavailable" ||
         (response.status === 404 && cls.failure_class === "upstream_capacity") ||
+        // Google refused this request for where it arrived from (issue #2672): not the job's
+        // fault, and a later invocation from another location is served.
+        cls.rule_id === GOOGLE_LOCATION_RULE_ID ||
         upstreamCapacityFailure(response.status, response.body)
           ? "retryable_error"
           : "terminal_error"
@@ -1638,6 +1671,9 @@ export default {
     } catch (err) {
       return errorResponse(500, "configuration_error", err.message);
     }
+    // review/58 §12.12 (#2682): the private placed-egress hop (src/placed_egress.js).
+    const egress = await handlePlacedEgress(request, env);
+    if (egress) return egress;
     return handleRequest(request, env, ctx);
   },
 

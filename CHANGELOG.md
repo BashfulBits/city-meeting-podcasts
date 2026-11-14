@@ -15,6 +15,78 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/58 §12.5: 780 s ceiling for the slow reasoning routes.** `MAX_RESPONSE_SECONDS` is 780
+  with a 45 s finalization reserve and an 870 s lease. Only OrcaRouter GLM 5.3 Flash and the three
+  Nemotron 3 Ultra legs use 780 s. Every other route now pins its response timeout (720 or lower),
+  and the compile script refuses an unpinned route while the ceiling is above 720. The Worker's B2
+  result write is bounded by `RESULT_WRITE_TIMEOUT_SECONDS` (30 s), which settles as a retryable
+  `server_error`. Nemotron 3 Ultra's verified reasoning-off switch on NVIDIA is declared but no
+  lane uses it (agenda recall fell in the test; follow-ups in #2689). Merging deploys the Worker.
+
+- **LLM lane reservations are split from the daily row cap by ratio (review/58 section 12.11).**
+  Each lane in `config/site_config.yml` now states only a `reservation_ratio` (agenda 10, locator
+  10, tagger 40, moments 10, anchor 20, sibling 30, adjudicator 10). Live lanes (`live: true`,
+  today `remedy:p3`) share a fixed `live_reservation_jobs` pool of 100 jobs by ratio, taken off
+  the top. `scripts/compile_llm_lanes.py` and the client's `load_lanes` split the rest of
+  `DO_ROWS_ENQUEUE_STOP` (90,000, now declared in `config/dispatch_tuning.yml`) with the
+  `llm_lane_budget` row model: 4,494 reserved jobs and 23,046 units (was 670 units). Every lane's
+  `daily_write_units` is the reserved total and `max_queued_jobs` two days of its reservation.
+  Adding or removing a lane re-splits the reservations with no other edit. The v2 Worker clamps
+  its ingress budget to the reserved total, so lanes exceed their share only by borrowing unspent
+  reservations later in the UTC day. The compiled `ingress_reservations.json` changes, so merging
+  deploys the Worker.
+
+- Perplexity Decider V1.3 wired as a second, non-Google `judge:anchor` for Google-produced
+  entries: Worker API shape `openrouter_decisions` (`POST /api/alpha/decisions`), provider
+  `openrouter_decisions` via the `custom-openrouter-api` AI Gateway provider, a free route held at
+  `rpd: 0`, `DeciderBackend`, family `qwen`. Inactive (eligible only) until the owner registers the
+  gateway provider (review/58 12.9).
+
+
+- The judge anchor is chosen per entry: the first anchor model independent of the entry's
+  producers. Siblings and adjudicators exclude that entry's own anchor family.
+- Rule subjects no longer balance into the `secondary` sibling slot, which is kept for the
+  Nemotron-produced entries only Qwen3.8 may judge; a subject keeps a sibling it already has.
+- A later anchor's packets go first in a pass but take at most a quarter of its anchor run cap.
+
+- **The tagger re-plans tag requests the Worker failed as too large (#2671).** On 2026-11-12 the
+  Worker's oversize reaper failed about 330 queued jobs, tag batches among them, as `unadmissible`
+  (over every live route's learned ceiling). The tagger rebuilt the same deterministic recipes on
+  every run, the structural recovery gate refused each one, and the tag stage reported about 204
+  errors and queued 0 to 1 jobs a run from 11-13. A refused recipe whose marker says
+  `unadmissible` is now split in two under new child recipes (at a chapter boundary, or a single
+  chapter's transcript segments halved), recursively; a single segment that is still refused is
+  an oversized deferral. Other gate refusals (an exhausted retry budget) still raise.
+
+- Dispatch Worker: Google AI Studio calls now go through the Worker's own fetch handler over a self
+  service binding (`PLACED_EGRESS`), and the Worker carries a placement hint (`gcp:us-east4`), so
+  they no longer leave from colos Google refuses (HKG: HTTP 400 "User location is not supported").
+  The hop needs the ingress bearer token and only forwards to the AI Gateway or Google API hosts.
+  `PLACED_EGRESS_PROVIDERS` (wrangler var, default `gemini`) lists the providers; empty turns it
+  off. The ingress API also runs at the placed location now (#2682, review/58 12.12).
+
+- **Google location refusals no longer block the judge anchor for six hours (#2672).** Google's
+  HTTP 400 "User location is not supported for the API use." on any Gemini route is now
+  `upstream_capacity` (`google-location-unsupported`). The attempt is retryable and the route takes
+  the seconds-scale Google cooldown. Repeated refusals climb the route health ladder. Before, it
+  was a withdrawn Decisions model (`route_unavailable`, a 6 h block on both anchor routes) or a
+  failed chat job. Every refusal logged came from the Gateway's HKG colo. A genuine
+  model-unavailable 400 still blocks the route.
+
+- **Lane submission caps re-derived (review/58 section 12.4).** Each `llm_lanes` entry now carries
+  two numbers with separate jobs. Both replace the 800-meetings planning case.
+  - `reserved_write_units` is the steady-state share: jobs per new meeting × 14 meetings a day
+    (p90) × a priority headroom (feeders ×4, tagger and moments ×3, judge lanes ×2). The lanes
+    together reserve 670 units, down from 16,116.
+  - `daily_write_units` / `max_queued_jobs` is the ceiling: the reservation plus a drain allowance
+    for the lane's measured backlog (at least 100 jobs a day), bounded by route supply.
+  - Ceilings in jobs/day: agenda 110, locator 110, tagger 650, moments 110, judge anchor 120,
+    sibling 130, adjudicator 110; remedy is unchanged.
+  - Every ceiling filled at once costs about 32,600 rows. That is under every global guard, so each
+    lane gets its whole ceiling. `MAX_JOBS_PER_UTC_DAY`, the row stops and the judge
+    outstanding-packet limits are unchanged.
+  - Three adjacent problems are filed as #2671, #2672 and #2673.
+
 - **Judge sibling roster after Gemma (review/58 12.6).**
   - Gemma 4 31B leaves `judge:sibling`: a Google sibling can never judge beside the Google anchor,
     and 4% of its queued calls succeeded.

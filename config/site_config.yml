@@ -93,11 +93,36 @@ tagging:
 # `compile_llm_lanes.py` enforces that and the per-lane arithmetic below.
 # Lane daily ceilings are independent ceilings, not additive reservations. The shared ingress
 # guard is 6,000 jobs / 38,400 write units per UTC day (raised from 4,000 / 25,600 after the
-# review/57 packed-state cutover); the planning case is 800 meetings through five core
-# one-job-per-meeting tasks (agenda, locator, tagger, moments). Live row headroom may
-# defer work before any lane reaches 800. Reserved capacity is protected for its lane; all
+# review/57 packed-state cutover). Reserved capacity is protected for its lane; all
 # reservations must fit the shared write-unit guard. Judge packets may use multiple jobs for one
 # meeting and share the same global budget.
+# Reservations (2026-11-14, review/58 section 12.11; replaces the hand-set caps of section 12.4).
+# Each lane states only a `reservation_ratio`; `compile_llm_lanes.py` and the client's `load_lanes`
+# derive its caps from `llm_lane_budget` and the Worker's daily row cap (`DO_ROWS_ENQUEUE_STOP`,
+# config/dispatch_tuning.yml), so adding or removing a lane re-splits the budget with no other edit:
+# - Live lanes (`live: true`) split the fixed live_reservation_jobs pool by ratio; its rows come
+#   off the top.
+# - k (jobs per ratio point) solves sum(ratio x k x rows_per_job) = row cap - fixed_rows_per_day -
+#   live rows over the other lanes, where rows_per_job = rows_per_write_unit x the lane's units per
+#   job + execution_rows_per_job.
+# - reserved_write_units = floor(ratio x k) jobs x units per job, so the reservations together cost
+#   the whole row cap (enqueue plus execution) and never more.
+# - daily_write_units = the sum of all reservations: a lane with backlog may borrow other lanes'
+#   unspent reservations as the Worker's _reservationBorrowFraction releases them (none before
+#   12:00Z, half until 18:00Z, all after). The Worker also caps the day's admission at that sum.
+# - max_queued_jobs = queue_days x the lane's reservation jobs (the largest lane's if it is 0).
+# The ratios are the reservations tested in #2677 (in jobs). The compiler fails if the total passes
+# MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY or MAX_JOBS_PER_UTC_DAY.
+llm_lane_budget:
+  # Billed DO rows per admitted job = rows_per_write_unit x units + execution_rows_per_job, plus a
+  # fixed daily amount from recounts and deploy schema retries (review/58 section 12.4).
+  rows_per_write_unit: 1.5
+  execution_rows_per_job: 12
+  fixed_rows_per_day: 1500
+  # Jobs reserved a day for all live lanes (`live: true`), split among them by reservation_ratio.
+  # Their rows come off DO_ROWS_ENQUEUE_STOP first; the other lanes split what is left.
+  live_reservation_jobs: 100
+  queue_days: 2
 llm_lanes:
   # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
   chapter-agenda:
@@ -128,11 +153,9 @@ llm_lanes:
       - "tencent/hy3"
       - "gemini/gemini-3.1-flash-lite"
     backup_after_attempts: 12
-    # 800 eligible meetings x one agenda job x six ingress units = 4,800 units/day.
-    # Demand ceiling only: shared job/row guards and provider capacity remain authoritative.
-    max_queued_jobs: 3200
-    reserved_write_units: 4800
-    daily_write_units: 4800
+    # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
+    # One job per meeting that needs generated chapters (8.1% of meetings); first feeder.
+    reservation_ratio: 10
   chapter-locator:
     telemetry: {producer: chapter_locator, unit: episode, completion: consumed, scope: retained_catalog}
     # Production selection is size-aware in citypods/chapter_locator.py. DeepSeek V4 Flash is the
@@ -148,9 +171,9 @@ llm_lanes:
     # Each request is pinned to its size band: V4 Flash alone (one model index) or, above 76,000
     # tokens, MiniMax M3.1 Flash alone (one model index). Kimi K3 was retired upstream 2026-10-15.
     dispatch_shape: per_model
-    max_queued_jobs: 3200
-    reserved_write_units: 4300
-    daily_write_units: 7200
+    # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
+    # One job per meeting with a completed agenda (7.6% of meetings); second feeder.
+    reservation_ratio: 10
   topic-tags:tagger:
     telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
     # Primary recipe route is Gemini 3.5 Flash Lite (AA 11.7, 1000/day, unshared quota).
@@ -163,20 +186,16 @@ llm_lanes:
       - "openrouter/nvidia/nemotron-3.5-super-vl:free"
       - "deepseek/deepseek-v4-flash"
       - "gemini/gemini-3.1-flash-lite"
-    max_queued_jobs: 6400
-    reserved_write_units: 1860
-    # Planning allowance: 800 meetings x two chapter batches x six units = 9,600, raised 1.5x to
-    # 14,400 (2026-11-05): this ceiling closed tagger ingress on 2026-10-23 (9,600/9,600) with
-    # the queue below its cap, and the packed state cut per-job DO rows. The queue cap still
-    # bounds backlog; provider capacity, not ingress, sets throughput.
-    daily_write_units: 14400
+    # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
+    # 1.18 batches per tagged meeting x 63% of meetings with LLM tag candidates.
+    reservation_ratio: 40
   r6-moments:
     telemetry: {producer: moments, unit: episode, completion: consumed, scope: retained_catalog}
     # Size-aware routing selects the shortest model fitting the prompt for small packets (<= 45k)
     # and prioritizes three highest-capacity primary models with low external lane contention
     # (GLM 5.3 Flash, DeepSeek V4 Flash, Kimi K3) with the remaining high-context Gemini models in
     # backup. Gemini 3.1 Flash Lite is removed to eliminate contention with chapter-agenda.
-    # Ingress write units drop to 6 units per job (3 base + 3 primary models).
+    # Ingress write units are 5 per job (3 base + the 2 indexed `models`; backups are not indexed).
     models:
       [zai/glm-5.3-flash, deepseek/deepseek-v4-flash]
     backup_models:
@@ -186,18 +205,15 @@ llm_lanes:
       - "gemini/gemini-3.6-flash"
       - "gemini/gemini-3.5-flash"
     backup_after_attempts: 2
-    max_queued_jobs: 3200
-    reserved_write_units: 916
-    # 800 eligible meeting jobs x six ingress units = 4,800 units/day, raised 1.5x to 7,200
-    # (2026-11-05): this ceiling closed moments ingress on 2026-10-23 (4,798/4,800).
-    daily_write_units: 7200
+    # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
+    # One job per eligible meeting (council or P&Z with a transcript, 21%).
+    reservation_ratio: 10
   # --- Judge stack (review/49, review/53) ----------------------------------------------------
   # Every judge job is pinned to one model (per_model, 4 ingress units), so a judge's identity is
   # part of every judgment and calibration cell; per_model lanes cannot declare backup_models, so
-  # the Slice 3a rescue never moves a judge packet to another model. Sized for 800 meetings/day
-  # (review/53 "Capacity and reservations"): reserved = routine jobs x 4 units x 1.2, set in PR4 when
-  # judging is enabled (zero until then, so idle lanes take no headroom); the daily cap leaves
-  # backfill headroom. The judge workflow runs every two hours (12 runs/day).
+  # the Slice 3a rescue never moves a judge packet to another model. Caps are sized per role from
+  # subjects per meeting and packing (review/58 section 12.4, 2026-11-13), not per model name.
+  # The judge workflow runs every two hours (12 runs/day).
   # Nothing enqueues to these lanes until the judge stage (PR3) and `judging.enabled` (PR4).
   judge:anchor:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
@@ -208,12 +224,17 @@ llm_lanes:
     # binds at about one 40k-token packet a minute per key, far above this lane's demand.
     # Gemini is `google`: the judge stack gives no anchor to a Google-produced entry and draws
     # siblings from the non-Google slot when the anchor is Google (citypods/judging/families.py).
+    # Anchors are tried in lane order per entry (review/58 12.9): Gemini judges every entry it is
+    # independent of; Perplexity Decider V1.3 (family qwen, OpenRouter /api/alpha/decisions)
+    # is the second anchor for the Google-produced entries. It stays eligible-only until the owner
+    # registers the `custom-openrouter-api` AI Gateway provider (base https://openrouter.ai/api)
+    # and raises its route's rpd from 0; then move it into `models` after Gemini.
     models: ["gemini/gemini-decision-1"]
+    eligible_models: ["perplexity/pplx-decider-v1.3"]
     dispatch_shape: per_model
-    max_queued_jobs: 800
-    # review/53 PR4: routine ~191 jobs/day x 4 units x 1.2.
-    reserved_write_units: 920
-    daily_write_units: 5600
+    # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
+    # ~1.2 packets per judged meeting (49.5% of meetings), ~32 items per packet.
+    reservation_ratio: 20
   judge:sibling:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
     # Slots are tried in sorted name order. Nemotron (``primary``) judges every entry it is
@@ -230,10 +251,9 @@ llm_lanes:
       primary: ["openrouter/nvidia/nemotron-3.5-super-vl:free"]
       secondary: ["qwen/qwen3.8-27b"]
     dispatch_shape: per_model
-    max_queued_jobs: 2000
-    # review/53 PR4: routine ~473 jobs/day x 4 units x 1.2, rounded up.
-    reserved_write_units: 2400
-    daily_write_units: 8000
+    # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
+    # ~1.5 packets per judged meeting, per role, both slots together.
+    reservation_ratio: 30
   judge:adjudicator:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
     # Contested subjects plus a 3% calibration sample (review/53 PR5). Two families, so every entry
@@ -244,24 +264,22 @@ llm_lanes:
       - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4.1-flash"
     dispatch_shape: per_model
-    max_queued_jobs: 1600
-    # 920 from PR5, when adjudication starts dispatching (a 3% sample plus contested items).
-    reserved_write_units: 920
-    daily_write_units: 1600
+    # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
+    # Contested subjects plus the 3% calibration sample, ~0.5 packets per judged meeting.
+    reservation_ratio: 10
   remedy:p3:
     telemetry: {producer: remedy, unit: finding, completion: consumed, scope: sample}
     # P3 consensus is daily but remains closed until config/remedy.yml admits each exact route.
-    # Four units per pinned job and an 800-unit ceiling bound this research lane at 200
-    # submissions/day without reserving capacity from production lanes.
     models:
       - "openai/gpt-6.1-sol"
       - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4.1-flash"
       - "typesafe/jev-1.13"
     dispatch_shape: per_model
-    max_queued_jobs: 800
-    reserved_write_units: 0
-    daily_write_units: 800
+    # A live probe (review/58 section 12.11): it shares llm_lane_budget.live_reservation_jobs with
+    # any other live lane by ratio (alone, all 100 jobs), and may borrow unspent shares from 12:00Z.
+    live: true
+    reservation_ratio: 1
 # Purposes deliberately absent from `llm_lanes`, because neither reaches the v2 ingress Worker:
 #   `topic-tags:rules`  -- rule-engine bookkeeping recorded via `remember_call_attempt` with a
 #                          `rule:<version>` pseudo-model; no LLM call is ever made.
@@ -298,6 +316,9 @@ llm_families:
   "openrouter/nvidia/nemotron-3-super-120b-a12b:free": nvidia
   "openrouter/nvidia/nemotron-3.5-super-vl:free": nvidia
   "qwen/qwen3.8-27b": qwen
+  # Perplexity's Decider is a Qwen3.8-27B checkpoint (V1.2 model card), so its family is qwen: as an
+  # anchor it takes the Google-produced entries, whose sibling is then Nemotron (review/58 12.9).
+  "perplexity/pplx-decider-v1.3": qwen
   "tencent/hy3": tencent
   "openai/gpt-6-astra": unverified-beatapi-gpt
   "openai/gpt-6.1-sol": unverified-beatapi-gpt
@@ -313,11 +334,14 @@ judging:
   stability_sample_rate: 0.02
   backfill_order: recent_first
   # Most packets of each judge that may wait at the Worker at once; a pass submits only into the
-  # room left (raised sibling 480 -> 800 to buffer against DO cap 2000), so a backlog the
-  # providers drain slowly cannot grow the Worker queue without bound.
-  max_outstanding_packets: {anchor: 240, sibling: 800, adjudicator: 66}
-  # A tighter per-model sibling limit (review/58 12.6): Qwen3.8 on Groq has about 200k tokens/day,
-  # so rule subjects balanced onto it must not queue hundreds of packets it cannot drain.
+  # room left, so a backlog the providers drain slowly cannot grow the Worker queue without bound.
+  # Aligned 2026-11-14 with the lane ceilings of review/58 12.4 (anchor 120 and sibling 130 jobs a
+  # day; was anchor 240, sibling 800): room above a lane's daily ceiling only produces ingress
+  # refusals. The sibling figure applies per model.
+  max_outstanding_packets: {anchor: 120, sibling: 130, adjudicator: 66}
+  # A tighter per-model sibling limit (review/58 12.6): Qwen3.8 on Groq has about 200k tokens/day
+  # (about 33 packets). Rule subjects no longer spill into its slot (review/58 12.9), so its room
+  # holds only the Nemotron-produced entries no other sibling may judge.
   max_outstanding_per_sibling: {"qwen/qwen3.8-27b": 40}
   # Transcripts one pass may read to quote-check answers it collects; an answer past the limit waits
   # for a later pass. The old fixed 400 deferred 15,390 answers on 2026-11-09 (all 400 reads used),

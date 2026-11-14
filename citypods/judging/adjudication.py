@@ -16,7 +16,7 @@ only; no decision reads these judgments until the calibration report (PR7).
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -312,29 +312,35 @@ def pending_adjudication(
     adjudicator: LaneConfig,
     families: Mapping[str, str],
     identity: str = "",
+    anchor_of: Callable[[Sequence[str | None]], str] | None = None,
 ) -> bool:
     """Whether any subject-question of this task still needs its adjudication (no transcript).
 
     A question no adjudicator can take (none independent of its producer and sibling) or whose
     evidence is recorded as unbuildable for this transcript is not pending, so it does not keep
-    an episode dirty forever."""
+    an episode dirty forever. ``anchor_of`` maps producers to their own anchor when the anchor
+    lane has more than one model (review/58 12.9); without it every subject uses
+    ``anchor_model``."""
     for subject in subjects:
         skipped = ledger.unbuildable(subject)
+        own = anchor_of([subject.producer_model]) if anchor_of else anchor_model
         for due in due_questions(
             subject,
             spec,
-            anchor_model=anchor_model,
+            anchor_model=own,
             calibration_rate=calibration_rate,
             families=families,
         ):
             model = subject_adjudicator(
-                subject, due.question.id, adjudicator, families, anchor_model=anchor_model
+                subject, due.question.id, adjudicator, families, anchor_model=own
             )
             if model is None or adjudicated(subject, due.question.id, model):
                 continue
             if skipped.get(adjudication_unbuildable_key(due.question, model)) == identity:
                 continue
             return True
+    if anchor_of is not None:
+        anchor_model = anchor_of([subject.producer_model for subject in subjects])
     group = choose_due(
         subjects,
         spec,
