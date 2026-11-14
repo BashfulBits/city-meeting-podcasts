@@ -628,3 +628,108 @@ Estimated input of the 258 refused requests: 120,063 minimum, 174,145 median, 18
 | Matches the current primary's route (Gemini 3.5 Flash Lite), recipe set | 6,117 |
 | None stored, no chapter tags | 1,101 |
 | Other | 1,539 |
+
+## Slow route families and the 780 s ceiling (R2-F, 2026-11-13 to 11-14, review/58 §12.5)
+
+Sources: AI Gateway logs since 2026-10-01 (per-call duration and usage), Workers Logs
+`bundle_completed` and `attempt_outcome` since 2026-11-12, 80 sampled request bodies and 6 timed-out
+request payloads read from B2 (about 75 GETs, no writes), and 44 direct calls on paused routes.
+Request and response bodies are not committed.
+
+**T1. AI Gateway successes since 2026-10-01** (duration is the provider call).
+
+| Family | Successes | p50 / p90 / p99 / max (s) | Notes |
+|---|---:|---|---|
+| GLM 5.3 Flash, OrcaRouter | 3,096 (plus 85 × 429) | 220 / 441 / 662 / 719 | 419 over 400 s; 66 in 600 to 720 s |
+| Nemotron 3 Ultra, NVIDIA | 327 | 112 / 475 / 655 / 703 | |
+| Nemotron 3 Ultra, Kilo | 195 | 137 / 453 / 590 / 591 | |
+| Nemotron 3 Ultra, OpenRouter | 198 (plus 21 × 499) | 167 / 459 / 676 / 718 | |
+| Gemma 4 31B, NVIDIA | 2,136 | 142 / 475 / 693 / 718 | 309 over 400 s |
+
+**T2. Where the time goes.**
+
+| Family | Output tokens p50 | Reasoning share of output (p50) | Tokens/s p50 | corr(duration, output) | corr(duration, input) |
+|---|---:|---:|---:|---:|---:|
+| GLM | 16,384 (p90 33.6k) | 92% | 81 | 0.81 | 0.36 |
+| Ultra, Kilo and OpenRouter | about 1.0k to 2.3k visible | 73 to 76% | about 55 | 0.70 to 0.88 | low |
+| Gemma, NVIDIA | 1,276 | 0 (no reasoning) | 8.9 (down to about 1 on slow calls) | 0.15 | — |
+
+786 GLM outputs at exactly 16,384 tokens (2026-10-24 to 11-03) reflect an older `max_tokens` cap.
+
+**T3. Request bodies** (80 sampled, half over 400 s).
+
+- GLM, `judge:adjudicator` (36): all `finish_reason: stop`, `max_tokens` 65,536, `json_object`.
+  Content about 1.7k tokens against 10k to 56k reasoning tokens; the 600 to 706 s calls had 30k to
+  56k reasoning tokens.
+- GLM, `r6-moments` (4): 21k to 58k reasoning tokens.
+- Ultra, `chapter-agenda` (all three legs): all `stop`, `max_tokens` 65,536, `json_schema`;
+  reasoning 2k to 34k tokens.
+
+**T4. Workers Logs attempt outcomes since 2026-11-12 04:00Z.**
+
+| Route | Lane | Outcomes |
+|---|---|---|
+| GLM, OrcaRouter | judge:adjudicator | 71 ok, 25 timeouts at 720 s, 1 own_rpd; ok p50 479 s, p90 613 s; 12 ok over 600 s |
+| Ultra, NVIDIA | chapter-agenda | 10 ok, 11 timeouts |
+| Ultra, Kilo | chapter-agenda | 10 ok, 3 timeouts, 1 `structured_output_empty` |
+| Ultra, OpenRouter | chapter-agenda | 13 ok |
+| Gemma, NVIDIA | judge:sibling | 21 ok, 13 timeouts, 1 upstream_capacity |
+
+**T5. Timing margins** (588 bundles since 2026-11-13 02:15Z, with early release and the ladder
+live).
+
+- Invocation start to the claim: at most 10.7 s.
+- Invocation start to `bundle_completed`: p50 151 s, p99 722.8 s, max 733.0 s.
+- Last call end to the final commit: p50 0.73 s, p99 1.72 s. One commit took 125.5 s because a B2
+  result PUT had no timeout (`b2.putJson`); one took 6.3 s.
+
+**Direct-call experiment** (plan fixed at 2026-11-13 18:20Z, before the first call). The same
+fixed samples ran in every arm, with a direct-call timeout of 840 s so that the 720 to 780 s tail
+would show. Arms: A0 production request; A1 lowest documented reasoning control; A2 `max_tokens`
+16,384; A3 a "reason briefly, under about 4,000 tokens" sentence appended to the system message.
+
+Ultra on NVIDIA (`chapter-agenda`, 10 samples: 8 production successes of 467 to 668 s and 2 jobs
+that timed out at 720 s; validity under `finalize_agenda_job`):
+
+| Arm | Finished | Valid | Timeouts at 840 s | Notes |
+|---|---:|---:|---:|---|
+| A0 control | 1 (273 s) | 1 | 9 | |
+| A1 `chat_template_kwargs.enable_thinking: false` | 5 (118 to 542 s) | 2 | 5 | 0 reasoning tokens on every finished call |
+| A2 `max_tokens` 16,384 | 5 (102 to 608 s) | 0 | 5 | 3 ended `length` with truncated JSON |
+| A3 length sentence | 2 (263, 296 s) | 1 | 8 | reasoning 6.4k and 10.7k tokens, above the 4k asked |
+
+- The first five samples timed out in every arm, including A1 with no reasoning. That points to
+  provider queueing on those requests, not generation length.
+- No call in any arm finished between 720 and 840 s.
+- On the one request that A0 and A1 both finished, A1 was not faster (295 s against 273 s).
+- A1 recall against the production answers for the same requests: line coverage 0.86, 0.84 and
+  0.44, with fewer agenda items (25 against 30, 33 against 40). On one timed-out payload A1
+  returned 11 items.
+- Of the 8 production answers in the sample, 3 pass today's validator. Ultra corrects OCR text
+  (for example "ltems" to "Items"), and the corrected text fails the quote check.
+- A4 (combination) was skipped by the plan's rule: A3 did not cut latency and A2 truncated.
+
+GLM on OrcaRouter: no usable data. The 4 calls on 2026-11-13 each returned 429 "Free model
+capacity is limited" after about 120 s, and the run stopped. On 2026-11-14 the OrcaRouter daily
+pool was spent, so no further GLM call was made. The Kilo and OpenRouter `reasoning_effort` checks
+were not run. Gemma was not tested: it serves no lane after #2678, and no request lever applies to
+provider throughput.
+
+**Pause log** (every pause, renewal and resume made by this package, plus the status checks).
+Only single routes were paused; no provider-wide or global pause was made.
+
+| Time (UTC) | Action | Target | Reason | Measured effect |
+|---|---|---|---|---|
+| 11-13 11:22, 13:19 | status | orcarouter, nvidia, kilo, openrouter | before planning | no pauses |
+| 11-13 13:28 | status | route GLM, OrcaRouter | before planning | no pauses; 1 in flight |
+| 11-13 18:12 to 19:00 | status (8 checks) | provider:nvidia, then provider:openrouter | — | Not mine: "provider catalog reconciliation" pauses from the catalog workflow, renewed about every 3 minutes until about 19:00. Not touched; no pause started while they were active |
+| 11-13 23:19:14 | status | all | before the run | no pauses |
+| 11-13 23:20:34 | pause, 900 s | route `orcarouter_zai_glm_5_3_flash_free` | GLM arms | drained at once, 0 in flight |
+| 11-13 23:25:01 | resume (manual) | route `orcarouter_zai_glm_5_3_flash_free` | every call returned 429 | paused 4.5 minutes |
+| 11-13 23:25:26 | pause, 900 s | route `nvidia_nemotron_3_ultra_550b_a55b_free` | Ultra arms | drained at once, 0 in flight |
+| 11-13 23:30 to 11-14 01:20 | renew, 900 s, every 300 s (23 times) | same route | calls still running | — |
+| 11-14 01:21:28 | resume | same route | arms done | resumed before expiry; paused 1 h 56 min |
+| 11-14 19:28:50 | status | all | before finishing | no pauses |
+
+While the Ultra route was paused, `chapter-agenda` kept its Kilo and OpenRouter legs. Every direct
+call was reserved against its route first. No pause made by this package is outstanding.

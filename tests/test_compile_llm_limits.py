@@ -14,6 +14,7 @@ def _fixture_routes_may_leave_the_timeout_unset(monkeypatch, request):
     if "pin_rule" not in request.keywords:
         monkeypatch.setattr(compile_llm_limits, "ROUTE_RESPONSE_SECONDS_DEFAULT", 10**6)
 
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROVIDER_LIMITS_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 
@@ -1431,7 +1432,9 @@ def test_response_timeout_seconds_reaches_worker_and_python_catalogs():
 def test_production_response_timeouts_are_exactly_the_review_58_set():
     worker = compile_llm_limits._worker_catalog(compile_llm_limits.compile_limits())
     listed = {rid: value for value, rids in RESPONSE_TIMEOUT_ROUTES.items() for rid in rids}
-    actual = {rid: route["response_timeout_seconds"] for rid, route in worker["routes_by_id"].items()}
+    actual = {
+        rid: route["response_timeout_seconds"] for rid, route in worker["routes_by_id"].items()
+    }
     expected = {rid: listed.get(rid, 720) for rid in actual}
     assert actual == expected
     ceiling = compile_llm_limits._global_max_response_seconds()

@@ -1130,7 +1130,9 @@ global ceiling, with `FINALIZATION_RESERVE_SECONDS` 45 and `LEASE_DURATION_SECON
 720): only OrcaRouter GLM 5.3 Flash and the three Nemotron 3 Ultra legs use 780, every other route
 720 or lower, and catalog-added routes are written with 720. The B2 result write after a
 successful call is bounded by `RESULT_WRITE_TIMEOUT_SECONDS` (30, below the reserve; checked by
-`validateConfig`); a write that runs out settles as a retryable `server_error`. The Worker's
+`validateConfig`); a write that runs out settles as a retryable `server_error`. The NVIDIA
+Nemotron 3 Ultra route declares a verified `reasoning_controls.off`, which no lane sets (review/58
+§12.5, #2689). The Worker's
 `effectiveResponseMs` uses the smaller of the two for every call on that route, including in-window
 429 and Google 5xx retries, and clamps again at runtime. The failure class stays
 `provider_response_timeout`; requeue, retry accounting, lease and bundle-deadline arithmetic are
