@@ -216,18 +216,19 @@ llm_lanes:
     daily_write_units: 5600
   judge:sibling:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
-    # Slot A (Google) judges every rule candidate and every entry not produced by a Google model;
-    # slot B (non-Google) judges Google-produced entries. Qwen3.8 is eligible, not dispatched:
-    # qualified to be swapped into slot B by a league (review/49 P6) or by hand.
+    # Slots are tried in sorted name order. Nemotron (``primary``) judges every entry it is
+    # independent of; Qwen3.8 (``secondary``, family qwen) judges only what Nemotron cannot: the
+    # entries Nemotron produced (review/58 12.6). With the Gemini Decision anchor no Google model
+    # may be a sibling, so Gemma 4 31B was removed (owner decision, 2026-11-13: 4% of its sibling
+    # calls succeeded on 2026-11-12/13). Its recorded judgments stay under its own identity.
     models:
-      - "google/gemma-4-31b-it"
       - "openrouter/nvidia/nemotron-3.5-super-vl:free"
+      - "qwen/qwen3.8-27b"
     # Gemma 4 26B was removed: under 40% of its judge replies parsed (2026-10-17; it loops to the
     # output limit on mixed-kind packets, see PR #2476). Re-add it only after a fix is verified.
-    eligible_models: ["qwen/qwen3.8-27b"]
     slots:
-      google: ["google/gemma-4-31b-it"]
-      non_google: ["openrouter/nvidia/nemotron-3.5-super-vl:free", "qwen/qwen3.8-27b"]
+      primary: ["openrouter/nvidia/nemotron-3.5-super-vl:free"]
+      secondary: ["qwen/qwen3.8-27b"]
     dispatch_shape: per_model
     max_queued_jobs: 2000
     # review/53 PR4: routine ~473 jobs/day x 4 units x 1.2, rounded up.
@@ -236,8 +237,9 @@ llm_lanes:
   judge:adjudicator:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
     # Contested subjects plus a 3% calibration sample (review/53 PR5). Two families, so every entry
-    # has an adjudicator independent of its producer and its sibling. DeepSeek V4.1 Flash's BeatAPI
-    # leg yields to JEV; the NVIDIA leg carries adjudication.
+    # has an adjudicator independent of its producer and its sibling. DeepSeek V4.1 Flash runs on
+    # its BeatAPI legs (JEV is retired, so they no longer yield); the NVIDIA leg is stood down
+    # (rpd 0, about 5% success on 2026-11-12/13, review/58 12.7).
     models:
       - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4.1-flash"
@@ -314,6 +316,9 @@ judging:
   # room left (raised sibling 480 -> 800 to buffer against DO cap 2000), so a backlog the
   # providers drain slowly cannot grow the Worker queue without bound.
   max_outstanding_packets: {anchor: 240, sibling: 800, adjudicator: 66}
+  # A tighter per-model sibling limit (review/58 12.6): Qwen3.8 on Groq has about 200k tokens/day,
+  # so rule subjects balanced onto it must not queue hundreds of packets it cannot drain.
+  max_outstanding_per_sibling: {"qwen/qwen3.8-27b": 40}
   # Transcripts one pass may read to quote-check answers it collects; an answer past the limit waits
   # for a later pass. The old fixed 400 deferred 15,390 answers on 2026-11-09 (all 400 reads used),
   # which kept their markers pending and their packets counted against the room above.

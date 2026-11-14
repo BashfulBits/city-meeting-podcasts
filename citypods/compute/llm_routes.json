@@ -1244,6 +1244,7 @@
       "output_context_limit": 384000,
       "account_id": "primary",
       "rpm": 4,
+      "rpd": 0,
       "tpm": 36000,
       "concurrency": 1,
       "free": true,

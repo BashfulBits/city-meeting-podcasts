@@ -352,3 +352,55 @@ Locator runs after WP8 (#2656):
 The 11-12 11:26Z errors were all "terminal retry limit or structural recovery gate blocks this
 recipe". The logs do not name episodes, so the overlap between the 95 MiniMax submissions and the
 41 V4.1-served results is not established.
+
+## Judge lanes: siblings, decision models, adjudicator (2026-11-13, review/58 12.6 to 12.8)
+
+These are read-only production sources: Workers Logs `bundle_completed` events from 2026-11-12 04Z
+to 11-13 11:40Z, AI Gateway logs for the 7 days to 11-13, and one judge-run log at 10:33Z.
+Free-endpoint calls went only to OpenRouter decision endpoints that production does not route
+through. No request or response body is committed.
+
+- **Judge run 10:33Z.** `no_independent_anchor` 3,332 and `no_independent_sibling` 897.
+  Outstanding sibling packets: Gemma 4 31B 142, Nemotron 3.5 Super 665.
+- **Sibling calls by route (Workers Logs).**
+
+  | Route | Succeeded | Notes |
+  |---|---:|---|
+  | `gemma_4_31b_primary` | 27 of 697 | |
+  | `gemma_4_31b_secondary` | 28 of 665 | |
+  | `nvidia_gemma_4_31b_it_free` | 21 of 35 | |
+  | `openrouter_google_gemma_4_31b_it_free` | 0 of 2 | |
+  | Nemotron 3.5 Super (NVIDIA, OpenRouter, Kilo) | 97–98% | p50 about 116 s |
+
+- **Adjudicator calls by route (Workers Logs).**
+
+  | Route | Succeeded | Notes |
+  |---|---:|---|
+  | OrcaRouter GLM 5.3 Flash | 71 of 97 | 25 timeouts, p50 479 s |
+  | NVIDIA V4.1 Flash | 2 of 4 | p50 598 s; also 0 of 58 queued chapter-locator jobs |
+  | BeatAPI V4.1 Flash | 1 of 1 | 92 s |
+  | BeatAPI secondary GLM | 0 of 18 | HTTP 524 |
+
+  The two Gemini Decision anchor routes succeeded on 14 of 16 calls each, about 0.8 s.
+- **AI Gateway, 7 days.**
+
+  | Route | Results | Latency |
+  |---|---|---|
+  | BeatAPI `deepseek-v4.1-flash-free` | 47 x 200, 2 x 524, 2 x 429, 1 x 503 | p50 95 s, p90 246 s |
+  | BeatAPI `deepseek-v4-flash-0731-free` | 4 x 404 (retired upstream) | |
+  | NVIDIA V4.1 | 5 x 200, 2 x 500 | |
+  | OrcaRouter V4 Flash | 1,155 x 200 | |
+  | OrcaRouter GLM | 592 x 200 | |
+
+- **Production OpenRouter requests per day** (AI Gateway): 271 on 11-10, 53 on 11-11, 14 on 11-12,
+  and 152 on 11-13 by 13:20Z.
+- **Evaluation calls.**
+  - 58 OpenRouter request attempts this round, all to free models:
+    - Perplexity Decider V1.3 and Flash: 30 x 200 (smoke, plus a replay of 8 stored Gemini
+      requests and 6 stored JEV requests against both models);
+    - Mercury Decide: 21, from 11:24Z to 14:19Z, all 404 "No endpoints found";
+    - Respan: 2 (400);
+    - AI Gateway path checks: 5 (3 refused at the Cloudflare edge with 1010, 2 x 404).
+  - Every replay call was accepted.
+  - Response headers carried only `X-Generation-Id` and `X-Provider-Name`, with no rate-limit
+    headers.

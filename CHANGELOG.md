@@ -15,6 +15,18 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Judge sibling roster after Gemma (review/58 12.6).**
+  - Gemma 4 31B leaves `judge:sibling`: a Google sibling can never judge beside the Google anchor,
+    and 4% of its queued calls succeeded.
+  - Nemotron 3.5 Super is slot `primary`. Qwen3.8-27B (Groq, family `qwen`) is slot `secondary`
+    and judges the Nemotron-produced entries that previously had no sibling.
+  - New `judging.max_outstanding_per_sibling` caps Qwen at 40 outstanding packets.
+  - Pending markers for a sibling model the lane no longer lists are dropped
+    (`retired_sibling_pending_dropped`). Stored Gemma judgments keep their identity.
+  - Everything stays in shadow.
+- **DeepSeek V4.1 Flash adjudication moves to BeatAPI (review/58 12.7).** The NVIDIA leg is stood
+  down (`rpd: 0`, about 5% success). The two BeatAPI legs carry the model.
+
 - **Review/58 §12.3 locator labels: metadata, not work.** The chapter-locator lane now owns every
   locator key in the shared agenda record (result labels and retry bookkeeping were missing), so
   the chapter-agenda lane no longer writes stale labels over current results. About 1,800

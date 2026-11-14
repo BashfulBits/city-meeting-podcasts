@@ -655,3 +655,152 @@ deploy the Worker. Verify: the locator run summary's quality line shows
 `outcomes` agree; the `/admin/status` lane table's chapter-locator "ready" count falls to about the
 genuinely new work. To stop the repair, set `CITYPODS_LOCATOR_METADATA_REPAIR=0` on the locator
 workflow.
+
+### 12.6 Judge siblings and free decision models
+
+**Owner brief.** Remove Gemma from the sibling lane. Find a free decision model, from GLiDE 9B
+or anything better, to serve as a sibling or as a second anchor. Add no paid routes. Inception
+Mercury Decide was added as a candidate during the round. The evidence log has the raw counts
+(2026-11-13 section).
+
+**Gap at the start** (judge run at 10:33Z):
+
+- `no_independent_anchor` 3,332: Google-produced entries, which the Google anchor cannot judge.
+- `no_independent_sibling` 897: mostly Nemotron-produced entries. Once Gemma was excluded beside
+  a Google anchor, Nemotron was the only sibling.
+- Queued Gemma sibling jobs succeeded 4% of the time (Workers Logs, 2026-11-12 04Z to 11-13
+  11:40Z):
+  - AI Studio primary: 27 of 697.
+  - AI Studio secondary: 28 of 665.
+  - NVIDIA: 21 of 35.
+  - Failures were mostly upstream 503s, 133 timeouts and 66 invalid replies.
+
+**Free decision models surveyed** (OpenRouter catalog and vendor pages, 2026-11-13):
+
+| Model | Free route | Verdict |
+|---|---|---|
+| GLiDE 9B / 27B (Fastino) | None. The hosted API serves 27B only, on paid pay-as-you-go plans with no confirmed free tier. No inference provider hosts 9B. | Not available free. 9B fits a 32 GB Mac (about 16 GB bf16), but the owner prefers that machine for ASR. |
+| Inception Mercury Decide `:free` | Listed, but with no endpoint | 21 of 21 calls returned 404 "No endpoints found", 11:24Z to 14:19Z over three hours, about 0.15 s each. No 429 or 503 and no rate-limit headers. Not usable now. |
+| Perplexity Decider V1.3 `:free` and Flash `:free` | OpenRouter `/api/alpha/decisions`, price 0, 262k context | Qualified (see the replay table). Qwen3.8-27B base, so family `qwen`. |
+| Parallel decisions-fast `:free` | OpenRouter | Excluded: web-grounded by design. |
+| Respan span-01-lite `:free` | OpenRouter | Excluded: yes/no behaviour scoring only. Returned 400 on our questions. |
+| Other decision models (Gemini Decision on OpenRouter, JEV 1.13/1.14, others) | Paid | Not called. |
+
+**Replay.** The fixed sample was 8 stored Gemini anchor requests and 6 stored JEV requests,
+written down before the first call. There were 28 calls. Every call was accepted, none was
+rate-limited, and none returned a web annotation. "Agree" means the same side of 0.5 on yes/no
+questions; "Opposite" counts answers at opposite extremes.
+
+| Reference vs candidate | Questions | Agree | Opposite | \|diff\| median / p90 | Decisive (cand / ref) | p50 latency |
+|---|---:|---:|---:|---|---|---|
+| Gemini vs Decider V1.3 | 431 | 86.1% | 3 | 0.081 / 0.326 | 70% / 58% | 1.6 s |
+| Gemini vs Decider Flash | 431 | 83.5% | 3 | 0.082 / 0.351 | 63% / 58% | 0.5 s |
+| JEV vs Decider V1.3 | 201 | 82.1% | 0 | 0.139 / 0.366 | 77% / 38% | 1.6 s |
+| JEV vs Decider Flash | 201 | 83.6% | 0 | 0.126 / 0.342 | 71% / 38% | 0.5 s |
+
+On the same 201 questions, Gemini and JEV agree 82.6%. Decider V1.3 is therefore as close to JEV
+as Gemini is, and it is a qualified candidate. This measures agreement, not accuracy.
+
+**What shipped (in shadow):**
+
+- **Gemma 4 31B left `judge:sibling`.** Its stored judgments keep their identity.
+- **Pending markers for a model the lane no longer lists are dropped.** A queued pending marker
+  of a model the sibling lane no longer lists is dropped, as #2659 did for JEV (`_retired_role`,
+  counter `retired_sibling_pending_dropped`). An unreadable marker waits.
+- **Qwen3.8-27B (Groq, family `qwen`) is now active**, in slot `secondary` behind Nemotron
+  (`primary`). Slots are tried in sorted name order, so Qwen judges only what Nemotron cannot:
+  Nemotron-produced entries. It also takes a headroom share of rule subjects.
+- **New `judging.max_outstanding_per_sibling` caps Qwen at 40 outstanding packets.** Its quota is
+  about 200k tokens a day, against 800 for the purpose. Its packet ceiling is 4,500 estimated
+  tokens and 10 items (the Groq minute budget is 7,000).
+- **No new route.** Qwen uses the existing `groq_qwen_3_8_27b_primary`, which no other lane uses.
+
+Qwen still has to re-qualify in shadow; review/49 lists the steps.
+
+**Second anchor (recommendation, issue
+[#2674](https://github.com/BashfulBits/city-meeting-podcasts/issues/2674)).** Perplexity Decider
+V1.3 would cover the Google-produced entries. The Worker cannot reach it today, for two reasons:
+
+- **The AI Gateway slug cannot reach the decisions path.** The `openrouter` slug maps to
+  `https://openrouter.ai/api/v1`, and both `/alpha/decisions` and `/api/alpha/decisions` through it
+  returned 404. A custom gateway provider is needed (an owner step).
+- **The judging code assumes one anchor.** It keys every anchor decision on one primary model, so
+  a per-entry anchor choice is needed.
+
+The request shape is JEV's `systemone` body with `decisions`-style key mapping. Size the route at
+about 200 requests/day: the OpenRouter 1,000 RPD is shared with production's free routes, which
+used 120 to 300 requests a day from 2026-11-10 to 11-13.
+
+**Queued Worker jobs.** The Worker checks lane membership only at enqueue and at retry admission,
+not at claim, so Gemma's already-queued sibling jobs (142 outstanding at 10:33Z) keep dispatching
+on the Gemma routes. Their answers are no longer collected. The jobs are not harmful, but they
+waste Gemma route attempts and DO rows. Cancelling them is optional. If the owner wants to cancel
+them, do it as for JEV (evidence log, 2026-11-13 01:33Z):
+
+1. List `state/llm_deferred_index/pending/google/gemma-4-31b-it/`.
+2. Read the job ids.
+3. Send them to `/v2/jobs:cancel-batch`.
+
+That is an owner-approved production write, and this round did not do it.
+
+### 12.7 Adjudicator after DeepSeek V4.1 on NVIDIA
+
+**Where V4.1 Flash is served, and how well** (AI Gateway, 7 days to 2026-11-13; Workers Logs,
+2026-11-12 04Z to 11-13 11:40Z):
+
+| Provider route | Free | Result |
+|---|---|---|
+| NVIDIA `deepseek-ai/deepseek-v4.1-flash` | yes | Adjudicator: 2 of 4 calls succeeded, p50 598 s. Chapter-locator, from queued pre-WP8 jobs: 0 of 58, mostly 720 s timeouts. Gateway: 5 x 200 and 2 x 500. |
+| BeatAPI `deepseek-v4.1-flash-free` (two accounts, `tier: backup`) | yes | Gateway: 47 x 200, 2 x 524, 2 x 429, 1 x 503. p50 95 s, p90 246 s. Workers Logs: 1 of 1 adjudicator call. |
+| OpenRouter, Kilo (`deepseek-v4.1-flash`, `-1017`) | paid only | Not used. |
+| Airforce `deepseek-v4.1-flash` | listed today; 1 rpm for the whole account | No route. Not probed: production does not route through Airforce, but a 1 rpm account is too small to carry a lane. |
+| SiliconFlow V4.1 | free tier needs Chinese real-name verification | Not usable. |
+
+**Providers are retiring V4 Flash.** NVIDIA retired v4-flash-0731 and v4-pro in September and now
+lists only V4.1. BeatAPI `deepseek-v4-flash-0731-free` returned 404 four times this week. OrcaRouter
+still serves V4 (1,155 x 200) but has no V4.1.
+
+**Decision (shipped).** DeepSeek V4.1 Flash stays the second adjudicator:
+
+- The NVIDIA leg is stood down (`rpd: 0`, dated). Restore it after a rate-probe run shows it
+  answering.
+- The two BeatAPI legs carry the model. JEV, which they used to yield to, is retired.
+- V4.1 Flash is now used only by `judge:adjudicator`; `remedy:p3` is closed.
+
+No replacement was forced, because BeatAPI V4.1 is healthy at adjudication volume: 66 outstanding
+at most, about 60 to 120 packets a day.
+
+**Queued V4.1 jobs.** No cancellation is needed. A queued V4.1 job is pinned to the model, not to
+the route, so with the NVIDIA route paused it claims a BeatAPI route instead.
+
+**Comparison left to the lead.** If BeatAPI V4.1 degrades, a replacement must come from a family
+other than `zai` (GLM, adjudicator 1) and `nvidia`/`qwen` (siblings). The free candidates are
+GPT-OSS-120B on Groq (family `openai`) and MiniMax. Choosing between them needs a small replay on
+their production routes, which this round may not call:
+
+1. Take the fixed sample of about 20 stored contested-plus-calibration adjudicator packets.
+2. For each candidate, measure:
+   - acceptance and quote-check pass rate;
+   - agreement with GLM on the same packets;
+   - p50 and p90 latency;
+   - 429 and timeout rates.
+3. Pick the candidate with the higher quote-check pass rate, and use latency to break a tie.
+
+### 12.8 Decisions API for tagging (recommendation)
+
+Not now. Issue [#2675](https://github.com/BashfulBits/city-meeting-podcasts/issues/2675) has the
+full reasoning and an offline experiment. In short:
+
+- **No evidence span.** A decision call returns probabilities only. Tag candidates need an
+  evidence span and timestamp, which the judges quote-check, so a span finder would have to follow
+  each call.
+- **Multi-select means 38 questions.** A `choice` question returns one letter, so multi-select
+  needs one yes/no question per taxonomy tag. That is about 4,300 tokens of questions per chapter.
+- **It competes with the anchor.** The two Gemini Decision projects are the anchor's routes. Our
+  estimate, not a measurement: 800 meetings x about 8 chapters x about 10,000 tokens is about 64M
+  tokens a day, roughly 45% of the two projects' combined minute budget.
+- **No independence gain.** The tagger's primary is already Google.
+
+The useful variant is a decision model as a **pre-filter** that narrows the 38 tags per chapter
+before the chat tagger. It would cut tagger tokens without changing who produces a tag. Test it
+offline on a free decision endpoint that production does not use, and do not use Gemini Decision.
