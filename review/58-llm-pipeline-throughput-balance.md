@@ -325,7 +325,9 @@ longer than 750 s.
   30 + 780 + 45 = 855 ≤ 870 < 900. Worst invocation: 39 s to start + 780 + 5 s to commit = 824 s,
   76 s under the cron limit. The 45 s reserve is ten times the largest finalization observed. Net
   modeled effect: about 25 more results a week for 28k slot-seconds (0.4%), so it ships last and
-  only if B1 is fixed.
+  only if B1 is fixed. **Implemented in §12.5** on four routes (OrcaRouter GLM and the three
+  Nemotron 3 Ultra legs; Gemma left at 720), with every other route pinned and a 30 s bound on the
+  B2 result write.
 - **Not recommended: moving calls off the cron lifetime.** A DO alarm also has a 15-minute wall
   limit, and holding the DO active for calls would use about 10,800 of the 13,000 GB-s daily Free
   duration allowance. Queues on Free allow 10,000 operations a day. No measured limit of the cron
@@ -490,7 +492,7 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP4 | Early slot release (coordinator + `index.js`). **Status: implemented in PR (branch `feat/58-wp4-early-slot-release`), awaiting merge; merging deploys the Worker.** `completePartial` with per-bundle dedupe; defaults one partial after 60 s and 3,000 partial rows/day (section 8: 20 s / three commits does not fit 85k at 6,000 results; 3,000 is above the 2,824 the bundle day cap allows, and a back-loaded 6,000-result day ends under about 87k); off switch `EARLY_SLOT_RELEASE_ENABLED: 0` | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k; `bundle_completed` `released_by`, `partial_flushes` |
 | WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
 | WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger). **Status:** part A in PR; part B (Worker-cron trigger) implemented in `feat/58-wp6b-worker-cron-producer-trigger` (PR open), inert until the owner sets `GITHUB_DISPATCH_TOKEN`; locator backfill open | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains; producers run on cadence | Run conclusions; locator `ready` count falls; `repository_dispatch` runs at the table's minutes and `producer_trigger` logs with status 204 |
-| WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
+| WP7 | Optional 780 s for three slow families. **Status: implemented in `feat/58-r2f-slow-route-families` (§12.5), PR open; merging deploys the Worker.** 780 s on four routes, all others pinned, bounded result write, Ultra reasoning-off declared but unused; follow-ups in #2689 | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
 | WP8 | **Done 2026-11-11.** Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 500,000 estimated tokens (cap from WP8a), hold larger packets as deferred, drop V4.1 from the lane, route output limit check. Result: locator lane is V4 Flash + MiniMax; V4.1 stays only in `judge:adjudicator`; locator `max_tokens` clamps to MiniMax's 12,800; queued V4.1 locator jobs are cancelled and re-planned; no routing-version bump, so V4 Flash results stand | Opus | — (owner deploys the compiled route config) | 487 of 494 overflow packets get a working route; 7 held | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; `locator-over-input-cap` deferred count reported (expected 7) |
 | WP8a | **Done 2026-11-11.** MiniMax input-size probe (approved by the owner 2026-11-11): with the route paused, send real pending locator packets of increasing size above 191,294 estimated tokens through the evaluation runner until one is rejected or times out; record admitted and rejected provider token counts and latency; update `hard_input_ceiling` and the WP8 cap from the result. Result: admitted up to 941,663 provider tokens (610,831 estimated), rejected 709,545 estimated (HTTP 400); `hard_input_ceiling` 941,663, cap 500,000; 2 of 5 admitted large answers invalid; two route pauses logged and released | Lead (holds the pause) | — | 145 more packets (191,295 to 500,000) | Evidence file, "MiniMax input-size probe (WP8a) and pause log" |
 | WP9 | Gemini Decision 1 as the `judge:anchor` model (owner correction 2026-11-12): Worker `decisions` API shape, two routes on the existing Gemini keys, `DecisionBackend`, anchor independence across all judges, per-anchor-model report; canonical in [review/49](49-judge-consensus-admission.md#gemini-decision-1-as-the-anchor-2026-11-12-review58-wp9) | Opus | WP3a (JEV stood down) | Restores `judge:anchor` in shadow at about one request a minute per key | Attempts on `gemini_decision_1_*` succeed; anchor judgments carry `judge_model: gemini/gemini-decision-1`; first-day 429s match the published limits |
@@ -498,8 +500,8 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 **Status 2026-11-13.** WP1a, WP1b, WP2, WP3a, WP3b, WP3c, WP4, WP5, WP6 parts A and B, WP8, WP8a
 and WP9 are merged and deployed (#2653 to #2661, #2665, #2666); this supersedes any "awaiting
 merge" or "PR pending" wording in the rows above. WP4 shipped with one partial commit per bundle
-after 60 s and a 3,000-row daily budget, not the 20 s and three commits proposed in B1. Not started:
-WP7 (optional 780 s). The stale-recipe locator backfill under WP6 was dropped: see §12.3.
+after 60 s and a 3,000-row daily budget, not the 20 s and three commits proposed in B1. WP7
+(optional 780 s) is in its PR (§12.5). The stale-recipe locator backfill under WP6 was dropped: see §12.3.
 
 **WP6 status.** Part A is in the `fix/58-wp6a-producer-run-fixes` PR: the chapter-lane record-write
 lease skip (bounded wait, then a clean deferral stamped `record_write: skipped_lease_busy` on the
@@ -963,6 +965,113 @@ Also noted:
 and merge. Merging redeploys the Worker with the old caps. To drain faster without reverting, raise
 one lane's `daily_write_units` (and its queue cap) by the trade figures above.
 
+### 12.5 Slow route families: reasoning, output budget and the 780 s ceiling
+
+**Owner brief.** Improve the success rates of OrcaRouter GLM, NVIDIA Gemma and Nemotron 3 Ultra
+with reasoning control, output token reservation or output-length hints in the prompt, in addition
+to raising the timeout to 780 s. Choose the best combination and implement it. Tables, the direct
+calls and the pause log are in the
+[evidence file](evidence/2026-11-11-llm-pipeline-throughput.md#slow-route-families-and-the-780-s-ceiling-r2-f-2026-11-13-to-11-14-review58-125).
+
+**Where the time goes.**
+
+| Family | Lane today | Reasoning share of output | Tokens/s p50 | corr(duration, output) | Lever that could apply |
+|---|---|---:|---:|---:|---|
+| GLM 5.3 Flash, OrcaRouter | judge:adjudicator | 92% | 81 | 0.81 | reasoning effort (thinking cannot be turned off) |
+| Nemotron 3 Ultra (NVIDIA, Kilo, OpenRouter) | chapter-agenda | 73 to 76% | about 55 | 0.70 to 0.88 | reasoning off on NVIDIA |
+| Gemma 4 31B, NVIDIA | none since #2678 | 0 | 8.9 | 0.15 | none: provider throughput |
+
+Every slow request finished with `stop` under a 65,536-token budget, so none was cut by its
+budget. GLM and Ultra are slow because they reason at length. Gemma is slow because the provider is
+slow.
+
+**Hypotheses and test.** H1: a reasoning control shortens calls without losing answers. H2: a
+tighter `max_tokens` (16,384) bounds the calls. H3: a sentence asking for brief reasoning (under
+about 4,000 tokens) shortens it. H4: some calls finish between 720 and 780 s. The plan was fixed
+before the first call: 10 fixed samples per family (production successes from 236 to 706 s plus
+jobs that timed out at 720 s), arms A0 to A3, each reply checked with the lane's production
+validator, and a direct-call timeout of 840 s so the 720 to 780 s tail would show. Each family ran
+on its own paused route.
+
+**Results.**
+
+- **Ultra on NVIDIA** (40 calls):
+
+  | Arm | Finished / 10 | Valid |
+  |---|---:|---:|
+  | A0 control | 1 | 1 |
+  | A1 reasoning off | 5 | 2 |
+  | A2 16,384 tokens | 5 | 0 |
+  | A3 length sentence | 2 | 1 |
+
+  - H1 is partly true. Reasoning off returned 0 reasoning tokens and finished five times as often,
+    but recall against the production answers fell on 2 of 3 comparable requests (line coverage
+    0.86, 0.84, 0.44).
+  - H2 is false. Three of the five finished calls ran out of budget with truncated JSON, and none
+    was valid.
+  - H3 is false. The model reasoned 6k to 11k tokens anyway.
+  - H4: no call in any arm finished between 720 and 840 s. The first five samples timed out in
+    every arm, including with reasoning off. That is provider queueing, not generation.
+- **GLM on OrcaRouter:** not measured. Every call on 2026-11-13 returned 429 ("free model capacity
+  is limited"), and the OrcaRouter daily pool was spent on 2026-11-14.
+- **Gemma:** not tested (no lane, no lever).
+
+**Decision.** This PR implements the parts the evidence supports:
+
+1. **The 780 s ceiling, on the four slow reasoning routes only.**
+   - Routes: `orcarouter_zai_glm_5_3_flash_free` and the three Nemotron 3 Ultra legs (NVIDIA,
+     Kilo, OpenRouter).
+   - The §7 timing set: `MAX_RESPONSE_SECONDS` 780, `FINALIZATION_RESERVE_SECONDS` 45,
+     `LEASE_DURATION_SECONDS` 870.
+   - Every other route now pins `response_timeout_seconds` explicitly. Ordinary routes stay at 720
+     (or their lower WP2 value), and Gemma stays at 720.
+   - The compile script refuses an unpinned route while the ceiling is above 720, and
+     catalog-added routes get 720, so raising the ceiling cannot quietly lengthen other routes.
+2. **A bounded result write.** The measured margin was broken by one B2 result PUT that took
+   125.5 s. `RESULT_WRITE_TIMEOUT_SECONDS: 30` now aborts that write. An abort settles as a
+   retryable `server_error`, and `validateConfig` requires it to be shorter than the 45 s reserve.
+   The executor's start fence (`leaseCoversCall`) now also counts this write. Before, a call
+   delayed by 429 retries or a slow payload read could start late enough to end exactly at the
+   lease deadline, which left no time to store the result. That gap was already present at 720 s.
+   Such a call is now `deferred_late` instead.
+   Worst case: 10.7 s to claim + 30 s window + 780 s + 30 s write + about 2 s commit, about
+   853 s ≤ 870 s lease < 900 s cron.
+3. **Ultra's reasoning switch declared but unused.** `reasoning_controls.off` is set on the NVIDIA
+   Ultra route, and no lane sets it, so requests are unchanged. It records a verified,
+   working control. Enabling it is a one-line `llm_lanes` change once a recall evaluation
+   (#2689) says the success gain is worth the shorter agendas.
+
+**Rejected.** A tighter output budget (truncation, 0 of 5 valid), the length sentence (not obeyed),
+reasoning off on `chapter-agenda` now (recall loss), and any Gemma change (no lever, no lane).
+Untested and left to #2689: GLM `reasoning_effort: low` on `judge:adjudicator`, the Kilo and
+OpenRouter reasoning parameters, and the Ultra recall evaluation.
+
+**Expected gain.** Small, as §7 estimated: about 25 more results a week from the 720 to 780 s tail.
+The experiment saw no call finish in that band, so the gain may be lower. The cost is up to 60 s
+more slot hold on each of the four routes' timeouts, about 28k slot-seconds a week (0.4%) by §7's
+model. The larger lever
+is #2689's GLM effort trial.
+
+**What this changes and invalidates.** Merging deploys the Worker with the new tuning and limits.
+Nothing is re-keyed: response timeouts and reasoning controls are not in any recipe hash, and no
+lane's request changes. Watch after deploy:
+
+- `bundle_completed` success share on the four routes;
+- successes with duration 720 to 780 s (WP7's verification);
+- timeout share;
+- invocation length against the 900 s cron limit;
+- `structured_output_invalid`;
+- result-write `server_error`;
+- `deferred_late` count, which should stay near today's.
+
+Reverts:
+
+- Timing set: first put the four routes back to 720, in the same change or an earlier one. The
+  compile script rejects a route value above the ceiling. Then set 720 / 90 / 840.
+- The four routes alone: back to 720, with the 780 ceiling kept.
+- `RESULT_WRITE_TIMEOUT_SECONDS`: remove it; the Worker falls back to 30 s.
+- The Ultra control: delete it.
+
 ### 12.6 Judge siblings and free decision models
 
 **Owner brief.** Remove Gemma from the sibling lane. Find a free decision model, from GLiDE 9B
@@ -1112,6 +1221,120 @@ The useful variant is a decision model as a **pre-filter** that narrows the 38 t
 before the chat tagger. It would cut tagger tokens without changing who produces a tag. Test it
 offline on a free decision endpoint that production does not use, and do not use Gemini Decision.
 
+### 12.9 Free decision models as judges: Mercury Decide, Perplexity Decider, sibling capacity
+
+#### Mercury Decide: no provider serves it
+
+The id and the path are right; OpenRouter has no endpoint behind them.
+
+- **Catalog.** On 2026-11-13 23:2xZ and again on 11-14 09:2xZ, `inception/mercury-decide` is in
+  neither `/api/v1/models` listing. `GET /api/v1/models/<id>/endpoints` returns `endpoints: []` for
+  `inception/mercury-decide:free`, for the paid `inception/mercury-decide`, and for the dated
+  `inception/mercury-decide-20260930:free`.
+- **Calls** (one tiny synthetic request each, no transcript text):
+
+  | Id | Path | Status and body |
+  |---|---|---|
+  | `inception/mercury-decide:free` | `/api/alpha/decisions` | 404 "No endpoints found for inception/mercury-decide:free." |
+  | same | `/api/v1/chat/completions` | 400 "…is a decisions model and cannot be used with the chat/completions endpoint. Use the /api/alpha/decisions endpoint instead." |
+  | `inception/mercury-decide-20260930:free` | `/api/alpha/decisions` | 404, the same message (the dated id resolves to the free id) |
+  | same | `/api/v1/chat/completions` | 400, the same message |
+  | `inception/mercury-decide:free` (11-14 09:21Z) | `/api/alpha/decisions` | 404, unchanged |
+
+  The chat path recognizing it as a decisions model proves the id is valid; the 404 means no
+  provider is listed. It is not a data-policy filter on our key: the paid listing is empty too, and
+  the error carries none of OpenRouter's privacy-setting wording. With the 21 calls of 12.6 it has
+  failed every time for about 22 hours.
+- **Elsewhere.** Inception's own API serves only chat models (and is winding down, ending
+  2026-12-28). Baseten serves Mercury Decide, paid only, so it is out of scope.
+- **Owner action.** None now; no account setting would change this. Re-probe the endpoint listing
+  if OpenRouter lists a provider again; the wiring below would take it with one more route.
+
+#### Perplexity Decider V1.3: wired as the second anchor, paused until one owner step
+
+**Why the custom provider.** The AI Gateway `openrouter` slug maps to `https://openrouter.ai/api/v1`,
+and the decisions endpoint is `https://openrouter.ai/api/alpha/decisions`. Through the slug,
+`/alpha/decisions` and `/api/alpha/decisions` both return 404 (12.6), there is no
+`/api/v1/decisions` alias (404, 2026-11-13 23:20Z), and the Worker sends every
+provider through the gateway when one is configured. So the route needs a custom gateway provider.
+
+**Owner step.** Register a custom AI Gateway provider `custom-openrouter-api` with Base URL
+`https://openrouter.ai/api` (as for `custom-beatapi`). Then set
+`openrouter_pplx_decider_v1_3_free` to `rpd: 40` in `config/provider_limits.yml`, move
+`perplexity/pplx-decider-v1.3` from `eligible_models` to `models` (after Gemini) in
+`judge:anchor`, and recompile.
+
+**What is in place.**
+
+- **Worker shape `openrouter_decisions`** (`api_shapes.js`). JEV's `{model, state, questions}` body
+  with the `decisions` key map and `noul` criteria dropped, Bearer auth, usage from
+  `input_tokens`/`output_tokens`, and every asked answer required. No status rewriting: OpenRouter's
+  4xx are ordinary, so the generic classification applies. `classify.js` is unchanged.
+- **Provider `openrouter_decisions`** (same key and account as `openrouter`) and the free route
+  `openrouter_pplx_decider_v1_3_free` (`upstream_model: perplexity/pplx-decider-v1.3:free`,
+  `request_path: /alpha/decisions`, `rpm: 10`, `concurrency: 1`, `rpd: 0`). Catalog 2026-11-14: one
+  endpoint (Perplexity), prompt and completion price 0, 262,144 context.
+- **Python.** `DeciderBackend` (JEV's questions and parser, the 45,000-token packet ceiling, output
+  reservation 1). Family `qwen`: the Decider is a Qwen3.8-27B checkpoint.
+- **Anchor per entry** (`families.anchor_for`). Each entry's anchor is the first active anchor
+  model independent of its producers. Gemini keeps every entry it judges today; the Decider takes
+  only Google-produced entries. The runner, adjudication and the dirtiness check all use the
+  entry's own anchor; siblings and adjudicators exclude that anchor's family. A Google-produced
+  entry then has the Decider (`qwen`) as anchor, Nemotron (`nvidia`) as sibling and GLM (`zai`)
+  or DeepSeek as adjudicator. A queued packet of either active anchor is kept; the pass counts
+  `second_anchor:<model>`.
+- **Unchanged.** Independence rules, the shadow mode, per-model statistics (the report keys anchor
+  cells by model) and every stored judgment.
+
+**Sizing.** OpenRouter's free models share 1,000 requests a day per account. The configured
+OpenRouter routes total 440 rpd, and the account had used 179 of 1,000 by 09:2xZ on 11-14. The
+Google-produced backlog is about 7,400 subjects, about 310 anchor packets of about 32 items; steady
+state is about 2 subjects a day. The anchor lane's ceiling (12.4) is 120 packets a day, which the
+Gemini anchor's backlog fills. So the runner packs a later anchor's packets first in each pass
+and lets them take at most a quarter of that pass's anchor run cap (`LATER_ANCHOR_SHARE`, counter
+`run_cap_share:<model>`): **30 of the 120 packets a day**, which drains the backlog in about ten
+days. If the owner prefers, the lane ceiling can instead grow by 30; this PR does not change lane
+caps. The route's `rpd: 40` leaves room for retries; 440 + 40 stays well within 1,000.
+
+**Re-qualification** follows review/49: probes, the 2% stability sample, and agreement with the
+Gemini anchor on entries both may judge, before any verdict counts. A decision model is not added
+as a sibling: the sibling backend asks for quoted reasons, which a decision model cannot give, and
+the Decider shares Qwen's family.
+
+#### Sibling capacity: Qwen keeps up once rule subjects stay out of its slot
+
+The first run after #2678 (00:33Z) sent 78 sibling packets to Nemotron 3.5 Super and 36 to Qwen.
+Most of Qwen's were rule subjects: rule subjects balanced across both slots by headroom, so they
+filled Qwen's 40-packet room and the Nemotron-produced entries, which only Qwen may judge, waited.
+**Fix:** rule subjects now use the first slot with an independent model, like every other entry
+(`runner._sibling_pool`), so the `secondary` slot holds only entries no earlier slot can judge.
+A subject that already has a judgment or a queued packet from an independent sibling keeps that
+sibling, so rule subjects Qwen took before are not asked again of Nemotron.
+
+Producer mix of judge subjects (records snapshot 2026-11-10):
+
+| Producer family | All subjects | Published ≤ 30 d | Published ≤ 90 d | Sibling | Anchor |
+|---|---:|---:|---:|---|---|
+| rule | 158,783 (94.1%) | 1,163 | 3,473 | Nemotron | Gemini |
+| google | 7,383 (4.4%) | 60 | 129 | Nemotron | Decider (none while paused) |
+| nvidia | 1,421 (0.8%) | 4 | 32 | Qwen | Gemini |
+| deepseek | 1,064 (0.6%) | 11 | 12 | Nemotron | Gemini |
+
+- **Qwen.** Groq allows about 200k tokens a day; a sibling packet is about 6,000 tokens for up to
+  10 items, so about 33 packets (330 items) a day. Nemotron-produced entries need about 1,900 items
+  (1,421 subjects x about 1.35) for the backlog, about 6 days, then about 0.2 subjects a day.
+- **Nemotron** takes all other entries. Its routes ran at 97–98% success (12.6); the sibling lane's
+  ceiling (12.4, 130 packets a day) binds before its routes do.
+- **No other sibling is needed.** The candidate kept in reserve is MiniMax M3.1 Flash on NVIDIA
+  (family `minimax`, 358 of 373 locator calls succeeded), but it shares NVIDIA's 1 rpm with the
+  locator.
+- **Expected counts.** `no_independent_sibling` about 0: every producer family in the snapshot has
+  an independent sibling, and no producer family is unknown. `no_independent_anchor` stays at the
+  Google-produced count (3,191 in the 00:33Z run) until the Decider route opens, then about 0.
+
+OpenRouter requests for this package: 6 model calls (5 Mercury, 1 path check at `/api/v1/decisions`), plus catalog,
+endpoint and key reads. Evidence: [evidence file, "Free decision models"](evidence/2026-11-11-llm-pipeline-throughput.md#free-decision-models-and-sibling-capacity-2026-11-14-review58-129).
+
 ### 12.10 Tag producer stall and the anchor's six-hour block
 
 #### Anchor six-hour block (issue #2672)
@@ -1161,6 +1384,76 @@ issue [#2682](https://github.com/BashfulBits/city-meeting-podcasts/issues/2682).
 - `route_health` escalations for these routes stay on rungs 1 to 2.
 - Anchor packets per day: about 100 calls in the 33 h measured, against 2 x 10,000 rpd.
 
+### 12.11 Lane reservations split from the daily row cap by ratio
+
+**Question.** The owner asked that the §12.4 caps adjust on their own as feeds and meetings per
+day grow, without a config change each time. A first version (feed-count scaling of the §12.4
+meetings/day rule) was replaced on review by a simpler rule: keep the ratios tested in §12.4, but
+size the total to what the Worker can admit and execute within the daily row cap, and let lanes
+borrow unspent reservation late in the day. Live probes get a small fixed pool.
+
+**Change.** The production lanes no longer state `reserved_write_units`, `daily_write_units` or
+`max_queued_jobs`. Each states only a `reservation_ratio`: agenda 10, locator 10, tagger 40,
+moments 10, anchor 20, sibling 30, adjudicator 10 (the §12.4 reserved jobs, in the same
+proportions). `remedy:p3` is marked `live: true` with ratio 1. A shared `llm_lane_budget` block in
+`config/site_config.yml` holds the row model (1.5 rows per write unit, 12 execution rows per job,
+1,500 fixed rows a day), `live_reservation_jobs` 100 and `queue_days` 2. The row cap is
+`DO_ROWS_ENQUEUE_STOP` in `config/dispatch_tuning.yml` (90,000), read from that one place; a
+missing value fails the compile. `citypods/compute/llm_lanes.py` computes:
+
+- live lanes split the 100-job pool by their ratios among themselves (`remedy:p3` alone gets all
+  100), and the pool's rows (jobs × rows per job) come off the row budget first;
+- for the other lanes, k (jobs per ratio point) solves sum of ratio × k × rows per job = row cap −
+  fixed rows − live rows, where rows per job = 1.5 × units per job + 12;
+- reserved jobs = floor(ratio × k); `reserved_write_units` = jobs × units per job;
+- `daily_write_units` = the sum of all reservations (every lane may borrow up to the whole day);
+- `max_queued_jobs` = `queue_days` × the lane's reserved jobs (× the largest lane's if it is 0).
+
+The client (`load_lanes`) and `scripts/compile_llm_lanes.py` share this code. Adding or removing a
+lane, or changing a ratio, re-splits every reservation on the next compile; nothing else needs an
+edit. A further live lane shares the same 100 jobs. Mixing ratio and stated-cap lanes, `live`
+without a ratio, and an all-zero ratio set are rejected.
+
+**Result at 90,000 rows.** Live pool 100 jobs (1,800 rows); k = 33.80; 4,494 jobs, 23,046 units,
+~89,997 rows.
+
+| Lane | §12.4 reserved / daily / queue (units) | §12.11 reserved units (jobs) / daily / queue |
+|---|---|---|
+| chapter-agenda | 60 / 660 / 220 | 2,028 (338) / 23,046 / 676 |
+| chapter-locator | 40 / 440 / 220 | 1,352 (338) / 23,046 / 676 |
+| topic-tags:tagger | 280 / 4,550 / 1,300 | 9,464 (1,352) / 23,046 / 2,704 |
+| r6-moments | 50 / 550 / 220 | 1,690 (338) / 23,046 / 676 |
+| judge:anchor | 80 / 480 / 240 | 2,704 (676) / 23,046 / 1,352 |
+| judge:sibling | 120 / 520 / 260 | 4,056 (1,014) / 23,046 / 2,028 |
+| judge:adjudicator | 40 / 440 / 220 | 1,352 (338) / 23,046 / 676 |
+| remedy:p3 (live) | 0 / 800 / 800 | 400 (100) / 23,046 / 200 |
+
+The reserved total goes from 670 to 23,046 units. `remedy:p3` is still closed until
+`config/remedy.yml` admits its routes; until then its 400 reserved units are withheld from the
+other lanes before 12:00 UTC and released to them by the borrow schedule after.
+
+**Worker clamp and borrowing.** The Worker's admission budget is now
+min(`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`, reserved total), in `_maxIngressWriteUnitsPerUtcDay`
+(`effectiveIngressWriteUnits` in `write_budget.js`). Without it, the ~15,000 units between the
+reserved total and the 38,400-unit guard would be first-come and could reach the row stop before
+the reserved lanes spent their share. With it, a lane exceeds its reservation only by borrowing:
+`_reservationBorrowFraction` releases none of the other lanes' unspent reservations with more
+than 12 h left in the UTC day, half with 6 to 12 h left, and all of it in the last 6 h. A map with
+no reservations leaves the guard unchanged. The worker tests cover borrowing at 00, 12 and 18 UTC
+against the clamped budget.
+
+**Guards.** The compiler still fails if the reserved total exceeds
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` or the reserved jobs exceed `MAX_JOBS_PER_UTC_DAY`, and now
+also if the rows exceed the row cap or the live pool leaves no rows. Raising
+`DO_ROWS_ENQUEUE_STOP` rescales every non-live lane; past about 120,000 rows the 6,000-job guard
+fails the compile first.
+
+**What this does not do.** The reserved rows equal the enqueue stop, which also counts execution
+rows, so a day that spends every reservation reaches the stop near its end. That is the design:
+the stop, not an extra margin, bounds the day. `DO_ROWS_ENQUEUE_STOP` was previously only a code
+fallback (it was kept out of Cloudflare vars by the 64-variable limit); it is now declared in
+`dispatch_tuning.yml`, compiled into `dispatch_tuning.json`, with the same value.
+
 ### 12.12 Placed egress for Google calls (#2682)
 
 **Problem.** Section 12.10 absorbs Google's HTTP 400 "User location is not supported" (seen only from
@@ -1197,3 +1490,75 @@ the hint, with no 400 "User location is not supported". `gemini_decision_1_*` la
 providers' latency should be unchanged. If Google requests still come from cron colos, the self
 binding is not placed. That is no worse than before (12.10 still absorbs the refusal), and the next
 option is a separate placed egress Worker.
+
+### 12.13 Tag producer stall (#2671)
+
+**Symptom.** From the 2026-11-13 01:21Z tag run, the producer queued 0 to 1 tagger jobs per run
+and reported 204 errors, against 174 to 251 queued and 37 to 54 errors on 11-11 and 11-12. The
+funnel still said about 10,810 `ready`. Two separate things are behind those figures.
+
+**Cause 1: the drop (fixed here).** Every one of the 204 errors is the structural recovery gate's
+refusal ("LLM terminal retry limit or structural recovery gate blocks this recipe"). The chain:
+
+- On 2026-11-12 the Worker's oversize reaper (`claim_failed_oversize_jobs`) failed 331 queued jobs
+  as `unadmissible`, meaning over every live route's learned ceiling: 60 at 01:17 to 01:32Z, 270 at
+  11:59 to 13:01Z, and 1 at 17:14Z.
+- The deferred sweep recorded those failures as `structural_blocked` markers. A read of 520 markers
+  written 11-12 20Z to 11-13 02Z found 258 tag markers with `terminal_reason: unadmissible`, and all
+  258 name a job id from those reaper events.
+- The refused tag requests were 120,063 to 185,560 estimated input tokens (median 174,145). That is
+  above the tagger's batch target for its primary, Gemini 3.5 Flash Lite: 218,875 tokens at ratio
+  2.15 is 101,802, and 93% of that is 94,676. The producer still admitted them because the
+  Nemotron routes' static ceiling (249,027 at ratio 1.0) fits them. The Worker sizes with learned
+  values: admission ratios, size exclusions, and an OrcaRouter DeepSeek V4 Flash prompt-cap
+  estimate of 69,855 in the 11-11 stats cache. By those values no live route took them.
+- The reaper's comment says the producer then re-plans the work smaller. The tagger did not. Its
+  batches are deterministic, so every run rebuilt the same recipes. The producer's own recovery
+  context still found a fitting route generation unchanged, so the gate refused every one.
+
+**Fix.** `llm_tag_suggestions` catches the backend's refusal. If the recipe's marker records
+`structural_blocked` / `unadmissible`, it re-plans instead of raising:
+
+- Several chapters split at the chapter boundary nearest the middle of their transcript text.
+- A single chapter's timestamped segments are halved. Each half keeps the chapter id, title and
+  agenda evidence.
+- Each part goes out under a new child recipe, `<recipe>-replan-<i>-<digest>`. A part that is
+  refused again splits again. A single segment that is still refused is a `payload-too-large`
+  (oversized) deferral, not an error.
+- Results merge to one suggestion per chapter and tag: the most confident part's, with the other
+  parts' evidence appended up to eight items.
+- Other gate refusals, such as an exhausted retry budget, still raise.
+- The marker is read only after a refusal, so a normal submission makes no extra storage read.
+
+The marker's own `recovery_disposition` already reads `await_eligible_generation_or_rebatch`, and
+the judge runner re-plans the same way (Slice 3a). Nothing in the Worker, the lane caps or
+`compile_llm_lanes.py` changes.
+
+**Cause 2: the `ready` figure (not changed here; issue
+[#2686](https://github.com/BashfulBits/city-meeting-podcasts/issues/2686)).** The about 10,810
+`ready` episodes are not work the stage skips by mistake today, and they did not cause the drop:
+the same figure (10,816) stood on 11-11 and 11-12, while those runs queued normally.
+
+- In the 2026-11-10 record snapshot, 10,681 episodes with chapters carry a stored tag fingerprint
+  computed under the lane's previous primary, Gemini 3.1 Flash Lite. The primary changed in
+  0deb798e on 11-04.
+- The census and the lane prefilter recompute the fingerprint with the current route, so they say
+  `ready`. The global queue held 19,451 and 19,428 candidates.
+- The tags completion marker hashes the stored fingerprint, so it stays clean. Those runs skipped
+  19,196 episodes as `completion-cache`.
+
+Whether a primary-model change should re-tag the catalog (about 10,700 jobs) or be treated as
+throughput only is an owner decision, set out in #2686.
+
+**Deploy.** Python only. Merging does not deploy the Worker, and nothing needs a production
+action: the blocked markers stay as the audit record, and the producer routes around them.
+
+**What to watch.**
+
+- On the first tag run after merge, `errors` falls from about 204 toward the 37 to 54 of 11-11 and
+  11-12. Those are gate refusals of recipes whose retry budget is `exhausted`, which this PR leaves
+  alone.
+- `queued` rises by up to about 200 jobs, now under `-replan-` child recipes.
+- `tag-llm-oversized` rises by the parts that cannot split further.
+- No new `claim_failed_oversize_jobs` events for `-replan-` recipes. If some appear, the
+  next run splits those parts again.

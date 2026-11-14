@@ -448,7 +448,11 @@ unusable primaries unlock already-declared backups while preserving paid/free po
 temporary quota exhaustion cannot cause structural failure. Python records the original handle,
 catalog identity and eligible route generations before removing a matching terminal handle;
 structural recovery preserves failure/schema-correction counts and blocks unchanged resubmissions.
-Completed recipes remain reusable; no pipeline version changes. The recovery canary accepted in #2220 completes the
+The tagger re-plans a recipe whose marker records an `unadmissible` terminal (the Worker's
+oversize reaper: over every live route's learned ceiling) instead of rebuilding it: the refused
+request is split at the chapter boundary nearest its middle, or a single chapter's timestamped
+segments are halved, under new child recipes, recursively; one segment that is still refused is
+an oversized deferral (review/58 §12.13, #2671). Completed recipes remain reusable; no pipeline version changes. The recovery canary accepted in #2220 completes the
 prerequisite for Slice 3b retirement. Its pure planner (PR #2193) checks complete fresh absence and
 independent exact-account confirmation, preserves surviving pools, and repairs new-job lanes using
 existing free, unpaused backups. No safe backup means the removal is held for review. Exact YAML
@@ -948,12 +952,21 @@ Each lane carries two numbers (review/58 section 12.4, 2026-11-13).
 - `daily_write_units` is the ceiling: the reservation plus a backlog-drain allowance (the lane's
   one-time backlog over a stated drain target, at least 100 jobs a day), bounded by route supply.
   `max_queued_jobs` holds two days of it.
+- Since review/58 section 12.11 the lanes do not state these numbers. Each states a
+  `reservation_ratio`, and `llm_lanes.py` / `compile_llm_lanes.py` split the daily row cap
+  (`DO_ROWS_ENQUEUE_STOP`, 90,000, in `config/dispatch_tuning.yml`) in those ratios using the row
+  model in `llm_lane_budget`: live lanes (`live: true`, today `remedy:p3`) first share a fixed
+  100-job pool by ratio, then reserved jobs = floor(ratio × k) where the reservations' rows plus
+  1,500 fixed rows equal the cap. `daily_write_units` is the reserved total for every lane, and
+  `max_queued_jobs` is two days of the lane's reservation. Adding or removing a lane re-splits
+  every reservation. The Worker clamps its ingress budget to the reserved total, so a lane goes
+  past its reservation only by borrowing other lanes' unspent share (half from 12:00 UTC, all from
+  18:00 UTC).
 Write units count enqueue only, at about 1.5 billed rows per unit. Claim, completion, retirement
-and cleanup add about 12 rows per job. With every lane at its ceiling (8,440 units, ~32,600 rows)
-no global guard is reached: not the 6,000 jobs, the 38,400 units, nor the 90,000-row stops. The
-unit guard is the only one that withholds reservations, so raising ceilings past about 90,000
-rows would leave reservations guaranteed in units but not in rows. Judge packets are also bounded
-per run by `judging.max_outstanding_packets` (per role, per sibling model).
+and cleanup add about 12 rows per job. With today's ratios the reservations total 4,494 jobs and
+23,046 units, about 89,997 rows including execution, so the row stop rather than the 6,000-job or
+38,400-unit guard bounds the day. Judge packets are also bounded per run by
+`judging.max_outstanding_packets` (per role, per sibling model).
 `workers/llm-dispatch-v2/src/write_budget.js` records the measured per-phase costs
 (`bench/rows-written/`): a completed first-try job is ~20 billed rows. Because every index entry is billed, the
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`
@@ -1118,9 +1131,19 @@ results then go in the final. `EARLY_SLOT_RELEASE_ENABLED: 0` (or `MAX_COMMITS: 
 single commit without a rollback. Rollback is safe in flight: an older coordinator has no
 `completePartial`, the call fails and the final carries those results; an older Worker against
 this coordinator commits once, as before.
-Response timeout (review/58 B2): `MAX_RESPONSE_SECONDS` (720) is the global ceiling. A route may set
-`response_timeout_seconds` in `config/provider_limits.yml` (a positive integer at most the ceiling,
-checked by `scripts/compile_llm_limits.py`; unset means the global value). The Worker's
+Response timeout (review/58 B2, §12.5): `MAX_RESPONSE_SECONDS` (780 since R2-F; was 720) is the
+global ceiling, with `FINALIZATION_RESERVE_SECONDS` 45 and `LEASE_DURATION_SECONDS` 870
+(30 + 780 + 45 = 855 ≤ 870 < 900). Every route sets `response_timeout_seconds` in
+`config/provider_limits.yml` (a positive integer at most the ceiling, checked by
+`scripts/compile_llm_limits.py`, which rejects a route without one while the ceiling is above
+720): only OrcaRouter GLM 5.3 Flash and the three Nemotron 3 Ultra legs use 780, every other route
+720 or lower, and catalog-added routes are written with 720. The B2 result write after a
+successful call is bounded by `RESULT_WRITE_TIMEOUT_SECONDS` (30, below the reserve; checked by
+`validateConfig`); a write that runs out settles as a retryable `server_error`. The executor's
+start fence (`leaseCoversCall`) admits a call only if the response timeout plus that write fit in
+the lease. The NVIDIA
+Nemotron 3 Ultra route declares a verified `reasoning_controls.off`, which no lane sets (review/58
+§12.5, #2689). The Worker's
 `effectiveResponseMs` uses the smaller of the two for every call on that route, including in-window
 429 and Google 5xx retries, and clamps again at runtime. The failure class stays
 `provider_response_timeout`; requeue, retry accounting, lease and bundle-deadline arithmetic are
@@ -1739,7 +1762,8 @@ so JEV and Gemini telemetry never pool.
 **Sibling roster after Gemma (review/58 12.6, 2026-11-13).** `judge:sibling` is
 Nemotron 3.5 Super (slot `primary`, family `nvidia`) plus Qwen3.8-27B on Groq (slot `secondary`,
 family `qwen`). Slots are tried in sorted name order, so Qwen judges only the entries Nemotron cannot
-judge, such as Nemotron-produced ones. Rule subjects balance across both by headroom. Gemma 4 31B
+judge, such as Nemotron-produced ones; rule subjects stay in the first slot too (review/58 12.9),
+so Qwen's room holds only entries Nemotron may not judge. Gemma 4 31B
 left the lane because a Google sibling can never sit beside the Google anchor. A pending sibling
 marker for a model the lane no longer lists is dropped in the same way as a retired anchor's
 (`_retired_role`, counter `retired_sibling_pending_dropped`); its stored judgments keep their own
@@ -1747,6 +1771,14 @@ identity. `judging.max_outstanding_per_sibling` caps the outstanding packets of 
 below the purpose limit, set to 40 for Qwen, whose Groq quota is about 200k tokens a day. On
 DeepSeek V4.1 Flash for `judge:adjudicator`, the NVIDIA leg is stood down (`rpd: 0`) and the two
 BeatAPI legs serve the model.
+**Second anchor (review/58 12.9).** `judge:anchor` is an ordered list: each entry's anchor is the
+first active model independent of its producers (`families.anchor_for`), and the runner,
+adjudication and the dirtiness check use that per-entry anchor and exclude its family from the
+sibling and adjudicator. `perplexity/pplx-decider-v1.3` (family `qwen`) is listed after Gemini as
+an eligible model, for Google-produced entries, with `DeciderBackend`. The Worker speaks it through
+the `openrouter_decisions` API shape (`POST /api/alpha/decisions`: JEV's body with the decisions
+key map, Bearer auth) on provider `openrouter_decisions`, gateway slug `custom-openrouter-api`; its
+route is held at `rpd: 0` until that custom gateway provider is registered.
 Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
 state, conditional, and other storage reads continue to use their owning backend directly. For
 B2-backed runs, judge transcript reads try the configured public CDN URL through the guarded HTTP

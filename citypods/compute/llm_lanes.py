@@ -24,9 +24,10 @@ is the point -- see the block comment in ``config/site_config.yml``.
 
 from __future__ import annotations
 
+import math
 import threading
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,13 @@ class LaneConfig:
     reserved_write_units: int = 0
     daily_write_units: int = 0
     max_queued_jobs: int | None = None
+    # review/58 section 12.11: this lane's share of the daily row budget. When set, the three caps
+    # above are computed by :func:`allocate_reservations` instead of being stated in config.
+    reservation_ratio: float | None = None
+    # review/58 section 12.11: a live lane (a probe on live calls) splits the fixed
+    # `llm_lane_budget.live_reservation_jobs` pool with the other live lanes, by ratio, instead of
+    # a share of the row budget.
+    live: bool = False
     telemetry_producer: str = ""
     telemetry_unit: str = "episode"
     telemetry_completion: str = "consumed"
@@ -187,6 +195,205 @@ def _coerce_bool(raw: Any, *, purpose: str, field: str) -> bool:
     return raw
 
 
+def _coerce_number(raw: Any, *, where: str, positive: bool = False) -> float:
+    """Read one non-negative (or, with ``positive``, strictly positive) real number."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw != raw:
+        raise ValueError(f"{where} must be a number, got {raw!r}")
+    if raw < 0 or (positive and raw == 0):
+        kind = "positive" if positive else "non-negative"
+        raise ValueError(f"{where} must be {kind}, got {raw}")
+    return float(raw)
+
+
+# ---------------------------------------------------------------------------------------------
+# Lane reservations split from one row budget by ratio (review/58 section 12.11).
+#
+# Each lane states only a `reservation_ratio`. The shared `llm_lane_budget` block and the Worker's
+# daily row cap (`DO_ROWS_ENQUEUE_STOP` in config/dispatch_tuning.yml) decide the totals. Live lanes
+# (`live: true`) first split a fixed `live_reservation_jobs` pool by their ratios; its rows come
+# off the top, and the other lanes split the rest of the cap's rows in their ratios. Adding or
+# removing a lane re-splits the budget with no other edit.
+# ---------------------------------------------------------------------------------------------
+
+ROW_CAP_TUNING_NAME = "DO_ROWS_ENQUEUE_STOP"
+_BUDGET_FIELDS = frozenset(
+    {
+        "rows_per_write_unit",
+        "execution_rows_per_job",
+        "fixed_rows_per_day",
+        "queue_days",
+        "live_reservation_jobs",
+    }
+)
+_CAP_FIELDS = ("reserved_write_units", "daily_write_units", "max_queued_jobs")
+
+
+@dataclass(frozen=True)
+class LaneBudget:
+    """The shared inputs that split the daily row cap into lane reservations.
+
+    ``row_cap`` is the Worker's daily row stop (``DO_ROWS_ENQUEUE_STOP``). One admitted job of a
+    lane costs ``rows_per_write_unit`` x its ingress units at enqueue plus
+    ``execution_rows_per_job`` to claim, complete, retire and clean up; ``fixed_rows_per_day``
+    covers recounts and deploy schema retries. ``live_reservation_jobs`` is the fixed pool the
+    live lanes share, taken off the row budget before the other lanes split it.
+    """
+
+    row_cap: int
+    rows_per_write_unit: float
+    execution_rows_per_job: float
+    fixed_rows_per_day: int
+    queue_days: int
+    live_reservation_jobs: int = 0
+
+    def rows_per_job(self, units_per_job: int) -> float:
+        """Estimated billed DO rows per admitted job (enqueue rows plus execution rows)."""
+        return self.rows_per_write_unit * units_per_job + self.execution_rows_per_job
+
+
+def parse_lane_budget(raw: Any, *, row_cap: int) -> LaneBudget | None:
+    """Validate the ``llm_lane_budget`` block; ``None`` when the site config has none."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ValueError("llm_lane_budget must be a mapping")
+    keys = set(raw)
+    if keys != _BUDGET_FIELDS:
+        raise ValueError(
+            f"llm_lane_budget must define exactly {sorted(_BUDGET_FIELDS)}; "
+            f"missing {sorted(_BUDGET_FIELDS - keys)}, unknown {sorted(keys - _BUDGET_FIELDS)}"
+        )
+    cap = _coerce_int(row_cap, purpose="llm_lane_budget", field=ROW_CAP_TUNING_NAME)
+    fixed = _coerce_int(
+        raw["fixed_rows_per_day"], purpose="llm_lane_budget", field="fixed_rows_per_day"
+    )
+    if cap <= fixed:
+        raise ValueError(
+            f"{ROW_CAP_TUNING_NAME} ({cap}) leaves no rows after fixed_rows_per_day ({fixed})"
+        )
+    queue_days = _coerce_int(raw["queue_days"], purpose="llm_lane_budget", field="queue_days")
+    if queue_days == 0:
+        raise ValueError("llm_lane_budget.queue_days must be positive")
+    return LaneBudget(
+        row_cap=cap,
+        rows_per_write_unit=_coerce_number(
+            raw["rows_per_write_unit"], where="llm_lane_budget.rows_per_write_unit"
+        ),
+        execution_rows_per_job=_coerce_number(
+            raw["execution_rows_per_job"], where="llm_lane_budget.execution_rows_per_job"
+        ),
+        fixed_rows_per_day=fixed,
+        queue_days=queue_days,
+        live_reservation_jobs=_coerce_int(
+            raw["live_reservation_jobs"], purpose="llm_lane_budget", field="live_reservation_jobs"
+        ),
+    )
+
+
+def read_row_cap(tuning_path: str | Path) -> int:
+    """Read ``DO_ROWS_ENQUEUE_STOP`` from ``dispatch_tuning.yml``; raise if it is not declared."""
+    import yaml
+
+    raw = yaml.safe_load(Path(tuning_path).read_text(encoding="utf-8")) or {}
+    value = raw.get(ROW_CAP_TUNING_NAME) if isinstance(raw, Mapping) else None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"{tuning_path} does not declare a positive integer {ROW_CAP_TUNING_NAME}; lane "
+            "reservations are split from that row cap and cannot be computed without it"
+        )
+    return value
+
+
+def _floor_jobs(value: float) -> int:
+    # Rounded to 9 places first so float noise (e.g. 344.9999999998) does not drop a whole job.
+    return math.floor(round(value, 9))
+
+
+def live_reservation_jobs(lanes: Mapping[str, LaneConfig], budget: LaneBudget) -> dict[str, int]:
+    """Split ``live_reservation_jobs`` among the live lanes by their ratios (floored)."""
+    live = {p: lane for p, lane in lanes.items() if lane.live}
+    if not live:
+        return {}
+    weight = sum(lane.reservation_ratio for lane in live.values())
+    if weight <= 0:
+        raise ValueError(
+            "llm_lanes: every live lane's reservation_ratio is 0, so the live_reservation_jobs "
+            "pool has nothing to split"
+        )
+    pool = budget.live_reservation_jobs
+    return {p: _floor_jobs(pool * lane.reservation_ratio / weight) for p, lane in live.items()}
+
+
+def live_reservation_rows(lanes: Mapping[str, LaneConfig], budget: LaneBudget) -> float:
+    """The live pool's rows, taken off the row budget before the other lanes split it."""
+    return sum(
+        jobs * budget.rows_per_job(lanes[p].ingress_write_units_per_job)
+        for p, jobs in live_reservation_jobs(lanes, budget).items()
+    )
+
+
+def jobs_per_ratio_point(lanes: Mapping[str, LaneConfig], budget: LaneBudget) -> float:
+    """``k`` such that the non-live lanes' reservations cost exactly the rows left to split.
+
+    sum over non-live lanes of ratio x k x rows_per_job
+        = row_cap - fixed_rows_per_day - the live pool's rows.
+    """
+    rows = budget.row_cap - budget.fixed_rows_per_day - live_reservation_rows(lanes, budget)
+    if rows <= 0:
+        raise ValueError(
+            f"llm_lane_budget.live_reservation_jobs ({budget.live_reservation_jobs}) leaves no "
+            f"rows of {ROW_CAP_TUNING_NAME} ({budget.row_cap}) for the other lanes"
+        )
+    weight = sum(
+        lane.reservation_ratio * budget.rows_per_job(lane.ingress_write_units_per_job)
+        for lane in lanes.values()
+        if not lane.live
+    )
+    if weight <= 0:
+        raise ValueError(
+            "llm_lanes: every non-live reservation_ratio is 0, so there is nothing to split"
+        )
+    return rows / weight
+
+
+def allocate_reservations(
+    lanes: Mapping[str, LaneConfig], budget: LaneBudget
+) -> dict[str, LaneConfig]:
+    """Fill in each lane's three caps from its ratio and the shared row budget.
+
+    - live lanes: reservation jobs = their ratio's share of ``live_reservation_jobs``;
+    - other lanes: reservation jobs = floor(ratio x k) (see :func:`jobs_per_ratio_point`), so the
+      total never passes the cap; reserved_write_units = jobs x the lane's ingress units per job;
+    - daily_write_units = the sum of every lane's reservation, so a lane may borrow any other
+      lane's unspent share as the Worker's ``_reservationBorrowFraction`` schedule releases it;
+    - max_queued_jobs = queue_days x the lane's reservation jobs, or x the largest lane's for a
+      lane that reserves nothing and runs only on borrowed capacity.
+    """
+    live_jobs = live_reservation_jobs(lanes, budget)
+    jobs = dict(live_jobs)
+    if any(not lane.live for lane in lanes.values()):
+        k = jobs_per_ratio_point(lanes, budget)
+        jobs.update(
+            {
+                p: _floor_jobs(lane.reservation_ratio * k)
+                for p, lane in lanes.items()
+                if not lane.live
+            }
+        )
+    reserved = {p: jobs[p] * lanes[p].ingress_write_units_per_job for p in lanes}
+    total_units = sum(reserved.values())
+    largest = max(jobs.values())
+    return {
+        purpose: replace(
+            lane,
+            reserved_write_units=reserved[purpose],
+            daily_write_units=total_units,
+            max_queued_jobs=budget.queue_days * (jobs[purpose] or largest),
+        )
+        for purpose, lane in lanes.items()
+    }
+
+
 REASONING_LEVELS = frozenset({"off", "low"})
 
 
@@ -292,11 +499,13 @@ def parse_families(raw: Any, lanes: Mapping[str, LaneConfig]) -> dict[str, str]:
     return families
 
 
-def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
+def parse_lanes(raw_block: Any, *, budget: LaneBudget | None = None) -> dict[str, LaneConfig]:
     """Validate and normalize a raw ``llm_lanes`` mapping.
 
     Split from :func:`load_lanes` so the compiler and the tests can validate a block without
-    touching the filesystem or the module-level cache.
+    touching the filesystem or the module-level cache. Lanes either all state a
+    ``reservation_ratio`` (and ``budget`` splits the row cap between them) or all state their caps;
+    :func:`parse_site_lanes` resolves ``budget`` from a whole site config.
     """
     if not isinstance(raw_block, Mapping) or not raw_block:
         raise ValueError("site config must define a non-empty 'llm_lanes' block")
@@ -330,22 +539,50 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
         if len(set(models)) != len(models):
             raise ValueError(f"llm_lanes[{purpose!r}].models contains duplicates: {models}")
 
-        reserved = _coerce_int(
-            entry.get("reserved_write_units", 0), purpose=purpose, field="reserved_write_units"
-        )
-        daily = _coerce_int(
-            entry.get("daily_write_units"), purpose=purpose, field="daily_write_units"
-        )
-        if reserved > daily:
-            raise ValueError(
-                f"llm_lanes[{purpose!r}] reserves {reserved} write units but caps its day at "
-                f"{daily}; a reservation it can never spend strands capacity from every other lane"
-            )
         shape = entry.get("dispatch_shape", "pooled")
         if shape not in {"pooled", "per_model"}:
             raise ValueError(
                 f"llm_lanes[{purpose!r}].dispatch_shape must be 'pooled' or 'per_model', "
                 f"got {shape!r}"
+            )
+        max_queued_jobs = (
+            _coerce_int(entry.get("max_queued_jobs"), purpose=purpose, field="max_queued_jobs")
+            if entry.get("max_queued_jobs") is not None
+            else None
+        )
+        reservation_ratio = None
+        if "reservation_ratio" in entry:
+            # review/58 section 12.11: the caps are derived, so stating them too would leave two
+            # sources for one number.
+            stated = [field for field in _CAP_FIELDS if field in entry]
+            if stated:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}] has a reservation_ratio and also states {stated}; "
+                    "its caps are computed from the ratio, so remove the stated values"
+                )
+            if budget is None:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}] has a reservation_ratio but the site config has no "
+                    "llm_lane_budget block to split the row cap with"
+                )
+            reservation_ratio = _coerce_number(
+                entry["reservation_ratio"], where=f"llm_lanes[{purpose!r}].reservation_ratio"
+            )
+            # Placeholders until every lane is known; allocate_reservations fills them in.
+            reserved, daily = 0, 0
+        elif "live" in entry:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}] sets live but no reservation_ratio; a live lane's share "
+                "of llm_lane_budget.live_reservation_jobs is set by its ratio"
+            )
+        else:
+            reserved = _coerce_int(
+                entry.get("reserved_write_units", 0),
+                purpose=purpose,
+                field="reserved_write_units",
+            )
+            daily = _coerce_int(
+                entry.get("daily_write_units"), purpose=purpose, field="daily_write_units"
             )
 
         raw_backup_models = entry.get("backup_models")
@@ -444,17 +681,11 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 if entry.get("max_dispatches_per_run") is not None
                 else None
             ),
-            max_queued_jobs=(
-                _coerce_int(
-                    entry.get("max_queued_jobs"),
-                    purpose=purpose,
-                    field="max_queued_jobs",
-                )
-                if entry.get("max_queued_jobs") is not None
-                else None
-            ),
+            max_queued_jobs=max_queued_jobs,
             reserved_write_units=reserved,
             daily_write_units=daily,
+            reservation_ratio=reservation_ratio,
+            live=_coerce_bool(entry.get("live", False), purpose=purpose, field="live"),
             dispatch_shape=shape,
             backup_models=backup_models,
             backup_after_attempts=backup_after_attempts,
@@ -467,28 +698,74 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             eligible_models=eligible_models,
             slots=slots,
         )
-        if daily < lane.ingress_write_units_per_job:
-            raise ValueError(
-                f"llm_lanes[{purpose!r}].daily_write_units ({daily}) is below the "
-                f"{lane.ingress_write_units_per_job} units one of its jobs costs, so the lane can "
-                "never admit a single job"
-            )
-        if (
-            lane.max_dispatches_per_run is not None
-            and lane.max_dispatches_per_run > lane.max_jobs_per_day
-        ):
-            # A run cap above what the daily budget funds is not a harmless upper bound: the
-            # producer submits to that cap and the Worker rejects everything past the budget, so
-            # the surplus is pure wasted ingress traffic that looks like a lane failing to fill
-            # its quota. Every lane here is a daily cron, so the two numbers should agree.
-            raise ValueError(
-                f"llm_lanes[{purpose!r}].max_dispatches_per_run "
-                f"({lane.max_dispatches_per_run}) exceeds the {lane.max_jobs_per_day} jobs its "
-                f"daily_write_units ({daily}) can fund at {lane.ingress_write_units_per_job} "
-                "units/job; the surplus would be rejected at ingress"
-            )
         lanes[purpose] = lane
+
+    ratioed = {p for p, lane in lanes.items() if lane.reservation_ratio is not None}
+    if ratioed and ratioed != set(lanes):
+        raise ValueError(
+            "llm_lanes: either every lane states a reservation_ratio or none does, so the row "
+            f"budget is split across all of them; missing on {sorted(set(lanes) - ratioed)}"
+        )
+    if ratioed:
+        lanes = allocate_reservations(lanes, budget)
+    for lane in lanes.values():
+        _check_lane_caps(lane)
     return lanes
+
+
+def _check_lane_caps(lane: LaneConfig) -> None:
+    purpose, daily = lane.purpose, lane.daily_write_units
+    if lane.reserved_write_units > daily:
+        raise ValueError(
+            f"llm_lanes[{purpose!r}] reserves {lane.reserved_write_units} write units but caps its "
+            f"day at {daily}; a reservation it can never spend strands capacity from every other "
+            "lane"
+        )
+    if daily < lane.ingress_write_units_per_job:
+        raise ValueError(
+            f"llm_lanes[{purpose!r}].daily_write_units ({daily}) is below the "
+            f"{lane.ingress_write_units_per_job} units one of its jobs costs, so the lane can "
+            "never admit a single job"
+        )
+    if (
+        lane.max_dispatches_per_run is not None
+        and lane.max_dispatches_per_run > lane.max_jobs_per_day
+    ):
+        # A run cap above what the daily budget funds is not a harmless upper bound: the
+        # producer submits to that cap and the Worker rejects everything past the budget, so
+        # the surplus is pure wasted ingress traffic that looks like a lane failing to fill
+        # its quota. Every lane here is a daily cron, so the two numbers should agree.
+        raise ValueError(
+            f"llm_lanes[{purpose!r}].max_dispatches_per_run "
+            f"({lane.max_dispatches_per_run}) exceeds the {lane.max_jobs_per_day} jobs its "
+            f"daily_write_units ({daily}) can fund at {lane.ingress_write_units_per_job} "
+            "units/job; the surplus would be rejected at ingress"
+        )
+
+
+def tuning_path_for(site_config_path: str | Path) -> Path:
+    """``dispatch_tuning.yml`` beside a site config, else the repository's own copy."""
+    beside = Path(site_config_path).parent / "dispatch_tuning.yml"
+    return beside if beside.exists() else _REPO_ROOT / "config" / "dispatch_tuning.yml"
+
+
+def resolve_lane_budget(
+    raw_site: Mapping[str, Any], *, tuning_path: str | Path
+) -> LaneBudget | None:
+    """The site config's ``llm_lane_budget`` with the row cap read from ``tuning_path``."""
+    raw = raw_site.get("llm_lane_budget")
+    if raw is None:
+        return None
+    return parse_lane_budget(raw, row_cap=read_row_cap(tuning_path))
+
+
+def parse_site_lanes(
+    raw_site: Mapping[str, Any], *, tuning_path: str | Path
+) -> dict[str, LaneConfig]:
+    """Parse ``llm_lanes`` from a whole site config, splitting reservations by ratio."""
+    return parse_lanes(
+        raw_site.get("llm_lanes"), budget=resolve_lane_budget(raw_site, tuning_path=tuning_path)
+    )
 
 
 _CACHE: dict[str, dict[str, LaneConfig]] = {}
@@ -529,7 +806,7 @@ def load_lanes(*, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> dict[str, Lane
     import yaml
 
     raw = yaml.safe_load(Path(key).read_text()) or {}
-    lanes = parse_lanes(raw.get("llm_lanes"))
+    lanes = parse_site_lanes(raw, tuning_path=tuning_path_for(key))
     with _CACHE_LOCK:
         _CACHE[key] = lanes
     return lanes
@@ -597,9 +874,19 @@ __all__ = [
     "DEFAULT_SITE_CONFIG_PATH",
     "NON_DISPATCHING_PURPOSES",
     "LaneConfig",
+    "LaneBudget",
     "UnregisteredLaneError",
+    "allocate_reservations",
     "clear_cache",
+    "jobs_per_ratio_point",
+    "live_reservation_jobs",
+    "live_reservation_rows",
     "lane_for",
     "load_lanes",
+    "parse_lane_budget",
     "parse_lanes",
+    "parse_site_lanes",
+    "read_row_cap",
+    "resolve_lane_budget",
+    "tuning_path_for",
 ]

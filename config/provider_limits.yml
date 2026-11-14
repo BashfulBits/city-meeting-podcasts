@@ -287,6 +287,20 @@ providers:
     accounts:
       - id: primary
         api_key_env: OPENROUTER_API_KEY
+  # OpenRouter's decisions endpoint (POST /api/alpha/decisions, review/58 12.9) lives outside the
+  # /api/v1 base the AI Gateway `openrouter` slug maps to: through that slug /alpha/decisions and
+  # /api/alpha/decisions both return 404 (2026-11-13). It needs a custom AI Gateway provider,
+  # `custom-openrouter-api`, whose Base URL is `https://openrouter.ai/api` (owner step, as for
+  # custom-beatapi). Same key and account as `openrouter`; the routes stay at rpd 0 until then.
+  openrouter_decisions:
+    api_base: https://openrouter.ai/api
+    ai_gateway_slug: custom-openrouter-api
+    ai_gateway_chat_path: /v1/chat/completions
+    chat_path: /v1/chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: OPENROUTER_API_KEY
   kilo:
     structured_output_method: json_schema
     api_base: https://api.kilo.ai/api/gateway
@@ -504,6 +518,7 @@ routes:
     model: google/gemma-4-26b-a4b-it
     provider: gemini
     upstream_model: gemma-4-26b-a4b-it
+    response_timeout_seconds: 720
     input_context_limit: 262144
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
@@ -523,6 +538,7 @@ routes:
     model: google/gemma-4-26b-a4b-it
     provider: gemini
     upstream_model: gemma-4-26b-a4b-it
+    response_timeout_seconds: 720
     input_context_limit: 262144
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
@@ -595,6 +611,7 @@ routes:
     model: gemini/gemini-3-flash-preview
     provider: gemini
     upstream_model: gemini-3-flash-preview
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_primary
@@ -611,6 +628,7 @@ routes:
     model: gemini/gemini-3-flash-preview
     provider: gemini
     upstream_model: gemini-3-flash-preview
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_secondary
@@ -627,6 +645,7 @@ routes:
     model: gemini/gemini-3.8-flash
     provider: gemini
     upstream_model: gemini-3.8-flash
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_primary
@@ -650,6 +669,7 @@ routes:
     model: gemini/gemini-3.8-flash
     provider: gemini
     upstream_model: gemini-3.8-flash
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_secondary
@@ -673,6 +693,7 @@ routes:
     model: gemini/gemini-3.7-flash
     provider: gemini
     upstream_model: gemini-3.7-flash
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_primary
@@ -695,6 +716,7 @@ routes:
     model: gemini/gemini-3.7-flash
     provider: gemini
     upstream_model: gemini-3.7-flash
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_secondary
@@ -717,6 +739,7 @@ routes:
     model: gemini/gemini-3.6-flash
     provider: gemini
     upstream_model: gemini-3.6-flash
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_primary
@@ -734,6 +757,7 @@ routes:
     model: gemini/gemini-3.6-flash
     provider: gemini
     upstream_model: gemini-3.6-flash
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_secondary
@@ -751,6 +775,7 @@ routes:
     model: gemini/gemini-3.5-flash
     provider: gemini
     upstream_model: gemini-3.5-flash
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_primary
@@ -767,6 +792,7 @@ routes:
     model: gemini/gemini-3.5-flash
     provider: gemini
     upstream_model: gemini-3.5-flash
+    response_timeout_seconds: 720
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: project_secondary
@@ -794,6 +820,7 @@ routes:
     model: gemini/gemini-decision-1
     provider: gemini
     upstream_model: gemini-decision-1
+    response_timeout_seconds: 720
     api_shape: decisions
     request_path: /v1beta/decisions
     input_context_limit: 262144
@@ -811,6 +838,7 @@ routes:
     model: gemini/gemini-decision-1
     provider: gemini
     upstream_model: gemini-decision-1
+    response_timeout_seconds: 720
     api_shape: decisions
     request_path: /v1beta/decisions
     input_context_limit: 262144
@@ -834,6 +862,7 @@ routes:
     model: google/gemma-4-31b-it
     provider: sambanova
     upstream_model: gemma-4-31B-it
+    response_timeout_seconds: 720
     input_context_limit: 131072
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
@@ -856,6 +885,7 @@ routes:
     model: openai/gpt-oss-120b
     provider: groq
     upstream_model: openai/gpt-oss-120b
+    response_timeout_seconds: 720
     input_context_limit: 131072
     output_context_limit: 65536
     account_id: primary
@@ -872,6 +902,7 @@ routes:
     model: qwen/qwen3.8-27b
     provider: groq
     upstream_model: qwen/qwen3.8-27b
+    response_timeout_seconds: 720
     input_context_limit: 131072
     output_context_limit: 16384
     account_id: primary
@@ -899,6 +930,7 @@ routes:
     model: zai/glm-4.7-flash
     provider: zai
     upstream_model: glm-4.7-flash
+    response_timeout_seconds: 720
     input_context_limit: 200000
     output_context_limit: 131072
     account_id: primary
@@ -916,6 +948,7 @@ routes:
     model: google/gemma-4-31b-it
     provider: openrouter
     upstream_model: google/gemma-4-31b-it:free
+    response_timeout_seconds: 720
     input_context_limit: 262144
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
@@ -935,6 +968,7 @@ routes:
     model: google/gemma-4-26b-a4b-it
     provider: openrouter
     upstream_model: google/gemma-4-26b-a4b-it:free
+    response_timeout_seconds: 720
     input_context_limit: 131072
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
@@ -950,6 +984,34 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
+  # Perplexity Decider V1.3 (review/58 12.9): the second, non-Google judge:anchor, for the
+  # Google-produced entries Gemini Decision 1 may not judge. Catalog 2026-11-14: one endpoint
+  # (Perplexity), prompt and completion price 0, context 262,144. A 2026-11-13 replay of 14 stored
+  # anchor requests was accepted 14 of 14 (review/58 12.6). OpenRouter's free models share one
+  # 1,000-request daily allowance with the other OpenRouter routes (440 rpd configured), and its
+  # free tier allows 20 requests a minute. Paused (rpd 0) until the owner registers the
+  # `custom-openrouter-api` gateway provider; the intended rpd is 40: the Google-produced backlog
+  # (about 7,400 subjects, about 310 packets of 32 items) clears in about ten days at the 30
+  # packets a day review/58 12.9 proposes as this anchor's share, and then needs under one a day.
+  - route_id: openrouter_pplx_decider_v1_3_free
+    model: perplexity/pplx-decider-v1.3
+    provider: openrouter_decisions
+    upstream_model: perplexity/pplx-decider-v1.3:free
+    response_timeout_seconds: 720
+    api_shape: openrouter_decisions
+    request_path: /alpha/decisions
+    input_context_limit: 262144
+    output_context_limit: 1
+    hard_input_ceiling: 45000
+    account_id: primary
+    rpm: 10
+    rpd: 0
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-11-14"
+
   # ==========================================
   # KILO CODE ROUTES (Kilo Gateway)
   # ==========================================
@@ -959,6 +1021,8 @@ routes:
     model_key: nvidia/nemotron-3-ultra-550b-a55b:free
     provider: kilo
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
+    # review/58 §12.5 (R2-F): a slow reasoning route; uses the full 780 s ceiling.
+    response_timeout_seconds: 780
     input_context_limit: 1000000
     output_context_limit: 65536
     # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
@@ -1003,6 +1067,8 @@ routes:
     model_key: nvidia/nemotron-3-ultra-550b-a55b:free
     provider: openrouter
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
+    # review/58 §12.5 (R2-F): a slow reasoning route; uses the full 780 s ceiling.
+    response_timeout_seconds: 780
     input_context_limit: 1000000
     output_context_limit: 65536
     # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
@@ -1095,6 +1161,7 @@ routes:
     model_key: deepseek/deepseek-v4.1-flash
     provider: nvidia
     upstream_model: deepseek-ai/deepseek-v4.1-flash
+    response_timeout_seconds: 720
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
@@ -1132,6 +1199,7 @@ routes:
     # independent pool for the same logical model.
     provider: nvidia
     upstream_model: google/gemma-4-31b-it
+    response_timeout_seconds: 720
     input_context_limit: 262144
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
@@ -1180,6 +1248,17 @@ routes:
     model_key: nvidia/nemotron-3-ultra-550b-a55b:free
     provider: nvidia
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b
+    # review/58 §12.5 (R2-F): a slow reasoning route; uses the full 780 s ceiling.
+    response_timeout_seconds: 780
+    # Declared, not used: no lane sets a reasoning level for Nemotron 3 Ultra. Verified
+    # 2026-11-14 (review/58 §12.5): this switch returns 0 reasoning tokens and finished 5 of 10
+    # test requests against 1 of 10 for the default, but agenda recall fell on 2 of 3 comparable
+    # requests, so chapter-agenda keeps the default. Turning it on is a one-line `llm_lanes`
+    # change (#2689).
+    reasoning_controls:
+      "off":  # quoted: bare `off` is YAML's boolean false
+        chat_template_kwargs:
+          enable_thinking: false
     input_context_limit: 1000000
     output_context_limit: 65536
     # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
@@ -1282,6 +1361,7 @@ routes:
     model_key: tencent/hy3
     provider: orcarouter
     upstream_model: tencent/hy3-free
+    response_timeout_seconds: 720
     input_context_limit: 256000
     output_context_limit: 65536
     account_id: primary
@@ -1303,6 +1383,8 @@ routes:
     model_key: zai/glm-5.3-flash
     provider: orcarouter
     upstream_model: z-ai/glm-5.3-flash-free
+    # review/58 §12.5 (R2-F): a slow reasoning route; uses the full 780 s ceiling.
+    response_timeout_seconds: 780
     input_context_limit: 1000000
     output_context_limit: 131072
     account_id: primary
@@ -1347,6 +1429,7 @@ routes:
     provider: beatapi
     tier: backup
     upstream_model: gemini-3.8-flash-free
+    response_timeout_seconds: 720
     input_context_limit: 128000
     output_context_limit: 16384
     account_id: primary
@@ -1387,6 +1470,7 @@ routes:
     provider: beatapi
     tier: backup
     upstream_model: deepseek-v4.1-flash-free
+    response_timeout_seconds: 720
     # Pools with NVIDIA's deepseek-v4.1-flash. Reasoning model.
     input_context_limit: 128000
     output_context_limit: 16384
@@ -1406,6 +1490,7 @@ routes:
     provider: beatapi
     tier: backup
     upstream_model: deepseek-v4-pro-free
+    response_timeout_seconds: 720
     # No other route serves V4 Pro today (NVIDIA retired v4-pro-0813). Reasoning model.
     input_context_limit: 128000
     output_context_limit: 16384
@@ -1425,6 +1510,7 @@ routes:
     provider: beatapi
     tier: backup
     upstream_model: gpt-6-astra-free
+    response_timeout_seconds: 720
     # Response metadata says usage_source=anthropic / billing source claude_messages, so the serving family is unverified; do not treat it as an independent OpenAI family for judge selection.
     input_context_limit: 128000
     output_context_limit: 16384
@@ -1444,6 +1530,7 @@ routes:
     provider: beatapi
     tier: backup
     upstream_model: gpt-6.1-sol-free
+    response_timeout_seconds: 720
     # Same metadata caveat as gpt-6-astra-free.
     input_context_limit: 128000
     output_context_limit: 16384
@@ -1466,6 +1553,7 @@ routes:
     provider: beatapi_secondary
     tier: backup
     upstream_model: deepseek-v4.1-flash-free
+    response_timeout_seconds: 720
     # Pools with NVIDIA's deepseek-v4.1-flash. Reasoning model.
     input_context_limit: 128000
     output_context_limit: 16384
@@ -1485,6 +1573,7 @@ routes:
     provider: beatapi_secondary
     tier: backup
     upstream_model: gpt-6.1-sol-free
+    response_timeout_seconds: 720
     # Same metadata caveat as gpt-6-astra-free.
     input_context_limit: 128000
     output_context_limit: 16384
@@ -1512,6 +1601,7 @@ routes:
     provider: beatapi_secondary
     tier: backup
     upstream_model: gemini-3.8-flash-free
+    response_timeout_seconds: 720
     # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
     # values every BeatAPI route here uses until a measurement replaces them.
     input_context_limit: 128000
@@ -1531,6 +1621,7 @@ routes:
     provider: beatapi_secondary
     tier: backup
     upstream_model: glm-5.3-flash-free
+    response_timeout_seconds: 720
     # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
     # values every BeatAPI route here uses until a measurement replaces them.
     input_context_limit: 128000
@@ -1556,6 +1647,7 @@ routes:
     provider: beatapi_secondary
     tier: backup
     upstream_model: minimax-m3.1-flash-free
+    response_timeout_seconds: 720
     # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
     # values every BeatAPI route here uses until a measurement replaces them.
     input_context_limit: 128000
@@ -1574,6 +1666,7 @@ routes:
     model_key: typesafe/jev-1.13
     provider: beatapi
     upstream_model: jev-1.13-free
+    response_timeout_seconds: 720
     api_shape: systemone
     request_path: /systemone
     input_context_limit: 64000
@@ -1603,6 +1696,7 @@ routes:
     provider: beatapi
     tier: backup
     upstream_model: glm-5.3-flash-free
+    response_timeout_seconds: 720
     # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
     # values every BeatAPI route here uses until a measurement replaces them.
     input_context_limit: 128000
@@ -1628,6 +1722,7 @@ routes:
     provider: beatapi
     tier: backup
     upstream_model: minimax-m3.1-flash-free
+    response_timeout_seconds: 720
     # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
     # values every BeatAPI route here uses until a measurement replaces them.
     input_context_limit: 128000
@@ -1661,6 +1756,7 @@ routes:
     model: minimaxai/minimax-m3.1-flash
     provider: nvidia
     upstream_model: minimaxai/minimax-m3.1-flash
+    response_timeout_seconds: 720
     account_id: primary
     input_context_limit: 941663
     hard_input_ceiling: 941663

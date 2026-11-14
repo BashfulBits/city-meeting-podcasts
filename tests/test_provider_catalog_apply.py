@@ -119,6 +119,8 @@ def test_selected_addition_preserves_primary_and_records_route_method():
     assert result.route_notes[0][0] == route["route_id"]
     assert "12000 provider-counted input tokens admitted" in result.route_notes[0][1][0]
     assert route["rpm"] == route["concurrency"] == 1
+    # review/58 §12.5: a catalog-added route pins the ordinary 720 s response timeout.
+    assert route["response_timeout_seconds"] == 720
     assert result.backups == (("lane", "creator/new"),)
     assert not result.deferred and not result.rejected
 

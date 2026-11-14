@@ -577,3 +577,196 @@ about 0.7 s for a 200.
 
 Each window opens about 6 h after the previous refusal, when the block lapses. In about 33 h the
 anchor made 106 successful calls, against a nominal 2 x 10,000 a day.
+
+## Tag producer stall (2026-11-12 to 11-13, review/58 12.13, #2671)
+
+Sources: tag workflow run logs (GitHub Actions), Workers Logs `claim_failed_oversize_jobs`
+events, a read of 520 deferred-failure markers in B2 (list plus GETs, read-only), the 11-11 stats
+cache, and the 2026-11-10 record snapshot (offline). No production writes.
+
+**Tag runs.** All errors in both runs are the structural recovery gate's refusal.
+
+| Run (start, UTC) | Stages visited | `completion-cache` skips | Queued | Errors | Global queue |
+|---|---:|---:|---:|---:|---:|
+| 11-12 16:50 (43263036985) | 255 | 19,196 | 175 | 54 | 19,451 |
+| 11-13 01:05 (43342177719) | 232 | 19,196 | 19 | 204 | 19,428 |
+
+**Worker oversize reaps on 11-12** (`claim_failed_oversize_jobs`, failed as `unadmissible`).
+
+| Window (UTC) | Jobs failed |
+|---|---:|
+| 01:17 to 01:32 | 60 |
+| 11:59 to 13:01 | 270 |
+| 17:14 | 1 |
+| Total | 331 |
+
+**Deferred-failure markers** written 11-12 20Z to 11-13 02Z (520 read):
+
+| Marker | Count |
+|---|---:|
+| Tag, `structural_blocked` / `unadmissible`, catalog digest `b9c6f49c` | 258 |
+| ...of which name a job id from the reaper events above | 258 |
+| ...of which are chapter-batch child recipes (`-tag-batch-`) | 68 |
+| Tag, `exhausted` | 87 |
+
+Estimated input of the 258 refused requests: 120,063 minimum, 174,145 median, 185,560 maximum.
+
+**Route sizing for the tagger lane.**
+
+| Route | Static ceiling | Static ratio | Largest raw input that fits | Learned (11-11 stats cache) |
+|---|---:|---:|---:|---|
+| Gemini 3.5 Flash Lite (primary, x2) | 218,875 | 2.15 | 101,802 (batch target 94,676) | accepted up to 357,487 |
+| Nemotron 3.5 Super VL (x3) | 249,027 | 1.0 | 249,027 | accepted up to 203,402 to 223,042 |
+| DeepSeek V4 Flash, OrcaRouter | none | 1.0 | unmeasured | prompt-cap estimate 69,855 |
+| Gemini 3.1 Flash Lite (x2) | 218,875 | 1.6 | 136,796 | not read |
+
+**`ready` versus visited** (2026-11-10 snapshot, episodes with served chapters, 19,438):
+
+| Stored tag fingerprint | Episodes |
+|---|---:|
+| Matches the previous primary's route (Gemini 3.1 Flash Lite), recipe set | 10,681 |
+| Matches the current primary's route (Gemini 3.5 Flash Lite), recipe set | 6,117 |
+| None stored, no chapter tags | 1,101 |
+| Other | 1,539 |
+
+## Free decision models and sibling capacity (2026-11-14, review/58 12.9)
+
+Sources: OpenRouter's public model and endpoint listings and the account's key endpoint (read
+only), six tiny synthetic model calls with no transcript text, the records snapshot of 2026-11-10
+for the producer mix, and the 00:33Z judge-run counts on 11-14. No request or response body is
+committed.
+
+- **Mercury Decide listings.** `endpoints: []` for `inception/mercury-decide:free`,
+  `inception/mercury-decide` and `inception/mercury-decide-20260930:free` at 11-13 23:2xZ and
+  11-14 09:2xZ; the model is in neither `/api/v1/models` listing.
+- **Mercury Decide calls.**
+
+  | Time (UTC) | Id | Path | HTTP |
+  |---|---|---|---:|
+  | 11-13 23:20:21 | `inception/mercury-decide:free` | `/api/alpha/decisions` | 404 |
+  | 11-13 23:20:21 | `inception/mercury-decide:free` | `/api/v1/chat/completions` | 400 |
+  | 11-13 23:20:21 | `inception/mercury-decide-20260930:free` | `/api/alpha/decisions` | 404 |
+  | 11-13 23:20:21 | `inception/mercury-decide-20260930:free` | `/api/v1/chat/completions` | 400 |
+  | 11-14 09:21:59 | `inception/mercury-decide:free` | `/api/alpha/decisions` | 404 |
+
+  Bodies: 404 "No endpoints found for inception/mercury-decide:free."; 400 "<id> is a decisions
+  model and cannot be used with the chat/completions endpoint. Use the /api/alpha/decisions
+  endpoint instead."
+- **Path check.** `https://openrouter.ai/api/v1/decisions` with the Decider Flash id: 404.
+- **Perplexity Decider V1.3 endpoint (11-14).** One endpoint, Perplexity; prompt and completion
+  price 0; context 262,144.
+- **Account.** `free_model_daily_requests` 179 of 1,000 used at 09:2xZ on 11-14 (266 of 1,000 at
+  23:2xZ on 11-13). The configured OpenRouter routes total 440 rpd.
+- **Producer mix.** 168,651 judge subjects in 17,841 episodes: rule 158,783 (94.1%), google 7,383
+  (4.4%; Gemini 3.1 Flash Lite 6,596, Gemini 3.5 Flash Lite 787), nvidia 1,421 (0.8%, all Nemotron
+  3.5 Super on OpenRouter), deepseek 1,064 (0.6%). Published within 30 days: 1,238 (rule 1,163,
+  google 60, deepseek 11, nvidia 4). Within 90 days: 3,646 (rule 3,473, google 129, nvidia 32,
+  deepseek 12). No subject had an unknown producer family.
+- **Judge run 11-14 00:33Z** (first after #2678): 78 sibling packets to Nemotron 3.5 Super, 36 to
+  Qwen3.8; `no_independent_anchor` 3,191.
+
+## Slow route families and the 780 s ceiling (R2-F, 2026-11-13 to 11-14, review/58 §12.5)
+
+Sources: AI Gateway logs since 2026-10-01 (per-call duration and usage), Workers Logs
+`bundle_completed` and `attempt_outcome` since 2026-11-12, 80 sampled request bodies and 6 timed-out
+request payloads read from B2 (about 75 GETs, no writes), and 44 direct calls on paused routes.
+Request and response bodies are not committed.
+
+**T1. AI Gateway successes since 2026-10-01** (duration is the provider call).
+
+| Family | Successes | p50 / p90 / p99 / max (s) | Notes |
+|---|---:|---|---|
+| GLM 5.3 Flash, OrcaRouter | 3,096 (plus 85 × 429) | 220 / 441 / 662 / 719 | 419 over 400 s; 66 in 600 to 720 s |
+| Nemotron 3 Ultra, NVIDIA | 327 | 112 / 475 / 655 / 703 | |
+| Nemotron 3 Ultra, Kilo | 195 | 137 / 453 / 590 / 591 | |
+| Nemotron 3 Ultra, OpenRouter | 198 (plus 21 × 499) | 167 / 459 / 676 / 718 | |
+| Gemma 4 31B, NVIDIA | 2,136 | 142 / 475 / 693 / 718 | 309 over 400 s |
+
+**T2. Where the time goes.**
+
+| Family | Output tokens p50 | Reasoning share of output (p50) | Tokens/s p50 | corr(duration, output) | corr(duration, input) |
+|---|---:|---:|---:|---:|---:|
+| GLM | 16,384 (p90 33.6k) | 92% | 81 | 0.81 | 0.36 |
+| Ultra, Kilo and OpenRouter | about 1.0k to 2.3k visible | 73 to 76% | about 55 | 0.70 to 0.88 | low |
+| Gemma, NVIDIA | 1,276 | 0 (no reasoning) | 8.9 (down to about 1 on slow calls) | 0.15 | — |
+
+786 GLM outputs at exactly 16,384 tokens (2026-10-24 to 11-03) reflect an older `max_tokens` cap.
+
+**T3. Request bodies** (80 sampled, half over 400 s).
+
+- GLM, `judge:adjudicator` (36): all `finish_reason: stop`, `max_tokens` 65,536, `json_object`.
+  Content about 1.7k tokens against 10k to 56k reasoning tokens; the 600 to 706 s calls had 30k to
+  56k reasoning tokens.
+- GLM, `r6-moments` (4): 21k to 58k reasoning tokens.
+- Ultra, `chapter-agenda` (all three legs): all `stop`, `max_tokens` 65,536, `json_schema`;
+  reasoning 2k to 34k tokens.
+
+**T4. Workers Logs attempt outcomes since 2026-11-12 04:00Z.**
+
+| Route | Lane | Outcomes |
+|---|---|---|
+| GLM, OrcaRouter | judge:adjudicator | 71 ok, 25 timeouts at 720 s, 1 own_rpd; ok p50 479 s, p90 613 s; 12 ok over 600 s |
+| Ultra, NVIDIA | chapter-agenda | 10 ok, 11 timeouts |
+| Ultra, Kilo | chapter-agenda | 10 ok, 3 timeouts, 1 `structured_output_empty` |
+| Ultra, OpenRouter | chapter-agenda | 13 ok |
+| Gemma, NVIDIA | judge:sibling | 21 ok, 13 timeouts, 1 upstream_capacity |
+
+**T5. Timing margins** (588 bundles since 2026-11-13 02:15Z, with early release and the ladder
+live).
+
+- Invocation start to the claim: at most 10.7 s.
+- Invocation start to `bundle_completed`: p50 151 s, p99 722.8 s, max 733.0 s.
+- Last call end to the final commit: p50 0.73 s, p99 1.72 s. One commit took 125.5 s because a B2
+  result PUT had no timeout (`b2.putJson`); one took 6.3 s.
+
+**Direct-call experiment** (plan fixed at 2026-11-13 18:20Z, before the first call). The same
+fixed samples ran in every arm, with a direct-call timeout of 840 s so that the 720 to 780 s tail
+would show. Arms: A0 production request; A1 lowest documented reasoning control; A2 `max_tokens`
+16,384; A3 a "reason briefly, under about 4,000 tokens" sentence appended to the system message.
+
+Ultra on NVIDIA (`chapter-agenda`, 10 samples: 8 production successes of 467 to 668 s and 2 jobs
+that timed out at 720 s; validity under `finalize_agenda_job`):
+
+| Arm | Finished | Valid | Timeouts at 840 s | Notes |
+|---|---:|---:|---:|---|
+| A0 control | 1 (273 s) | 1 | 9 | |
+| A1 `chat_template_kwargs.enable_thinking: false` | 5 (118 to 542 s) | 2 | 5 | 0 reasoning tokens on every finished call |
+| A2 `max_tokens` 16,384 | 5 (102 to 608 s) | 0 | 5 | 3 ended `length` with truncated JSON |
+| A3 length sentence | 2 (263, 296 s) | 1 | 8 | reasoning 6.4k and 10.7k tokens, above the 4k asked |
+
+- The first five samples timed out in every arm, including A1 with no reasoning. That points to
+  provider queueing on those requests, not generation length.
+- No call in any arm finished between 720 and 840 s.
+- On the one request that A0 and A1 both finished, A1 was not faster (295 s against 273 s).
+- A1 recall against the production answers for the same requests: line coverage 0.86, 0.84 and
+  0.44, with fewer agenda items (25 against 30, 33 against 40). On one timed-out payload A1
+  returned 11 items.
+- Of the 8 production answers in the sample, 3 pass today's validator. Ultra corrects OCR text
+  (for example "ltems" to "Items"), and the corrected text fails the quote check.
+- A4 (combination) was skipped by the plan's rule: A3 did not cut latency and A2 truncated.
+
+GLM on OrcaRouter: no usable data. The 4 calls on 2026-11-13 each returned 429 "Free model
+capacity is limited" after about 120 s, and the run stopped. On 2026-11-14 the OrcaRouter daily
+pool was spent, so no further GLM call was made. The Kilo and OpenRouter `reasoning_effort` checks
+were not run. Gemma was not tested: it serves no lane after #2678, and no request lever applies to
+provider throughput.
+
+**Pause log** (every pause, renewal and resume made by this package, plus the status checks).
+Only single routes were paused; no provider-wide or global pause was made.
+
+| Time (UTC) | Action | Target | Reason | Measured effect |
+|---|---|---|---|---|
+| 11-13 11:22, 13:19 | status | orcarouter, nvidia, kilo, openrouter | before planning | no pauses |
+| 11-13 13:28 | status | route GLM, OrcaRouter | before planning | no pauses; 1 in flight |
+| 11-13 18:12 to 19:00 | status (8 checks) | provider:nvidia, then provider:openrouter | — | Not mine: "provider catalog reconciliation" pauses from the catalog workflow, renewed about every 3 minutes until about 19:00. Not touched; no pause started while they were active |
+| 11-13 23:19:14 | status | all | before the run | no pauses |
+| 11-13 23:20:34 | pause, 900 s | route `orcarouter_zai_glm_5_3_flash_free` | GLM arms | drained at once, 0 in flight |
+| 11-13 23:25:01 | resume (manual) | route `orcarouter_zai_glm_5_3_flash_free` | every call returned 429 | paused 4.5 minutes |
+| 11-13 23:25:26 | pause, 900 s | route `nvidia_nemotron_3_ultra_550b_a55b_free` | Ultra arms | drained at once, 0 in flight |
+| 11-13 23:30 to 11-14 01:20 | renew, 900 s, every 300 s (23 times) | same route | calls still running | — |
+| 11-14 01:21:28 | resume | same route | arms done | resumed before expiry; paused 1 h 56 min |
+| 11-14 19:28:50 | status | all | before finishing | no pauses |
+| 11-14 19:40:20 | status | all | before the PR | no pauses; 3 in flight (production) |
+
+While the Ultra route was paused, `chapter-agenda` kept its Kilo and OpenRouter legs. Every direct
+call was reserved against its route first. No pause made by this package is outstanding.
