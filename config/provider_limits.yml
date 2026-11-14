@@ -1687,3 +1687,25 @@ routes:
     concurrency: 1
     free: true
     output_context_limit: 12800
+  # Input cap evidence: 957162 provider-counted input tokens admitted; 193 output tokens
+  # generated in the same request (control input:v2).
+  # The hard_input_ceiling is the admitted input lower bound; the estimated rejection is not
+  # used as a cap.
+  # Provider/catalog input_context_limit claim: 1024000; source:
+  # https://api.kilo.ai/api/gateway/models. Operational context is at least the empirically
+  # observed input plus generated output.
+  # Output context: configured value 921600 is sourced from the provider catalog and is subject
+  # to this PR's review.
+  - route_id: kilo_baidu_ernie_5_5_flash_preview_free
+    model: baidu/ernie-5.5-flash-preview
+    provider: kilo
+    upstream_model: baidu/ernie-5.5-flash-preview:free
+    account_id: primary
+    input_context_limit: 1024000
+    hard_input_ceiling: 957162
+    structured_output_method: json_schema
+    structured_output_verified_on: '2026-11-14'
+    rpm: 1
+    concurrency: 1
+    free: true
+    output_context_limit: 921600
