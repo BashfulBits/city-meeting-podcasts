@@ -84,7 +84,9 @@ for (const binding of ["compiled", "object", "json", "legacy"]) {
     let now = Date.UTC(2026, 9, 18, 23, 50);
     t.mock.method(Date, "now", () => now);
     const purpose = "topic-tags:tagger";
-    const custom = { [purpose]: { daily_write_units: 40, write_units_per_job: 4 } };
+    const custom = {
+      [purpose]: { reserved_write_units: 20, daily_write_units: 40, write_units_per_job: 4 },
+    };
     if (binding === "legacy") delete custom[purpose].write_units_per_job;
     const env = { MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "100000" };
     if (binding !== "compiled") {
@@ -117,10 +119,27 @@ for (const binding of ["compiled", "object", "json", "legacy"]) {
       const purposeTotal = snapshot.ingress.by_purpose.reduce((sum, row) => sum + row.jobs_ingested, 0);
       assert.equal(purposeTotal, expected);
       const lane = snapshot.ingress.by_purpose.find((row) => row.purpose === purpose);
+      // Caps are jobs: the lane's own reservation, plus the ceiling it may borrow up to.
       const perJob = reservation.write_units_per_job || 4;
-      const quota = Math.floor(reservation.daily_write_units / perJob);
+      const quota = Math.floor(reservation.reserved_write_units / perJob);
+      assert.ok(quota > 0);
       assert.equal(lane.daily_quota, quota);
+      assert.equal(lane.ceiling_jobs, Math.floor(reservation.daily_write_units / perJob));
       assert.equal(lane.percent_used, Math.round(expected / quota * 1000) / 10);
+      assert.equal(
+        snapshot.ingress.reserved_jobs_total,
+        snapshot.ingress.by_purpose.reduce((sum, row) => sum + row.daily_quota, 0),
+      );
+      if (binding === "compiled") {
+        // Every registered lane is listed, and the reservations add up to the day's job plan.
+        const lanes = Object.entries(INGRESS_RESERVATIONS.reservations);
+        assert.equal(snapshot.ingress.by_purpose.length, lanes.length);
+        assert.equal(
+          snapshot.ingress.reserved_jobs_total,
+          lanes.reduce((sum, [, cfg]) =>
+            sum + Math.floor(cfg.reserved_write_units / (cfg.write_units_per_job || 4)), 0),
+        );
+      }
     };
     await check(3, "2026-10-18");
     await coordinator.cancelBatch(["stats-second"]);
