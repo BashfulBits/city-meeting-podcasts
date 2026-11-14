@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 53,
+    "routes_count": 52,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -13,7 +13,6 @@
     "nvidia/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3.5-super-vl-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
-    "nvidia/diffusiongemma-26b-a4b-it": "google/diffusiongemma-26b-a4b-it",
     "orcarouter/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
     "orcarouter/tencent-hy3": "tencent/hy3",
     "orcarouter/glm-5.3-flash": "zai/glm-5.3-flash",
@@ -1387,40 +1386,6 @@
         "direct"
       ],
       "direct_model": "openai/nvidia/nemotron-3.5-super-vl-120b-a12b",
-      "api_base": "https://integrate.api.nvidia.com/v1",
-      "ai_gateway_slug": "custom-nvidia",
-      "ai_gateway_chat_path": "/chat/completions",
-      "chat_path": "/chat/completions",
-      "api_key_env": "NVIDIA_API_KEY",
-      "reset_timezone": "UTC",
-      "provider_rpm": 35,
-      "provider_tpm": 90000,
-      "provider_concurrency": 4
-    },
-    {
-      "route_id": "nvidia_diffusiongemma_26b_a4b_it_free",
-      "model": "google/diffusiongemma-26b-a4b-it",
-      "provider": "nvidia",
-      "upstream_model": "google/diffusiongemma-26b-a4b-it",
-      "input_context_limit": 128000,
-      "output_context_limit": 16384,
-      "account_id": "primary",
-      "rpm": 2,
-      "concurrency": 1,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "observed_on": "2026-10-31",
-      "structured_output_method": "json_schema",
-      "structured_output_method_source": "provider",
-      "structured_output_verified_on": null,
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct"
-      ],
-      "direct_model": "openai/google/diffusiongemma-26b-a4b-it",
       "api_base": "https://integrate.api.nvidia.com/v1",
       "ai_gateway_slug": "custom-nvidia",
       "ai_gateway_chat_path": "/chat/completions",
