@@ -27,7 +27,7 @@ from __future__ import annotations
 import math
 import threading
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +64,13 @@ class LaneConfig:
     reserved_write_units: int = 0
     daily_write_units: int = 0
     max_queued_jobs: int | None = None
+    # review/58 section 12.11: this lane's share of the daily row budget. When set, the three caps
+    # above are computed by :func:`allocate_reservations` instead of being stated in config.
+    reservation_ratio: float | None = None
+    # review/58 section 12.11: a live lane (a probe on live calls) splits the fixed
+    # `llm_lane_budget.live_reservation_jobs` pool with the other live lanes, by ratio, instead of
+    # a share of the row budget.
+    live: bool = False
     telemetry_producer: str = ""
     telemetry_unit: str = "episode"
     telemetry_completion: str = "consumed"
@@ -199,156 +206,192 @@ def _coerce_number(raw: Any, *, where: str, positive: bool = False) -> float:
 
 
 # ---------------------------------------------------------------------------------------------
-# Lane caps derived from meetings per day (review/58 section 12.11).
+# Lane reservations split from one row budget by ratio (review/58 section 12.11).
 #
-# A lane with a ``sizing`` entry does not state its three caps; they are computed from its demand
-# per meeting and ONE shared input, new meetings per day, so adding cities raises them without a
-# hand edit. The shared block is ``llm_lane_sizing`` in the same site config.
+# Each lane states only a `reservation_ratio`. The shared `llm_lane_budget` block and the Worker's
+# daily row cap (`DO_ROWS_ENQUEUE_STOP` in config/dispatch_tuning.yml) decide the totals. Live lanes
+# (`live: true`) first split a fixed `live_reservation_jobs` pool by their ratios; its rows come
+# off the top, and the other lanes split the rest of the cap's rows in their ratios. Adding or
+# removing a lane re-splits the budget with no other edit.
 # ---------------------------------------------------------------------------------------------
 
-LANE_SIZING_FIELDS = frozenset({"jobs_per_meeting", "headroom", "backlog_jobs", "drain_days"})
-_SHARED_SIZING_FIELDS = frozenset(
+ROW_CAP_TUNING_NAME = "DO_ROWS_ENQUEUE_STOP"
+_BUDGET_FIELDS = frozenset(
     {
-        "meetings_per_day_p90",
-        "basis_active_feeds",
-        "backlog_floor_jobs",
-        "queue_days",
-        "round_jobs_to",
         "rows_per_write_unit",
         "execution_rows_per_job",
         "fixed_rows_per_day",
+        "queue_days",
+        "live_reservation_jobs",
     }
 )
 _CAP_FIELDS = ("reserved_write_units", "daily_write_units", "max_queued_jobs")
 
 
 @dataclass(frozen=True)
-class LaneSizing:
-    """The shared inputs that turn each sized lane's per-meeting demand into caps.
+class LaneBudget:
+    """The shared inputs that split the daily row cap into lane reservations.
 
-    ``meetings_per_day_p90`` is the measured p90 of daily new meetings when the catalog had
-    ``basis_active_feeds`` active feed configs. ``active_feeds`` is the count in the committed
-    ``config/feeds`` today. The effective figure scales the measured p90 by the growth in active
-    feeds and never falls below it, so the configured number is a floor.
+    ``row_cap`` is the Worker's daily row stop (``DO_ROWS_ENQUEUE_STOP``). One admitted job of a
+    lane costs ``rows_per_write_unit`` x its ingress units at enqueue plus
+    ``execution_rows_per_job`` to claim, complete, retire and clean up; ``fixed_rows_per_day``
+    covers recounts and deploy schema retries. ``live_reservation_jobs`` is the fixed pool the
+    live lanes share, taken off the row budget before the other lanes split it.
     """
 
-    meetings_per_day_p90: float
-    basis_active_feeds: int
-    backlog_floor_jobs: int
-    queue_days: int
-    round_jobs_to: int
+    row_cap: int
     rows_per_write_unit: float
     execution_rows_per_job: float
     fixed_rows_per_day: int
-    active_feeds: int = 0
-
-    @property
-    def meetings_per_day(self) -> float:
-        """Effective new meetings per day: the measured p90, scaled up with active feeds."""
-        if self.active_feeds <= self.basis_active_feeds:
-            return self.meetings_per_day_p90
-        return self.meetings_per_day_p90 * self.active_feeds / self.basis_active_feeds
+    queue_days: int
+    live_reservation_jobs: int = 0
 
     def rows_per_job(self, units_per_job: int) -> float:
         """Estimated billed DO rows per admitted job (enqueue rows plus execution rows)."""
         return self.rows_per_write_unit * units_per_job + self.execution_rows_per_job
 
 
-def parse_lane_sizing(raw: Any, *, active_feeds: int = 0) -> LaneSizing | None:
-    """Validate the ``llm_lane_sizing`` block; ``None`` when the site config has none."""
+def parse_lane_budget(raw: Any, *, row_cap: int) -> LaneBudget | None:
+    """Validate the ``llm_lane_budget`` block; ``None`` when the site config has none."""
     if raw is None:
         return None
     if not isinstance(raw, Mapping):
-        raise ValueError("llm_lane_sizing must be a mapping")
+        raise ValueError("llm_lane_budget must be a mapping")
     keys = set(raw)
-    if keys != _SHARED_SIZING_FIELDS:
+    if keys != _BUDGET_FIELDS:
         raise ValueError(
-            "llm_lane_sizing must define exactly "
-            f"{sorted(_SHARED_SIZING_FIELDS)}; missing {sorted(_SHARED_SIZING_FIELDS - keys)}, "
-            f"unknown {sorted(keys - _SHARED_SIZING_FIELDS)}"
+            f"llm_lane_budget must define exactly {sorted(_BUDGET_FIELDS)}; "
+            f"missing {sorted(_BUDGET_FIELDS - keys)}, unknown {sorted(keys - _BUDGET_FIELDS)}"
         )
-
-    def whole(field: str, *, positive: bool) -> int:
-        value = _coerce_int(raw[field], purpose="llm_lane_sizing", field=field)
-        if positive and value == 0:
-            raise ValueError(f"llm_lane_sizing.{field} must be positive")
-        return value
-
-    return LaneSizing(
-        meetings_per_day_p90=_coerce_number(
-            raw["meetings_per_day_p90"], where="llm_lane_sizing.meetings_per_day_p90", positive=True
-        ),
-        basis_active_feeds=whole("basis_active_feeds", positive=True),
-        backlog_floor_jobs=whole("backlog_floor_jobs", positive=False),
-        queue_days=whole("queue_days", positive=True),
-        round_jobs_to=whole("round_jobs_to", positive=True),
+    cap = _coerce_int(row_cap, purpose="llm_lane_budget", field=ROW_CAP_TUNING_NAME)
+    fixed = _coerce_int(
+        raw["fixed_rows_per_day"], purpose="llm_lane_budget", field="fixed_rows_per_day"
+    )
+    if cap <= fixed:
+        raise ValueError(
+            f"{ROW_CAP_TUNING_NAME} ({cap}) leaves no rows after fixed_rows_per_day ({fixed})"
+        )
+    queue_days = _coerce_int(raw["queue_days"], purpose="llm_lane_budget", field="queue_days")
+    if queue_days == 0:
+        raise ValueError("llm_lane_budget.queue_days must be positive")
+    return LaneBudget(
+        row_cap=cap,
         rows_per_write_unit=_coerce_number(
-            raw["rows_per_write_unit"], where="llm_lane_sizing.rows_per_write_unit"
+            raw["rows_per_write_unit"], where="llm_lane_budget.rows_per_write_unit"
         ),
         execution_rows_per_job=_coerce_number(
-            raw["execution_rows_per_job"], where="llm_lane_sizing.execution_rows_per_job"
+            raw["execution_rows_per_job"], where="llm_lane_budget.execution_rows_per_job"
         ),
-        fixed_rows_per_day=whole("fixed_rows_per_day", positive=False),
-        active_feeds=active_feeds,
+        fixed_rows_per_day=fixed,
+        queue_days=queue_days,
+        live_reservation_jobs=_coerce_int(
+            raw["live_reservation_jobs"], purpose="llm_lane_budget", field="live_reservation_jobs"
+        ),
     )
 
 
-def count_active_feeds(feeds_dir: str | Path) -> int:
-    """Feed configs in ``feeds_dir`` whose ``lifecycle.status`` is ``active`` (the default).
-
-    Paused, dormant and retired feeds publish no or few new meetings, so they do not count.
-    Files whose name starts with ``_`` are templates. A missing directory counts zero, which
-    leaves the effective meetings per day at its configured floor.
-    """
-    directory = Path(feeds_dir)
-    if not directory.is_dir():
-        return 0
+def read_row_cap(tuning_path: str | Path) -> int:
+    """Read ``DO_ROWS_ENQUEUE_STOP`` from ``dispatch_tuning.yml``; raise if it is not declared."""
     import yaml
 
-    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-    count = 0
-    for path in sorted(directory.glob("*.yml")):
-        if path.name.startswith("_"):
-            continue
-        feed = yaml.load(path.read_text(encoding="utf-8"), Loader=loader) or {}
-        lifecycle = feed.get("lifecycle") if isinstance(feed, Mapping) else None
-        status = lifecycle.get("status") if isinstance(lifecycle, Mapping) else None
-        if status in (None, "active"):
-            count += 1
-    return count
+    raw = yaml.safe_load(Path(tuning_path).read_text(encoding="utf-8")) or {}
+    value = raw.get(ROW_CAP_TUNING_NAME) if isinstance(raw, Mapping) else None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"{tuning_path} does not declare a positive integer {ROW_CAP_TUNING_NAME}; lane "
+            "reservations are split from that row cap and cannot be computed without it"
+        )
+    return value
 
 
-def _round_up(value: float, step: int) -> int:
-    # Rounded to 9 places first so float noise (e.g. 30.000000000004) does not add a whole step.
-    return step * math.ceil(round(value / step, 9))
+def _floor_jobs(value: float) -> int:
+    # Rounded to 9 places first so float noise (e.g. 344.9999999998) does not drop a whole job.
+    return math.floor(round(value, 9))
 
 
-def sized_caps(
-    entry: Mapping[str, Any], sizing: LaneSizing, *, units_per_job: int, purpose: str
-) -> tuple[int, int, int]:
-    """``(reserved_write_units, daily_write_units, max_queued_jobs)`` for one sized lane.
+def live_reservation_jobs(lanes: Mapping[str, LaneConfig], budget: LaneBudget) -> dict[str, int]:
+    """Split ``live_reservation_jobs`` among the live lanes by their ratios (floored)."""
+    live = {p: lane for p, lane in lanes.items() if lane.live}
+    if not live:
+        return {}
+    weight = sum(lane.reservation_ratio for lane in live.values())
+    if weight <= 0:
+        raise ValueError(
+            "llm_lanes: every live lane's reservation_ratio is 0, so the live_reservation_jobs "
+            "pool has nothing to split"
+        )
+    pool = budget.live_reservation_jobs
+    return {p: _floor_jobs(pool * lane.reservation_ratio / weight) for p, lane in live.items()}
 
-    reservation jobs = jobs_per_meeting x meetings/day x headroom, rounded up to round_jobs_to;
-    ceiling jobs = reservation + max(backlog_floor_jobs, backlog_jobs / drain_days rounded up);
-    queue = queue_days x ceiling jobs. Units are jobs x the lane's ingress units per job.
-    """
-    where = f"llm_lanes[{purpose!r}].sizing"
-    if not isinstance(entry, Mapping) or set(entry) != LANE_SIZING_FIELDS:
-        raise ValueError(f"{where} must define exactly {sorted(LANE_SIZING_FIELDS)}")
-    jobs_per_meeting = _coerce_number(entry["jobs_per_meeting"], where=f"{where}.jobs_per_meeting")
-    headroom = _coerce_number(entry["headroom"], where=f"{where}.headroom", positive=True)
-    backlog_jobs = _coerce_number(entry["backlog_jobs"], where=f"{where}.backlog_jobs")
-    drain_days = _coerce_number(entry["drain_days"], where=f"{where}.drain_days", positive=True)
 
-    step = sizing.round_jobs_to
-    reserved_jobs = _round_up(jobs_per_meeting * sizing.meetings_per_day * headroom, step)
-    allowance = max(sizing.backlog_floor_jobs, _round_up(backlog_jobs / drain_days, step))
-    ceiling_jobs = reserved_jobs + allowance
-    return (
-        reserved_jobs * units_per_job,
-        ceiling_jobs * units_per_job,
-        sizing.queue_days * ceiling_jobs,
+def live_reservation_rows(lanes: Mapping[str, LaneConfig], budget: LaneBudget) -> float:
+    """The live pool's rows, taken off the row budget before the other lanes split it."""
+    return sum(
+        jobs * budget.rows_per_job(lanes[p].ingress_write_units_per_job)
+        for p, jobs in live_reservation_jobs(lanes, budget).items()
     )
+
+
+def jobs_per_ratio_point(lanes: Mapping[str, LaneConfig], budget: LaneBudget) -> float:
+    """``k`` such that the non-live lanes' reservations cost exactly the rows left to split.
+
+    sum over non-live lanes of ratio x k x rows_per_job
+        = row_cap - fixed_rows_per_day - the live pool's rows.
+    """
+    rows = budget.row_cap - budget.fixed_rows_per_day - live_reservation_rows(lanes, budget)
+    if rows <= 0:
+        raise ValueError(
+            f"llm_lane_budget.live_reservation_jobs ({budget.live_reservation_jobs}) leaves no "
+            f"rows of {ROW_CAP_TUNING_NAME} ({budget.row_cap}) for the other lanes"
+        )
+    weight = sum(
+        lane.reservation_ratio * budget.rows_per_job(lane.ingress_write_units_per_job)
+        for lane in lanes.values()
+        if not lane.live
+    )
+    if weight <= 0:
+        raise ValueError(
+            "llm_lanes: every non-live reservation_ratio is 0, so there is nothing to split"
+        )
+    return rows / weight
+
+
+def allocate_reservations(
+    lanes: Mapping[str, LaneConfig], budget: LaneBudget
+) -> dict[str, LaneConfig]:
+    """Fill in each lane's three caps from its ratio and the shared row budget.
+
+    - live lanes: reservation jobs = their ratio's share of ``live_reservation_jobs``;
+    - other lanes: reservation jobs = floor(ratio x k) (see :func:`jobs_per_ratio_point`), so the
+      total never passes the cap; reserved_write_units = jobs x the lane's ingress units per job;
+    - daily_write_units = the sum of every lane's reservation, so a lane may borrow any other
+      lane's unspent share as the Worker's ``_reservationBorrowFraction`` schedule releases it;
+    - max_queued_jobs = queue_days x the lane's reservation jobs, or x the largest lane's for a
+      lane that reserves nothing and runs only on borrowed capacity.
+    """
+    live_jobs = live_reservation_jobs(lanes, budget)
+    jobs = dict(live_jobs)
+    if any(not lane.live for lane in lanes.values()):
+        k = jobs_per_ratio_point(lanes, budget)
+        jobs.update(
+            {
+                p: _floor_jobs(lane.reservation_ratio * k)
+                for p, lane in lanes.items()
+                if not lane.live
+            }
+        )
+    reserved = {p: jobs[p] * lanes[p].ingress_write_units_per_job for p in lanes}
+    total_units = sum(reserved.values())
+    largest = max(jobs.values())
+    return {
+        purpose: replace(
+            lane,
+            reserved_write_units=reserved[purpose],
+            daily_write_units=total_units,
+            max_queued_jobs=budget.queue_days * (jobs[purpose] or largest),
+        )
+        for purpose, lane in lanes.items()
+    }
 
 
 REASONING_LEVELS = frozenset({"off", "low"})
@@ -456,12 +499,13 @@ def parse_families(raw: Any, lanes: Mapping[str, LaneConfig]) -> dict[str, str]:
     return families
 
 
-def parse_lanes(raw_block: Any, *, sizing: LaneSizing | None = None) -> dict[str, LaneConfig]:
+def parse_lanes(raw_block: Any, *, budget: LaneBudget | None = None) -> dict[str, LaneConfig]:
     """Validate and normalize a raw ``llm_lanes`` mapping.
 
     Split from :func:`load_lanes` so the compiler and the tests can validate a block without
-    touching the filesystem or the module-level cache. ``sizing`` is required only when a lane
-    has a ``sizing`` entry; :func:`parse_site_lanes` resolves it from a whole site config.
+    touching the filesystem or the module-level cache. Lanes either all state a
+    ``reservation_ratio`` (and ``budget`` splits the row cap between them) or all state their caps;
+    :func:`parse_site_lanes` resolves ``budget`` from a whole site config.
     """
     if not isinstance(raw_block, Mapping) or not raw_block:
         raise ValueError("site config must define a non-empty 'llm_lanes' block")
@@ -506,25 +550,30 @@ def parse_lanes(raw_block: Any, *, sizing: LaneSizing | None = None) -> dict[str
             if entry.get("max_queued_jobs") is not None
             else None
         )
-        if "sizing" in entry:
+        reservation_ratio = None
+        if "reservation_ratio" in entry:
             # review/58 section 12.11: the caps are derived, so stating them too would leave two
             # sources for one number.
             stated = [field for field in _CAP_FIELDS if field in entry]
             if stated:
                 raise ValueError(
-                    f"llm_lanes[{purpose!r}] has a sizing entry and also states {stated}; "
-                    "a sized lane's caps are computed, so remove the stated values"
+                    f"llm_lanes[{purpose!r}] has a reservation_ratio and also states {stated}; "
+                    "its caps are computed from the ratio, so remove the stated values"
                 )
-            if sizing is None:
+            if budget is None:
                 raise ValueError(
-                    f"llm_lanes[{purpose!r}] has a sizing entry but the site config has no "
-                    "llm_lane_sizing block (meetings per day) to size it with"
+                    f"llm_lanes[{purpose!r}] has a reservation_ratio but the site config has no "
+                    "llm_lane_budget block to split the row cap with"
                 )
-            reserved, daily, max_queued_jobs = sized_caps(
-                entry["sizing"],
-                sizing,
-                units_per_job=3 + (1 if shape == "per_model" else len(models)),
-                purpose=purpose,
+            reservation_ratio = _coerce_number(
+                entry["reservation_ratio"], where=f"llm_lanes[{purpose!r}].reservation_ratio"
+            )
+            # Placeholders until every lane is known; allocate_reservations fills them in.
+            reserved, daily = 0, 0
+        elif "live" in entry:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}] sets live but no reservation_ratio; a live lane's share "
+                "of llm_lane_budget.live_reservation_jobs is set by its ratio"
             )
         else:
             reserved = _coerce_int(
@@ -534,11 +583,6 @@ def parse_lanes(raw_block: Any, *, sizing: LaneSizing | None = None) -> dict[str
             )
             daily = _coerce_int(
                 entry.get("daily_write_units"), purpose=purpose, field="daily_write_units"
-            )
-        if reserved > daily:
-            raise ValueError(
-                f"llm_lanes[{purpose!r}] reserves {reserved} write units but caps its day at "
-                f"{daily}; a reservation it can never spend strands capacity from every other lane"
             )
 
         raw_backup_models = entry.get("backup_models")
@@ -640,6 +684,8 @@ def parse_lanes(raw_block: Any, *, sizing: LaneSizing | None = None) -> dict[str
             max_queued_jobs=max_queued_jobs,
             reserved_write_units=reserved,
             daily_write_units=daily,
+            reservation_ratio=reservation_ratio,
+            live=_coerce_bool(entry.get("live", False), purpose=purpose, field="live"),
             dispatch_shape=shape,
             backup_models=backup_models,
             backup_after_attempts=backup_after_attempts,
@@ -652,52 +698,73 @@ def parse_lanes(raw_block: Any, *, sizing: LaneSizing | None = None) -> dict[str
             eligible_models=eligible_models,
             slots=slots,
         )
-        if daily < lane.ingress_write_units_per_job:
-            raise ValueError(
-                f"llm_lanes[{purpose!r}].daily_write_units ({daily}) is below the "
-                f"{lane.ingress_write_units_per_job} units one of its jobs costs, so the lane can "
-                "never admit a single job"
-            )
-        if (
-            lane.max_dispatches_per_run is not None
-            and lane.max_dispatches_per_run > lane.max_jobs_per_day
-        ):
-            # A run cap above what the daily budget funds is not a harmless upper bound: the
-            # producer submits to that cap and the Worker rejects everything past the budget, so
-            # the surplus is pure wasted ingress traffic that looks like a lane failing to fill
-            # its quota. Every lane here is a daily cron, so the two numbers should agree.
-            raise ValueError(
-                f"llm_lanes[{purpose!r}].max_dispatches_per_run "
-                f"({lane.max_dispatches_per_run}) exceeds the {lane.max_jobs_per_day} jobs its "
-                f"daily_write_units ({daily}) can fund at {lane.ingress_write_units_per_job} "
-                "units/job; the surplus would be rejected at ingress"
-            )
         lanes[purpose] = lane
+
+    ratioed = {p for p, lane in lanes.items() if lane.reservation_ratio is not None}
+    if ratioed and ratioed != set(lanes):
+        raise ValueError(
+            "llm_lanes: either every lane states a reservation_ratio or none does, so the row "
+            f"budget is split across all of them; missing on {sorted(set(lanes) - ratioed)}"
+        )
+    if ratioed:
+        lanes = allocate_reservations(lanes, budget)
+    for lane in lanes.values():
+        _check_lane_caps(lane)
     return lanes
 
 
-def feeds_dir_for(site_config_path: str | Path) -> Path:
-    """The feed-config directory that sits beside a site config (``config/feeds``)."""
-    return Path(site_config_path).parent / "feeds"
+def _check_lane_caps(lane: LaneConfig) -> None:
+    purpose, daily = lane.purpose, lane.daily_write_units
+    if lane.reserved_write_units > daily:
+        raise ValueError(
+            f"llm_lanes[{purpose!r}] reserves {lane.reserved_write_units} write units but caps its "
+            f"day at {daily}; a reservation it can never spend strands capacity from every other "
+            "lane"
+        )
+    if daily < lane.ingress_write_units_per_job:
+        raise ValueError(
+            f"llm_lanes[{purpose!r}].daily_write_units ({daily}) is below the "
+            f"{lane.ingress_write_units_per_job} units one of its jobs costs, so the lane can "
+            "never admit a single job"
+        )
+    if (
+        lane.max_dispatches_per_run is not None
+        and lane.max_dispatches_per_run > lane.max_jobs_per_day
+    ):
+        # A run cap above what the daily budget funds is not a harmless upper bound: the
+        # producer submits to that cap and the Worker rejects everything past the budget, so
+        # the surplus is pure wasted ingress traffic that looks like a lane failing to fill
+        # its quota. Every lane here is a daily cron, so the two numbers should agree.
+        raise ValueError(
+            f"llm_lanes[{purpose!r}].max_dispatches_per_run "
+            f"({lane.max_dispatches_per_run}) exceeds the {lane.max_jobs_per_day} jobs its "
+            f"daily_write_units ({daily}) can fund at {lane.ingress_write_units_per_job} "
+            "units/job; the surplus would be rejected at ingress"
+        )
 
 
-def resolve_lane_sizing(raw_site: Mapping[str, Any], *, feeds_dir: str | Path) -> LaneSizing | None:
-    """The site config's ``llm_lane_sizing`` with today's active feed count filled in."""
-    raw = raw_site.get("llm_lane_sizing")
+def tuning_path_for(site_config_path: str | Path) -> Path:
+    """``dispatch_tuning.yml`` beside a site config, else the repository's own copy."""
+    beside = Path(site_config_path).parent / "dispatch_tuning.yml"
+    return beside if beside.exists() else _REPO_ROOT / "config" / "dispatch_tuning.yml"
+
+
+def resolve_lane_budget(
+    raw_site: Mapping[str, Any], *, tuning_path: str | Path
+) -> LaneBudget | None:
+    """The site config's ``llm_lane_budget`` with the row cap read from ``tuning_path``."""
+    raw = raw_site.get("llm_lane_budget")
     if raw is None:
         return None
-    return parse_lane_sizing(raw, active_feeds=count_active_feeds(feeds_dir))
+    return parse_lane_budget(raw, row_cap=read_row_cap(tuning_path))
 
 
 def parse_site_lanes(
-    raw_site: Mapping[str, Any], *, feeds_dir: str | Path
+    raw_site: Mapping[str, Any], *, tuning_path: str | Path
 ) -> dict[str, LaneConfig]:
-    """Parse ``llm_lanes`` from a whole site config, sizing lanes from ``llm_lane_sizing``.
-
-    ``feeds_dir`` is the committed feed registry whose active count scales meetings per day.
-    """
+    """Parse ``llm_lanes`` from a whole site config, splitting reservations by ratio."""
     return parse_lanes(
-        raw_site.get("llm_lanes"), sizing=resolve_lane_sizing(raw_site, feeds_dir=feeds_dir)
+        raw_site.get("llm_lanes"), budget=resolve_lane_budget(raw_site, tuning_path=tuning_path)
     )
 
 
@@ -739,7 +806,7 @@ def load_lanes(*, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> dict[str, Lane
     import yaml
 
     raw = yaml.safe_load(Path(key).read_text()) or {}
-    lanes = parse_site_lanes(raw, feeds_dir=feeds_dir_for(key))
+    lanes = parse_site_lanes(raw, tuning_path=tuning_path_for(key))
     with _CACHE_LOCK:
         _CACHE[key] = lanes
     return lanes
@@ -807,16 +874,19 @@ __all__ = [
     "DEFAULT_SITE_CONFIG_PATH",
     "NON_DISPATCHING_PURPOSES",
     "LaneConfig",
-    "LaneSizing",
+    "LaneBudget",
     "UnregisteredLaneError",
+    "allocate_reservations",
     "clear_cache",
-    "count_active_feeds",
-    "feeds_dir_for",
+    "jobs_per_ratio_point",
+    "live_reservation_jobs",
+    "live_reservation_rows",
     "lane_for",
     "load_lanes",
-    "parse_lane_sizing",
+    "parse_lane_budget",
     "parse_lanes",
     "parse_site_lanes",
-    "resolve_lane_sizing",
-    "sized_caps",
+    "read_row_cap",
+    "resolve_lane_budget",
+    "tuning_path_for",
 ]

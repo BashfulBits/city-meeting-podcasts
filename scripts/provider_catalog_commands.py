@@ -15,8 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# Active feeds scale the sized lanes' caps (review/58 section 12.11).
-FEEDS_DIR = ROOT / "config" / "feeds"
+# The row cap that lane reservations are split from (review/58 section 12.11).
+TUNING_PATH = ROOT / "config" / "dispatch_tuning.yml"
 RECONCILE_WORKFLOW_PATH = ".github/workflows/provider-catalog-reconcile.yml"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -165,7 +165,7 @@ def prepare(body, base_commit, proposal_kind=None):
     decisions = tuple(d for d in decisions if d.action not in {"increase_rate", "context"})
     texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
     limits = load_config(texts[SOURCE_PATHS[0]])
-    lanes = parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), feeds_dir=FEEDS_DIR)
+    lanes = parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), tuning_path=TUNING_PATH)
     config = ApplyConfig(limits, lanes, texts, base_commit, datetime.now(UTC).date())
     selected = {d.key for d in decisions if d.action == "add"}
     # Ignores spend no provider quota. Already-configured selections require no new-route proof.
@@ -238,7 +238,7 @@ def prepare_limits(base_commit, *, selected=(), automatic=False):
     now = datetime.now(UTC)
     config = ApplyConfig(
         limits,
-        parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), feeds_dir=FEEDS_DIR),
+        parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), tuning_path=TUNING_PATH),
         texts,
         base_commit,
         now.date(),
@@ -283,7 +283,7 @@ def prepare_context(base_commit, *, selected=()):
         raise ValueError("context history unavailable; no cap changes prepared")
     config = ApplyConfig(
         limits,
-        parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), feeds_dir=FEEDS_DIR),
+        parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), tuning_path=TUNING_PATH),
         texts,
         base_commit,
         now.date(),
@@ -306,7 +306,7 @@ def prepare_retirements(base_commit):
     texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
     limits = load_config(texts[SOURCE_PATHS[0]])
     # Rebuilds must use this main snapshot, rather than the process-level lane cache.
-    lanes = parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), feeds_dir=FEEDS_DIR)
+    lanes = parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), tuning_path=TUNING_PATH)
     config = ApplyConfig(limits, lanes, texts, base_commit, datetime.now(UTC).date())
     control = _control(False)
     if isinstance(control, NoDispatchControl):

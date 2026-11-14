@@ -948,19 +948,21 @@ Each lane carries two numbers (review/58 section 12.4, 2026-11-13).
 - `daily_write_units` is the ceiling: the reservation plus a backlog-drain allowance (the lane's
   one-time backlog over a stated drain target, at least 100 jobs a day), bounded by route supply.
   `max_queued_jobs` holds two days of it.
-- Since review/58 section 12.11 the seven production lanes do not state these numbers. Each has a
-  `sizing` entry (`jobs_per_meeting`, `headroom`, `backlog_jobs`, `drain_days`), and
-  `llm_lanes.py` / `compile_llm_lanes.py` derive the caps from one shared input in
-  `llm_lane_sizing`: new meetings a day. That is the measured p90 (14) scaled by the growth of
-  active feeds in `config/feeds` over its recorded basis (155), never below 14, so adding cities
-  raises the caps on the next compile. The compiler fails if every ceiling at once would pass the
-  6,000-job or 38,400-unit guard or the 85,000-row pace (about 410 meetings a day today).
+- Since review/58 section 12.11 the lanes do not state these numbers. Each states a
+  `reservation_ratio`, and `llm_lanes.py` / `compile_llm_lanes.py` split the daily row cap
+  (`DO_ROWS_ENQUEUE_STOP`, 90,000, in `config/dispatch_tuning.yml`) in those ratios using the row
+  model in `llm_lane_budget`: live lanes (`live: true`, today `remedy:p3`) first share a fixed
+  100-job pool by ratio, then reserved jobs = floor(ratio × k) where the reservations' rows plus
+  1,500 fixed rows equal the cap. `daily_write_units` is the reserved total for every lane, and
+  `max_queued_jobs` is two days of the lane's reservation. Adding or removing a lane re-splits
+  every reservation. The Worker clamps its ingress budget to the reserved total, so a lane goes
+  past its reservation only by borrowing other lanes' unspent share (half from 12:00 UTC, all from
+  18:00 UTC).
 Write units count enqueue only, at about 1.5 billed rows per unit. Claim, completion, retirement
-and cleanup add about 12 rows per job. With every lane at its ceiling (8,440 units, ~32,600 rows)
-no global guard is reached: not the 6,000 jobs, the 38,400 units, nor the 90,000-row stops. The
-unit guard is the only one that withholds reservations, so raising ceilings past about 90,000
-rows would leave reservations guaranteed in units but not in rows. Judge packets are also bounded
-per run by `judging.max_outstanding_packets` (per role, per sibling model).
+and cleanup add about 12 rows per job. With today's ratios the reservations total 4,494 jobs and
+23,046 units, about 89,997 rows including execution, so the row stop rather than the 6,000-job or
+38,400-unit guard bounds the day. Judge packets are also bounded per run by
+`judging.max_outstanding_packets` (per role, per sibling model).
 `workers/llm-dispatch-v2/src/write_budget.js` records the measured per-phase costs
 (`bench/rows-written/`): a completed first-try job is ~20 billed rows. Because every index entry is billed, the
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`

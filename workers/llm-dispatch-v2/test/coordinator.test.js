@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
 import { COMPACT_PRIORITY_SYNC_TRIGGER, buildCompactMigration, planCompactMigration } from "../src/compact_queue.js";
 import INGRESS_RESERVATIONS from "../src/ingress_reservations.json" with { type: "json" };
+import { effectiveIngressWriteUnits } from "../src/write_budget.js";
 import {
   activeBundles, createMockSqlStorage, createRecordingSqlStorage, insertActiveBundle, withTestReservations,
 } from "./helpers.js";
@@ -572,9 +573,11 @@ test("ingress reservations preserve write capacity for another purpose", async (
   const { coordinator, sql } = makeCoordinator({
     MAX_JOBS_PER_UTC_DAY: "100",
     MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "8",
+    // The reservations cover the whole guard: since review/58 12.11 admission is clamped to their
+    // total, so unreserved slack no longer exists.
     INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
-      "topic-tags": { reserved_write_units: 3 },
-      "chapter-agenda": { daily_write_units: 10 },
+      "topic-tags": { reserved_write_units: 4 },
+      "chapter-agenda": { reserved_write_units: 4, daily_write_units: 10 },
     }),
   });
   const job = (id, purpose) => ({
@@ -620,7 +623,8 @@ test("_reservationBorrowFraction releases nothing, half, then all of the reserve
 });
 
 test("an idle lane's reserve becomes spendable as the UTC day runs out", async (t) => {
-  // 12 total write units, 4 per job, and an idle lane reserving 5 of them. Early in the day the
+  // 12 total write units, 4 per job, and an idle lane reserving 5 of them (the busy lane reserves
+  // the other 7, so the reservations cover the clamped budget). Early in the day the
   // reserve withholds 5 (headroom 7: one job) -- then 3 at the 12-hour mark (headroom 9: two),
   // then nothing (headroom 12: three). This is the point of the schedule: an unspent reservation
   // in the day's last hours can no longer be used by the lane it protects.
@@ -641,7 +645,7 @@ test("an idle lane's reserve becomes spendable as the UTC day runs out", async (
       MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "12",
       INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
         "topic-tags": { reserved_write_units: 5 },
-        "chapter-agenda": { daily_write_units: 100 },
+        "chapter-agenda": { reserved_write_units: 7, daily_write_units: 100 },
       }),
     });
     const res = await coordinator.enqueueBatch([job("a"), job("b"), job("c")]);
@@ -652,6 +656,63 @@ test("an idle lane's reserve becomes spendable as the UTC day runs out", async (
   assert.equal(await admitted("2026-10-22T04:00:00Z"), 1);
   assert.equal(await admitted("2026-10-22T13:00:00Z"), 2);
   assert.equal(await admitted("2026-10-22T21:00:00Z"), 3);
+});
+
+test("ingress admission is clamped to the reserved total and borrowing still works", async (t) => {
+  // review/58 section 12.11: the guard (400 units) is far above the lanes' reserved total (40), so
+  // before the clamp the busy lane could have spent the 360 unreserved units first-come. Now the
+  // day admits at most the reserved total. The busy lane reserves 24 (six 4-unit jobs) and the
+  // idle lane 16; every lane's daily ceiling is the whole reserved total, as compiled.
+  const job = (id) => ({
+    id,
+    idempotency_key: `${id}-key`,
+    request_digest: `${id}-digest`,
+    policy_json: JSON.stringify({ allowed_models: ["unknown-model"], purpose: "chapter-agenda" }),
+    prompt_family: "test",
+    input_token_estimate: 1,
+    max_output_token_estimate: 1,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  const admitted = async (iso) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.parse(iso) });
+    const { coordinator, sql } = makeCoordinator({
+      MAX_JOBS_PER_UTC_DAY: "1000",
+      MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "400",
+      INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
+        "topic-tags": { reserved_write_units: 16, daily_write_units: 40 },
+        "chapter-agenda": { reserved_write_units: 24, daily_write_units: 40 },
+      }),
+    });
+    assert.equal(coordinator._maxIngressWriteUnitsPerUtcDay(), 40);
+    const res = await coordinator.enqueueBatch(
+      Array.from({ length: 20 }, (_, i) => job(`j${i}`))
+    );
+    const units = [...sql.exec("SELECT ingress_write_units_today FROM scheduler")][0]
+      .ingress_write_units_today;
+    t.mock.timers.reset();
+    return { jobs: res.accepted.length, units };
+  };
+
+  // 00:00Z: the idle lane's 16 are withheld; the busy lane gets its own 24 and no slack.
+  assert.deepEqual(await admitted("2026-10-22T00:00:00Z"), { jobs: 6, units: 24 });
+  // 12:00Z: half of the idle reserve (8) is lent: 32 units.
+  assert.deepEqual(await admitted("2026-10-22T12:00:00Z"), { jobs: 8, units: 32 });
+  // 18:00Z: all of it: the whole reserved total, never the 400-unit guard.
+  assert.deepEqual(await admitted("2026-10-22T18:00:00Z"), { jobs: 10, units: 40 });
+});
+
+test("effectiveIngressWriteUnits leaves the guard alone without reservations", () => {
+  assert.equal(effectiveIngressWriteUnits(400, {}), 400);
+  assert.equal(effectiveIngressWriteUnits(400, { a: { reserved_write_units: 0 } }), 400);
+  assert.equal(
+    effectiveIngressWriteUnits(400, { _meta: { reserved_write_units: 9 }, a: { reserved_write_units: 7 } }),
+    7
+  );
+  assert.equal(effectiveIngressWriteUnits(10, { a: { reserved_write_units: 70 } }), 10);
+  assert.equal(
+    effectiveIngressWriteUnits(38400, INGRESS_RESERVATIONS.reservations),
+    INGRESS_RESERVATIONS.reserved_total
+  );
 });
 
 test("schemaRetry obeys the same ingress write budget as enqueueBatch", async () => {

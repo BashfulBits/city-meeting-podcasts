@@ -319,10 +319,16 @@ class TestRepositoryConfig:
         # headroom. This is the assertion that would have caught the original bug.
         assert set(load_lanes()) <= DISPATCHING_PURPOSES
 
-    def test_lanes_without_an_enabled_producer_reserve_nothing(self):
+    def test_lanes_without_an_enabled_producer_reserve_only_the_live_pool(self):
+        # review/58 section 12.11: the owner reserves a small fixed pool (live_reservation_jobs)
+        # for live probes such as remedy:p3 even while closed; it does not grow with the row cap.
         lanes = load_lanes()
+        site = yaml.safe_load(SITE_CONFIG.read_text(encoding="utf-8"))
+        live_pool = site["llm_lane_budget"]["live_reservation_jobs"]
         for purpose in PENDING_DISPATCH_PURPOSES:
-            assert lanes[purpose].reserved_write_units == 0, purpose
+            lane = lanes[purpose]
+            assert lane.live, purpose
+            assert lane.reserved_write_units <= live_pool * lane.ingress_write_units_per_job
 
     def test_reservations_fit_the_workers_global_ingress_budget(self):
         compiled = json.loads(COMPILED_RESERVATIONS.read_text())

@@ -36,9 +36,9 @@ def _safe_row_budget() -> int:
 
 
 def _daily_write_units(site: Mapping, purpose: str) -> int:
-    """A lane's ceiling in write units, stated or derived from its ``sizing`` (review/58 12.11)."""
+    """A lane's ceiling in write units, stated or split by ratio (review/58 12.11)."""
     lane = site["llm_lanes"][purpose]
-    if "sizing" not in lane:
+    if "reservation_ratio" not in lane:
         return lane["daily_write_units"]
     import sys
 
@@ -46,7 +46,7 @@ def _daily_write_units(site: Mapping, purpose: str) -> int:
         sys.path.insert(0, str(ROOT))
     from citypods.compute.llm_lanes import parse_site_lanes
 
-    lanes = parse_site_lanes(site, feeds_dir=ROOT / "config" / "feeds")
+    lanes = parse_site_lanes(site, tuning_path=ROOT / "config" / "dispatch_tuning.yml")
     return lanes[purpose].daily_write_units
 
 

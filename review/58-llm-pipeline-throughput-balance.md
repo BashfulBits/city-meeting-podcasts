@@ -1161,63 +1161,75 @@ issue [#2682](https://github.com/BashfulBits/city-meeting-podcasts/issues/2682).
 - `route_health` escalations for these routes stay on rungs 1 to 2.
 - Anchor packets per day: about 100 calls in the 33 h measured, against 2 x 10,000 rpd.
 
-### 12.11 Lane caps that scale with meetings per day
+### 12.11 Lane reservations split from the daily row cap by ratio
 
-**Question.** The owner asked that the §12.4 caps adjust on their own as cities are added and
-meetings per day grow. In §12.4 the caps were hand-derived numbers in `config/site_config.yml`.
+**Question.** The owner asked that the §12.4 caps adjust on their own as feeds and meetings per
+day grow, without a config change each time. A first version (feed-count scaling of the §12.4
+meetings/day rule) was replaced on review by a simpler rule: keep the ratios tested in §12.4, but
+size the total to what the Worker can admit and execute within the daily row cap, and let lanes
+borrow unspent reservation late in the day. Live probes get a small fixed pool.
 
-**Change.** The seven production lanes no longer state `reserved_write_units`,
-`daily_write_units` or `max_queued_jobs`. Each carries the §12.4 inputs as a `sizing` entry:
-`jobs_per_meeting`, `headroom`, `backlog_jobs`, `drain_days`. A shared `llm_lane_sizing` block
-holds the one tunable, `meetings_per_day_p90: 14`, and the constants: `backlog_floor_jobs` 100,
-`queue_days` 2, `round_jobs_to` 10, and the row model (1.5 rows per unit, 12 execution rows per
-job, 1,500 fixed rows a day). `citypods/compute/llm_lanes.py` computes the caps with the §12.4
-rule:
+**Change.** The production lanes no longer state `reserved_write_units`, `daily_write_units` or
+`max_queued_jobs`. Each states only a `reservation_ratio`: agenda 10, locator 10, tagger 40,
+moments 10, anchor 20, sibling 30, adjudicator 10 (the §12.4 reserved jobs, in the same
+proportions). `remedy:p3` is marked `live: true` with ratio 1. A shared `llm_lane_budget` block in
+`config/site_config.yml` holds the row model (1.5 rows per write unit, 12 execution rows per job,
+1,500 fixed rows a day), `live_reservation_jobs` 100 and `queue_days` 2. The row cap is
+`DO_ROWS_ENQUEUE_STOP` in `config/dispatch_tuning.yml` (90,000), read from that one place; a
+missing value fails the compile. `citypods/compute/llm_lanes.py` computes:
 
-- reserved jobs = `jobs_per_meeting` × meetings/day × `headroom`, rounded up to 10;
-- ceiling jobs = reserved + max(100, `backlog_jobs` / `drain_days` rounded up to 10);
-- `max_queued_jobs` = 2 × ceiling; units = jobs × the lane's units per job.
+- live lanes split the 100-job pool by their ratios among themselves (`remedy:p3` alone gets all
+  100), and the pool's rows (jobs × rows per job) come off the row budget first;
+- for the other lanes, k (jobs per ratio point) solves sum of ratio × k × rows per job = row cap −
+  fixed rows − live rows, where rows per job = 1.5 × units per job + 12;
+- reserved jobs = floor(ratio × k); `reserved_write_units` = jobs × units per job;
+- `daily_write_units` = the sum of all reservations (every lane may borrow up to the whole day);
+- `max_queued_jobs` = `queue_days` × the lane's reserved jobs (× the largest lane's if it is 0).
 
-The client (`load_lanes`) and `scripts/compile_llm_lanes.py` share this code, so the producer and
-the Worker see the same caps. `remedy:p3` keeps its stated caps. With today's inputs the compiled
-`ingress_reservations.json` is byte-for-byte unchanged (`tests/test_lane_sizing.py` pins every
-lane's §12.4 numbers).
+The client (`load_lanes`) and `scripts/compile_llm_lanes.py` share this code. Adding or removing a
+lane, or changing a ratio, re-splits every reservation on the next compile; nothing else needs an
+edit. A further live lane shares the same 100 jobs. Mixing ratio and stated-cap lanes, `live`
+without a ratio, and an all-zero ratio set are rejected.
 
-**How the figure follows the catalog.** The episode catalog that gave the p90 lives in B2, not in
-the repository, so the compiler cannot count meetings. Nothing the producers already send the
-Worker counts new meetings either, so a runtime scale in the Worker would need new producer
-reports and new coordinator admission code. What the repository does hold is the feed registry.
-Adding a city adds its feed configs to `config/feeds`. So:
+**Result at 90,000 rows.** Live pool 100 jobs (1,800 rows); k = 33.80; 4,494 jobs, 23,046 units,
+~89,997 rows.
 
-- `basis_active_feeds: 155` records how many feeds were active (`lifecycle.status` active) when
-  the p90 of 14 was measured.
-- The compiler counts active feeds now. The effective figure is 14 × active / 155, never below 14.
-- The configured p90 is therefore a floor. Retiring or pausing feeds never lowers a cap.
+| Lane | §12.4 reserved / daily / queue (units) | §12.11 reserved units (jobs) / daily / queue |
+|---|---|---|
+| chapter-agenda | 60 / 660 / 220 | 2,028 (338) / 23,046 / 676 |
+| chapter-locator | 40 / 440 / 220 | 1,352 (338) / 23,046 / 676 |
+| topic-tags:tagger | 280 / 4,550 / 1,300 | 9,464 (1,352) / 23,046 / 2,704 |
+| r6-moments | 50 / 550 / 220 | 1,690 (338) / 23,046 / 676 |
+| judge:anchor | 80 / 480 / 240 | 2,704 (676) / 23,046 / 1,352 |
+| judge:sibling | 120 / 520 / 260 | 4,056 (1,014) / 23,046 / 2,028 |
+| judge:adjudicator | 40 / 440 / 220 | 1,352 (338) / 23,046 / 676 |
+| remedy:p3 (live) | 0 / 800 / 800 | 400 (100) / 23,046 / 200 |
 
-This is a proxy, not a measurement: it assumes a new feed publishes about as often as today's
-average active feed. Feeds differ a lot (a combined "all boards" feed against a TIF board), so a
-large city can be under- or over-estimated. When the p90 is re-measured, update both numbers
-together.
+The reserved total goes from 670 to 23,046 units. `remedy:p3` is still closed until
+`config/remedy.yml` admits its routes; until then its 400 reserved units are withheld from the
+other lanes before 12:00 UTC and released to them by the borrow schedule after.
 
-**What scales.** Only the reservation follows meetings per day. The backlog allowance is a
-one-time drain and stays fixed. At 2 × today's feeds (28 meetings/day) the reservations go from
-130 to 220 jobs: tagger 70, sibling 50, anchor 40, moments and adjudicator 20, agenda and locator
-still 10 (the rounding to 10 absorbs the small lanes). Ceilings rise by the same amounts.
+**Worker clamp and borrowing.** The Worker's admission budget is now
+min(`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`, reserved total), in `_maxIngressWriteUnitsPerUtcDay`
+(`effectiveIngressWriteUnits` in `write_budget.js`). Without it, the ~15,000 units between the
+reserved total and the 38,400-unit guard would be first-come and could reach the row stop before
+the reserved lanes spent their share. With it, a lane exceeds its reservation only by borrowing:
+`_reservationBorrowFraction` releases none of the other lanes' unspent reservations with more
+than 12 h left in the UTC day, half with 6 to 12 h left, and all of it in the last 6 h. A map with
+no reservations leaves the guard unchanged. The worker tests cover borrowing at 00, 12 and 18 UTC
+against the clamped budget.
 
-**Budget check.** The compiler now fails, with the numbers, if every lane at its ceiling at once
-would exceed `MAX_JOBS_PER_UTC_DAY`, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` or
-`EARLY_SLOT_RELEASE_ROW_PACE` (85,000 rows) in `config/dispatch_tuning.yml`. That is the §12.4
-guarantee that every lane gets its whole ceiling. It does not clamp: past the budget the fix is a
-decision (lower a headroom or a backlog, or raise a budget). Today the row pace binds first, at
-about 410 meetings a day (29 × today). The compile prints the effective meetings/day, the active
-feed count and the all-ceilings totals.
+**Guards.** The compiler still fails if the reserved total exceeds
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` or the reserved jobs exceed `MAX_JOBS_PER_UTC_DAY`, and now
+also if the rows exceed the row cap or the live pool leaves no rows. Raising
+`DO_ROWS_ENQUEUE_STOP` rescales every non-live lane; past about 120,000 rows the 6,000-job guard
+fails the compile first.
 
-**Workflow.** Because the caps round to 10 jobs, most feed additions change nothing compiled. One
-that crosses a step changes `ingress_reservations.json`. `test_compiled_map_matches_the_yaml` then
-fails on that PR until `python scripts/compile_llm_lanes.py` is run and the JSON committed. The
-JSON is under `workers/llm-dispatch-v2/src/**`, so merging it deploys the Worker with the new caps.
-The first steps, in active feeds (155 today): moments at 174, the anchor at 187, the tagger at
-199, the sibling at 224 and the adjudicator at 225.
+**What this does not do.** The reserved rows equal the enqueue stop, which also counts execution
+rows, so a day that spends every reservation reaches the stop near its end. That is the design:
+the stop, not an extra margin, bounds the day. `DO_ROWS_ENQUEUE_STOP` was previously only a code
+fallback (it was kept out of Cloudflare vars by the 64-variable limit); it is now declared in
+`dispatch_tuning.yml`, compiled into `dispatch_tuning.json`, with the same value.
 
 ### 12.12 Placed egress for Google calls (#2682)
 

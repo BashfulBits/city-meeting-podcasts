@@ -69,3 +69,27 @@ export const ROWS_PER_IDLE_TICK = 1;
 export function cleanupCapacityPerDay({ cleanupIntervalMinutes, purgeBatchLimit }) {
   return Math.floor(CRON_TICKS_PER_DAY / cleanupIntervalMinutes) * purgeBatchLimit;
 }
+
+/** The lanes' reserved ingress write units, summed (keys starting with `_` are metadata). */
+export function reservedWriteUnitsTotal(reservations) {
+  return Object.entries(reservations || {}).reduce((sum, [purpose, config]) => {
+    if (purpose.startsWith("_")) return sum;
+    const reserved = Number(config?.reserved_write_units);
+    return Number.isFinite(reserved) && reserved > 0 ? sum + reserved : sum;
+  }, 0);
+}
+
+/**
+ * The day's ingress admission budget: the configured unit guard, clamped to the lanes' reserved
+ * total (review/58 section 12.11).
+ *
+ * The reservations are split from the daily row cap, so together they already cost that cap's
+ * rows. Unreserved units above them would be first-come and could reach the row stop before the
+ * reserved lanes spend their share. With the clamp, a lane can exceed its own reservation only by
+ * borrowing another lane's unspent share as `_reservationBorrowFraction` releases it. A map with
+ * no reservations at all leaves the configured guard unchanged.
+ */
+export function effectiveIngressWriteUnits(configured, reservations) {
+  const reserved = reservedWriteUnitsTotal(reservations);
+  return reserved > 0 ? Math.min(configured, reserved) : configured;
+}
