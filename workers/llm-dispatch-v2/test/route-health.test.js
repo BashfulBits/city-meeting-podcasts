@@ -440,7 +440,8 @@ const GOOGLE_CATALOG = {
     "gdec-a": {
       model: "gemini/gemini-decision-1", provider: "gemini", upstream_model: "gemini-decision-1",
       api_shape: "decisions", account_id: "project_primary", rpm: 200, rpd: 10000, free: true,
-      input_context_limit: 262144, output_context_limit: 1,
+      // The test jobs ask for 200 output tokens; the real route's output limit is 1.
+      input_context_limit: 262144, output_context_limit: 4096,
     },
   },
 };
@@ -484,7 +485,8 @@ test("a location refusal cools its route for seconds; repeats climb the short la
 test("a genuine model-unavailable 400 on the same route still stands it down for 6 h", async t => {
   const f = make(t, { DISPATCH_LIMITS_OVERRIDE: GOOGLE_CATALOG });
   await f.coordinator.enqueueBatch([job("g2", "gemini/gemini-decision-1")]);
-  await claimAndSettle(f, MODEL_GONE);
+  const plan = await claimAndSettle(f, MODEL_GONE);
+  assert.equal(plan.jobs.length, 1);
   assert.equal(jobState(f.sql, "g2"), "queued");
   assert.ok(blockedUntil(f.sql, "gdec-a") >= f.clock.value + SIX_HOURS);
 });
