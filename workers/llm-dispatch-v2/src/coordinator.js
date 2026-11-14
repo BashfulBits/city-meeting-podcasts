@@ -3683,24 +3683,36 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const ingressByPurpose = [...allPurposes].map((p) => {
         const row = ingressMap.get(p);
         const quotaInfo = reservations[p];
-        const dailyUnits = Number(quotaInfo?.daily_write_units) || 0;
+        // Reported in jobs, not write units: `daily_quota` is the lane's own reservation (its
+        // ratio share of the day, review/58 §12.11), and `ceiling_jobs` is how far it may grow by
+        // borrowing other lanes' unspent reservations later in the UTC day. The old value divided
+        // the shared ceiling (`daily_write_units`, the same for every lane) by units per job, so the
+        // lanes summed to several times the day's real capacity.
         const perJob = Number(quotaInfo?.write_units_per_job) || 4;
-        const dailyQuota = perJob > 0 ? Math.floor(dailyUnits / perJob) : 0;
+        const jobsOf = (units) => (perJob > 0 ? Math.floor((Number(units) || 0) / perJob) : 0);
+        const reservedJobs = jobsOf(quotaInfo?.reserved_write_units);
+        const ceilingJobs = jobsOf(quotaInfo?.daily_write_units);
         const ingested = Number(row?.jobs_ingested) || 0;
+        const writeUnits = Number(row?.write_units) || 0;
         const completed = completedByPurpose.get(p) || 0;
         const pending = includePending ? (pendingByPurpose.get(p) || 0) : (queuedCount === 0 ? 0 : null);
-        const pct = dailyQuota > 0 ? Math.round((ingested / dailyQuota) * 1000) / 10 : 0;
+        // Share of the reservation spent, from the units admission actually charged (3 + models
+        // per job, which can differ from the planned `write_units_per_job`); over 100% = borrowing.
+        const reservedUnits = Number(quotaInfo?.reserved_write_units) || 0;
+        const pct = reservedUnits > 0 ? Math.round((writeUnits / reservedUnits) * 1000) / 10 : 0;
         return {
           purpose: p,
           jobs_ingested: ingested,
           completed,
           pending,
-          write_units: Number(row?.write_units) || 0,
-          daily_quota: dailyQuota,
+          write_units: writeUnits,
+          daily_quota: reservedJobs,
+          ceiling_jobs: ceilingJobs,
           percent_used: pct,
           max_queued_jobs: Number(quotaInfo?.max_queued_jobs) || null,
         };
       });
+      const reservedJobsTotal = ingressByPurpose.reduce((sum, lane) => sum + lane.daily_quota, 0);
       let burndown = [];
       try {
         const parsed = JSON.parse(scheduler.hourly_burndown_json || "[]");
@@ -3721,6 +3733,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         },
         ingress: {
           enqueue_open: scheduler.rows_written_today < this._enqueueRowStop(),
+          reserved_jobs_total: reservedJobsTotal,
           by_purpose: ingressByPurpose,
         },
         burndown,
