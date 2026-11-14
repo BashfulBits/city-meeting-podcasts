@@ -1827,7 +1827,13 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "off": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        }
+      }
     },
     "nvidia_nemotron_3_5_super_vl_120b_a12b_free": {
       "route_id": "nvidia_nemotron_3_5_super_vl_120b_a12b_free",

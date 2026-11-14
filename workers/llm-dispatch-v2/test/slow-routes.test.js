@@ -5,7 +5,9 @@ import test from "node:test";
 
 import LIMITS from "../src/dispatch_limits.json" with { type: "json" };
 import TUNING from "../src/dispatch_tuning.json" with { type: "json" };
+import RESERVATIONS from "../src/ingress_reservations.json" with { type: "json" };
 import { B2Client } from "../src/b2.js";
+import { upstreamRequestForRoute } from "../src/gateway.js";
 import { effectiveResponseMs, resultWriteTimeoutMs, validateConfig } from "../src/index.js";
 import { withTuning } from "../src/tuning.js";
 
@@ -87,4 +89,28 @@ test("putJson aborts a write that outlives its timeout, and sends no signal with
   await assert.rejects(client.putJson("results/j/t.json", { ok: true }, { timeoutMs: 20 }),
     (err) => err.name === "TimeoutError");
   assert.ok(seen[1].signal instanceof AbortSignal);
+});
+
+test("Nemotron 3 Ultra's declared reasoning switch is sent only when a lane asks for it", () => {
+  const payload = { messages: [{ role: "user", content: "x" }], max_tokens: 100 };
+  const ultra = LIMITS.routes_by_id.nvidia_nemotron_3_ultra_550b_a55b_free;
+  assert.deepEqual(ultra.reasoning_controls, { off: { chat_template_kwargs: { enable_thinking: false } } });
+  // No lane sets a level for the model today (review/58 §12.5): the request is unchanged.
+  for (const lane of Object.values(RESERVATIONS.reservations)) {
+    assert.equal(lane.reasoning?.[ultra.model], undefined);
+  }
+  assert.equal(upstreamRequestForRoute(payload, ultra).chat_template_kwargs, undefined);
+  assert.deepEqual(
+    upstreamRequestForRoute(payload, ultra, { reasoningLevel: "off" }).chat_template_kwargs,
+    { enable_thinking: false },
+  );
+  // The other slow routes declare nothing, so no lane level can change their requests.
+  for (const routeId of SLOW_ROUTES.filter((id) => !id.startsWith("nvidia_"))) {
+    const route = LIMITS.routes_by_id[routeId];
+    assert.equal(Object.keys(route.reasoning_controls || {}).length, 0, routeId);
+    const sent = upstreamRequestForRoute(payload, route, { reasoningLevel: "off" });
+    for (const key of ["chat_template_kwargs", "reasoning_effort", "reasoning"]) {
+      assert.equal(sent[key], undefined, `${routeId} ${key}`);
+    }
+  }
 });

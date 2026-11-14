@@ -1208,6 +1208,14 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b
     # review/58 §12.5 (R2-F): a slow reasoning route; uses the full 780 s ceiling.
     response_timeout_seconds: 780
+    # Declared, not used: no lane sets a reasoning level for Nemotron 3 Ultra. Verified
+    # 2026-11-14 (review/58 §12.5): this switch returns 0 reasoning tokens and roughly halves
+    # latency, but agenda recall fell on 2 of 3 comparable requests, so chapter-agenda keeps
+    # the default. Turning it on is a one-line `llm_lanes` change (follow-up issue).
+    reasoning_controls:
+      "off":  # quoted: bare `off` is YAML's boolean false
+        chat_template_kwargs:
+          enable_thinking: false
     input_context_limit: 1000000
     output_context_limit: 65536
     # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).

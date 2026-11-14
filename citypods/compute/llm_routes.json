@@ -1347,6 +1347,13 @@
       "provider": "nvidia",
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b",
       "response_timeout_seconds": 780,
+      "reasoning_controls": {
+        "off": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        }
+      },
       "input_context_limit": 1000000,
       "output_context_limit": 65536,
       "input_token_ratio": 1.75,

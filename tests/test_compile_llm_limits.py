@@ -1455,3 +1455,17 @@ def test_at_720_an_unset_timeout_still_means_the_global_value(monkeypatch):
     monkeypatch.setattr(compile_llm_limits, "_global_max_response_seconds", lambda: 720)
     compiled = _compile_raw([_route("a", "example/a")])
     assert compiled["routes_by_id"]["a"].get("response_timeout_seconds") is None
+
+
+def test_nemotron_ultra_reasoning_off_is_declared_and_other_slow_routes_declare_none():
+    """review/58 §12.5: the Python side expresses the same controls the Worker sends."""
+    from citypods.compute.llm_policy import ROUTE_REGISTRY, route_reasoning_controls
+
+    ultra = ROUTE_REGISTRY["nvidia_nemotron_3_ultra_550b_a55b_free"]
+    assert route_reasoning_controls(ultra, "off") == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+    assert route_reasoning_controls(ultra, None) == {}
+    for route_id in SLOW_REASONING_ROUTES:
+        if route_id != "nvidia_nemotron_3_ultra_550b_a55b_free":
+            assert route_reasoning_controls(ROUTE_REGISTRY[route_id], "off") == {}, route_id
