@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/58 §12.5: 780 s ceiling for the slow reasoning routes.** `MAX_RESPONSE_SECONDS` is 780
+  with a 45 s finalization reserve and an 870 s lease. Only OrcaRouter GLM 5.3 Flash and the three
+  Nemotron 3 Ultra legs use 780 s. Every other route now pins its response timeout (720 or lower),
+  and the compile script refuses an unpinned route while the ceiling is above 720. The Worker's B2
+  result write is bounded by `RESULT_WRITE_TIMEOUT_SECONDS` (30 s), which settles as a retryable
+  `server_error`. Nemotron 3 Ultra's verified reasoning-off switch on NVIDIA is declared but no
+  lane uses it (agenda recall fell in the test; follow-ups in #2689). Merging deploys the Worker.
+
 - **LLM lane reservations are split from the daily row cap by ratio (review/58 section 12.11).**
   Each lane in `config/site_config.yml` now states only a `reservation_ratio` (agenda 10, locator
   10, tagger 40, moments 10, anchor 20, sibling 30, adjudicator 10). Live lanes (`live: true`,
