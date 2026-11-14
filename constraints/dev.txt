@@ -19,6 +19,7 @@ annotated-types==0.7.0
 anyio==4.14.2
     # via
     #   httpx
+    #   litellm
     #   openai
 attrs==26.1.0
     # via
@@ -123,7 +124,7 @@ jsonschema==4.26.0
     # via litellm
 jsonschema-specifications==2025.9.1
     # via jsonschema
-litellm==1.108.5
+litellm==1.109.0
     # via -r constraints/dev.in
 markdown-it-py==4.2.0
     # via rich
