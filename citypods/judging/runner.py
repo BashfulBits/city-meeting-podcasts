@@ -52,10 +52,9 @@ from citypods.judging.backends import (
     choose_options,
 )
 from citypods.judging.families import (
-    RULE_FAMILY,
     UNKNOWN_FAMILY,
     anchor_family,
-    anchor_independent_of,
+    anchor_for,
     choose_sibling_candidates,
     family_of,
     sibling_candidates,
@@ -299,7 +298,13 @@ def _adjudicator_backend() -> AdjudicatorBackend:
 def _backend_for(role: str, model: str, ctx: JudgingContext | None = None):
     if role == "anchor":
         # By the anchor's own model, so a JEV answer collected after the swap parses as JEV's.
-        return anchor_backend_class(model)(ctx.anchor_input_ratio if ctx is not None else None)
+        # The measured input ratio is the primary anchor's route's; another anchor uses its default.
+        ratio = (
+            ctx.anchor_input_ratio
+            if ctx is not None and model == ctx.anchor.primary_model
+            else None
+        )
+        return anchor_backend_class(model)(ratio)
     if role == "adjudicator":
         return _adjudicator_backend()
     return _sibling_backend(model, ctx.sibling_pack_ceilings if ctx is not None else None)
@@ -748,7 +753,7 @@ def _retired_role(marker: Mapping[str, Any], ctx: JudgingContext) -> str | None:
     packet for a model the sibling lane no longer lists (Gemma 4 31B, review/58 12.6)."""
     role = str(marker.get("judge_role") or "")
     model = str(marker.get("judge_model") or "")
-    if role == "anchor" and model != ctx.anchor.primary_model:
+    if role == "anchor" and model not in ctx.anchor.models:
         return "anchor"
     if role == "sibling" and model and model not in ctx.sibling.models:
         return "sibling"
@@ -859,7 +864,9 @@ def _apply_backpressure(ctx: JudgingContext, stats: JudgingStats) -> None:
             stats.counts[f"run_cap_outstanding:{purpose}"] += 1
 
 
-def _due_tiers(subject: Subject, spec: TaskSpec, role: str, ctx: JudgingContext) -> list[tuple]:
+def _due_tiers(
+    subject: Subject, spec: TaskSpec, role: str, ctx: JudgingContext, model: str | None = None
+) -> list[tuple]:
     tiers: list[tuple[str, str]] = [(spec.first_tier, "routine")]
     if role == "anchor" and spec.escalation:
         tier, low, high = spec.escalation
@@ -870,7 +877,7 @@ def _due_tiers(subject: Subject, spec: TaskSpec, role: str, ctx: JudgingContext)
                 subject,
                 question.id,
                 spec.first_tier,
-                ctx.anchor.primary_model,
+                model or ctx.anchor.primary_model,
             )
             if value is not None and low <= value <= high:
                 tiers.append((tier, "escalation"))
@@ -916,8 +923,6 @@ def plan(
     every purpose has ``item_budget`` items planned; episodes it does not reach stay dirty for a
     later pass. The completeness re-plan is unbounded over the episodes already planned."""
     units: dict[tuple[str, str], list[list[Item]]] = {}
-    anchor_model = ctx.anchor.primary_model
-    not_anchor = _anchor_exclusion(ctx)
 
     def planned(purpose: str) -> int:
         role = "anchor" if purpose == ANCHOR_PURPOSE else "sibling"
@@ -949,15 +954,9 @@ def plan(
             per_question = [q for q in spec.questions if q.kind != "choose"]
             group_units: dict[tuple[str, str], list[Item]] = {}
             for subject in subjects:
-                is_rule = family_of(subject.producer_model, ctx.families) == RULE_FAMILY
+                anchor_model = _anchor_of(ctx, [subject.producer_model])
                 sibling = _pick_sibling(
-                    sibling_candidates(
-                        subject.producer_model,
-                        ctx.sibling,
-                        ctx.families,
-                        allow_all_slots=is_rule,
-                        exclude_families=not_anchor,
-                    ),
+                    _sibling_pool(ctx, subject.producer_model, anchor_model),
                     _models_used(subject),
                     ctx,
                 )
@@ -965,16 +964,15 @@ def plan(
                     stats.counts["no_independent_sibling"] += 1
                     if family_of(subject.producer_model, ctx.families) == UNKNOWN_FAMILY:
                         stats.counts["unknown_producer_family"] += 1
-                anchored = anchor_independent_of(
-                    [subject.producer_model], anchor_model, ctx.families
-                )
-                if not anchored:
+                if anchor_model is None:
                     stats.counts["no_independent_anchor"] += 1
-                judges = ([("anchor", anchor_model)] if anchored else []) + (
+                elif anchor_model != ctx.anchor.primary_model:
+                    stats.counts[f"second_anchor:{anchor_model}"] += 1
+                judges = ([("anchor", anchor_model)] if anchor_model else []) + (
                     [("sibling", sibling)] if sibling else []
                 )
                 for role, model in judges:
-                    for tier, sample in _due_tiers(subject, spec, role, ctx):
+                    for tier, sample in _due_tiers(subject, spec, role, ctx, model):
                         evidence = spec.evidence(subject, tier, texts)
                         if evidence is None:
                             # Recorded so an unchanged episode is not revisited for it every pass
@@ -1052,11 +1050,37 @@ def _stability_due(
     return not ledger.has_key(subject, again)
 
 
-def _anchor_exclusion(ctx: JudgingContext) -> frozenset[str]:
+def _anchor_exclusion(ctx: JudgingContext, anchor_model: str | None = None) -> frozenset[str]:
     """The anchor's family, which no sibling may share (review/58 WP9: a Gemini anchor and a
-    Gemma sibling are both ``google``, so the sibling comes from the non-Google slot)."""
-    family = anchor_family(ctx.anchor.primary_model, ctx.families)
+    Gemma sibling are both ``google``, so the sibling comes from the non-Google slot).
+
+    ``anchor_model`` is the subject's own anchor (review/58 12.9: a Google-produced entry is
+    anchored by a non-Google decision model); without one, the lane's primary anchor."""
+    family = anchor_family(anchor_model or ctx.anchor.primary_model, ctx.families)
     return frozenset({family}) if family and family != UNKNOWN_FAMILY else frozenset()
+
+
+def _anchor_of(ctx: JudgingContext, producer_models: Sequence[str | None]) -> str | None:
+    """The anchor for entries of these producers: the first active anchor model independent of
+    every one of them (review/58 12.9), or None."""
+    return anchor_for(producer_models, ctx.anchor.models, ctx.families)
+
+
+def _sibling_pool(
+    ctx: JudgingContext, producer_model: str | None, anchor_model: str | None
+) -> tuple[str, ...]:
+    """The sibling candidates for one subject, independent of its producer and its anchor.
+
+    Slots are tried in order and a later slot is used only when no earlier one has an independent
+    model, for rule subjects too (review/58 12.9): rule subjects are 94% of all subjects, and
+    letting them balance into the ``secondary`` slot filled Qwen's per-model room and left the
+    Nemotron-produced entries, which only that slot can judge, waiting."""
+    return sibling_candidates(
+        producer_model,
+        ctx.sibling,
+        ctx.families,
+        exclude_families=_anchor_exclusion(ctx, anchor_model),
+    )
 
 
 def _models_used(subject: Subject) -> set[str]:
@@ -1112,23 +1136,19 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
     if not choose or len(subjects) < 2:
         return
     question = choose[0]
-    producer_families = {family_of(s.producer_model, ctx.families) for s in subjects}
-    is_rule_meeting = producer_families == {RULE_FAMILY}
+    producers = [s.producer_model for s in subjects]
+    anchor_model = _anchor_of(ctx, producers)
     sibling = _pick_sibling(
         choose_sibling_candidates(
-            [s.producer_model for s in subjects],
+            producers,
             ctx.sibling,
             ctx.families,
-            allow_all_slots=is_rule_meeting,
-            exclude_families=_anchor_exclusion(ctx),
+            exclude_families=_anchor_exclusion(ctx, anchor_model),
         ),
         _models_used(subjects[0]),
         ctx,
     )
-    anchored = anchor_independent_of(
-        [s.producer_model for s in subjects], ctx.anchor.primary_model, ctx.families
-    )
-    judges = ([("anchor", ctx.anchor.primary_model)] if anchored else []) + (
+    judges = ([("anchor", anchor_model)] if anchor_model else []) + (
         [("sibling", sibling)] if sibling else []
     )
     for reverse, order in ((False, ""), (True, "_r")):
@@ -1182,7 +1202,13 @@ def plan_adjudication(
     lane = ctx.adjudicator
     if lane is None:
         return units
-    anchor_model = ctx.anchor.primary_model
+    primary = ctx.anchor.primary_model
+
+    def anchor_of(producers: Sequence[str | None]) -> str:
+        # The subject's own anchor (review/58 12.9); the primary when none is independent, so a
+        # stored reading by the primary is still compared as before.
+        return _anchor_of(ctx, producers) or primary
+
     planned = 0
     for ep in episodes:
         if bounded:
@@ -1203,15 +1229,16 @@ def plan_adjudication(
                 for due in due_questions(
                     subject,
                     spec,
-                    anchor_model=anchor_model,
+                    anchor_model=anchor_of([subject.producer_model]),
                     calibration_rate=ctx.calibration_sample_rate,
                     families=ctx.families,
                 )
             ]
+            group_anchor = anchor_of([s.producer_model for s in subjects])
             group_due = choose_due(
                 subjects,
                 spec,
-                anchor_model=anchor_model,
+                anchor_model=group_anchor,
                 calibration_rate=ctx.calibration_sample_rate,
                 families=ctx.families,
             )
@@ -1227,7 +1254,11 @@ def plan_adjudication(
             meeting: dict[str, list[Item]] = {}
             for subject, due in work:
                 model = subject_adjudicator(
-                    subject, due.question.id, lane, ctx.families, anchor_model=anchor_model
+                    subject,
+                    due.question.id,
+                    lane,
+                    ctx.families,
+                    anchor_model=anchor_of([subject.producer_model]),
                 )
                 if model is None:
                     stats.counts["no_independent_adjudicator"] += 1
@@ -1268,12 +1299,12 @@ def plan_adjudication(
                     sibling_model_of(
                         key_subject,
                         group_due.question.id,
-                        anchor_model=anchor_model,
+                        anchor_model=group_anchor,
                         families=ctx.families,
                     ),
                     lane,
                     ctx.families,
-                    anchor_model=anchor_model,
+                    anchor_model=group_anchor,
                 )
                 if model is None:
                     stats.counts["no_independent_adjudicator"] += 1
@@ -1568,10 +1599,15 @@ def episode_needs_judging(
     if not getattr(ep, "transcript_key", None):
         return False
     identity = transcript_identity(ep)
-    anchor_model = anchor.primary_model
-    anchor_fam = anchor_family(anchor_model, families)
-    not_anchor = (
-        frozenset({anchor_fam}) if anchor_fam and anchor_fam != UNKNOWN_FAMILY else frozenset()
+    ctx = JudgingContext(
+        tasks=tasks,
+        anchor=anchor,
+        sibling=sibling,
+        families=families,
+        texts_for=lambda _ep: EpisodeTexts(),
+        look_up=lambda _recipe: None,
+        submit=lambda _packet, _job: None,
+        all_tiers_sample_rate=all_tiers_sample_rate,
     )
     store = getattr(ep, "judging", None)
     if isinstance(store, dict) and any(
@@ -1602,33 +1638,17 @@ def episode_needs_judging(
                 )
                 for r in rows
             }
+            anchor_model = _anchor_of(ctx, [subject.producer_model])
             judge_model = _pick_sibling(
-                sibling_candidates(
-                    subject.producer_model,
-                    sibling,
-                    families,
-                    allow_all_slots=family_of(subject.producer_model, families) == RULE_FAMILY,
-                    exclude_families=not_anchor,
-                ),
+                _sibling_pool(ctx, subject.producer_model, anchor_model),
                 _models_used(subject),
                 None,
             )
-            anchored = anchor_independent_of([subject.producer_model], anchor_model, families)
-            judges = ([("anchor", anchor_model)] if anchored else []) + (
+            judges = ([("anchor", anchor_model)] if anchor_model else []) + (
                 [("sibling", judge_model)] if judge_model else []
             )
-            ctx = JudgingContext(
-                tasks=tasks,
-                anchor=anchor,
-                sibling=sibling,
-                families=families,
-                texts_for=lambda _ep: EpisodeTexts(),
-                look_up=lambda _recipe: None,
-                submit=lambda _packet, _job: None,
-                all_tiers_sample_rate=all_tiers_sample_rate,
-            )
             for role, model in judges:
-                for tier, _sample in _due_tiers(subject, spec, role, ctx):
+                for tier, _sample in _due_tiers(subject, spec, role, ctx, model):
                     for question in spec.questions:
                         if question.kind == "choose":
                             continue
@@ -1654,11 +1674,12 @@ def episode_needs_judging(
         if adjudicator is not None and pending_adjudication(
             subjects,
             spec,
-            anchor_model=anchor_model,
+            anchor_model=anchor.primary_model,
             calibration_rate=calibration_sample_rate,
             adjudicator=adjudicator,
             families=families,
             identity=identity,
+            anchor_of=lambda producers: _anchor_of(ctx, producers) or anchor.primary_model,
         ):
             return True
         choose = [q for q in spec.questions if q.kind == "choose"]
@@ -1666,16 +1687,14 @@ def episode_needs_judging(
             first = subjects[0]
             asked = {(r.get("question_id"), r.get("judge_model")) for r in ledger.judgments(first)}
             producers = [s.producer_model for s in subjects]
-            judges = (
-                [anchor_model] if anchor_independent_of(producers, anchor_model, families) else []
-            )
+            meeting_anchor = _anchor_of(ctx, producers)
+            judges = [meeting_anchor] if meeting_anchor else []
             meeting_sibling = _pick_sibling(
                 choose_sibling_candidates(
                     producers,
                     sibling,
                     families,
-                    allow_all_slots={family_of(p, families) for p in producers} == {RULE_FAMILY},
-                    exclude_families=not_anchor,
+                    exclude_families=_anchor_exclusion(ctx, meeting_anchor),
                 ),
                 _models_used(first),
                 None,
