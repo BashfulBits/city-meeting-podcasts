@@ -1112,6 +1112,120 @@ The useful variant is a decision model as a **pre-filter** that narrows the 38 t
 before the chat tagger. It would cut tagger tokens without changing who produces a tag. Test it
 offline on a free decision endpoint that production does not use, and do not use Gemini Decision.
 
+### 12.9 Free decision models as judges: Mercury Decide, Perplexity Decider, sibling capacity
+
+#### Mercury Decide: no provider serves it
+
+The id and the path are right; OpenRouter has no endpoint behind them.
+
+- **Catalog.** On 2026-11-13 23:2xZ and again on 11-14 09:2xZ, `inception/mercury-decide` is in
+  neither `/api/v1/models` listing. `GET /api/v1/models/<id>/endpoints` returns `endpoints: []` for
+  `inception/mercury-decide:free`, for the paid `inception/mercury-decide`, and for the dated
+  `inception/mercury-decide-20260930:free`.
+- **Calls** (one tiny synthetic request each, no transcript text):
+
+  | Id | Path | Status and body |
+  |---|---|---|
+  | `inception/mercury-decide:free` | `/api/alpha/decisions` | 404 "No endpoints found for inception/mercury-decide:free." |
+  | same | `/api/v1/chat/completions` | 400 "…is a decisions model and cannot be used with the chat/completions endpoint. Use the /api/alpha/decisions endpoint instead." |
+  | `inception/mercury-decide-20260930:free` | `/api/alpha/decisions` | 404, the same message (the dated id resolves to the free id) |
+  | same | `/api/v1/chat/completions` | 400, the same message |
+  | `inception/mercury-decide:free` (11-14 09:21Z) | `/api/alpha/decisions` | 404, unchanged |
+
+  The chat path recognizing it as a decisions model proves the id is valid; the 404 means no
+  provider is listed. It is not a data-policy filter on our key: the paid listing is empty too, and
+  the error carries none of OpenRouter's privacy-setting wording. With the 21 calls of 12.6 it has
+  failed every time for about 22 hours.
+- **Elsewhere.** Inception's own API serves only chat models (and is winding down, ending
+  2026-12-28). Baseten serves Mercury Decide, paid only, so it is out of scope.
+- **Owner action.** None now; no account setting would change this. Re-probe the endpoint listing
+  if OpenRouter lists a provider again; the wiring below would take it with one more route.
+
+#### Perplexity Decider V1.3: wired as the second anchor, paused until one owner step
+
+**Why the custom provider.** The AI Gateway `openrouter` slug maps to `https://openrouter.ai/api/v1`,
+and the decisions endpoint is `https://openrouter.ai/api/alpha/decisions`. Through the slug,
+`/alpha/decisions` and `/api/alpha/decisions` both return 404 (12.6), there is no
+`/api/v1/decisions` alias (404, 2026-11-13 23:20Z), and the Worker sends every
+provider through the gateway when one is configured. So the route needs a custom gateway provider.
+
+**Owner step.** Register a custom AI Gateway provider `custom-openrouter-api` with Base URL
+`https://openrouter.ai/api` (as for `custom-beatapi`). Then set
+`openrouter_pplx_decider_v1_3_free` to `rpd: 40` in `config/provider_limits.yml`, move
+`perplexity/pplx-decider-v1.3` from `eligible_models` to `models` (after Gemini) in
+`judge:anchor`, and recompile.
+
+**What is in place.**
+
+- **Worker shape `openrouter_decisions`** (`api_shapes.js`). JEV's `{model, state, questions}` body
+  with the `decisions` key map and `noul` criteria dropped, Bearer auth, usage from
+  `input_tokens`/`output_tokens`, and every asked answer required. No status rewriting: OpenRouter's
+  4xx are ordinary, so the generic classification applies. `classify.js` is unchanged.
+- **Provider `openrouter_decisions`** (same key and account as `openrouter`) and the free route
+  `openrouter_pplx_decider_v1_3_free` (`upstream_model: perplexity/pplx-decider-v1.3:free`,
+  `request_path: /alpha/decisions`, `rpm: 10`, `concurrency: 1`, `rpd: 0`). Catalog 2026-11-14: one
+  endpoint (Perplexity), prompt and completion price 0, 262,144 context.
+- **Python.** `DeciderBackend` (JEV's questions and parser, the 45,000-token packet ceiling, output
+  reservation 1). Family `qwen`: the Decider is a Qwen3.8-27B checkpoint.
+- **Anchor per entry** (`families.anchor_for`). Each entry's anchor is the first active anchor
+  model independent of its producers. Gemini keeps every entry it judges today; the Decider takes
+  only Google-produced entries. The runner, adjudication and the dirtiness check all use the
+  entry's own anchor; siblings and adjudicators exclude that anchor's family. A Google-produced
+  entry then has the Decider (`qwen`) as anchor, Nemotron (`nvidia`) as sibling and GLM (`zai`)
+  or DeepSeek as adjudicator. A queued packet of either active anchor is kept; the pass counts
+  `second_anchor:<model>`.
+- **Unchanged.** Independence rules, the shadow mode, per-model statistics (the report keys anchor
+  cells by model) and every stored judgment.
+
+**Sizing.** OpenRouter's free models share 1,000 requests a day per account. The configured
+OpenRouter routes total 440 rpd, and the account had used 179 of 1,000 by 09:2xZ on 11-14. The
+Google-produced backlog is about 7,400 subjects, about 310 anchor packets of about 32 items; steady
+state is about 2 subjects a day. The anchor lane's ceiling (12.4) is 120 packets a day, which the
+Gemini anchor's backlog fills. So the runner packs a later anchor's packets first in each pass
+and lets them take at most a quarter of that pass's anchor run cap (`LATER_ANCHOR_SHARE`, counter
+`run_cap_share:<model>`): **30 of the 120 packets a day**, which drains the backlog in about ten
+days. If the owner prefers, the lane ceiling can instead grow by 30; this PR does not change lane
+caps. The route's `rpd: 40` leaves room for retries; 440 + 40 stays well within 1,000.
+
+**Re-qualification** follows review/49: probes, the 2% stability sample, and agreement with the
+Gemini anchor on entries both may judge, before any verdict counts. A decision model is not added
+as a sibling: the sibling backend asks for quoted reasons, which a decision model cannot give, and
+the Decider shares Qwen's family.
+
+#### Sibling capacity: Qwen keeps up once rule subjects stay out of its slot
+
+The first run after #2678 (00:33Z) sent 78 sibling packets to Nemotron 3.5 Super and 36 to Qwen.
+Most of Qwen's were rule subjects: rule subjects balanced across both slots by headroom, so they
+filled Qwen's 40-packet room and the Nemotron-produced entries, which only Qwen may judge, waited.
+**Fix:** rule subjects now use the first slot with an independent model, like every other entry
+(`runner._sibling_pool`), so the `secondary` slot holds only entries no earlier slot can judge.
+A subject that already has a judgment or a queued packet from an independent sibling keeps that
+sibling, so rule subjects Qwen took before are not asked again of Nemotron.
+
+Producer mix of judge subjects (records snapshot 2026-11-10):
+
+| Producer family | All subjects | Published ≤ 30 d | Published ≤ 90 d | Sibling | Anchor |
+|---|---:|---:|---:|---|---|
+| rule | 158,783 (94.1%) | 1,163 | 3,473 | Nemotron | Gemini |
+| google | 7,383 (4.4%) | 60 | 129 | Nemotron | Decider (none while paused) |
+| nvidia | 1,421 (0.8%) | 4 | 32 | Qwen | Gemini |
+| deepseek | 1,064 (0.6%) | 11 | 12 | Nemotron | Gemini |
+
+- **Qwen.** Groq allows about 200k tokens a day; a sibling packet is about 6,000 tokens for up to
+  10 items, so about 33 packets (330 items) a day. Nemotron-produced entries need about 1,900 items
+  (1,421 subjects x about 1.35) for the backlog, about 6 days, then about 0.2 subjects a day.
+- **Nemotron** takes all other entries. Its routes ran at 97–98% success (12.6); the sibling lane's
+  ceiling (12.4, 130 packets a day) binds before its routes do.
+- **No other sibling is needed.** The candidate kept in reserve is MiniMax M3.1 Flash on NVIDIA
+  (family `minimax`, 358 of 373 locator calls succeeded), but it shares NVIDIA's 1 rpm with the
+  locator.
+- **Expected counts.** `no_independent_sibling` about 0: every producer family in the snapshot has
+  an independent sibling, and no producer family is unknown. `no_independent_anchor` stays at the
+  Google-produced count (3,191 in the 00:33Z run) until the Decider route opens, then about 0.
+
+OpenRouter requests for this package: 6 model calls (5 Mercury, 1 path check at `/api/v1/decisions`), plus catalog,
+endpoint and key reads. Evidence: [evidence file, "Free decision models"](evidence/2026-11-11-llm-pipeline-throughput.md#free-decision-models-and-sibling-capacity-2026-11-14-review58-129).
+
 ### 12.10 Tag producer stall and the anchor's six-hour block
 
 #### Anchor six-hour block (issue #2672)

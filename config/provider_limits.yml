@@ -287,6 +287,20 @@ providers:
     accounts:
       - id: primary
         api_key_env: OPENROUTER_API_KEY
+  # OpenRouter's decisions endpoint (POST /api/alpha/decisions, review/58 12.9) lives outside the
+  # /api/v1 base the AI Gateway `openrouter` slug maps to: through that slug /alpha/decisions and
+  # /api/alpha/decisions both return 404 (2026-11-13). It needs a custom AI Gateway provider,
+  # `custom-openrouter-api`, whose Base URL is `https://openrouter.ai/api` (owner step, as for
+  # custom-beatapi). Same key and account as `openrouter`; the routes stay at rpd 0 until then.
+  openrouter_decisions:
+    api_base: https://openrouter.ai/api
+    ai_gateway_slug: custom-openrouter-api
+    ai_gateway_chat_path: /v1/chat/completions
+    chat_path: /v1/chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: OPENROUTER_API_KEY
   kilo:
     structured_output_method: json_schema
     api_base: https://api.kilo.ai/api/gateway
@@ -949,6 +963,33 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+
+  # Perplexity Decider V1.3 (review/58 12.9): the second, non-Google judge:anchor, for the
+  # Google-produced entries Gemini Decision 1 may not judge. Catalog 2026-11-14: one endpoint
+  # (Perplexity), prompt and completion price 0, context 262,144. A 2026-11-13 replay of 14 stored
+  # anchor requests was accepted 14 of 14 (review/58 12.6). OpenRouter's free models share one
+  # 1,000-request daily allowance with the other OpenRouter routes (440 rpd configured), and its
+  # free tier allows 20 requests a minute. Paused (rpd 0) until the owner registers the
+  # `custom-openrouter-api` gateway provider; the intended rpd is 40: the Google-produced backlog
+  # (about 7,400 subjects, about 310 packets of 32 items) clears in about ten days at the 30
+  # packets a day review/58 12.9 proposes as this anchor's share, and then needs under one a day.
+  - route_id: openrouter_pplx_decider_v1_3_free
+    model: perplexity/pplx-decider-v1.3
+    provider: openrouter_decisions
+    upstream_model: perplexity/pplx-decider-v1.3:free
+    api_shape: openrouter_decisions
+    request_path: /alpha/decisions
+    input_context_limit: 262144
+    output_context_limit: 1
+    hard_input_ceiling: 45000
+    account_id: primary
+    rpm: 10
+    rpd: 0
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-11-14"
 
   # ==========================================
   # KILO CODE ROUTES (Kilo Gateway)

@@ -2823,3 +2823,149 @@ def test_the_repository_config_caps_the_qwen_sibling_below_the_purpose_limit():
     per_model = config["max_outstanding_per_sibling"]
     assert per_model == {QWEN: 40}
     assert per_model[QWEN] < config["max_outstanding_packets"]["sibling"]
+
+
+# ---- second anchor and sibling slot reservation (review/58 12.9) ----
+
+DECIDER = "perplexity/pplx-decider-v1.3"
+TWO_ANCHOR_LANE = dataclasses.replace(DECISION_ANCHOR_LANE, models=(DECISION, DECIDER))
+
+
+def _two_anchor_ctx(dispatch, **extra):
+    return dataclasses.replace(_repo_sibling_ctx(dispatch, **extra), anchor=TWO_ANCHOR_LANE)
+
+
+def test_the_repository_holds_the_decider_as_an_eligible_anchor_on_a_paused_route():
+    """Wired but paused until the owner registers the custom-openrouter-api gateway provider."""
+    from citypods.judging.backends import DECIDER_ROUTE_ID, DeciderBackend, anchor_backend_class
+
+    assert DECISION_ANCHOR_LANE.models == (DECISION,)
+    assert DECISION_ANCHOR_LANE.eligible_models == (DECIDER,)
+    assert FAMILIES[DECIDER] == "qwen"  # a Qwen3.8-27B checkpoint
+    assert anchor_backend_class(DECIDER) is DeciderBackend
+    assert DeciderBackend.output_reservation == 1
+    compiled = Path(__file__).parent.parent / "citypods" / "compute" / "llm_routes.json"
+    [route] = [r for r in json.loads(compiled.read_text())["routes"] if r["model"] == DECIDER]
+    assert route["route_id"] == DECIDER_ROUTE_ID == DeciderBackend.route_id
+    assert route["upstream_model"] == "perplexity/pplx-decider-v1.3:free"
+    assert route["api_shape"] == "openrouter_decisions"
+    assert route["request_path"] == "/alpha/decisions"
+    assert route["ai_gateway_slug"] == "custom-openrouter-api"
+    assert route["free"] is True and route["rpd"] == 0
+    assert route["hard_input_ceiling"] == DeciderBackend.hard_input_ceiling
+    assert route["transports"] == []
+
+
+def test_a_google_produced_entry_gets_the_second_anchor_and_a_nemotron_sibling():
+    dispatch = FakeDispatch()
+    ep = _episode(tags=[], llm=[_llm_tag()])  # produced by Gemini
+    first = runner.run([ep], _two_anchor_ctx(dispatch))
+    assert first.counts["no_independent_anchor"] == 0
+    assert first.counts["no_independent_sibling"] == 0
+    assert first.counts[f"second_anchor:{DECIDER}"] == 1
+    submitted = {(p.role, p.judge_model) for p, _j in dispatch.submitted.values()}
+    assert submitted == {("anchor", DECIDER), ("sibling", NEMOTRON)}  # never the qwen sibling
+    again = runner.run([ep], _two_anchor_ctx(dispatch))
+    assert again.counts["retired_anchor_pending_dropped"] == 0  # an active anchor's packet stays
+    dispatch.answer(anchor_p=0.9)
+    runner.run([ep], _two_anchor_ctx(dispatch))
+    [subject] = _subjects(ep)
+    judges = {(r["judge_role"], r["judge_model"]) for r in ledger.judgments(subject)}
+    assert judges == {("anchor", DECIDER), ("sibling", NEMOTRON)}
+    kwargs = {
+        "anchor": TWO_ANCHOR_LANE,
+        "sibling": REPO_SIBLING_LANE,
+        "families": FAMILIES,
+        "all_tiers_sample_rate": 0.0,
+    }
+    assert not runner.episode_needs_judging(ep, [task("tag")], **kwargs)
+    # With one anchor the same entry has none, and nothing is asked of the Decider.
+    single = FakeDispatch()
+    ep2 = _episode(uid="ep-2", tags=[], llm=[_llm_tag()])
+    stats = runner.run([ep2], _repo_sibling_ctx(single))
+    assert stats.counts["no_independent_anchor"] == 1
+    assert {p.judge_model for p, _j in single.submitted.values()} == {NEMOTRON}
+
+
+def test_the_first_anchor_keeps_every_entry_it_is_independent_of():
+    from citypods.judging.families import anchor_for
+
+    anchors = (DECISION, DECIDER)
+    assert anchor_for([None], anchors, FAMILIES) == DECISION
+    assert anchor_for([NEMOTRON], anchors, FAMILIES) == DECISION
+    assert anchor_for([GEMINI], anchors, FAMILIES) == DECIDER
+    assert anchor_for([GEMINI, QWEN], anchors, FAMILIES) is None
+    assert anchor_for(["acme/unknown"], anchors, FAMILIES) is None
+
+
+def test_adjudication_of_a_decider_anchored_entry_excludes_all_three_families():
+    from citypods.judging.adjudication import subject_adjudicator
+
+    ep = _episode(uid="adj-2", tags=[], llm=[_llm_tag()])
+    [subject] = _subjects(ep)
+    assert ledger.append_judgment(
+        subject,
+        {
+            "task": "tag",
+            "subject_id": subject.subject_id,
+            "question_id": "supported",
+            "kind": "validate",
+            "judge_model": NEMOTRON,
+            "judge_role": "sibling",
+            "prompt_version": "1",
+            "context_tier": "T1",
+            "evidence_digest": "d",
+            "packet_id": "p",
+            "sample": "routine",
+            "value": True,
+            "judged_at": "2026-11-14T00:00:00+00:00",
+        },
+    )
+    lane = LANES["judge:adjudicator"]
+    model = subject_adjudicator(subject, "supported", lane, FAMILIES, anchor_model=DECIDER)
+    assert model is not None
+    assert FAMILIES[model] not in {"google", "qwen", "nvidia"}
+
+
+def test_rule_subjects_stay_out_of_the_qwen_slot():
+    """Rule subjects (94% of all) once balanced into Qwen's slot and filled its per-model room,
+    leaving the Nemotron-produced entries only Qwen may judge waiting."""
+    dispatch = FakeDispatch()
+    rules = [_rule_tag(id=f"rule-{i}") for i in range(30)]
+    ep = _episode(tags=rules, llm=[_llm_tag(provider_model=NEMOTRON)])
+    stats = runner.run([ep], _repo_sibling_ctx(dispatch))
+    assert stats.counts["no_independent_sibling"] == 0
+    by_model = {}
+    for packet, _job in dispatch.submitted.values():
+        if packet.role == "sibling":
+            for item in packet.items:
+                for subject in item.subjects:
+                    by_model.setdefault(packet.judge_model, set()).add(subject.producer_model)
+    assert by_model[QWEN] == {NEMOTRON}
+    assert NEMOTRON not in by_model[NEMOTRON]
+
+
+def test_a_rule_subject_keeps_the_qwen_sibling_it_already_has():
+    """CodeRabbit (R2-H): a rule subject Qwen took under the old balancing is not re-asked of
+    Nemotron; the first-slot rule applies only to a subject with no sibling yet."""
+    ctx = _repo_sibling_ctx(FakeDispatch())
+    assert runner._sibling_pool(ctx, "rule:7", DECISION, {QWEN}) == (QWEN,)
+    assert runner._sibling_pool(ctx, "rule:7", DECISION, set()) == (NEMOTRON,)
+    assert runner._sibling_pool(ctx, "rule:7", DECISION, {GEMMA_31B}) == (NEMOTRON,)
+    assert runner._sibling_pool(ctx, NEMOTRON, DECISION, {NEMOTRON}) == (QWEN,)
+
+
+def test_a_later_anchor_packs_first_but_takes_only_its_share_of_the_run_cap(monkeypatch):
+    from citypods.judging.backends import DeciderBackend
+
+    monkeypatch.setattr(DeciderBackend, "max_items", 1)  # one packet per item
+    dispatch = FakeDispatch()
+    eps = [
+        _episode(uid=f"ep-{i}", tags=[_rule_tag()], llm=[_llm_tag(id=f"g-{i}")]) for i in range(8)
+    ]
+    stats = runner.run(eps, _two_anchor_ctx(dispatch, max_outstanding={"judge:anchor": 8}))
+    anchors = [p.judge_model for p, _j in dispatch.submitted.values() if p.role == "anchor"]
+    assert anchors[0] == DECIDER  # ahead of the primary's backlog
+    assert anchors.count(DECIDER) == 2  # 8 x 0.25
+    assert anchors.count(DECISION) == 1  # the primary's one packet still goes
+    assert stats.counts[f"run_cap_share:{DECIDER}"] == 1

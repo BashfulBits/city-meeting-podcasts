@@ -1079,6 +1079,9 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     # custom-zai is registered at `https://api.z.ai/api/paas`, which serves at
     # `/v4/chat/completions`.
     "zai": "/v4/chat/completions",
+    # custom-openrouter-api is to be registered at `https://openrouter.ai/api` (owner step,
+    # review/58 12.9): OpenRouter's /alpha/decisions lies outside the `openrouter` slug's /api/v1.
+    "openrouter_decisions": "/v1/chat/completions",
 }
 
 
