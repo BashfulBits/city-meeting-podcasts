@@ -1545,6 +1545,13 @@ def test_split_unadmissible_tag_request_shapes():
     first, second = split_unadmissible_tag_request(chapters)
     assert [item["chapter_id"] for item in first] == ["c0", "c1", "c2"]
     assert [item["chapter_id"] for item in second] == ["c3"]
+    # The boundary nearest the middle, not the first one past it: 40/60 rather than 80/20.
+    chapters = [
+        {"chapter_id": f"c{index}", "title": "t", "transcript_text": "x" * size}
+        for index, size in enumerate((40, 40, 20))
+    ]
+    first, second = split_unadmissible_tag_request(chapters)
+    assert [item["chapter_id"] for item in first] == ["c0"]
 
 
 def test_other_gate_refusals_still_raise():

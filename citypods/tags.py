@@ -465,11 +465,12 @@ def split_unadmissible_tag_request(
         total = sum(sizes)
         running = 0
         cut = 1
+        best = None
         for index, size in enumerate(sizes[:-1], start=1):
             running += size
-            cut = index
-            if running * 2 >= total:
-                break
+            distance = abs(running * 2 - total)
+            if best is None or distance < best:
+                best, cut = distance, index
         return [chapters[:cut], chapters[cut:]]
     if len(chapters) != 1:
         return None
