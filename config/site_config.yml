@@ -343,9 +343,11 @@ judging:
   stability_sample_rate: 0.02
   backfill_order: recent_first
   # Most packets of each judge that may wait at the Worker at once; a pass submits only into the
-  # room left (raised sibling 480 -> 800 to buffer against DO cap 2000), so a backlog the
-  # providers drain slowly cannot grow the Worker queue without bound.
-  max_outstanding_packets: {anchor: 240, sibling: 800, adjudicator: 66}
+  # room left, so a backlog the providers drain slowly cannot grow the Worker queue without bound.
+  # Aligned 2026-11-14 with the lane ceilings of review/58 12.4 (anchor 120 and sibling 130 jobs a
+  # day; was anchor 240, sibling 800): room above a lane's daily ceiling only produces ingress
+  # refusals. The sibling figure applies per model.
+  max_outstanding_packets: {anchor: 120, sibling: 130, adjudicator: 66}
   # A tighter per-model sibling limit (review/58 12.6): Qwen3.8 on Groq has about 200k tokens/day,
   # so rule subjects balanced onto it must not queue hundreds of packets it cannot drain.
   max_outstanding_per_sibling: {"qwen/qwen3.8-27b": 40}
