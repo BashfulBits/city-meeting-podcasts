@@ -804,3 +804,52 @@ full reasoning and an offline experiment. In short:
 The useful variant is a decision model as a **pre-filter** that narrows the 38 tags per chapter
 before the chat tagger. It would cut tagger tokens without changing who produces a tag. Test it
 offline on a free decision endpoint that production does not use, and do not use Gemini Decision.
+
+### 12.10 Tag producer stall and the anchor's six-hour block
+
+#### Anchor six-hour block (issue #2672)
+
+**Diagnosis.** Google refuses a request with HTTP 400 "User location is not supported for the API
+use." when it arrives from a location the Gemini API does not serve. AI Gateway logs for
+`google-ai-studio`, 2026-11-13 00:00Z to 11-14 08:58Z (636 requests), give a clean split: all 19
+Google 400s came from the Gateway's HKG colo, and every Google request from HKG got that 400. No
+other colo got it. The refusal follows the Cloudflare location the scheduled invocation ran in, not
+the key or the model. Both keys failed in the same second each time, because one bundle carries
+both routes.
+
+The Worker's Decisions classifier matched "not supported" as a withdrawn model
+(`decisions-model-unavailable`, `route_unavailable`). The coordinator then blocked each route for
+`ROUTE_UNAVAILABLE_BLOCK_SECONDS` (6 h). So the anchor worked for a few minutes after each block
+lapsed, until the next HKG invocation, and then stopped for six more hours. The same refusal on
+the chat Gemini routes (Gemma 4 31B, Gemini 3.1 Flash Lite) fell through to the generic 4xx rule and
+failed the job as `request_defect`: 6 jobs on 2026-11-13.
+
+**Fix (#2672 PR).** A rule `google-location-unsupported` in `classify.js` matches this message on
+any route whose provider is `gemini`, on both API shapes. It is checked before the Decisions
+classifier's "not supported" rule and before the generic 4xx fallback. It returns
+`upstream_capacity` with scope `route`:
+
+- The attempt is `retryable_error`, and the job requeues on the upstream-capacity budget (8).
+- The coordinator gives the route the seconds-scale Google availability cooldown (at most 5 s)
+  that Google's 500 and 503 already get, not the saturated 60 s-to-a-day ladder.
+- The route health ladder counts it in the capacity class. Two consecutive refusals put the route
+  on rung 1 (60 s), and each failed half-open probe climbs to 300 s, 900 s and 3600 s. A success
+  clears it.
+- A genuine "model not available / not supported to this key" 400 still matches
+  `decisions-model-unavailable` and still stands the route down for 6 h.
+  `ROUTE_UNAVAILABLE_BLOCK_SECONDS` is unchanged.
+
+**Not fixed here: where the calls leave from.** The repo has no placement hint or egress pin for
+any route. Cloudflare runs cron invocations wherever capacity is free, and the earlier Gemma
+investigation (`review/evidence/2026-10-23-gemma-availability.md`) reached the same location limit.
+Pinning Google traffic to a supported region would remove the refusals rather than absorb them.
+That is a Worker-wide placement change for every provider, so it is recommended separately; see
+the issue linked in the PR.
+
+**What to watch after deploy.**
+
+- `gemini_decision_1_*` claims continue within minutes of a geo 400, with no six-hour gap.
+- `bundle_completed` shows the refusal as `upstream_capacity` and `retryable_error`, not
+  `route_unavailable`.
+- `route_health` escalations for these routes stay on rungs 1 to 2.
+- Anchor packets per day: about 100 calls in the 33 h measured, against 2 x 10,000 rpd.

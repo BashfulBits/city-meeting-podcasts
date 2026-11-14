@@ -1219,7 +1219,13 @@ and requeue once for sibling-route selection. A 410 Gone (retired model) is `rou
 job requeues on the upstream-capacity budget and the route is stood down for
 `ROUTE_UNAVAILABLE_BLOCK_SECONDS`. A 404 is treated as a transient upstream fault (requeue plus the
 escalating 15s-5min upstream cooldown), because providers and aggregators return 404 while a model's
-backend is down. The response text fallback is bounded and not stored.
+backend is down. Google's HTTP 400 "User location is not supported for the API use." on any Gemini
+route (both API shapes) is `upstream_capacity` with rule `google-location-unsupported` (review/58
+12.10, #2672): it follows the Cloudflare location the invocation ran from (every one logged came
+from the HKG colo), so the job requeues as a retryable attempt and the route takes the seconds-scale
+Google availability cooldown, never the six-hour `route_unavailable` block nor a request defect;
+consecutive refusals climb the route health ladder's capacity class. The response text fallback is
+bounded and not stored.
 The V2 coordinator also keeps a **route health ladder** (review/58 WP3b,
 `workers/llm-dispatch-v2/src/route_health.js`). Per route it counts consecutive failures with no
 success between, in three classes: response timeout (the Worker's deadline or a gateway 504/524),
@@ -1701,7 +1707,8 @@ published 50,000 TPM). It maps question keys to Google's `[A-Za-z0-9_-]{1,64}` c
 drops `criteria` from `noul`, and reads `total_input_tokens`. Shapes may define `authHeaders`,
 `normalizeReply` and `normalizeStatus`; `decisions` uses the last to report a quota 400 as 429 so it
 takes the rate path, while `classifyDecisions400` makes a safety block terminal, an input limit
-`route_input_limit` and a bad key or missing model `route_unavailable`. In Python,
+`route_input_limit`, a location refusal `upstream_capacity` (above) and a bad key or missing model
+`route_unavailable`. In Python,
 `DecisionBackend` (a `JevBackend` subclass with its own route and ceiling) is chosen by
 `anchor_backend_class(model)`; the anchor joins a plan only when its family is known and differs
 from every producer's, and siblings and adjudicators exclude the anchor's family (so rule
