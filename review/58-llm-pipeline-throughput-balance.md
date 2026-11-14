@@ -843,8 +843,8 @@ classifier's "not supported" rule and before the generic 4xx fallback. It return
 any route. Cloudflare runs cron invocations wherever capacity is free, and the earlier Gemma
 investigation (`review/evidence/2026-10-23-gemma-availability.md`) reached the same location limit.
 Pinning Google traffic to a supported region would remove the refusals rather than absorb them.
-That is a Worker-wide placement change for every provider, so it is recommended separately; see
-the issue linked in the PR.
+That is a Worker-wide placement change for every provider, so it is recommended separately in
+issue [#2682](https://github.com/BashfulBits/city-meeting-podcasts/issues/2682).
 
 **What to watch after deploy.**
 
