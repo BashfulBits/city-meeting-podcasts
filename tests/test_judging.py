@@ -2848,7 +2848,8 @@ def test_the_repository_holds_the_decider_as_an_eligible_anchor_on_a_paused_rout
     [route] = [r for r in json.loads(compiled.read_text())["routes"] if r["model"] == DECIDER]
     assert route["route_id"] == DECIDER_ROUTE_ID == DeciderBackend.route_id
     assert route["upstream_model"] == "perplexity/pplx-decider-v1.3:free"
-    assert (route["api_shape"], route["request_path"]) == ("openrouter_decisions", "/alpha/decisions")
+    assert route["api_shape"] == "openrouter_decisions"
+    assert route["request_path"] == "/alpha/decisions"
     assert route["ai_gateway_slug"] == "custom-openrouter-api"
     assert route["free"] is True and route["rpd"] == 0
     assert route["hard_input_ceiling"] == DeciderBackend.hard_input_ceiling

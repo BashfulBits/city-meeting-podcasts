@@ -970,8 +970,9 @@ routes:
   # anchor requests was accepted 14 of 14 (review/58 12.6). OpenRouter's free models share one
   # 1,000-request daily allowance with the other OpenRouter routes (440 rpd configured), and its
   # free tier allows 20 requests a minute. Paused (rpd 0) until the owner registers the
-  # `custom-openrouter-api` gateway provider; the intended rpd is 50 (about 25 days to clear the
-  # Google-produced backlog of about 7,400 subjects, then under one packet a day).
+  # `custom-openrouter-api` gateway provider; the intended rpd is 40: the Google-produced backlog
+  # (about 7,400 subjects, about 310 packets of 32 items) clears in about ten days at the 30
+  # packets a day review/58 12.9 proposes as this anchor's share, and then needs under one a day.
   - route_id: openrouter_pplx_decider_v1_3_free
     model: perplexity/pplx-decider-v1.3
     provider: openrouter_decisions

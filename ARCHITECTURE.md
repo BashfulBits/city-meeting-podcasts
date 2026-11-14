@@ -1739,7 +1739,8 @@ so JEV and Gemini telemetry never pool.
 **Sibling roster after Gemma (review/58 12.6, 2026-11-13).** `judge:sibling` is
 Nemotron 3.5 Super (slot `primary`, family `nvidia`) plus Qwen3.8-27B on Groq (slot `secondary`,
 family `qwen`). Slots are tried in sorted name order, so Qwen judges only the entries Nemotron cannot
-judge, such as Nemotron-produced ones. Rule subjects balance across both by headroom. Gemma 4 31B
+judge, such as Nemotron-produced ones; rule subjects stay in the first slot too (review/58 12.9),
+so Qwen's room holds only entries Nemotron may not judge. Gemma 4 31B
 left the lane because a Google sibling can never sit beside the Google anchor. A pending sibling
 marker for a model the lane no longer lists is dropped in the same way as a retired anchor's
 (`_retired_role`, counter `retired_sibling_pending_dropped`); its stored judgments keep their own
@@ -1747,6 +1748,14 @@ identity. `judging.max_outstanding_per_sibling` caps the outstanding packets of 
 below the purpose limit, set to 40 for Qwen, whose Groq quota is about 200k tokens a day. On
 DeepSeek V4.1 Flash for `judge:adjudicator`, the NVIDIA leg is stood down (`rpd: 0`) and the two
 BeatAPI legs serve the model.
+**Second anchor (review/58 12.9).** `judge:anchor` is an ordered list: each entry's anchor is the
+first active model independent of its producers (`families.anchor_for`), and the runner,
+adjudication and the dirtiness check use that per-entry anchor and exclude its family from the
+sibling and adjudicator. `perplexity/pplx-decider-v1.3` (family `qwen`) is listed after Gemini as
+an eligible model, for Google-produced entries, with `DeciderBackend`. The Worker speaks it through
+the `openrouter_decisions` API shape (`POST /api/alpha/decisions`: JEV's body with the decisions
+key map, Bearer auth) on provider `openrouter_decisions`, gateway slug `custom-openrouter-api`; its
+route is held at `rpd: 0` until that custom gateway provider is registered.
 Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
 state, conditional, and other storage reads continue to use their owning backend directly. For
 B2-backed runs, judge transcript reads try the configured public CDN URL through the guarded HTTP
