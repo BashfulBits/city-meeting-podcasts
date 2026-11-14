@@ -941,6 +941,19 @@ it protects, so holding it back only refuses work the day still had budget for
 *purpose* closed rather than the whole process: later batches for it yield retryable deferred
 handles without staging a payload or making a request, while another lane running in the same
 `build` keeps submitting.
+Each lane carries two numbers (review/58 section 12.4, 2026-11-13).
+- `reserved_write_units` is the guaranteed steady-state share: jobs per new meeting for the lane
+  × 14 meetings a day (the p90 day) × a headroom factor that encodes priority when rows are short
+  (feeders ×4, tagger and moments ×3, judge lanes ×2).
+- `daily_write_units` is the ceiling: the reservation plus a backlog-drain allowance (the lane's
+  one-time backlog over a stated drain target, at least 100 jobs a day), bounded by route supply.
+  `max_queued_jobs` holds two days of it.
+Write units count enqueue only, at about 1.5 billed rows per unit. Claim, completion, retirement
+and cleanup add about 12 rows per job. With every lane at its ceiling (8,440 units, ~32,600 rows)
+no global guard is reached: not the 6,000 jobs, the 38,400 units, nor the 90,000-row stops. The
+unit guard is the only one that withholds reservations, so raising ceilings past about 90,000
+rows would leave reservations guaranteed in units but not in rows. Judge packets are also bounded
+per run by `judging.max_outstanding_packets` (per role, per sibling model).
 `workers/llm-dispatch-v2/src/write_budget.js` records the measured per-phase costs
 (`bench/rows-written/`): a completed first-try job is ~20 billed rows. Because every index entry is billed, the
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`
@@ -1219,7 +1232,13 @@ and requeue once for sibling-route selection. A 410 Gone (retired model) is `rou
 job requeues on the upstream-capacity budget and the route is stood down for
 `ROUTE_UNAVAILABLE_BLOCK_SECONDS`. A 404 is treated as a transient upstream fault (requeue plus the
 escalating 15s-5min upstream cooldown), because providers and aggregators return 404 while a model's
-backend is down. The response text fallback is bounded and not stored.
+backend is down. Google's HTTP 400 "User location is not supported for the API use." on any Gemini
+route (both API shapes) is `upstream_capacity` with rule `google-location-unsupported` (review/58
+12.10, #2672): it follows the Cloudflare location the invocation ran from (every one logged came
+from the HKG colo), so the job requeues as a retryable attempt and the route takes the seconds-scale
+Google availability cooldown, never the six-hour `route_unavailable` block nor a request defect;
+consecutive refusals climb the route health ladder's capacity class. The response text fallback is
+bounded and not stored.
 The V2 coordinator also keeps a **route health ladder** (review/58 WP3b,
 `workers/llm-dispatch-v2/src/route_health.js`). Per route it counts consecutive failures with no
 success between, in three classes: response timeout (the Worker's deadline or a gateway 504/524),
@@ -1606,6 +1625,14 @@ routes inherit their existing defaults. The
 [spaced replay evidence](review/evidence/2026-10-21-gemma-gateway-retries.md) supports retry
 amplification as a cause of TPM refusals, without proving intrinsic packet size or 95% coverage.
 
+#### Dispatch Worker placed egress (review/58 12.12)
+
+Google AI Studio refuses calls that leave some Cloudflare colos (HKG). The dispatch Worker's cron
+handler cannot be placed, so calls for the providers in its `PLACED_EGRESS_PROVIDERS` var (default
+`gemini`) go through the Worker's own fetch handler over the `PLACED_EGRESS` self service binding
+(`src/placed_egress.js`, private path `/__placed_egress`, bearer-token gated, AI Gateway and Google
+hosts only). The Worker carries a `gcp:us-east4` placement hint, which also places the `/v2/*` API.
+
 #### Cloudflare AI Gateway (direct transport only)
 
 A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both
@@ -1701,7 +1728,8 @@ published 50,000 TPM). It maps question keys to Google's `[A-Za-z0-9_-]{1,64}` c
 drops `criteria` from `noul`, and reads `total_input_tokens`. Shapes may define `authHeaders`,
 `normalizeReply` and `normalizeStatus`; `decisions` uses the last to report a quota 400 as 429 so it
 takes the rate path, while `classifyDecisions400` makes a safety block terminal, an input limit
-`route_input_limit` and a bad key or missing model `route_unavailable`. In Python,
+`route_input_limit`, a location refusal `upstream_capacity` (above) and a bad key or missing model
+`route_unavailable`. In Python,
 `DecisionBackend` (a `JevBackend` subclass with its own route and ceiling) is chosen by
 `anchor_backend_class(model)`; the anchor joins a plan only when its family is known and differs
 from every producer's, and siblings and adjudicators exclude the anchor's family (so rule
