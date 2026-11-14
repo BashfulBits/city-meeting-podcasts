@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **`/v2/stats` reports lane reservations in jobs** (review/58 §12.11).
+  `ingress.by_purpose[].daily_quota` is now each lane's own reservation in jobs, not the shared
+  write-unit ceiling divided by units per job, which made every lane look like most of the day
+  and summed to about 40,500 against a plan of 4,494. `percent_used` is the lane's charged write
+  units over its reserved units (over 100% means the lane is borrowing). New fields:
+  `ceiling_jobs` per lane (the most it can reach by borrowing) and `ingress.reserved_jobs_total`.
+
 - Judging: Perplexity Decider V1.3 (free, OpenRouter decisions endpoint) is now the second
   `judge:anchor` after Gemini Decision 1, at `rpd: 40`, so Google-produced entries get an
   independent anchor (review/58 12.9, #2674).
