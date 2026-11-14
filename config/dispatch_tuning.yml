@@ -11,9 +11,10 @@
 # Account-, URL- and credential-specific values (AI_GATEWAY_ID, provider keys, B2 settings,
 # the bearer token) are NOT here and never belong in the repository.
 #
-# Daily DO row-write thresholds (DO_ROWS_ENQUEUE_STOP 90000, DO_ROWS_CLAIM_STOP 97000,
-# DO_ROWS_OPTIONAL_STOP 99000) remain code defaults on purpose (see write_budget.js);
-# override only for a deliberate incident response. Keep them out of this file.
+# Daily DO row-write thresholds DO_ROWS_CLAIM_STOP 97000 and DO_ROWS_OPTIONAL_STOP 99000 remain
+# code defaults on purpose (see write_budget.js); override only for a deliberate incident response.
+# DO_ROWS_ENQUEUE_STOP is declared below because the lane reservations are split from it
+# (review/58 section 12.11).
 #
 # Keep the values numeric; the Worker reads them with Number().
 
@@ -71,6 +72,11 @@ MAX_BUNDLES_PER_UTC_DAY: 1400
 # three to the account safe stop; the claim gate can close earlier based on active work.
 # Override only for a deliberate incident response; tests/test_llm_dispatch_worker_limits.py
 # checks the deployed variable count.
+# DO_ROWS_ENQUEUE_STOP is the exception: it is the one source of the daily row cap that
+# scripts/compile_llm_lanes.py splits into lane reservations (review/58 section 12.11), so it is
+# declared here (compiled into the bundle, not a Cloudflare variable). Same value as the code
+# default; the runtime still clamps it to the account safe stop.
+DO_ROWS_ENQUEUE_STOP: 90000
 # A blast-radius backstop, not the working limit: MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS.
 MAX_LEASES_PER_UTC_DAY: 7000
 # Shared free-tier ceilings, NOT an 800-meeting capacity commitment. The full planning scenario

@@ -1275,6 +1275,76 @@ issue [#2682](https://github.com/BashfulBits/city-meeting-podcasts/issues/2682).
 - `route_health` escalations for these routes stay on rungs 1 to 2.
 - Anchor packets per day: about 100 calls in the 33 h measured, against 2 x 10,000 rpd.
 
+### 12.11 Lane reservations split from the daily row cap by ratio
+
+**Question.** The owner asked that the §12.4 caps adjust on their own as feeds and meetings per
+day grow, without a config change each time. A first version (feed-count scaling of the §12.4
+meetings/day rule) was replaced on review by a simpler rule: keep the ratios tested in §12.4, but
+size the total to what the Worker can admit and execute within the daily row cap, and let lanes
+borrow unspent reservation late in the day. Live probes get a small fixed pool.
+
+**Change.** The production lanes no longer state `reserved_write_units`, `daily_write_units` or
+`max_queued_jobs`. Each states only a `reservation_ratio`: agenda 10, locator 10, tagger 40,
+moments 10, anchor 20, sibling 30, adjudicator 10 (the §12.4 reserved jobs, in the same
+proportions). `remedy:p3` is marked `live: true` with ratio 1. A shared `llm_lane_budget` block in
+`config/site_config.yml` holds the row model (1.5 rows per write unit, 12 execution rows per job,
+1,500 fixed rows a day), `live_reservation_jobs` 100 and `queue_days` 2. The row cap is
+`DO_ROWS_ENQUEUE_STOP` in `config/dispatch_tuning.yml` (90,000), read from that one place; a
+missing value fails the compile. `citypods/compute/llm_lanes.py` computes:
+
+- live lanes split the 100-job pool by their ratios among themselves (`remedy:p3` alone gets all
+  100), and the pool's rows (jobs × rows per job) come off the row budget first;
+- for the other lanes, k (jobs per ratio point) solves sum of ratio × k × rows per job = row cap −
+  fixed rows − live rows, where rows per job = 1.5 × units per job + 12;
+- reserved jobs = floor(ratio × k); `reserved_write_units` = jobs × units per job;
+- `daily_write_units` = the sum of all reservations (every lane may borrow up to the whole day);
+- `max_queued_jobs` = `queue_days` × the lane's reserved jobs (× the largest lane's if it is 0).
+
+The client (`load_lanes`) and `scripts/compile_llm_lanes.py` share this code. Adding or removing a
+lane, or changing a ratio, re-splits every reservation on the next compile; nothing else needs an
+edit. A further live lane shares the same 100 jobs. Mixing ratio and stated-cap lanes, `live`
+without a ratio, and an all-zero ratio set are rejected.
+
+**Result at 90,000 rows.** Live pool 100 jobs (1,800 rows); k = 33.80; 4,494 jobs, 23,046 units,
+~89,997 rows.
+
+| Lane | §12.4 reserved / daily / queue (units) | §12.11 reserved units (jobs) / daily / queue |
+|---|---|---|
+| chapter-agenda | 60 / 660 / 220 | 2,028 (338) / 23,046 / 676 |
+| chapter-locator | 40 / 440 / 220 | 1,352 (338) / 23,046 / 676 |
+| topic-tags:tagger | 280 / 4,550 / 1,300 | 9,464 (1,352) / 23,046 / 2,704 |
+| r6-moments | 50 / 550 / 220 | 1,690 (338) / 23,046 / 676 |
+| judge:anchor | 80 / 480 / 240 | 2,704 (676) / 23,046 / 1,352 |
+| judge:sibling | 120 / 520 / 260 | 4,056 (1,014) / 23,046 / 2,028 |
+| judge:adjudicator | 40 / 440 / 220 | 1,352 (338) / 23,046 / 676 |
+| remedy:p3 (live) | 0 / 800 / 800 | 400 (100) / 23,046 / 200 |
+
+The reserved total goes from 670 to 23,046 units. `remedy:p3` is still closed until
+`config/remedy.yml` admits its routes; until then its 400 reserved units are withheld from the
+other lanes before 12:00 UTC and released to them by the borrow schedule after.
+
+**Worker clamp and borrowing.** The Worker's admission budget is now
+min(`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`, reserved total), in `_maxIngressWriteUnitsPerUtcDay`
+(`effectiveIngressWriteUnits` in `write_budget.js`). Without it, the ~15,000 units between the
+reserved total and the 38,400-unit guard would be first-come and could reach the row stop before
+the reserved lanes spent their share. With it, a lane exceeds its reservation only by borrowing:
+`_reservationBorrowFraction` releases none of the other lanes' unspent reservations with more
+than 12 h left in the UTC day, half with 6 to 12 h left, and all of it in the last 6 h. A map with
+no reservations leaves the guard unchanged. The worker tests cover borrowing at 00, 12 and 18 UTC
+against the clamped budget.
+
+**Guards.** The compiler still fails if the reserved total exceeds
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` or the reserved jobs exceed `MAX_JOBS_PER_UTC_DAY`, and now
+also if the rows exceed the row cap or the live pool leaves no rows. Raising
+`DO_ROWS_ENQUEUE_STOP` rescales every non-live lane; past about 120,000 rows the 6,000-job guard
+fails the compile first.
+
+**What this does not do.** The reserved rows equal the enqueue stop, which also counts execution
+rows, so a day that spends every reservation reaches the stop near its end. That is the design:
+the stop, not an extra margin, bounds the day. `DO_ROWS_ENQUEUE_STOP` was previously only a code
+fallback (it was kept out of Cloudflare vars by the 64-variable limit); it is now declared in
+`dispatch_tuning.yml`, compiled into `dispatch_tuning.json`, with the same value.
+
 ### 12.12 Placed egress for Google calls (#2682)
 
 **Problem.** Section 12.10 absorbs Google's HTTP 400 "User location is not supported" (seen only from

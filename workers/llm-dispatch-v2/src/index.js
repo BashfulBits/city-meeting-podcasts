@@ -278,6 +278,9 @@ export function validateConfig(env) {
     }
     return sum + value;
   }, 0);
+  // The coordinator admits at most min(MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY, reserved), review/58
+  // section 12.11 (effectiveIngressWriteUnits). The checks above bound the configured guard, which
+  // is never below that, so they also hold for the clamped budget.
   if (reserved > maxIngressWriteUnits) {
     throw new Error("Invalid config: ingress reservations exceed the global write budget");
   }

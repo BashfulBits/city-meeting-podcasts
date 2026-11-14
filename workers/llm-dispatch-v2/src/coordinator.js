@@ -38,6 +38,7 @@ import {
 import {
   DO_ROWS_ACCOUNT_RESERVE,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
+  effectiveIngressWriteUnits,
   ROWS_PER_BUNDLE,
   ROWS_PER_CLEANUP_JOB,
   ROWS_PER_INGRESS_WRITE_UNIT,
@@ -1754,9 +1755,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Historical deployments set only MAX_JOBS_PER_UTC_DAY.  Preserve that protective bound
     // until the explicit write budget is configured, using four writes/job as its conservative
     // estimate (job row, model pointer, purpose counter, scheduler counter).
-    return Number.isFinite(configured) && configured > 0
+    const guard = Number.isFinite(configured) && configured > 0
       ? configured
       : this._maxJobsPerUtcDay() * 4;
+    // review/58 section 12.11: never admit past the lanes' reserved total, which is split from
+    // the daily row cap; anything above it is borrowed from unspent reservations, not new slack.
+    return effectiveIngressWriteUnits(guard, this._ingressPurposeReservations());
   }
 
   /**
@@ -3209,7 +3213,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // run work (`_reservationBorrowFraction`).
         const otherReservations = Object.entries(ingressReservations).reduce(
           (sum, [otherPurpose, config]) => {
-            if (otherPurpose === purpose) return sum;
+            // `_`-prefixed keys are metadata, as in ingressStatus and the reserved-total clamp.
+            if (otherPurpose === purpose || otherPurpose.startsWith("_")) return sum;
             const reserved = Number(config?.reserved_write_units);
             if (!Number.isFinite(reserved) || reserved <= 0) return sum;
             return sum + Math.max(0, reserved - (purposeUsage.get(otherPurpose)?.write_units || 0));
@@ -3423,7 +3428,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return { status: "purpose_write_budget_exceeded" };
       }
       const otherReservations = Object.entries(reservations).reduce((sum, [otherPurpose, config]) => {
-        if (otherPurpose === purpose) return sum;
+        if (otherPurpose === purpose || otherPurpose.startsWith("_")) return sum;
         const reserved = Number(config?.reserved_write_units);
         if (!Number.isFinite(reserved) || reserved <= 0) return sum;
         const used = [...sql.exec(
