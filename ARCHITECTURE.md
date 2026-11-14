@@ -948,6 +948,13 @@ Each lane carries two numbers (review/58 section 12.4, 2026-11-13).
 - `daily_write_units` is the ceiling: the reservation plus a backlog-drain allowance (the lane's
   one-time backlog over a stated drain target, at least 100 jobs a day), bounded by route supply.
   `max_queued_jobs` holds two days of it.
+- Since review/58 section 12.11 the seven production lanes do not state these numbers. Each has a
+  `sizing` entry (`jobs_per_meeting`, `headroom`, `backlog_jobs`, `drain_days`), and
+  `llm_lanes.py` / `compile_llm_lanes.py` derive the caps from one shared input in
+  `llm_lane_sizing`: new meetings a day. That is the measured p90 (14) scaled by the growth of
+  active feeds in `config/feeds` over its recorded basis (155), never below 14, so adding cities
+  raises the caps on the next compile. The compiler fails if every ceiling at once would pass the
+  6,000-job or 38,400-unit guard or the 85,000-row pace (about 410 meetings a day today).
 Write units count enqueue only, at about 1.5 billed rows per unit. Claim, completion, retirement
 and cleanup add about 12 rows per job. With every lane at its ceiling (8,440 units, ~32,600 rows)
 no global guard is reached: not the 6,000 jobs, the 38,400 units, nor the 90,000-row stops. The

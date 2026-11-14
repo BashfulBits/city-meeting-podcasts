@@ -35,6 +35,21 @@ def _safe_row_budget() -> int:
     return min(enqueue, platform - reserve)
 
 
+def _daily_write_units(site: Mapping, purpose: str) -> int:
+    """A lane's ceiling in write units, stated or derived from its ``sizing`` (review/58 12.11)."""
+    lane = site["llm_lanes"][purpose]
+    if "sizing" not in lane:
+        return lane["daily_write_units"]
+    import sys
+
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from citypods.compute.llm_lanes import parse_site_lanes
+
+    lanes = parse_site_lanes(site, feeds_dir=ROOT / "config" / "feeds")
+    return lanes[purpose].daily_write_units
+
+
 def project(
     *,
     meetings: int = 800,
@@ -78,7 +93,7 @@ def project(
                 "ingress_units_per_job": units,
                 "ingress_units": jobs * units,
                 "first_try_rows_estimate": jobs * (20 + 4 * (indexes - 1)),
-                "configured_daily_job_ceiling": lane["daily_write_units"] // units,
+                "configured_daily_job_ceiling": _daily_write_units(site, purpose) // units,
             }
         )
     jobs = sum(arm["jobs"] for arm in arms)
