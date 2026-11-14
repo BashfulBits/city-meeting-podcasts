@@ -175,13 +175,16 @@ export class B2Client {
     return response.json();
   }
 
-  async putJson(key, value) {
+  /** `timeoutMs` aborts a write that has not finished in time; the abort throws like any failure. */
+  async putJson(key, value, { timeoutMs } = {}) {
     const body = typeof value === "string" ? value : JSON.stringify(value);
     const { url, headers } = await this._signed("PUT", key, {
       body,
       extraHeaders: { "content-type": "application/json" },
     });
-    const response = await fetch(url, { method: "PUT", headers, body });
+    const init = { method: "PUT", headers, body };
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) init.signal = AbortSignal.timeout(timeoutMs);
+    const response = await fetch(url, init);
     if (!response.ok) {
       throw new Error(`B2 PUT ${key} failed: ${response.status} ${await response.text()}`);
     }

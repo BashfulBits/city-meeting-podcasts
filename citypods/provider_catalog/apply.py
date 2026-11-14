@@ -520,6 +520,9 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 "rpm": 1,
                 "concurrency": 1,
                 "free": True,
+                # Every route pins its response timeout (review/58 §12.5): an ordinary route uses
+                # 720 s, never the 780 s ceiling reserved for slow reasoning routes.
+                "response_timeout_seconds": 720,
             }
             # Only route-scoped positive observations can supply independent route limits.
             for observation in proof.limits:

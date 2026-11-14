@@ -107,4 +107,7 @@ pythonpath = ["."]
 # Live endpoint-contract tests hit real provider URLs and are flaky by nature, so they're
 # excluded from the default (offline, deterministic) run. Opt in with `pytest -m live`.
 addopts = "-m 'not live'"
-markers = ["live: hits live external endpoints (network); run with -m live"]
+markers = [
+    "live: hits live external endpoints (network); run with -m live",
+    "pin_rule: compile tests that keep the every-route response-timeout pin rule (review/58)",
+]

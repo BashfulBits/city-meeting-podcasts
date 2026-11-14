@@ -2748,7 +2748,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
   static ATTEMPT_USAGE_SAMPLE_CAP = 2000;
   static CALIBRATION_STATS_LIMIT = 200;
   static FILTERED_FAILURE_LIMIT = 1000;
-  // A call at or past this share of MAX_RESPONSE_SECONDS (720 s) counts as slow: 600 s.
+  // A call at or past 600 s counts as slow: 5/6 of the 720 s most routes pin, and kept at 600 s
+  // when the slow reasoning routes moved to the 780 s ceiling (review/58 §12.5) so the series
+  // stays comparable.
   static SLOW_CALL_MS = 600_000;
 
   *_chunks(items, size = LLMSchedulerDO.MAX_SQL_BOUND_PARAMS) {

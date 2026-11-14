@@ -325,7 +325,9 @@ longer than 750 s.
   30 + 780 + 45 = 855 ≤ 870 < 900. Worst invocation: 39 s to start + 780 + 5 s to commit = 824 s,
   76 s under the cron limit. The 45 s reserve is ten times the largest finalization observed. Net
   modeled effect: about 25 more results a week for 28k slot-seconds (0.4%), so it ships last and
-  only if B1 is fixed.
+  only if B1 is fixed. **Implemented in §12.5** on four routes (OrcaRouter GLM and the three
+  Nemotron 3 Ultra legs; Gemma left at 720), with every other route pinned and a 30 s bound on the
+  B2 result write.
 - **Not recommended: moving calls off the cron lifetime.** A DO alarm also has a 15-minute wall
   limit, and holding the DO active for calls would use about 10,800 of the 13,000 GB-s daily Free
   duration allowance. Queues on Free allow 10,000 operations a day. No measured limit of the cron
@@ -490,7 +492,7 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 | WP4 | Early slot release (coordinator + `index.js`). **Status: implemented in PR (branch `feat/58-wp4-early-slot-release`), awaiting merge; merging deploys the Worker.** `completePartial` with per-bundle dedupe; defaults one partial after 60 s and 3,000 partial rows/day (section 8: 20 s / three commits does not fit 85k at 6,000 results; 3,000 is above the 2,824 the bundle day cap allows, and a back-loaded 6,000-result day ends under about 87k); off switch `EARLY_SLOT_RELEASE_ENABLED: 0` | Opus | WP1a, WP3b merged | Removes the 58% idle hold | Hold share ≤ 10%; rows/day < 85k; `bundle_completed` `released_by`, `partial_flushes` |
 | WP5 | Hourly sweep (**implemented 2026-11-11**: cron `57 * * * *`, concurrency unchanged, budget 32 < step 41 < job 45 min; about 20 more terminal-feed/poll calls a day) | Sonnet | — | Collection lag ≤ 2 h | `poll-batch` calls/day; pending handles per run |
 | WP6 | Producer fixes (lease-busy skip, locator timeout and backfill, tag cadence, Worker-cron `repository_dispatch` trigger). **Status:** part A in PR; part B (Worker-cron trigger) implemented in `feat/58-wp6b-worker-cron-producer-trigger` (PR open), inert until the owner sets `GITHUB_DISPATCH_TOKEN`; locator backfill open | Sonnet; Opus for the backfill | — | No failed runs; locator backlog drains; producers run on cadence | Run conclusions; locator `ready` count falls; `repository_dispatch` runs at the table's minutes and `producer_trigger` logs with status 204 |
-| WP7 | Optional 780 s for three slow families | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
+| WP7 | Optional 780 s for three slow families. **Status: implemented in `feat/58-r2f-slow-route-families` (§12.5), PR open; merging deploys the Worker.** 780 s on four routes, all others pinned, bounded result write, Ultra reasoning-off declared but unused; follow-ups in #2689 | Opus | WP4 verified | ~25 results/week | Successes with duration 720 to 780 s |
 | WP8 | **Done 2026-11-11.** Locator overflow to MiniMax M3.1 Flash: lane model list, size split 76,001 to 500,000 estimated tokens (cap from WP8a), hold larger packets as deferred, drop V4.1 from the lane, route output limit check. Result: locator lane is V4 Flash + MiniMax; V4.1 stays only in `judge:adjudicator`; locator `max_tokens` clamps to MiniMax's 12,800; queued V4.1 locator jobs are cancelled and re-planned; no routing-version bump, so V4 Flash results stand | Opus | — (owner deploys the compiled route config) | 487 of 494 overflow packets get a working route; 7 held | Locator results on `nvidia_minimaxai_minimax_m3_1_flash`; no locator attempts on V4.1; `locator-over-input-cap` deferred count reported (expected 7) |
 | WP8a | **Done 2026-11-11.** MiniMax input-size probe (approved by the owner 2026-11-11): with the route paused, send real pending locator packets of increasing size above 191,294 estimated tokens through the evaluation runner until one is rejected or times out; record admitted and rejected provider token counts and latency; update `hard_input_ceiling` and the WP8 cap from the result. Result: admitted up to 941,663 provider tokens (610,831 estimated), rejected 709,545 estimated (HTTP 400); `hard_input_ceiling` 941,663, cap 500,000; 2 of 5 admitted large answers invalid; two route pauses logged and released | Lead (holds the pause) | — | 145 more packets (191,295 to 500,000) | Evidence file, "MiniMax input-size probe (WP8a) and pause log" |
 | WP9 | Gemini Decision 1 as the `judge:anchor` model (owner correction 2026-11-12): Worker `decisions` API shape, two routes on the existing Gemini keys, `DecisionBackend`, anchor independence across all judges, per-anchor-model report; canonical in [review/49](49-judge-consensus-admission.md#gemini-decision-1-as-the-anchor-2026-11-12-review58-wp9) | Opus | WP3a (JEV stood down) | Restores `judge:anchor` in shadow at about one request a minute per key | Attempts on `gemini_decision_1_*` succeed; anchor judgments carry `judge_model: gemini/gemini-decision-1`; first-day 429s match the published limits |
@@ -498,8 +500,8 @@ Order is the production-safety order. Only one coordinator-touching PR is in fli
 **Status 2026-11-13.** WP1a, WP1b, WP2, WP3a, WP3b, WP3c, WP4, WP5, WP6 parts A and B, WP8, WP8a
 and WP9 are merged and deployed (#2653 to #2661, #2665, #2666); this supersedes any "awaiting
 merge" or "PR pending" wording in the rows above. WP4 shipped with one partial commit per bundle
-after 60 s and a 3,000-row daily budget, not the 20 s and three commits proposed in B1. Not started:
-WP7 (optional 780 s). The stale-recipe locator backfill under WP6 was dropped: see §12.3.
+after 60 s and a 3,000-row daily budget, not the 20 s and three commits proposed in B1. WP7
+(optional 780 s) is in its PR (§12.5). The stale-recipe locator backfill under WP6 was dropped: see §12.3.
 
 **WP6 status.** Part A is in the `fix/58-wp6a-producer-run-fixes` PR: the chapter-lane record-write
 lease skip (bounded wait, then a clean deferral stamped `record_write: skipped_lease_busy` on the
@@ -962,6 +964,113 @@ Also noted:
 **To revert:** revert this PR's `site_config.yml` hunk, run `python scripts/compile_llm_lanes.py`,
 and merge. Merging redeploys the Worker with the old caps. To drain faster without reverting, raise
 one lane's `daily_write_units` (and its queue cap) by the trade figures above.
+
+### 12.5 Slow route families: reasoning, output budget and the 780 s ceiling
+
+**Owner brief.** Improve the success rates of OrcaRouter GLM, NVIDIA Gemma and Nemotron 3 Ultra
+with reasoning control, output token reservation or output-length hints in the prompt, in addition
+to raising the timeout to 780 s. Choose the best combination and implement it. Tables, the direct
+calls and the pause log are in the
+[evidence file](evidence/2026-11-11-llm-pipeline-throughput.md#slow-route-families-and-the-780-s-ceiling-r2-f-2026-11-13-to-11-14-review58-125).
+
+**Where the time goes.**
+
+| Family | Lane today | Reasoning share of output | Tokens/s p50 | corr(duration, output) | Lever that could apply |
+|---|---|---:|---:|---:|---|
+| GLM 5.3 Flash, OrcaRouter | judge:adjudicator | 92% | 81 | 0.81 | reasoning effort (thinking cannot be turned off) |
+| Nemotron 3 Ultra (NVIDIA, Kilo, OpenRouter) | chapter-agenda | 73 to 76% | about 55 | 0.70 to 0.88 | reasoning off on NVIDIA |
+| Gemma 4 31B, NVIDIA | none since #2678 | 0 | 8.9 | 0.15 | none: provider throughput |
+
+Every slow request finished with `stop` under a 65,536-token budget, so none was cut by its
+budget. GLM and Ultra are slow because they reason at length. Gemma is slow because the provider is
+slow.
+
+**Hypotheses and test.** H1: a reasoning control shortens calls without losing answers. H2: a
+tighter `max_tokens` (16,384) bounds the calls. H3: a sentence asking for brief reasoning (under
+about 4,000 tokens) shortens it. H4: some calls finish between 720 and 780 s. The plan was fixed
+before the first call: 10 fixed samples per family (production successes from 236 to 706 s plus
+jobs that timed out at 720 s), arms A0 to A3, each reply checked with the lane's production
+validator, and a direct-call timeout of 840 s so the 720 to 780 s tail would show. Each family ran
+on its own paused route.
+
+**Results.**
+
+- **Ultra on NVIDIA** (40 calls):
+
+  | Arm | Finished / 10 | Valid |
+  |---|---:|---:|
+  | A0 control | 1 | 1 |
+  | A1 reasoning off | 5 | 2 |
+  | A2 16,384 tokens | 5 | 0 |
+  | A3 length sentence | 2 | 1 |
+
+  - H1 is partly true. Reasoning off returned 0 reasoning tokens and finished five times as often,
+    but recall against the production answers fell on 2 of 3 comparable requests (line coverage
+    0.86, 0.84, 0.44).
+  - H2 is false. Three of the five finished calls ran out of budget with truncated JSON, and none
+    was valid.
+  - H3 is false. The model reasoned 6k to 11k tokens anyway.
+  - H4: no call in any arm finished between 720 and 840 s. The first five samples timed out in
+    every arm, including with reasoning off. That is provider queueing, not generation.
+- **GLM on OrcaRouter:** not measured. Every call on 2026-11-13 returned 429 ("free model capacity
+  is limited"), and the OrcaRouter daily pool was spent on 2026-11-14.
+- **Gemma:** not tested (no lane, no lever).
+
+**Decision.** This PR implements the parts the evidence supports:
+
+1. **The 780 s ceiling, on the four slow reasoning routes only.**
+   - Routes: `orcarouter_zai_glm_5_3_flash_free` and the three Nemotron 3 Ultra legs (NVIDIA,
+     Kilo, OpenRouter).
+   - The §7 timing set: `MAX_RESPONSE_SECONDS` 780, `FINALIZATION_RESERVE_SECONDS` 45,
+     `LEASE_DURATION_SECONDS` 870.
+   - Every other route now pins `response_timeout_seconds` explicitly. Ordinary routes stay at 720
+     (or their lower WP2 value), and Gemma stays at 720.
+   - The compile script refuses an unpinned route while the ceiling is above 720, and
+     catalog-added routes get 720, so raising the ceiling cannot quietly lengthen other routes.
+2. **A bounded result write.** The measured margin was broken by one B2 result PUT that took
+   125.5 s. `RESULT_WRITE_TIMEOUT_SECONDS: 30` now aborts that write. An abort settles as a
+   retryable `server_error`, and `validateConfig` requires it to be shorter than the 45 s reserve.
+   The executor's start fence (`leaseCoversCall`) now also counts this write. Before, a call
+   delayed by 429 retries or a slow payload read could start late enough to end exactly at the
+   lease deadline, which left no time to store the result. That gap was already present at 720 s.
+   Such a call is now `deferred_late` instead.
+   Worst case: 10.7 s to claim + 30 s window + 780 s + 30 s write + about 2 s commit, about
+   853 s ≤ 870 s lease < 900 s cron.
+3. **Ultra's reasoning switch declared but unused.** `reasoning_controls.off` is set on the NVIDIA
+   Ultra route, and no lane sets it, so requests are unchanged. It records a verified,
+   working control. Enabling it is a one-line `llm_lanes` change once a recall evaluation
+   (#2689) says the success gain is worth the shorter agendas.
+
+**Rejected.** A tighter output budget (truncation, 0 of 5 valid), the length sentence (not obeyed),
+reasoning off on `chapter-agenda` now (recall loss), and any Gemma change (no lever, no lane).
+Untested and left to #2689: GLM `reasoning_effort: low` on `judge:adjudicator`, the Kilo and
+OpenRouter reasoning parameters, and the Ultra recall evaluation.
+
+**Expected gain.** Small, as §7 estimated: about 25 more results a week from the 720 to 780 s tail.
+The experiment saw no call finish in that band, so the gain may be lower. The cost is up to 60 s
+more slot hold on each of the four routes' timeouts, about 28k slot-seconds a week (0.4%) by §7's
+model. The larger lever
+is #2689's GLM effort trial.
+
+**What this changes and invalidates.** Merging deploys the Worker with the new tuning and limits.
+Nothing is re-keyed: response timeouts and reasoning controls are not in any recipe hash, and no
+lane's request changes. Watch after deploy:
+
+- `bundle_completed` success share on the four routes;
+- successes with duration 720 to 780 s (WP7's verification);
+- timeout share;
+- invocation length against the 900 s cron limit;
+- `structured_output_invalid`;
+- result-write `server_error`;
+- `deferred_late` count, which should stay near today's.
+
+Reverts:
+
+- Timing set: first put the four routes back to 720, in the same change or an earlier one. The
+  compile script rejects a route value above the ceiling. Then set 720 / 90 / 840.
+- The four routes alone: back to 720, with the 780 ceiling kept.
+- `RESULT_WRITE_TIMEOUT_SECONDS`: remove it; the Worker falls back to 30 s.
+- The Ultra control: delete it.
 
 ### 12.6 Judge siblings and free decision models
 
