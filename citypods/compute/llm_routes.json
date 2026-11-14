@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 53,
+    "routes_count": 54,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -2077,6 +2077,35 @@
       "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 4
+    },
+    {
+      "route_id": "kilo_baidu_ernie_5_5_flash_preview_free",
+      "model": "baidu/ernie-5.5-flash-preview",
+      "provider": "kilo",
+      "upstream_model": "baidu/ernie-5.5-flash-preview:free",
+      "account_id": "primary",
+      "input_context_limit": 1024000,
+      "hard_input_ceiling": 957162,
+      "structured_output_method": "json_schema",
+      "structured_output_verified_on": "2026-11-14",
+      "rpm": 1,
+      "concurrency": 1,
+      "free": true,
+      "output_context_limit": 921600,
+      "structured_output_method_source": "route",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
+      "structured_output_schema_strip_keys": [],
+      "transports": [
+        "direct"
+      ],
+      "direct_model": "openai/baidu/ernie-5.5-flash-preview:free",
+      "api_base": "https://api.kilo.ai/api/gateway",
+      "ai_gateway_slug": "custom-kilo",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "api_key_env": "KILO_API_KEY",
+      "reset_timezone": "UTC"
     }
   ]
 }
