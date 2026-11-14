@@ -79,6 +79,9 @@ from citypods.judging.text_cache import TextCache
 from citypods.storage.base import StorageReadUnavailable
 
 ANCHOR_PURPOSE = "judge:anchor"
+# The most of one pass's anchor run cap that the anchors after the first may take together
+# (review/58 12.9): 30 of the lane's 120 packets a day.
+LATER_ANCHOR_SHARE = 0.25
 SIBLING_PURPOSE = "judge:sibling"
 ADJUDICATOR_PURPOSE = "judge:adjudicator"
 PURPOSES = {
@@ -955,10 +958,9 @@ def plan(
             group_units: dict[tuple[str, str], list[Item]] = {}
             for subject in subjects:
                 anchor_model = _anchor_of(ctx, [subject.producer_model])
+                used = _models_used(subject)
                 sibling = _pick_sibling(
-                    _sibling_pool(ctx, subject.producer_model, anchor_model),
-                    _models_used(subject),
-                    ctx,
+                    _sibling_pool(ctx, subject.producer_model, anchor_model, used), used, ctx
                 )
                 if sibling is None:
                     stats.counts["no_independent_sibling"] += 1
@@ -1067,20 +1069,37 @@ def _anchor_of(ctx: JudgingContext, producer_models: Sequence[str | None]) -> st
 
 
 def _sibling_pool(
-    ctx: JudgingContext, producer_model: str | None, anchor_model: str | None
+    ctx: JudgingContext,
+    producer_model: str | None,
+    anchor_model: str | None,
+    used: set[str] | frozenset[str] = frozenset(),
 ) -> tuple[str, ...]:
     """The sibling candidates for one subject, independent of its producer and its anchor.
 
     Slots are tried in order and a later slot is used only when no earlier one has an independent
     model, for rule subjects too (review/58 12.9): rule subjects are 94% of all subjects, and
     letting them balance into the ``secondary`` slot filled Qwen's per-model room and left the
-    Nemotron-produced entries, which only that slot can judge, waiting."""
-    return sibling_candidates(
-        producer_model,
-        ctx.sibling,
-        ctx.families,
-        exclude_families=_anchor_exclusion(ctx, anchor_model),
-    )
+    Nemotron-produced entries, which only that slot can judge, waiting.
+
+    A subject keeps an independent sibling of any slot that already judged it or has a packet in
+    flight (``used``), so a rule subject Qwen took under the old balancing is not asked again of
+    Nemotron."""
+    excluded = _anchor_exclusion(ctx, anchor_model)
+    if used:
+        kept = tuple(
+            model
+            for model in sibling_candidates(
+                producer_model,
+                ctx.sibling,
+                ctx.families,
+                allow_all_slots=True,
+                exclude_families=excluded,
+            )
+            if model in used
+        )
+        if kept:
+            return kept
+    return sibling_candidates(producer_model, ctx.sibling, ctx.families, exclude_families=excluded)
 
 
 def _models_used(subject: Subject) -> set[str]:
@@ -1468,8 +1487,22 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext, texts_cache: TextCache) -
     for judge, judge_units in follow_up.items():
         units.setdefault(judge, []).extend(judge_units)
     _add_probes(units, ctx, stats)
-    for (role, model), judge_units in sorted(units.items()):
+    primary_anchor = ctx.anchor.primary_model
+    # A later anchor (review/58 12.9) packs first, so the primary's backlog cannot take the whole
+    # anchor run cap ahead of it every pass, but takes at most a share of that cap.
+    anchor_cap = ctx.run_caps.get(ANCHOR_PURPOSE)
+    later_anchor_left = None if anchor_cap is None else max(1, int(anchor_cap * LATER_ANCHOR_SHARE))
+    order = sorted(
+        units.items(),
+        key=lambda pair: (
+            pair[0][0],
+            pair[0][0] == "anchor" and pair[0][1] == primary_anchor,
+            pair,
+        ),
+    )
+    for (role, model), judge_units in order:
         purpose = PURPOSES[role]
+        later_anchor = role == "anchor" and model != primary_anchor
         backend = _backend_for(role, model, ctx)
         result = pack(judge_units, backend, purpose=purpose, role=role, judge_model=model)
         stats.counts["payload_too_large"] += result.payload_too_large
@@ -1482,6 +1515,11 @@ def _run(episodes: Sequence[Any], ctx: JudgingContext, texts_cache: TextCache) -
             if role == "sibling" and ctx.sibling_room.get(model, 1) <= 0:
                 stats.counts[f"run_cap_outstanding:{purpose}"] += 1
                 break
+            if later_anchor and later_anchor_left is not None:
+                if later_anchor_left <= 0:
+                    stats.counts[f"run_cap_share:{model}"] += 1
+                    break
+                later_anchor_left -= 1
             if ctx.dry_run:
                 # A rehearsal of one real pass: it spends the shared run caps (submitting nothing),
                 # so its counts and its bounded planning match what a scheduled run would send.
@@ -1639,10 +1677,9 @@ def episode_needs_judging(
                 for r in rows
             }
             anchor_model = _anchor_of(ctx, [subject.producer_model])
+            used = _models_used(subject)
             judge_model = _pick_sibling(
-                _sibling_pool(ctx, subject.producer_model, anchor_model),
-                _models_used(subject),
-                None,
+                _sibling_pool(ctx, subject.producer_model, anchor_model, used), used, None
             )
             judges = ([("anchor", anchor_model)] if anchor_model else []) + (
                 [("sibling", judge_model)] if judge_model else []

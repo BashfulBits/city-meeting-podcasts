@@ -2943,3 +2943,29 @@ def test_rule_subjects_stay_out_of_the_qwen_slot():
                     by_model.setdefault(packet.judge_model, set()).add(subject.producer_model)
     assert by_model[QWEN] == {NEMOTRON}
     assert NEMOTRON not in by_model[NEMOTRON]
+
+
+def test_a_rule_subject_keeps_the_qwen_sibling_it_already_has():
+    """CodeRabbit (R2-H): a rule subject Qwen took under the old balancing is not re-asked of
+    Nemotron; the first-slot rule applies only to a subject with no sibling yet."""
+    ctx = _repo_sibling_ctx(FakeDispatch())
+    assert runner._sibling_pool(ctx, "rule:7", DECISION, {QWEN}) == (QWEN,)
+    assert runner._sibling_pool(ctx, "rule:7", DECISION, set()) == (NEMOTRON,)
+    assert runner._sibling_pool(ctx, "rule:7", DECISION, {GEMMA_31B}) == (NEMOTRON,)
+    assert runner._sibling_pool(ctx, NEMOTRON, DECISION, {NEMOTRON}) == (QWEN,)
+
+
+def test_a_later_anchor_packs_first_but_takes_only_its_share_of_the_run_cap(monkeypatch):
+    from citypods.judging.backends import DeciderBackend
+
+    monkeypatch.setattr(DeciderBackend, "max_items", 1)  # one packet per item
+    dispatch = FakeDispatch()
+    eps = [
+        _episode(uid=f"ep-{i}", tags=[_rule_tag()], llm=[_llm_tag(id=f"g-{i}")]) for i in range(8)
+    ]
+    stats = runner.run(eps, _two_anchor_ctx(dispatch, max_outstanding={"judge:anchor": 8}))
+    anchors = [p.judge_model for p, _j in dispatch.submitted.values() if p.role == "anchor"]
+    assert anchors[0] == DECIDER  # ahead of the primary's backlog
+    assert anchors.count(DECIDER) == 2  # 8 x 0.25
+    assert anchors.count(DECISION) == 1  # the primary's one packet still goes
+    assert stats.counts[f"run_cap_share:{DECIDER}"] == 1

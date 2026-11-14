@@ -11,4 +11,5 @@
 - The judge anchor is chosen per entry: the first anchor model independent of the entry's
   producers. Siblings and adjudicators exclude that entry's own anchor family.
 - Rule subjects no longer balance into the `secondary` sibling slot, which is kept for the
-  Nemotron-produced entries only Qwen3.8 may judge.
+  Nemotron-produced entries only Qwen3.8 may judge; a subject keeps a sibling it already has.
+- A later anchor's packets go first in a pass but take at most a quarter of its anchor run cap.

@@ -1181,9 +1181,11 @@ provider through the gateway when one is configured. So the route needs a custom
 OpenRouter routes total 440 rpd, and the account had used 179 of 1,000 by 09:2xZ on 11-14. The
 Google-produced backlog is about 7,400 subjects, about 310 anchor packets of about 32 items; steady
 state is about 2 subjects a day. The anchor lane's ceiling (12.4) is 120 packets a day, which the
-Gemini anchor's backlog fills. **Proposed share for the Decider: 30 packets a day** of that
-ceiling (or 30 added to it), which drains the backlog in about ten days. The route's `rpd: 40`
-leaves room for retries; 440 + 40 stays well within 1,000. This PR does not change lane caps.
+Gemini anchor's backlog fills. So the runner packs a later anchor's packets first in each pass
+and lets them take at most a quarter of that pass's anchor run cap (`LATER_ANCHOR_SHARE`, counter
+`run_cap_share:<model>`): **30 of the 120 packets a day**, which drains the backlog in about ten
+days. If the owner prefers, the lane ceiling can instead grow by 30; this PR does not change lane
+caps. The route's `rpd: 40` leaves room for retries; 440 + 40 stays well within 1,000.
 
 **Re-qualification** follows review/49: probes, the 2% stability sample, and agreement with the
 Gemini anchor on entries both may judge, before any verdict counts. A decision model is not added
@@ -1197,6 +1199,8 @@ Most of Qwen's were rule subjects: rule subjects balanced across both slots by h
 filled Qwen's 40-packet room and the Nemotron-produced entries, which only Qwen may judge, waited.
 **Fix:** rule subjects now use the first slot with an independent model, like every other entry
 (`runner._sibling_pool`), so the `secondary` slot holds only entries no earlier slot can judge.
+A subject that already has a judgment or a queued packet from an independent sibling keeps that
+sibling, so rule subjects Qwen took before are not asked again of Nemotron.
 
 Producer mix of judge subjects (records snapshot 2026-11-10):
 
