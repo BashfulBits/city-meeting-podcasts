@@ -15,6 +15,12 @@
  * the reply, see `decisionKeyMap`); no `criteria` on `noul`; the key in an `x-goog-api-key`
  * header; usage as `{total_input_tokens, total_output_tokens}`.
  *
+ * `openrouter_decisions` is OpenRouter's typed-judgment endpoint (`POST /api/alpha/decisions`,
+ * Perplexity Decider V1.3; review/58 12.9). It reads the same payload and maps keys and `noul`
+ * criteria as `decisions` does, but sends `state` (JEV's field) instead of `input`, authenticates
+ * with a Bearer key, and reports usage as `{input_tokens, output_tokens}`. Its 4xx replies are
+ * OpenRouter's ordinary ones, so the generic classification applies.
+ *
  * Optional shape hooks used by gateway.js: `authHeaders(apiKey)` (default: Bearer),
  * `normalizeReply(payload, body)` (applied to a parsed 2xx body before any reply check or storage)
  * and `normalizeStatus(status, body)` (the status the rest of the Worker sees for a non-2xx reply).
@@ -195,7 +201,34 @@ const decisions = {
   lengthTruncated: () => false,
 };
 
-const SHAPES = { chat, systemone, decisions };
+// A decision model answers every question it is asked, as Gemini Decision 1 does (tolerance 0).
+const openrouterDecisions = {
+  buildRequest(payload, route) {
+    const body = payload?.systemone;
+    const questions = systemoneQuestions(payload);
+    if (!body || typeof body !== "object" || !questions) {
+      throw new Error(
+        `route ${route?.route_id} (api_shape openrouter_decisions) needs payload.systemone.questions`
+      );
+    }
+    const { toWire } = decisionKeyMap(questions);
+    return {
+      model: route.upstream_model,
+      state: body.state ?? {},
+      questions: Object.fromEntries(
+        Object.entries(questions).map(([key, question]) => [toWire.get(key), decisionQuestion(question)])
+      ),
+    };
+  },
+  normalizeReply: (payload, rawBody) => decisions.normalizeReply(payload, rawBody),
+  emptyCompletion: (status, body) => systemone.emptyCompletion(status, body),
+  replyProblem: (payload, body) =>
+    missingAnswerProblem(payload, body, DECISIONS_MAX_MISSING_ANSWER_FRACTION),
+  observedTokens: (body) => systemone.observedTokens(body),
+  lengthTruncated: () => false,
+};
+
+const SHAPES = { chat, systemone, decisions, openrouter_decisions: openrouterDecisions };
 export const API_SHAPES = Object.freeze(Object.keys(SHAPES));
 
 /** The API shape a route speaks; an absent `api_shape` is `chat`. Unknown shapes throw. */

@@ -1221,6 +1221,120 @@ The useful variant is a decision model as a **pre-filter** that narrows the 38 t
 before the chat tagger. It would cut tagger tokens without changing who produces a tag. Test it
 offline on a free decision endpoint that production does not use, and do not use Gemini Decision.
 
+### 12.9 Free decision models as judges: Mercury Decide, Perplexity Decider, sibling capacity
+
+#### Mercury Decide: no provider serves it
+
+The id and the path are right; OpenRouter has no endpoint behind them.
+
+- **Catalog.** On 2026-11-13 23:2xZ and again on 11-14 09:2xZ, `inception/mercury-decide` is in
+  neither `/api/v1/models` listing. `GET /api/v1/models/<id>/endpoints` returns `endpoints: []` for
+  `inception/mercury-decide:free`, for the paid `inception/mercury-decide`, and for the dated
+  `inception/mercury-decide-20260930:free`.
+- **Calls** (one tiny synthetic request each, no transcript text):
+
+  | Id | Path | Status and body |
+  |---|---|---|
+  | `inception/mercury-decide:free` | `/api/alpha/decisions` | 404 "No endpoints found for inception/mercury-decide:free." |
+  | same | `/api/v1/chat/completions` | 400 "…is a decisions model and cannot be used with the chat/completions endpoint. Use the /api/alpha/decisions endpoint instead." |
+  | `inception/mercury-decide-20260930:free` | `/api/alpha/decisions` | 404, the same message (the dated id resolves to the free id) |
+  | same | `/api/v1/chat/completions` | 400, the same message |
+  | `inception/mercury-decide:free` (11-14 09:21Z) | `/api/alpha/decisions` | 404, unchanged |
+
+  The chat path recognizing it as a decisions model proves the id is valid; the 404 means no
+  provider is listed. It is not a data-policy filter on our key: the paid listing is empty too, and
+  the error carries none of OpenRouter's privacy-setting wording. With the 21 calls of 12.6 it has
+  failed every time for about 22 hours.
+- **Elsewhere.** Inception's own API serves only chat models (and is winding down, ending
+  2026-12-28). Baseten serves Mercury Decide, paid only, so it is out of scope.
+- **Owner action.** None now; no account setting would change this. Re-probe the endpoint listing
+  if OpenRouter lists a provider again; the wiring below would take it with one more route.
+
+#### Perplexity Decider V1.3: wired as the second anchor, paused until one owner step
+
+**Why the custom provider.** The AI Gateway `openrouter` slug maps to `https://openrouter.ai/api/v1`,
+and the decisions endpoint is `https://openrouter.ai/api/alpha/decisions`. Through the slug,
+`/alpha/decisions` and `/api/alpha/decisions` both return 404 (12.6), there is no
+`/api/v1/decisions` alias (404, 2026-11-13 23:20Z), and the Worker sends every
+provider through the gateway when one is configured. So the route needs a custom gateway provider.
+
+**Owner step.** Register a custom AI Gateway provider `custom-openrouter-api` with Base URL
+`https://openrouter.ai/api` (as for `custom-beatapi`). Then set
+`openrouter_pplx_decider_v1_3_free` to `rpd: 40` in `config/provider_limits.yml`, move
+`perplexity/pplx-decider-v1.3` from `eligible_models` to `models` (after Gemini) in
+`judge:anchor`, and recompile.
+
+**What is in place.**
+
+- **Worker shape `openrouter_decisions`** (`api_shapes.js`). JEV's `{model, state, questions}` body
+  with the `decisions` key map and `noul` criteria dropped, Bearer auth, usage from
+  `input_tokens`/`output_tokens`, and every asked answer required. No status rewriting: OpenRouter's
+  4xx are ordinary, so the generic classification applies. `classify.js` is unchanged.
+- **Provider `openrouter_decisions`** (same key and account as `openrouter`) and the free route
+  `openrouter_pplx_decider_v1_3_free` (`upstream_model: perplexity/pplx-decider-v1.3:free`,
+  `request_path: /alpha/decisions`, `rpm: 10`, `concurrency: 1`, `rpd: 0`). Catalog 2026-11-14: one
+  endpoint (Perplexity), prompt and completion price 0, 262,144 context.
+- **Python.** `DeciderBackend` (JEV's questions and parser, the 45,000-token packet ceiling, output
+  reservation 1). Family `qwen`: the Decider is a Qwen3.8-27B checkpoint.
+- **Anchor per entry** (`families.anchor_for`). Each entry's anchor is the first active anchor
+  model independent of its producers. Gemini keeps every entry it judges today; the Decider takes
+  only Google-produced entries. The runner, adjudication and the dirtiness check all use the
+  entry's own anchor; siblings and adjudicators exclude that anchor's family. A Google-produced
+  entry then has the Decider (`qwen`) as anchor, Nemotron (`nvidia`) as sibling and GLM (`zai`)
+  or DeepSeek as adjudicator. A queued packet of either active anchor is kept; the pass counts
+  `second_anchor:<model>`.
+- **Unchanged.** Independence rules, the shadow mode, per-model statistics (the report keys anchor
+  cells by model) and every stored judgment.
+
+**Sizing.** OpenRouter's free models share 1,000 requests a day per account. The configured
+OpenRouter routes total 440 rpd, and the account had used 179 of 1,000 by 09:2xZ on 11-14. The
+Google-produced backlog is about 7,400 subjects, about 310 anchor packets of about 32 items; steady
+state is about 2 subjects a day. The anchor lane's ceiling (12.4) is 120 packets a day, which the
+Gemini anchor's backlog fills. So the runner packs a later anchor's packets first in each pass
+and lets them take at most a quarter of that pass's anchor run cap (`LATER_ANCHOR_SHARE`, counter
+`run_cap_share:<model>`): **30 of the 120 packets a day**, which drains the backlog in about ten
+days. If the owner prefers, the lane ceiling can instead grow by 30; this PR does not change lane
+caps. The route's `rpd: 40` leaves room for retries; 440 + 40 stays well within 1,000.
+
+**Re-qualification** follows review/49: probes, the 2% stability sample, and agreement with the
+Gemini anchor on entries both may judge, before any verdict counts. A decision model is not added
+as a sibling: the sibling backend asks for quoted reasons, which a decision model cannot give, and
+the Decider shares Qwen's family.
+
+#### Sibling capacity: Qwen keeps up once rule subjects stay out of its slot
+
+The first run after #2678 (00:33Z) sent 78 sibling packets to Nemotron 3.5 Super and 36 to Qwen.
+Most of Qwen's were rule subjects: rule subjects balanced across both slots by headroom, so they
+filled Qwen's 40-packet room and the Nemotron-produced entries, which only Qwen may judge, waited.
+**Fix:** rule subjects now use the first slot with an independent model, like every other entry
+(`runner._sibling_pool`), so the `secondary` slot holds only entries no earlier slot can judge.
+A subject that already has a judgment or a queued packet from an independent sibling keeps that
+sibling, so rule subjects Qwen took before are not asked again of Nemotron.
+
+Producer mix of judge subjects (records snapshot 2026-11-10):
+
+| Producer family | All subjects | Published ≤ 30 d | Published ≤ 90 d | Sibling | Anchor |
+|---|---:|---:|---:|---|---|
+| rule | 158,783 (94.1%) | 1,163 | 3,473 | Nemotron | Gemini |
+| google | 7,383 (4.4%) | 60 | 129 | Nemotron | Decider (none while paused) |
+| nvidia | 1,421 (0.8%) | 4 | 32 | Qwen | Gemini |
+| deepseek | 1,064 (0.6%) | 11 | 12 | Nemotron | Gemini |
+
+- **Qwen.** Groq allows about 200k tokens a day; a sibling packet is about 6,000 tokens for up to
+  10 items, so about 33 packets (330 items) a day. Nemotron-produced entries need about 1,900 items
+  (1,421 subjects x about 1.35) for the backlog, about 6 days, then about 0.2 subjects a day.
+- **Nemotron** takes all other entries. Its routes ran at 97–98% success (12.6); the sibling lane's
+  ceiling (12.4, 130 packets a day) binds before its routes do.
+- **No other sibling is needed.** The candidate kept in reserve is MiniMax M3.1 Flash on NVIDIA
+  (family `minimax`, 358 of 373 locator calls succeeded), but it shares NVIDIA's 1 rpm with the
+  locator.
+- **Expected counts.** `no_independent_sibling` about 0: every producer family in the snapshot has
+  an independent sibling, and no producer family is unknown. `no_independent_anchor` stays at the
+  Google-produced count (3,191 in the 00:33Z run) until the Decider route opens, then about 0.
+
+OpenRouter requests for this package: 6 model calls (5 Mercury, 1 path check at `/api/v1/decisions`), plus catalog,
+endpoint and key reads. Evidence: [evidence file, "Free decision models"](evidence/2026-11-11-llm-pipeline-throughput.md#free-decision-models-and-sibling-capacity-2026-11-14-review58-129).
+
 ### 12.10 Tag producer stall and the anchor's six-hour block
 
 #### Anchor six-hour block (issue #2672)
@@ -1269,6 +1383,76 @@ issue [#2682](https://github.com/BashfulBits/city-meeting-podcasts/issues/2682).
   `route_unavailable`.
 - `route_health` escalations for these routes stay on rungs 1 to 2.
 - Anchor packets per day: about 100 calls in the 33 h measured, against 2 x 10,000 rpd.
+
+### 12.11 Lane reservations split from the daily row cap by ratio
+
+**Question.** The owner asked that the §12.4 caps adjust on their own as feeds and meetings per
+day grow, without a config change each time. A first version (feed-count scaling of the §12.4
+meetings/day rule) was replaced on review by a simpler rule: keep the ratios tested in §12.4, but
+size the total to what the Worker can admit and execute within the daily row cap, and let lanes
+borrow unspent reservation late in the day. Live probes get a small fixed pool.
+
+**Change.** The production lanes no longer state `reserved_write_units`, `daily_write_units` or
+`max_queued_jobs`. Each states only a `reservation_ratio`: agenda 10, locator 10, tagger 40,
+moments 10, anchor 20, sibling 30, adjudicator 10 (the §12.4 reserved jobs, in the same
+proportions). `remedy:p3` is marked `live: true` with ratio 1. A shared `llm_lane_budget` block in
+`config/site_config.yml` holds the row model (1.5 rows per write unit, 12 execution rows per job,
+1,500 fixed rows a day), `live_reservation_jobs` 100 and `queue_days` 2. The row cap is
+`DO_ROWS_ENQUEUE_STOP` in `config/dispatch_tuning.yml` (90,000), read from that one place; a
+missing value fails the compile. `citypods/compute/llm_lanes.py` computes:
+
+- live lanes split the 100-job pool by their ratios among themselves (`remedy:p3` alone gets all
+  100), and the pool's rows (jobs × rows per job) come off the row budget first;
+- for the other lanes, k (jobs per ratio point) solves sum of ratio × k × rows per job = row cap −
+  fixed rows − live rows, where rows per job = 1.5 × units per job + 12;
+- reserved jobs = floor(ratio × k); `reserved_write_units` = jobs × units per job;
+- `daily_write_units` = the sum of all reservations (every lane may borrow up to the whole day);
+- `max_queued_jobs` = `queue_days` × the lane's reserved jobs (× the largest lane's if it is 0).
+
+The client (`load_lanes`) and `scripts/compile_llm_lanes.py` share this code. Adding or removing a
+lane, or changing a ratio, re-splits every reservation on the next compile; nothing else needs an
+edit. A further live lane shares the same 100 jobs. Mixing ratio and stated-cap lanes, `live`
+without a ratio, and an all-zero ratio set are rejected.
+
+**Result at 90,000 rows.** Live pool 100 jobs (1,800 rows); k = 33.80; 4,494 jobs, 23,046 units,
+~89,997 rows.
+
+| Lane | §12.4 reserved / daily / queue (units) | §12.11 reserved units (jobs) / daily / queue |
+|---|---|---|
+| chapter-agenda | 60 / 660 / 220 | 2,028 (338) / 23,046 / 676 |
+| chapter-locator | 40 / 440 / 220 | 1,352 (338) / 23,046 / 676 |
+| topic-tags:tagger | 280 / 4,550 / 1,300 | 9,464 (1,352) / 23,046 / 2,704 |
+| r6-moments | 50 / 550 / 220 | 1,690 (338) / 23,046 / 676 |
+| judge:anchor | 80 / 480 / 240 | 2,704 (676) / 23,046 / 1,352 |
+| judge:sibling | 120 / 520 / 260 | 4,056 (1,014) / 23,046 / 2,028 |
+| judge:adjudicator | 40 / 440 / 220 | 1,352 (338) / 23,046 / 676 |
+| remedy:p3 (live) | 0 / 800 / 800 | 400 (100) / 23,046 / 200 |
+
+The reserved total goes from 670 to 23,046 units. `remedy:p3` is still closed until
+`config/remedy.yml` admits its routes; until then its 400 reserved units are withheld from the
+other lanes before 12:00 UTC and released to them by the borrow schedule after.
+
+**Worker clamp and borrowing.** The Worker's admission budget is now
+min(`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`, reserved total), in `_maxIngressWriteUnitsPerUtcDay`
+(`effectiveIngressWriteUnits` in `write_budget.js`). Without it, the ~15,000 units between the
+reserved total and the 38,400-unit guard would be first-come and could reach the row stop before
+the reserved lanes spent their share. With it, a lane exceeds its reservation only by borrowing:
+`_reservationBorrowFraction` releases none of the other lanes' unspent reservations with more
+than 12 h left in the UTC day, half with 6 to 12 h left, and all of it in the last 6 h. A map with
+no reservations leaves the guard unchanged. The worker tests cover borrowing at 00, 12 and 18 UTC
+against the clamped budget.
+
+**Guards.** The compiler still fails if the reserved total exceeds
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` or the reserved jobs exceed `MAX_JOBS_PER_UTC_DAY`, and now
+also if the rows exceed the row cap or the live pool leaves no rows. Raising
+`DO_ROWS_ENQUEUE_STOP` rescales every non-live lane; past about 120,000 rows the 6,000-job guard
+fails the compile first.
+
+**What this does not do.** The reserved rows equal the enqueue stop, which also counts execution
+rows, so a day that spends every reservation reaches the stop near its end. That is the design:
+the stop, not an extra margin, bounds the day. `DO_ROWS_ENQUEUE_STOP` was previously only a code
+fallback (it was kept out of Cloudflare vars by the 64-variable limit); it is now declared in
+`dispatch_tuning.yml`, compiled into `dispatch_tuning.json`, with the same value.
 
 ### 12.12 Placed egress for Google calls (#2682)
 

@@ -629,6 +629,42 @@ Estimated input of the 258 refused requests: 120,063 minimum, 174,145 median, 18
 | None stored, no chapter tags | 1,101 |
 | Other | 1,539 |
 
+## Free decision models and sibling capacity (2026-11-14, review/58 12.9)
+
+Sources: OpenRouter's public model and endpoint listings and the account's key endpoint (read
+only), six tiny synthetic model calls with no transcript text, the records snapshot of 2026-11-10
+for the producer mix, and the 00:33Z judge-run counts on 11-14. No request or response body is
+committed.
+
+- **Mercury Decide listings.** `endpoints: []` for `inception/mercury-decide:free`,
+  `inception/mercury-decide` and `inception/mercury-decide-20260930:free` at 11-13 23:2xZ and
+  11-14 09:2xZ; the model is in neither `/api/v1/models` listing.
+- **Mercury Decide calls.**
+
+  | Time (UTC) | Id | Path | HTTP |
+  |---|---|---|---:|
+  | 11-13 23:20:21 | `inception/mercury-decide:free` | `/api/alpha/decisions` | 404 |
+  | 11-13 23:20:21 | `inception/mercury-decide:free` | `/api/v1/chat/completions` | 400 |
+  | 11-13 23:20:21 | `inception/mercury-decide-20260930:free` | `/api/alpha/decisions` | 404 |
+  | 11-13 23:20:21 | `inception/mercury-decide-20260930:free` | `/api/v1/chat/completions` | 400 |
+  | 11-14 09:21:59 | `inception/mercury-decide:free` | `/api/alpha/decisions` | 404 |
+
+  Bodies: 404 "No endpoints found for inception/mercury-decide:free."; 400 "<id> is a decisions
+  model and cannot be used with the chat/completions endpoint. Use the /api/alpha/decisions
+  endpoint instead."
+- **Path check.** `https://openrouter.ai/api/v1/decisions` with the Decider Flash id: 404.
+- **Perplexity Decider V1.3 endpoint (11-14).** One endpoint, Perplexity; prompt and completion
+  price 0; context 262,144.
+- **Account.** `free_model_daily_requests` 179 of 1,000 used at 09:2xZ on 11-14 (266 of 1,000 at
+  23:2xZ on 11-13). The configured OpenRouter routes total 440 rpd.
+- **Producer mix.** 168,651 judge subjects in 17,841 episodes: rule 158,783 (94.1%), google 7,383
+  (4.4%; Gemini 3.1 Flash Lite 6,596, Gemini 3.5 Flash Lite 787), nvidia 1,421 (0.8%, all Nemotron
+  3.5 Super on OpenRouter), deepseek 1,064 (0.6%). Published within 30 days: 1,238 (rule 1,163,
+  google 60, deepseek 11, nvidia 4). Within 90 days: 3,646 (rule 3,473, google 129, nvidia 32,
+  deepseek 12). No subject had an unknown producer family.
+- **Judge run 11-14 00:33Z** (first after #2678): 78 sibling packets to Nemotron 3.5 Super, 36 to
+  Qwen3.8; `no_independent_anchor` 3,191.
+
 ## Slow route families and the 780 s ceiling (R2-F, 2026-11-13 to 11-14, review/58 §12.5)
 
 Sources: AI Gateway logs since 2026-10-01 (per-call duration and usage), Workers Logs

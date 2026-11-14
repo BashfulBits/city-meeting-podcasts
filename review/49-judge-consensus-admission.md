@@ -172,11 +172,31 @@ now has these consequences:
 - Gemma 4 31B left `judge:sibling` (owner decision). It could not judge beside a Google anchor, and
   4% of its queued sibling calls succeeded on 2026-11-12/13.
 - The lane is Nemotron 3.5 Super (slot `primary`) and Qwen3.8-27B on Groq (slot `secondary`,
-  family `qwen`). Qwen takes only what Nemotron cannot judge, such as Nemotron-produced entries.
-  Rule subjects balance across both by headroom, with Qwen capped at 40 outstanding packets.
+  family `qwen`). Qwen takes only what Nemotron cannot judge, such as Nemotron-produced entries,
+  and is capped at 40 outstanding packets. (2026-11-14: rule subjects no longer balance into Qwen's
+  slot; they filled its room and left the Nemotron-produced entries waiting, review/58 12.9.)
 - Gemma's stored judgments keep their identity, and its pending markers are dropped like JEV's.
 - Google-produced entries still get no anchor. A second, non-Google decision anchor (Perplexity
-  Decider V1.3, free) is proposed in issue #2674.
+  Decider V1.3, free) is proposed in issue #2674. (2026-11-14: wired and paused, see below.)
+
+**Second anchor: Perplexity Decider V1.3 ([review/58 12.9](58-llm-pipeline-throughput-balance.md)).**
+`judge:anchor` is an ordered list, and each entry's anchor is the first model independent of its
+producers. Gemini Decision 1 stays first; `perplexity/pplx-decider-v1.3` (family `qwen`, a
+Qwen3.8-27B checkpoint) takes only Google-produced entries. Their sibling is then Nemotron and their
+adjudicator GLM or DeepSeek. The Decider is `eligible_models` only, and its route sits at `rpd: 0`,
+until the owner registers the `custom-openrouter-api` AI Gateway provider. Mercury Decide has no
+provider on OpenRouter and is not wired.
+
+**Re-qualifying the Decider.** It starts in shadow, with its own statistics, like every judge:
+
+1. Read its per-judge probe results (section 4.2) once it has about 20 probes.
+2. Run the 2% stability sample.
+3. Compare it with the Gemini anchor. They never judge the same entry in production, so compare
+   on a replay of stored Gemini anchor requests for non-Google entries (12.6 measured 86.1% same
+   side of 0.5 on 431 answers), then on the Google-produced entries' sibling and adjudicator
+   readings.
+4. Watch `second_anchor:perplexity/pplx-decider-v1.3` and `no_independent_anchor` per pass: the
+   first should match the Google-produced subjects planned, the second fall to about 0.
 
 **Re-qualifying Qwen3.8-27B as a sibling.** Qwen has no judging record here, so it starts in shadow
 like every judge. Before its readings count:

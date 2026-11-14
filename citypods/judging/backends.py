@@ -261,6 +261,14 @@ DECISION_MODEL = "gemini/gemini-decision-1"
 DECISION_ROUTE_ID = "gemini_decision_1_primary"
 DECISION_HARD_INPUT_CEILING = 45_000
 
+# Perplexity Decider V1.3 on OpenRouter's free tier (review/58 12.9), the non-Google anchor for the
+# Google-produced entries Gemini Decision 1 may not judge. 262,144-token context, no published TPM;
+# the ceiling matches Gemini's so a packet sized for either anchor fits both. The Worker speaks
+# ``POST /api/alpha/decisions`` (api_shape ``openrouter_decisions``); the job payload is JEV's.
+DECIDER_MODEL = "perplexity/pplx-decider-v1.3"
+DECIDER_ROUTE_ID = "openrouter_pplx_decider_v1_3_free"
+DECIDER_HARD_INPUT_CEILING = 45_000
+
 
 def _jev_question(item: Item) -> dict[str, Any]:
     kind = item.question.kind
@@ -385,10 +393,22 @@ class DecisionBackend(JevBackend):
     route_id = DECISION_ROUTE_ID
 
 
+class DeciderBackend(JevBackend):
+    """The second anchor on Perplexity Decider V1.3 (review/58 12.9): JEV's questions and parser.
+
+    OpenRouter's decision reply has Gemini Decision 1's shape (noul probabilities; choice with
+    ``probabilities`` and ``confidence``; score), so the parser is unchanged."""
+
+    output_reservation = 1
+    hard_input_ceiling = DECIDER_HARD_INPUT_CEILING
+    route_id = DECIDER_ROUTE_ID
+
+
 # The anchor backend for each anchor model the judge lane may name.
 ANCHOR_BACKENDS: dict[str, type[JevBackend]] = {
     JEV_MODEL: JevBackend,
     DECISION_MODEL: DecisionBackend,
+    DECIDER_MODEL: DeciderBackend,
 }
 
 
