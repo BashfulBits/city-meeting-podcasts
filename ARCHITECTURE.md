@@ -1625,6 +1625,14 @@ routes inherit their existing defaults. The
 [spaced replay evidence](review/evidence/2026-10-21-gemma-gateway-retries.md) supports retry
 amplification as a cause of TPM refusals, without proving intrinsic packet size or 95% coverage.
 
+#### Dispatch Worker placed egress (review/58 12.12)
+
+Google AI Studio refuses calls that leave some Cloudflare colos (HKG). The dispatch Worker's cron
+handler cannot be placed, so calls for the providers in its `PLACED_EGRESS_PROVIDERS` var (default
+`gemini`) go through the Worker's own fetch handler over the `PLACED_EGRESS` self service binding
+(`src/placed_egress.js`, private path `/__placed_egress`, bearer-token gated, AI Gateway and Google
+hosts only). The Worker carries a `gcp:us-east4` placement hint, which also places the `/v2/*` API.
+
 #### Cloudflare AI Gateway (direct transport only)
 
 A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both

@@ -1160,3 +1160,36 @@ issue [#2682](https://github.com/BashfulBits/city-meeting-podcasts/issues/2682).
   `route_unavailable`.
 - `route_health` escalations for these routes stay on rungs 1 to 2.
 - Anchor packets per day: about 100 calls in the 33 h measured, against 2 x 10,000 rpd.
+
+### 12.12 Placed egress for Google calls (#2682)
+
+**Problem.** Section 12.10 absorbs Google's HTTP 400 "User location is not supported" (seen only from
+the HKG colo, 19 of 636 logged AI Studio requests) but does not stop it; each refused Decisions call
+still costs about 15 s and a retry.
+
+**Why a placement hint alone is not enough.** Cloudflare's placement (`placement` in
+`wrangler.jsonc`) moves only fetch handler invocations. The dispatch runs in the cron handler,
+which runs wherever Cloudflare starts it, and the provider calls leave from there.
+
+**Change.** The Worker gets a placement hint (`gcp:us-east4`) and a service binding to itself
+(`PLACED_EGRESS`). For the providers in the `PLACED_EGRESS_PROVIDERS` var (default `gemini`),
+`callAiGateway` sends the request to the Worker's own fetch handler on the private path
+`/__placed_egress` (`src/placed_egress.js`). That invocation runs at the placed location and makes
+the upstream call from there, streaming the reply back unchanged. The hop:
+
+- needs the ingress bearer token in its own header (constant-time check), and answers 404 otherwise;
+- forwards only to `gateway.ai.cloudflare.com` or `generativelanguage.googleapis.com` over HTTPS
+  (SSRF gate), with `redirect: manual`;
+- costs the same one subrequest per call as the direct fetch, and the callee has its own CPU budget;
+- reports the colo it ran in (`placed_egress` log line with route, status and colo).
+
+Placement is Worker-wide, so the ingress API (`/v2/*`) also runs near the hint from now on. The
+other providers' calls still leave from the cron colo, as before.
+
+**Rollback.** Set `PLACED_EGRESS_PROVIDERS` to empty (stops the hop, keeps placement) or remove the
+`placement` block (ingress back to nearest colo). Both are config-only and deploy on merge.
+
+**Verify after deploy.** Workers Logs `placed_egress` lines show a US colo for every Google call; AI
+Gateway logs show no 400 "User location is not supported" for Google; `gemini_decision_1_*` latency
+and other providers' latency are unchanged. If the `placed_egress` colo still varies, the self
+binding is not being placed and the next option in #2682 (a separate placed egress Worker) applies.

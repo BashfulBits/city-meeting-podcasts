@@ -30,6 +30,21 @@
   // Phase 2's scheduled() handler now does real work (claimDispatchWindow + dispatch), so the
   // per-minute cron this design's own request/CPU budget was built around is back -- see
   // "Bounded initial configuration": 1,440 ticks/day, well inside every Free-tier ceiling.
+  // review/58 §12.12 (#2682): Google AI Studio refuses calls leaving some colos (HKG) with HTTP 400
+  // "User location is not supported". Placement moves only fetch handler invocations, so the
+  // providers in the PLACED_EGRESS_PROVIDERS var below are called through this
+  // Worker's own fetch handler over the PLACED_EGRESS self binding (src/placed_egress.js), which
+  // runs near the hinted region. The ingress API (/v2/*) runs there too. Remove this block to
+  // return to running every fetch nearest the caller; empty PLACED_EGRESS_PROVIDERS stops the hop.
+  "placement": {
+    "region": "gcp:us-east4"
+  },
+  "services": [
+    {
+      "binding": "PLACED_EGRESS",
+      "service": "citypods-llm-dispatch-v2"
+    }
+  ],
   "triggers": {
     "crons": ["* * * * *"]
   },
@@ -50,7 +65,10 @@
     // review/58 WP6b: the repository whose producer workflows the cron fires through
     // repository_dispatch (src/producer_trigger.js). Not secret; inert until the
     // GITHUB_DISPATCH_TOKEN secret below is set. A fork points this at its own repository.
-    "GITHUB_DISPATCH_REPOSITORY": "BashfulBits/city-meeting-podcasts"
+    "GITHUB_DISPATCH_REPOSITORY": "BashfulBits/city-meeting-podcasts",
+    // review/58 §12.12 (#2682): comma-separated provider ids (config/provider_limits.yml) whose
+    // calls go through the placed-egress hop above. Empty switches the hop off.
+    "PLACED_EGRESS_PROVIDERS": "gemini"
   }
   // Secrets (never plain vars -- set with `wrangler secret put <NAME>`, one time, matching
   // the retired v1 Worker's pattern): BEARER_TOKEN (ingress auth), every provider's
