@@ -701,6 +701,33 @@ test("ingress admission is clamped to the reserved total and borrowing still wor
   assert.deepEqual(await admitted("2026-10-22T18:00:00Z"), { jobs: 10, units: 40 });
 });
 
+test("a metadata reservation key neither shrinks nor blocks ingress admission", async () => {
+  // The clamp skips `_` keys, so enqueueBatch must not withhold them either: otherwise the 7-unit
+  // clamped day would also withhold 9 metadata units and reject every job before noon UTC.
+  const { coordinator } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "1000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "400",
+    INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
+      _meta: { reserved_write_units: 9 },
+      "chapter-agenda": { reserved_write_units: 8, daily_write_units: 8 },
+    }),
+  });
+  assert.equal(coordinator._maxIngressWriteUnitsPerUtcDay(), 8);
+  const res = await coordinator.enqueueBatch([
+    {
+      id: "m1",
+      idempotency_key: "m1-key",
+      request_digest: "m1-digest",
+      policy_json: JSON.stringify({ allowed_models: ["unknown-model"], purpose: "chapter-agenda" }),
+      prompt_family: "test",
+      input_token_estimate: 1,
+      max_output_token_estimate: 1,
+      payload_key: "payloads/m1/request.json",
+    },
+  ]);
+  assert.equal(res.accepted.length, 1);
+});
+
 test("effectiveIngressWriteUnits leaves the guard alone without reservations", () => {
   assert.equal(effectiveIngressWriteUnits(400, {}), 400);
   assert.equal(effectiveIngressWriteUnits(400, { a: { reserved_write_units: 0 } }), 400);

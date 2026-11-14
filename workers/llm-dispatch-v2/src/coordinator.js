@@ -3213,7 +3213,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // run work (`_reservationBorrowFraction`).
         const otherReservations = Object.entries(ingressReservations).reduce(
           (sum, [otherPurpose, config]) => {
-            if (otherPurpose === purpose) return sum;
+            // `_`-prefixed keys are metadata, as in ingressStatus and the reserved-total clamp.
+            if (otherPurpose === purpose || otherPurpose.startsWith("_")) return sum;
             const reserved = Number(config?.reserved_write_units);
             if (!Number.isFinite(reserved) || reserved <= 0) return sum;
             return sum + Math.max(0, reserved - (purposeUsage.get(otherPurpose)?.write_units || 0));
@@ -3427,7 +3428,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return { status: "purpose_write_budget_exceeded" };
       }
       const otherReservations = Object.entries(reservations).reduce((sum, [otherPurpose, config]) => {
-        if (otherPurpose === purpose) return sum;
+        if (otherPurpose === purpose || otherPurpose.startsWith("_")) return sum;
         const reserved = Number(config?.reserved_write_units);
         if (!Number.isFinite(reserved) || reserved <= 0) return sum;
         const used = [...sql.exec(

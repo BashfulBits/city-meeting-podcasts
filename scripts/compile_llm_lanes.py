@@ -211,10 +211,15 @@ def main(argv: list[str] | None = None) -> int:
             unit_budget=_global_ingress_budget(),
             job_budget=_tuning_int("MAX_JOBS_PER_UTC_DAY"),
         )
+        # A live-only registry has no ratio point to report (jobs_per_ratio_point would raise).
+        split = (
+            f"{jobs_per_ratio_point(lanes, budget):.2f} jobs per ratio point split from "
+            if any(not lane.live for lane in lanes.values())
+            else f"live pool of {budget.live_reservation_jobs} jobs within "
+        )
         print(
-            f"lane reservations: {jobs_per_ratio_point(lanes, budget):.2f} jobs per ratio point "
-            f"split from DO_ROWS_ENQUEUE_STOP {budget.row_cap} = {totals['jobs']} jobs, "
-            f"{totals['units']} units, ~{totals['rows']:,.0f} rows"
+            f"lane reservations: {split}DO_ROWS_ENQUEUE_STOP {budget.row_cap} = "
+            f"{totals['jobs']} jobs, {totals['units']} units, ~{totals['rows']:,.0f} rows"
         )
     rendered = json.dumps(compiled, indent=2, sort_keys=False) + "\n"
 
