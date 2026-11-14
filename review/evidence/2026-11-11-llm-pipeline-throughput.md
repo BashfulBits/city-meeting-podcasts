@@ -416,7 +416,7 @@ Sources: AI Gateway logs for provider `google-ai-studio`, 2026-11-13 00:00Z to 1
 | Gateway colo | Requests | HTTP 400 | Other statuses |
 |---|---:|---:|---:|
 | HKG | 19 | 19 | 0 |
-| All other colos (25) | 617 | 0 | 617 |
+| All other colos (27) | 617 | 0 | 617 |
 
 All 19 bodies say "User location is not supported for the API use.". On `/v1beta/decisions` the
 body is `{"error":{"message":…,"code":"invalid_request"}}`. On the chat path it is a one-element
