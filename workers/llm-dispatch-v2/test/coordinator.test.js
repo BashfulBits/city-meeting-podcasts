@@ -125,7 +125,13 @@ for (const binding of ["compiled", "object", "json", "legacy"]) {
       assert.ok(quota > 0);
       assert.equal(lane.daily_quota, quota);
       assert.equal(lane.ceiling_jobs, Math.floor(reservation.daily_write_units / perJob));
-      assert.equal(lane.percent_used, Math.round(expected / quota * 1000) / 10);
+      // percent_used compares charged units (3 + 1 model = 4 per job here) with reserved units.
+      // The compiled tagger lane plans 7 units per job, so a job-count ratio would overstate it.
+      assert.equal(lane.write_units, expected * 4);
+      assert.equal(
+        lane.percent_used,
+        Math.round((lane.write_units / reservation.reserved_write_units) * 1000) / 10,
+      );
       assert.equal(
         snapshot.ingress.reserved_jobs_total,
         snapshot.ingress.by_purpose.reduce((sum, row) => sum + row.daily_quota, 0),

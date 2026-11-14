@@ -1463,7 +1463,9 @@ fallback (it was kept out of Cloudflare vars by the 64-variable limit); it is no
 shared ceiling (`daily_write_units`, the same for every lane) divided by the lane's units per job.
 So every lane showed close to the whole day, and the lanes added up to about 40,500 "jobs" against
 a plan of 4,494. It is now the lane's own reservation in jobs (`reserved_write_units` ÷ units per
-job), and `percent_used` is measured against it, so a lane past 100% is borrowing. A new
+job). `percent_used` is the lane's charged write units over its reserved units, because admission
+charges 3 + models per job, which can differ from the planned units per job. A lane past 100% is
+borrowing. A new
 `ceiling_jobs` gives the most it can reach by borrowing, and `ingress.reserved_jobs_total` is the
 sum of the reservations (4,494 with today's config). `write_units` is unchanged. The retired
 `topic-tags:prelabeler` and `topic-tags:prelabeler-shadow` lanes still showing in the operator's

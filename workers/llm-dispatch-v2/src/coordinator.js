@@ -3693,15 +3693,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const reservedJobs = jobsOf(quotaInfo?.reserved_write_units);
         const ceilingJobs = jobsOf(quotaInfo?.daily_write_units);
         const ingested = Number(row?.jobs_ingested) || 0;
+        const writeUnits = Number(row?.write_units) || 0;
         const completed = completedByPurpose.get(p) || 0;
         const pending = includePending ? (pendingByPurpose.get(p) || 0) : (queuedCount === 0 ? 0 : null);
-        const pct = reservedJobs > 0 ? Math.round((ingested / reservedJobs) * 1000) / 10 : 0;
+        // Share of the reservation spent, from the units admission actually charged (3 + models
+        // per job, which can differ from the planned `write_units_per_job`); over 100% = borrowing.
+        const reservedUnits = Number(quotaInfo?.reserved_write_units) || 0;
+        const pct = reservedUnits > 0 ? Math.round((writeUnits / reservedUnits) * 1000) / 10 : 0;
         return {
           purpose: p,
           jobs_ingested: ingested,
           completed,
           pending,
-          write_units: Number(row?.write_units) || 0,
+          write_units: writeUnits,
           daily_quota: reservedJobs,
           ceiling_jobs: ceilingJobs,
           percent_used: pct,
