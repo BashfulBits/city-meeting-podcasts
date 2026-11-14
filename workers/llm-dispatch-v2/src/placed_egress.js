@@ -95,6 +95,7 @@ export async function handlePlacedEgress(request, env, { fetchImpl = fetch } = {
     signal: request.signal,
   });
   const reply = new Response(upstream.body, upstream);
+  // The colo the hop request entered at (not proof of where it ran; see gateway.js).
   const colo = request.cf?.colo;
   if (colo) reply.headers.set(COLO_HEADER, String(colo));
   return reply;

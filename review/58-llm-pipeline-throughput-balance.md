@@ -1181,7 +1181,8 @@ the upstream call from there, streaming the reply back unchanged. The hop:
 - forwards only to `gateway.ai.cloudflare.com` or `generativelanguage.googleapis.com` over HTTPS
   (SSRF gate), with `redirect: manual`;
 - costs the same one subrequest per call as the direct fetch, and the callee has its own CPU budget;
-- reports the colo it ran in (`placed_egress` log line with route, status and colo).
+- logs a `placed_egress` line with route, status, the hop's entry colo and any `cf-placement`
+  header. Neither proves where the upstream call left from.
 
 Placement is Worker-wide, so the ingress API (`/v2/*`) also runs near the hint from now on. The
 other providers' calls still leave from the cron colo, as before.
@@ -1189,7 +1190,10 @@ other providers' calls still leave from the cron colo, as before.
 **Rollback.** Set `PLACED_EGRESS_PROVIDERS` to empty (stops the hop, keeps placement) or remove the
 `placement` block (ingress back to nearest colo). Both are config-only and deploy on merge.
 
-**Verify after deploy.** Workers Logs `placed_egress` lines show a US colo for every Google call; AI
-Gateway logs show no 400 "User location is not supported" for Google; `gemini_decision_1_*` latency
-and other providers' latency are unchanged. If the `placed_egress` colo still varies, the self
-binding is not being placed and the next option in #2682 (a separate placed egress Worker) applies.
+**Verify after deploy.** Cloudflare's docs do not say outright that a self service binding call is
+placed, so the deploy is the canary. AI Gateway logs record the colo each request entered the
+gateway from (the measure used for #2672): after deploy, Google requests should show only colos near
+the hint, with no 400 "User location is not supported". `gemini_decision_1_*` latency and other
+providers' latency should be unchanged. If Google requests still come from cron colos, the self
+binding is not placed. That is no worse than before (12.10 still absorbs the refusal), and the next
+option is a separate placed egress Worker.

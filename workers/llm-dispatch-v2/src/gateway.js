@@ -395,7 +395,10 @@ export async function callAiGateway({
   if (placed) {
     console.log(JSON.stringify({
       event: "placed_egress", route: route.route_id, status: response.status,
-      colo: response.headers.get(COLO_HEADER) || null,
+      // Entry colo of the hop and Cloudflare's placement header when present. Neither proves
+      // where the upstream call left from; AI Gateway's per-request colo is the check that does.
+      entry_colo: response.headers.get(COLO_HEADER) || null,
+      placement: response.headers.get("cf-placement") || null,
     }));
   }
 
