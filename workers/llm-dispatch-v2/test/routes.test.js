@@ -318,7 +318,8 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
     modelForRouteId("nvidia_deepseek_v4_1_flash_free", DISPATCH_LIMITS),
     "deepseek/deepseek-v4.1-flash"
   );
-  // An exact-model contestant must never be answered by the older v4-flash pool.
+  // An exact-model contestant must never be answered by the older v4-flash pool. The NVIDIA leg
+  // stays in the pool but is stood down (rpd 0, review/58 12.7), so only BeatAPI is eligible.
   const job = {
     policy_json: JSON.stringify({ allowed_models: ["deepseek/deepseek-v4.1-flash"] }),
     input_token_estimate: 1000,
@@ -326,11 +327,7 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
   };
   assert.deepEqual(
     routesEligibleFor(job, DISPATCH_LIMITS).map((route) => route.route_id),
-    [
-      "nvidia_deepseek_v4_1_flash_free",
-      "beatapi_deepseek_v4_1_flash_free",
-      "beatapi_secondary_deepseek_v4_1_flash_free",
-    ]
+    ["beatapi_deepseek_v4_1_flash_free", "beatapi_secondary_deepseek_v4_1_flash_free"]
   );
 });
 

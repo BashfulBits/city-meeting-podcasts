@@ -1100,6 +1100,12 @@ routes:
     account_id: primary
     # Carried over from the v4-flash-0731 route it replaces (never returned a 429 at 4 rpm).
     rpm: 4
+    # STOOD DOWN 2026-11-13 (review/58 12.7): `rpd: 0` is the paused-route convention. Workers
+    # Logs 2026-11-12 04Z to 11-13 11:40Z: 2 of 4 judge:adjudicator calls and 0 of 58 queued
+    # chapter-locator calls succeeded (mostly 720 s timeouts); AI Gateway, 7 days: 5 x 200 of 7.
+    # V4.1 stays served by the two BeatAPI legs below (47 x 200 of 52 in 7 days, p50 95 s).
+    # Restore (delete this line) after an llm-rate-probe.yml run shows NVIDIA answering again.
+    rpd: 0
     tpm: 40000
     # 1, not the old routes' 4: this route carries full-transcript overflow (multi-minute calls)
     # and must not crowd Nemotron 3 Ultra out of NVIDIA's shared provider concurrency.
