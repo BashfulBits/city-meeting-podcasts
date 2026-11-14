@@ -19,6 +19,7 @@ import {
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
 import { createBundleSettler, earlyReleaseConfigFromEnv } from "./early_release.js";
+import { handlePlacedEgress } from "./placed_egress.js";
 import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
 import { apiShapeFor } from "./api_shapes.js";
 import {
@@ -1641,6 +1642,9 @@ export default {
     } catch (err) {
       return errorResponse(500, "configuration_error", err.message);
     }
+    // review/58 §12.12 (#2682): the private placed-egress hop (src/placed_egress.js).
+    const egress = await handlePlacedEgress(request, env);
+    if (egress) return egress;
     return handleRequest(request, env, ctx);
   },
 
