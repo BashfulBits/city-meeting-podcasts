@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Dispatch Worker: Google AI Studio calls now go through the Worker's own fetch handler over a self
+  service binding (`PLACED_EGRESS`), and the Worker carries a placement hint (`gcp:us-east4`), so
+  they no longer leave from colos Google refuses (HKG: HTTP 400 "User location is not supported").
+  The hop needs the ingress bearer token and only forwards to the AI Gateway or Google API hosts.
+  `PLACED_EGRESS_PROVIDERS` (wrangler var, default `gemini`) lists the providers; empty turns it
+  off. The ingress API also runs at the placed location now (#2682, review/58 12.12).
+
 - **Google location refusals no longer block the judge anchor for six hours (#2672).** Google's
   HTTP 400 "User location is not supported for the API use." on any Gemini route is now
   `upstream_capacity` (`google-location-unsupported`). The attempt is retryable and the route takes
