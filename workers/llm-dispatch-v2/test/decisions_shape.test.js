@@ -8,7 +8,9 @@ import {
   decisionKeyMap,
   DECISIONS_EMPTY_STATE_INPUT,
 } from "../src/api_shapes.js";
-import { classifyDecisions400, classifyProviderFailure, DECISIONS_SAFETY_CODES } from "../src/classify.js";
+import {
+  classifyDecisions400, classifyProviderFailure, DECISIONS_SAFETY_CODES, GOOGLE_LOCATION_RULE_ID,
+} from "../src/classify.js";
 import { resolveProviderCredentials } from "../src/gateway.js";
 import { attemptProviderCall } from "../src/index.js";
 
@@ -173,6 +175,43 @@ test("decisions 400s: safety terminal for the job, limits and keys are the route
   );
 });
 
+// Issue #2672: the exact bodies Google returned on 2026-11-13 to every request the AI Gateway sent
+// from its HKG colo (AI Gateway logs; no other colo got them).
+const LOCATION_DECISIONS = {
+  error: { message: "User location is not supported for the API use.", code: "invalid_request" },
+};
+const LOCATION_CHAT = [{
+  error: { code: 400, message: "User location is not supported for the API use.", status: "FAILED_PRECONDITION" },
+}];
+
+test("a location refusal is retryable upstream capacity, not a withdrawn model or a job defect", () => {
+  for (const [route, body] of [[DECISION, LOCATION_DECISIONS], [GEMINI_CHAT, LOCATION_CHAT]]) {
+    const cls = classifyProviderFailure({ status: 400, body, headers: {}, route });
+    assert.deepEqual(
+      [cls.failure_class, cls.rule_id, cls.scope],
+      ["upstream_capacity", GOOGLE_LOCATION_RULE_ID, "route"],
+      route.route_id
+    );
+  }
+  assert.equal(classifyDecisions400(LOCATION_DECISIONS).rule_id, GOOGLE_LOCATION_RULE_ID);
+  // Kept at 400: it is not a quota, so it must not take the 429 pacing path either.
+  assert.equal(apiShapeFor(DECISION).normalizeStatus(400, LOCATION_DECISIONS), 400);
+  // A genuine "model not available / not supported" answer still stands the route down.
+  for (const message of [
+    "Model gemini-decision-1 is not available to this key",
+    "Model gemini-decision-1 is not supported for this API version",
+    "Permission denied on model gemini-decision-1",
+  ]) {
+    const cls = classifyProviderFailure({ status: 400, body: err({ message }), headers: {}, route: DECISION });
+    assert.deepEqual([cls.failure_class, cls.rule_id], ["route_unavailable", "decisions-model-unavailable"], message);
+  }
+  // Only Google's routes: another provider's 400 with these words keeps its existing reading.
+  const other = classifyProviderFailure({
+    status: 400, body: LOCATION_DECISIONS, headers: {}, route: { route_id: "x", provider: "openrouter" },
+  });
+  assert.equal(other.failure_class, "request_defect");
+});
+
 test("a quota 400 is reported as 429 so it takes the rate path; other 400s keep their status", () => {
   const shape = apiShapeFor(DECISION);
   assert.equal(shape.normalizeStatus(400, err({ message: "Quota exceeded: tokens per minute" })), 429);
@@ -236,6 +275,11 @@ test("decisions failures end the attempt the right way", async () => {
   const unavailable = await attemptWith({ status: 400, body: err({ message: "Model is not available to this key" }) });
   assert.equal(unavailable.out.result.outcome, "retryable_error");
   assert.equal(unavailable.out.result.failure_class, "route_unavailable");
+
+  const location = await attemptWith({ status: 400, body: LOCATION_DECISIONS });
+  assert.equal(location.out.result.outcome, "retryable_error");
+  assert.equal(location.out.result.failure_class, "upstream_capacity");
+  assert.equal(location.out.result.rule_id, GOOGLE_LOCATION_RULE_ID);
 
   const quota = await attemptWith({ status: 400, body: err({ message: "Quota exceeded: tokens per minute" }) });
   assert.equal(quota.out.retry429, true, "a quota 400 loops through the 429 retry path");

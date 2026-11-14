@@ -46,18 +46,20 @@ from citypods.storage.base import StorageReadUnavailable
 FIXTURE = Path(__file__).parent / "fixtures" / "jev" / "answers_2026_09_30.json"
 LANES = load_lanes()
 # The pool mechanics (headroom, per-model room, no switching) are tested against a two-model Google
-# slot whatever the repository config dispatches; Gemma 4 26B was removed from it on 2026-10-17.
+# slot whatever the repository config dispatches: Gemma 4 26B left it on 2026-10-17 and Gemma 4 31B
+# left the lane on 2026-11-13 (review/58 12.6; covered by the "sibling roster" tests at the end).
 _SIBLING = LANES["judge:sibling"]
+REPO_SIBLING_LANE = _SIBLING
 LANES["judge:sibling"] = dataclasses.replace(
     _SIBLING,
     models=(
         "google/gemma-4-31b-it",
         "google/gemma-4-26b-a4b-it",
-        *[m for m in _SIBLING.models if m != "google/gemma-4-31b-it"],
+        "openrouter/nvidia/nemotron-3.5-super-vl:free",
     ),
-    slots=tuple(
-        (name, (*members, "google/gemma-4-26b-a4b-it") if name == "google" else members)
-        for name, members in _SIBLING.slots
+    slots=(
+        ("google", ("google/gemma-4-31b-it", "google/gemma-4-26b-a4b-it")),
+        ("non_google", ("openrouter/nvidia/nemotron-3.5-super-vl:free",)),
     ),
 )
 FAMILIES = load_families()
@@ -2742,3 +2744,82 @@ def test_the_report_pairs_each_anchor_with_its_own_independent_sibling():
     agreement = report([*before, row("sibling", NEMOTRON, False)])
     assert agreement[JEV]["tag:supported@T1"] == {"agree": 1, "pairs": 1, "rate": 1.0}
     assert agreement[DECISION]["tag:supported@T1"] == {"agree": 1, "pairs": 1, "rate": 1.0}
+
+
+# ---- sibling roster after Gemma (review/58 12.6) ----
+
+QWEN = "qwen/qwen3.8-27b"
+
+
+def _repo_sibling_ctx(dispatch, **extra):
+    return dataclasses.replace(_decision_ctx(dispatch, **extra), sibling=REPO_SIBLING_LANE)
+
+
+def test_the_repository_sibling_lane_has_no_google_judge_and_a_qwen_fallback():
+    """Nemotron judges every entry it is independent of; Qwen only what Nemotron cannot."""
+    from citypods.judging.families import sibling_candidates
+
+    lane = REPO_SIBLING_LANE
+    assert lane.models == (NEMOTRON, QWEN)
+    assert not {FAMILIES[m] for m in lane.models} & {"google"}
+    google = frozenset({"google"})
+    assert sibling_candidates(GEMINI, lane, FAMILIES, exclude_families=google) == (NEMOTRON,)
+    assert sibling_candidates(NEMOTRON, lane, FAMILIES, exclude_families=google) == (QWEN,)
+    assert sibling_candidates("rule:7", lane, FAMILIES, exclude_families=google) == (NEMOTRON,)
+
+
+def test_a_nemotron_produced_entry_gets_the_qwen_sibling():
+    dispatch = FakeDispatch()
+    ep = _episode(tags=[], llm=[_llm_tag(provider_model=NEMOTRON)])
+    stats = runner.run([ep], _repo_sibling_ctx(dispatch))
+    assert stats.counts["no_independent_sibling"] == 0
+    assert {p.judge_model for p, _j in dispatch.submitted.values() if p.role == "sibling"} == {QWEN}
+
+
+def test_a_per_model_limit_caps_one_siblings_room_only():
+    ctx = _repo_sibling_ctx(
+        FakeDispatch(),
+        max_outstanding={"judge:sibling": 800},
+        sibling_max_outstanding={QWEN: 40},
+    )
+    ctx.sibling_recipes[QWEN] = {f"r{i}" for i in range(30)}
+    runner._apply_backpressure(ctx, runner.JudgingStats())
+    assert ctx.sibling_room == {NEMOTRON: 800, QWEN: 10}
+
+
+def test_queued_packets_of_a_removed_sibling_are_let_go_and_its_answers_stay():
+    """Gemma 4 31B left the sibling lane: a queued Gemma packet holds no room and is dropped, an
+    answer already collected stays under Gemma's identity, and the subject is asked afresh."""
+    answered = FakeDispatch()
+    ep = _episode(llm=[])
+    runner.run([ep], _ctx(answered))  # the Gemma era (Gemma judges the rule candidate)
+    answered.answer(anchor_p=0.9)
+    runner.run([ep], _repo_sibling_ctx(answered))
+    [subject] = _subjects(ep)
+    assert {
+        r["judge_model"] for r in ledger.judgments(subject) if r["judge_role"] == "sibling"
+    } >= {GEMMA_31B}
+
+    queued = FakeDispatch()
+    ep2 = _episode(uid="ep-2", llm=[])
+    runner.run([ep2], _ctx(queued))
+    gemma = next(r for r, (p, _j) in queued.submitted.items() if p.judge_model == GEMMA_31B)
+    queued.submitted.clear()
+    stats = runner.run([ep2], _repo_sibling_ctx(queued, max_outstanding={"judge:sibling": 1}))
+    assert stats.counts["retired_sibling_pending_dropped"] == 1
+    assert gemma not in stats.outstanding.get("judge:sibling", set())
+    assert {p.judge_model for p, _j in queued.submitted.values() if p.role == "sibling"} == {
+        NEMOTRON
+    }
+    [subject2] = _subjects(ep2)
+    assert not [m for m in ledger.pending(subject2) if m.get("judge_model") == GEMMA_31B]
+
+
+def test_the_repository_config_caps_the_qwen_sibling_below_the_purpose_limit():
+    import yaml
+
+    config = yaml.safe_load(Path("config/site_config.yml").read_text())["judging"]
+    assert QWEN in REPO_SIBLING_LANE.models
+    per_model = config["max_outstanding_per_sibling"]
+    assert per_model == {QWEN: 40}
+    assert per_model[QWEN] < config["max_outstanding_packets"]["sibling"]

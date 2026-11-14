@@ -7,6 +7,7 @@
  * re-keyed off v2's own route/job shapes instead of v1's queue record.
  */
 
+import { COLO_HEADER, placedFetch, usesPlacedEgress } from "./placed_egress.js";
 import { apiShapeFor } from "./api_shapes.js";
 import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 import { shapeForRoute } from "./structured_output.js";
@@ -385,7 +386,21 @@ export async function callAiGateway({
     signal,
   };
   onRequestStart?.();
-  const response = await fetch(creds.url, requestInit);
+  // review/58 §12.12 (#2682): a provider that refuses some egress locations goes through the
+  // Worker's placed fetch handler instead of leaving from wherever this cron invocation runs.
+  const placed = usesPlacedEgress(env, route);
+  const response = placed
+    ? await placedFetch(env, creds.url, requestInit)
+    : await fetch(creds.url, requestInit);
+  if (placed) {
+    console.log(JSON.stringify({
+      event: "placed_egress", route: route.route_id, status: response.status,
+      // Entry colo of the hop and Cloudflare's placement header when present. Neither proves
+      // where the upstream call left from; AI Gateway's per-request colo is the check that does.
+      entry_colo: response.headers.get(COLO_HEADER) || null,
+      placement: response.headers.get("cf-placement") || null,
+    }));
+  }
 
   const correlationId = response.headers.get("cf-aig-log-id") || response.headers.get("cf-ray") || null;
   let body = null;

@@ -1631,6 +1631,11 @@ class JudgeStage(LLMProducerStage):
                 for role, limit in (config.get("max_outstanding_packets") or {}).items()
                 if role in ("anchor", "sibling", "adjudicator") and limit is not None
             },
+            sibling_max_outstanding={
+                str(model): int(limit)
+                for model, limit in (config.get("max_outstanding_per_sibling") or {}).items()
+                if limit is not None
+            },
             adjudicator=adjudicator,
             calibration_sample_rate=float(config.get("calibration_sample_rate", 0.03)),
             stability_sample_rate=float(config.get("stability_sample_rate", 0.02)),

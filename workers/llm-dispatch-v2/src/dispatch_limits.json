@@ -1706,7 +1706,7 @@
       "input_token_ratio": null,
       "account_id": "primary",
       "rpm": 4,
-      "rpd": null,
+      "rpd": 0,
       "tpd": null,
       "tpm": 36000,
       "concurrency": 1,
