@@ -539,7 +539,11 @@ class TestJudgePools:
     def test_repository_judge_lanes(self):
         lanes = load_lanes()
         # review/58 WP9: Gemini Decision 1 replaced JEV (retired from BeatAPI's free tier).
-        assert lanes["judge:anchor"].models == ("gemini/gemini-decision-1",)
+        # review/58 12.9: Perplexity Decider is the second anchor (enabled 2026-11-14).
+        assert lanes["judge:anchor"].models == (
+            "gemini/gemini-decision-1",
+            "perplexity/pplx-decider-v1.3",
+        )
         sibling = lanes["judge:sibling"]
         # The anchor is Google, so a non-Google sibling slot must exist for its subjects.
         assert load_families()["gemini/gemini-decision-1"] == "google"
