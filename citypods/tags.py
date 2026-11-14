@@ -434,6 +434,93 @@ def tag_batch_target(primary_routes: Any) -> int | None:
     return int(min(_tag_route_capacity(r) for r in measured) * TAG_BATCH_CAPACITY_FRACTION)
 
 
+def _tag_recipe_unadmissible(storage: Any, recipe_hash: str) -> bool:
+    """Whether the Worker failed this tag recipe as too large for every live route.
+
+    Read only after the backend has refused the recipe, so a normal submission pays no extra read.
+    An unreadable marker answers False and the original refusal stands.
+    """
+    if storage is None:
+        return False
+    from citypods.compute.llm_deferred import structurally_unadmissible
+
+    try:
+        return structurally_unadmissible(storage, recipe_hash)
+    except Exception:  # noqa: BLE001 -- the caller re-raises the backend's own error
+        return False
+
+
+def split_unadmissible_tag_request(
+    chapters: list[dict[str, Any]],
+) -> list[list[dict[str, Any]]] | None:
+    """Split one refused tag request into two smaller ones, or ``None`` when it cannot shrink.
+
+    Several chapters split at the chapter boundary nearest the middle of their transcript text.
+    A single chapter splits its timestamped segments in half; each half keeps the chapter's id,
+    title and agenda evidence, and carries only its own segments and their text. A chapter with
+    fewer than two segments is the smallest unit the tagger sends.
+    """
+    if len(chapters) > 1:
+        sizes = [len(str(chapter.get("transcript_text") or "")) + 1 for chapter in chapters]
+        total = sum(sizes)
+        running = 0
+        cut = 1
+        best = None
+        for index, size in enumerate(sizes[:-1], start=1):
+            running += size
+            distance = abs(running * 2 - total)
+            if best is None or distance < best:
+                best, cut = distance, index
+        return [chapters[:cut], chapters[cut:]]
+    if len(chapters) != 1:
+        return None
+    chapter = chapters[0]
+    segments = [s for s in chapter.get("transcript_segments") or [] if isinstance(s, dict)]
+    if len(segments) < 2:
+        return None
+    middle = len(segments) // 2
+    halves = []
+    for part in (segments[:middle], segments[middle:]):
+        halves.append(
+            [
+                {
+                    **chapter,
+                    "transcript_text": "\n".join(str(s.get("text") or "") for s in part),
+                    "transcript_segments": part,
+                }
+            ]
+        )
+    return halves
+
+
+def _merge_split_chapter_tags(
+    merged: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    """One suggestion per chapter and tag id after a split chapter was tagged in parts.
+
+    The most confident part's suggestion is kept, with the other parts' evidence appended up to the
+    response contract's eight items, so a tag supported in both halves keeps both quotes.
+    """
+    result: dict[str, list[dict[str, Any]]] = {}
+    for chapter_id_value, tags in merged.items():
+        by_id: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for tag in sorted(tags, key=lambda item: -float(item.get("confidence") or 0.0)):
+            tag_id = str(tag.get("id") or "")
+            kept = by_id.get(tag_id)
+            if kept is None:
+                by_id[tag_id] = {**tag, "evidence": list(tag.get("evidence") or [])}
+                order.append(tag_id)
+                continue
+            for item in tag.get("evidence") or []:
+                if len(kept["evidence"]) >= 8:
+                    break
+                if item not in kept["evidence"]:
+                    kept["evidence"].append(item)
+        result[chapter_id_value] = [by_id[tag_id] for tag_id in order]
+    return result
+
+
 def episode_needs_tagging(
     ep: Any,
     taxonomy: Taxonomy,
@@ -936,6 +1023,7 @@ def llm_tag_suggestions(
     quota exhaustion for the whole run, since it says nothing about remaining capacity."""
     model = ensure_llm_contract()
     from citypods.compute.base import InferenceJob, JobHandle, JobResult
+    from citypods.compute.llm import LLMBackendError
     from citypods.compute.llm_policy import (
         ROUTE_CANDIDATES,
         ROUTES,
@@ -1240,13 +1328,80 @@ def llm_tag_suggestions(
             queue_only=True,
             timeout_class="fast",
         )
-    outcome = backend.run_inference(
-        InferenceJob(
-            task="tag",
-            inputs=inputs,
-            recipe_hash=recipe_hash,
+    try:
+        outcome = backend.run_inference(
+            InferenceJob(
+                task="tag",
+                inputs=inputs,
+                recipe_hash=recipe_hash,
+            )
         )
-    )
+    except LLMBackendError:
+        # The Worker fails a job over every live route's learned ceiling as `unadmissible` and
+        # expects the producer to re-plan it smaller (review/58 §12.13, #2671). The batches above
+        # are deterministic, so resubmitting would rebuild the same recipe that the structural
+        # recovery gate now refuses on every run. Split it into new, smaller recipes instead.
+        if not chapter_mode or not _tag_recipe_unadmissible(backend_storage, recipe_hash):
+            raise
+        pieces = split_unadmissible_tag_request(compact_chapters)
+        if pieces is None:
+            # One transcript segment cannot be split further: an oversized deferral, not an error.
+            return [], {}, True, "payload-too-large"
+        merged: dict[str, list[dict[str, Any]]] = {}
+        pending = False
+        payload_too_large = False
+        piece_metadata: list[dict[str, Any]] = []
+        resolved_models: list[str] = []
+        for index, piece in enumerate(pieces):
+            metadata: dict[str, Any] = {}
+            piece_digest = hashlib.sha1(
+                json.dumps(piece, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()[:16]
+            _, chapter_tags, piece_pending, resolved_model = llm_tag_suggestions(
+                backend,
+                taxonomy=taxonomy,
+                agenda_item_titles="",
+                agenda_text="",
+                transcript_text="",
+                recipe_hash=f"{recipe_hash}-replan-{index}-{piece_digest}",
+                chapter_inputs=piece,
+                agenda_documents=agenda_documents,
+                allow_paid=allow_paid,
+                purpose=purpose,
+                call_metadata_out=metadata,
+                _batched=True,
+            )
+            piece_metadata.append(metadata)
+            pending = pending or piece_pending
+            payload_too_large = payload_too_large or resolved_model == "payload-too-large"
+            if resolved_model and resolved_model != "payload-too-large":
+                resolved_models.append(resolved_model)
+            for chapter_id_value, tags in chapter_tags.items():
+                merged.setdefault(chapter_id_value, []).extend(tags)
+        call_metadata.update(
+            {
+                "job_recipe_hashes": [
+                    recipe
+                    for item in piece_metadata
+                    for recipe in item.get("job_recipe_hashes", [])
+                ],
+                "input_tokens_estimate": sum(
+                    int(item.get("input_tokens_estimate") or 0) for item in piece_metadata
+                ),
+                "tagger_replanned_from": recipe_hash,
+                "tagger_batches": len(pieces),
+                "tagger_batches_metadata": piece_metadata,
+            }
+        )
+        publish_call_metadata()
+        if pending:
+            return [], {}, True, "payload-too-large" if payload_too_large else None
+        return (
+            [],
+            _merge_split_chapter_tags(merged),
+            False,
+            resolved_models[-1] if resolved_models else backend_model,
+        )
     if isinstance(outcome, JobHandle):
         return [], {}, True, None
     if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
@@ -1620,6 +1775,7 @@ __all__ = [
     "load_taxonomy",
     "merge_tag_sources",
     "rollup_tags",
+    "split_unadmissible_tag_request",
     "tag_episode",
     "tag_recipe_hash",
     "taxonomy_from_dict",

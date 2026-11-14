@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **The tagger re-plans tag requests the Worker failed as too large (#2671).** On 2026-11-12 the
+  Worker's oversize reaper failed about 330 queued jobs, tag batches among them, as `unadmissible`
+  (over every live route's learned ceiling). The tagger rebuilt the same deterministic recipes on
+  every run, the structural recovery gate refused each one, and the tag stage reported about 204
+  errors and queued 0 to 1 jobs a run from 11-13. A refused recipe whose marker says
+  `unadmissible` is now split in two under new child recipes (at a chapter boundary, or a single
+  chapter's transcript segments halved), recursively; a single segment that is still refused is
+  an oversized deferral. Other gate refusals (an exhausted retry budget) still raise.
+
 - Dispatch Worker: Google AI Studio calls now go through the Worker's own fetch handler over a self
   service binding (`PLACED_EGRESS`), and the Worker carries a placement hint (`gcp:us-east4`), so
   they no longer leave from colos Google refuses (HKG: HTTP 400 "User location is not supported").

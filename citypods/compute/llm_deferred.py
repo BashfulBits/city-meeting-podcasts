@@ -439,6 +439,18 @@ def terminal_failure_budget_exhausted(storage, recipe_hash: str) -> bool:
         return False
 
 
+def structurally_unadmissible(storage, recipe_hash: str) -> bool:
+    """Whether this recipe's marker records a Worker `unadmissible` terminal (too large for every
+    live route). Its producer must re-plan the work smaller; an unchanged resubmission stays
+    blocked until a new fitting route generation appears."""
+    data = _read_json(storage, deferred_failure_key(recipe_hash))
+    return bool(
+        isinstance(data, Mapping)
+        and data.get("status") == "structural_blocked"
+        and data.get("terminal_reason") == "unadmissible"
+    )
+
+
 def schema_correction_attempted(storage, recipe_hash: str) -> bool:
     """Whether this exact recipe has already received its one corrective retry."""
     data = _read_json(storage, deferred_failure_key(recipe_hash))
@@ -1684,6 +1696,7 @@ __all__ = [
     "repair_deferred_index",
     "record_schema_correction",
     "schema_correction_attempted",
+    "structurally_unadmissible",
     "structural_recovery_context",
     "terminal_failure_retry_allowed",
     "terminal_failure_budget_exhausted",

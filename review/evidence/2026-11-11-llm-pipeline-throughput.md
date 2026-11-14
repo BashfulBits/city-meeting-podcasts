@@ -578,6 +578,57 @@ about 0.7 s for a 200.
 Each window opens about 6 h after the previous refusal, when the block lapses. In about 33 h the
 anchor made 106 successful calls, against a nominal 2 x 10,000 a day.
 
+## Tag producer stall (2026-11-12 to 11-13, review/58 12.13, #2671)
+
+Sources: tag workflow run logs (GitHub Actions), Workers Logs `claim_failed_oversize_jobs`
+events, a read of 520 deferred-failure markers in B2 (list plus GETs, read-only), the 11-11 stats
+cache, and the 2026-11-10 record snapshot (offline). No production writes.
+
+**Tag runs.** All errors in both runs are the structural recovery gate's refusal.
+
+| Run (start, UTC) | Stages visited | `completion-cache` skips | Queued | Errors | Global queue |
+|---|---:|---:|---:|---:|---:|
+| 11-12 16:50 (43263036985) | 255 | 19,196 | 175 | 54 | 19,451 |
+| 11-13 01:05 (43342177719) | 232 | 19,196 | 19 | 204 | 19,428 |
+
+**Worker oversize reaps on 11-12** (`claim_failed_oversize_jobs`, failed as `unadmissible`).
+
+| Window (UTC) | Jobs failed |
+|---|---:|
+| 01:17 to 01:32 | 60 |
+| 11:59 to 13:01 | 270 |
+| 17:14 | 1 |
+| Total | 331 |
+
+**Deferred-failure markers** written 11-12 20Z to 11-13 02Z (520 read):
+
+| Marker | Count |
+|---|---:|
+| Tag, `structural_blocked` / `unadmissible`, catalog digest `b9c6f49c` | 258 |
+| ...of which name a job id from the reaper events above | 258 |
+| ...of which are chapter-batch child recipes (`-tag-batch-`) | 68 |
+| Tag, `exhausted` | 87 |
+
+Estimated input of the 258 refused requests: 120,063 minimum, 174,145 median, 185,560 maximum.
+
+**Route sizing for the tagger lane.**
+
+| Route | Static ceiling | Static ratio | Largest raw input that fits | Learned (11-11 stats cache) |
+|---|---:|---:|---:|---|
+| Gemini 3.5 Flash Lite (primary, x2) | 218,875 | 2.15 | 101,802 (batch target 94,676) | accepted up to 357,487 |
+| Nemotron 3.5 Super VL (x3) | 249,027 | 1.0 | 249,027 | accepted up to 203,402 to 223,042 |
+| DeepSeek V4 Flash, OrcaRouter | none | 1.0 | unmeasured | prompt-cap estimate 69,855 |
+| Gemini 3.1 Flash Lite (x2) | 218,875 | 1.6 | 136,796 | not read |
+
+**`ready` versus visited** (2026-11-10 snapshot, episodes with served chapters, 19,438):
+
+| Stored tag fingerprint | Episodes |
+|---|---:|
+| Matches the previous primary's route (Gemini 3.1 Flash Lite), recipe set | 10,681 |
+| Matches the current primary's route (Gemini 3.5 Flash Lite), recipe set | 6,117 |
+| None stored, no chapter tags | 1,101 |
+| Other | 1,539 |
+
 ## Free decision models and sibling capacity (2026-11-14, review/58 12.9)
 
 Sources: OpenRouter's public model and endpoint listings and the account's key endpoint (read
