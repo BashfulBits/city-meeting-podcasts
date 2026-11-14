@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Judging: Perplexity Decider V1.3 (free, OpenRouter decisions endpoint) is now the second
+  `judge:anchor` after Gemini Decision 1, at `rpd: 40`, so Google-produced entries get an
+  independent anchor (review/58 12.9, #2674).
+
 - **Review/58 §12.5: 780 s ceiling for the slow reasoning routes.** `MAX_RESPONSE_SECONDS` is 780
   with a 45 s finalization reserve and an 870 s lease. Only OrcaRouter GLM 5.3 Flash and the three
   Nemotron 3 Ultra legs use 780 s. Every other route now pins its response timeout (720 or lower),
