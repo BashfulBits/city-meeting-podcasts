@@ -1030,6 +1030,10 @@ on its own paused route.
 2. **A bounded result write.** The measured margin was broken by one B2 result PUT that took
    125.5 s. `RESULT_WRITE_TIMEOUT_SECONDS: 30` now aborts that write. An abort settles as a
    retryable `server_error`, and `validateConfig` requires it to be shorter than the 45 s reserve.
+   The executor's start fence (`leaseCoversCall`) now also counts this write. Before, a call
+   delayed by 429 retries or a slow payload read could start late enough to end exactly at the
+   lease deadline, which left no time to store the result. That gap was already present at 720 s.
+   Such a call is now `deferred_late` instead.
    Worst case: 10.7 s to claim + 30 s window + 780 s + 30 s write + about 2 s commit, about
    853 s ≤ 870 s lease < 900 s cron.
 3. **Ultra's reasoning switch declared but unused.** `reasoning_controls.off` is set on the NVIDIA
@@ -1057,14 +1061,16 @@ lane's request changes. Watch after deploy:
 - timeout share;
 - invocation length against the 900 s cron limit;
 - `structured_output_invalid`;
-- result-write `server_error`.
+- result-write `server_error`;
+- `deferred_late` count, which should stay near today's.
 
-Each part can be reverted on its own:
+Reverts:
 
-- timing set back to 720 / 90 / 840;
-- the four routes back to 720;
-- remove `RESULT_WRITE_TIMEOUT_SECONDS`;
-- delete the Ultra control.
+- Timing set: first put the four routes back to 720, in the same change or an earlier one. The
+  compile script rejects a route value above the ceiling. Then set 720 / 90 / 840.
+- The four routes alone: back to 720, with the 780 ceiling kept.
+- `RESULT_WRITE_TIMEOUT_SECONDS`: remove it; the Worker falls back to 30 s.
+- The Ultra control: delete it.
 
 ### 12.6 Judge siblings and free decision models
 

@@ -8,7 +8,9 @@ import TUNING from "../src/dispatch_tuning.json" with { type: "json" };
 import RESERVATIONS from "../src/ingress_reservations.json" with { type: "json" };
 import { B2Client } from "../src/b2.js";
 import { upstreamRequestForRoute } from "../src/gateway.js";
-import { effectiveResponseMs, resultWriteTimeoutMs, validateConfig } from "../src/index.js";
+import {
+  effectiveResponseMs, leaseCoversCall, resultWriteTimeoutMs, validateConfig,
+} from "../src/index.js";
 import { withTuning } from "../src/tuning.js";
 
 const tuned = (overrides = {}) => withTuning({ BEARER_TOKEN: "t", ...overrides });
@@ -70,6 +72,20 @@ test("the result write timeout comes from the tuning, with a 30 s fallback", () 
   assert.equal(resultWriteTimeoutMs({ RESULT_WRITE_TIMEOUT_SECONDS: "0.5" }), 500);
   assert.equal(resultWriteTimeoutMs({}), 30_000);
   assert.equal(resultWriteTimeoutMs(withTuning({})), TUNING.values.RESULT_WRITE_TIMEOUT_SECONDS * 1000);
+});
+
+test("a late start must leave the result write inside the lease", () => {
+  const v = TUNING.values;
+  const claim = 0;
+  const job = { lease_expires_at: claim + v.LEASE_DURATION_SECONDS * 1000 };
+  const write = resultWriteTimeoutMs(withTuning({}));
+  // The worst measured start (10.7 s claim + 30 s window) still fits a 780 s call and its write.
+  assert.equal(leaseCoversCall(job, claim + 40_700, 780_000, write), true);
+  // A start that would end the call at the lease deadline is declined: the write would overrun.
+  const lateStart = job.lease_expires_at - 780_000;
+  assert.equal(leaseCoversCall(job, lateStart, 780_000), true);
+  assert.equal(leaseCoversCall(job, lateStart, 780_000, write), false);
+  assert.equal(leaseCoversCall(job, lateStart - write, 780_000, write), true);
 });
 
 test("putJson aborts a write that outlives its timeout, and sends no signal without one", async (t) => {

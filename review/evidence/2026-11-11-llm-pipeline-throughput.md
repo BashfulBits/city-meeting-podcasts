@@ -730,6 +730,7 @@ Only single routes were paused; no provider-wide or global pause was made.
 | 11-13 23:30 to 11-14 01:20 | renew, 900 s, every 300 s (23 times) | same route | calls still running | — |
 | 11-14 01:21:28 | resume | same route | arms done | resumed before expiry; paused 1 h 56 min |
 | 11-14 19:28:50 | status | all | before finishing | no pauses |
+| 11-14 19:40:20 | status | all | before the PR | no pauses; 3 in flight (production) |
 
 While the Ultra route was paused, `chapter-agenda` kept its Kilo and OpenRouter legs. Every direct
 call was reserved against its route first. No pause made by this package is outstanding.

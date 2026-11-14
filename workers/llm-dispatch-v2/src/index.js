@@ -952,11 +952,14 @@ export function resultWriteTimeoutMs(env) {
  * only leases past lease_expires_at, so this local check is the attempt fence: no DO round trip
  * or billed row per attempt. validateConfig already keeps the dispatch window plus the response
  * ceiling inside the lease, so it fails only on a misconfigured override or a stalled invocation.
+ * `settleMs` is the bounded result write that follows a success (review/58 §12.5): a call that
+ * starts late must still leave that write inside the lease, or a recovery tick could reap the
+ * job while its result is being stored.
  */
-export function leaseCoversCall(job, now, maxResponseMs) {
+export function leaseCoversCall(job, now, maxResponseMs, settleMs = 0) {
   const leaseExpiresAt = Number(job.lease_expires_at);
   // No deadline means no fence: decline rather than risk a call the DO may already have reaped.
-  return Number.isFinite(leaseExpiresAt) && now + maxResponseMs <= leaseExpiresAt;
+  return Number.isFinite(leaseExpiresAt) && now + maxResponseMs + settleMs <= leaseExpiresAt;
 }
 
 /**
@@ -1034,7 +1037,7 @@ function logGemmaAttempt({
  * longer cover the call -- see leaseCoversCall).
  */
 export async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
-  if (!leaseCoversCall(job, Date.now(), maxResponseMs)) {
+  if (!leaseCoversCall(job, Date.now(), maxResponseMs, resultWriteTimeoutMs(env))) {
     return { result: baseAttemptResult(job, attemptId, null, null, "deferred_late") };
   }
 
