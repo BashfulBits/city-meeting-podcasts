@@ -77,7 +77,7 @@ compile_once() {
   # images is a documented follow-up (see review/22 / constraints/README.md).
   # --verbose (not part of the header command) goes to a log that is printed on failure.
   timeout --kill-after=10 "${LANE_TIMEOUT}" \
-    pip-compile --verbose --strip-extras --allow-unsafe --constraint constraints/.decision-gpu-bootstrap \
+    pip-compile --verbose --strip-extras --allow-unsafe \
     --output-file "constraints/${out}.txt" "constraints/${out}.in" >"${log}" 2>&1
 }
 
@@ -120,6 +120,10 @@ compile() {
 # Renovate's pip-compile manager tracks each lock as its own project. The lane -> extras map
 # lives in scripts/lane_inputs.py; keep constraints/README.md in sync with it.
 python scripts/lane_inputs.py
+compile prod
+compile asr
+compile chapter-research
 compile decision-gpu
+compile dev
 
 echo "Constraints recompiled. Review the diff before committing."
