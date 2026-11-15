@@ -71,6 +71,9 @@ python -m pip install --quiet "pip-tools==7.6.2"
 
 compile_once() {
   local out="$1" log="$2"
+  if [[ "$out" == decision-gpu ]]; then
+    local -x PIP_CONSTRAINT=constraints/.decision-gpu-bootstrap
+  fi
   # Version-pinned (no --generate-hashes): the constraints are consumed via `pip -c`
   # alongside editable `pip install -e .`, and hash-checking mode is incompatible with
   # an unhashable editable install. Hash-verified `--require-hashes -r` for the immutable
