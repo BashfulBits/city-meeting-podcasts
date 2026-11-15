@@ -144,6 +144,18 @@ exclusion rule.
 
 ## Budget and latency
 
+On November 15 the approved Iowa L4 quota remained zero, while Virginia granted one L4.
+Two regular Virginia canaries used the same 158 frozen decisions and a 300-second timeout.
+The first reached inference approximately 289 seconds after the model bucket mounted and timed
+out without a result. Its warning identified the PyTorch causal-convolution fallback. The second
+used an instrumented worker and Cloud Storage FUSE buffered reads. It logged the beginning of
+model loading, then timed out after 300 seconds without logging load completion. Both attempts
+are settled in the admission ledger. The logs establish that model loading exceeded the second
+task's limit. They do not isolate the exact operation inside the model loader. Buffered reads
+did not produce a successful five-minute run, so the job template keeps the original mount.
+One of the three authorized canary reservations remains. Measure a different loading approach
+and confirm remaining project charges before using it. No tag or moment qualification is complete.
+
 On November 15, 2026, Cloud Run rejected the first job deployment at the non-zonal L4 quota
 check. Cloud Quotas accepted the Iowa request for one L4 and denied it before any task was
 launched. The project was eligible to submit the request and had zero allocation across the

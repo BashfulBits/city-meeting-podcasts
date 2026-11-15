@@ -12,7 +12,8 @@ billing and IAM verification. The GitHub workflow starts disabled.
    [Google Developer Program credits](https://developers.google.com/profile/help/benefits) ·
    [Cloud Billing project linking](https://docs.cloud.google.com/billing/docs/how-to/modify-project)
 2. In the project, enable Cloud Run, Cloud Storage, Artifact Registry, IAM, IAM Credentials and
-   Security Token Service. Use `us-central1` for the job, private buckets and registry. Check the Cloud Run
+   Security Token Service. Use a supported region with approved L4 quota for the job and model
+   bucket. The canary allows `us-central1` and `us-east4`. Check the Cloud Run
    quota for non-zonal L4. Add a $4 project budget. Use a supported Cloud Run spend cap if
    available and keep the three-attempt launcher guard regardless of budget type.
    [GPU quotas](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu) ·

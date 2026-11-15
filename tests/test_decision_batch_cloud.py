@@ -121,6 +121,13 @@ def test_canary_refuses_more_tasks_or_retries_than_reserved(monkeypatch):
     monkeypatch.setattr(cloud, "_read", read)
     launcher = cloud.CloudRunLauncher(JOB, lambda: "opaque")
     launcher.verify_canary_job(digest)
+    virginia = cloud.CloudRunLauncher(JOB.replace("us-central1", "us-east4"), lambda: "opaque")
+    virginia.verify_canary_job(digest)
+    unsupported = cloud.CloudRunLauncher(
+        JOB.replace("us-central1", "europe-west1"), lambda: "opaque"
+    )
+    with pytest.raises(ValueError, match="canary envelope"):
+        unsupported.verify_canary_job(digest)
     permissions.pop()
     with pytest.raises(PermissionError):
         launcher.verify_canary_job(digest)

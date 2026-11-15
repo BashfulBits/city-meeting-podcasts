@@ -68,10 +68,16 @@ def run_batch(
     started = time.monotonic()
     rows, requests = _read_requests(input_path)
     load_started = time.monotonic()
+    print("decision batch model load started", flush=True)
     model, request_error = load_model()
     inference_started = time.monotonic()
+    print(f"decision batch model loaded in {inference_started - load_started:.2f}s", flush=True)
     replies = model.decide_batch(requests)
     inference_finished = time.monotonic()
+    print(
+        f"decision batch inference finished in {inference_finished - inference_started:.2f}s",
+        flush=True,
+    )
     if not isinstance(replies, (list, tuple)) or len(replies) != len(rows):
         raise ValueError("wrong response cardinality")
     converted = []

@@ -133,7 +133,7 @@ class CloudRunLauncher:
         task = execution.get("template", {})
         containers = task.get("containers", [])
         if (
-            self.job.split("/")[3] != "us-central1"
+            self.job.split("/")[3] not in {"us-central1", "us-east4"}
             or execution.get("taskCount") != 1
             or execution.get("parallelism") != 1
             or task.get("maxRetries") != 0
@@ -142,7 +142,7 @@ class CloudRunLauncher:
             or task.get("nodeSelector", {}).get("accelerator") != "nvidia-l4"
             or len(containers) != 1
         ):
-            raise ValueError("Cloud Run job does not match the one-task Iowa L4 canary envelope")
+            raise ValueError("Cloud Run job does not match the one-task L4 canary envelope")
         container = containers[0]
         env = {entry["name"]: entry.get("value") for entry in container.get("env", [])}
         if (
