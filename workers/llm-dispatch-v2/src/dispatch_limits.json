@@ -1614,7 +1614,11 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "off": {
+          "reasoning_effort": "none"
+        }
+      }
     },
     "kilo_nemotron_3_5_super_vl_free": {
       "route_id": "kilo_nemotron_3_5_super_vl_free",
@@ -1702,7 +1706,11 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "off": {
+          "reasoning_effort": "none"
+        }
+      }
     },
     "openrouter_nvidia_nemotron_3_5_super_vl_free": {
       "route_id": "openrouter_nvidia_nemotron_3_5_super_vl_free",
@@ -2066,7 +2074,11 @@
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "low": {
+          "reasoning_effort": "low"
+        }
+      }
     },
     "beatapi_gemini_3_8_flash_free": {
       "route_id": "beatapi_gemini_3_8_flash_free",

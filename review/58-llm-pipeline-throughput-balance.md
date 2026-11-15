@@ -1043,14 +1043,29 @@ on its own paused route.
 
 **Rejected.** A tighter output budget (truncation, 0 of 5 valid), the length sentence (not obeyed),
 reasoning off on `chapter-agenda` now (recall loss), and any Gemma change (no lever, no lane).
-Untested and left to #2689: GLM `reasoning_effort: low` on `judge:adjudicator`, the Kilo and
-OpenRouter reasoning parameters, and the Ultra recall evaluation.
+Untested in the first PR and left to #2689 (results below): GLM `reasoning_effort: low` on
+`judge:adjudicator`, the Kilo and OpenRouter reasoning parameters, and the Ultra recall evaluation.
 
 **Expected gain.** Small, as §7 estimated: about 25 more results a week from the 720 to 780 s tail.
 The experiment saw no call finish in that band, so the gain may be lower. The cost is up to 60 s
 more slot hold on each of the four routes' timeouts, about 28k slot-seconds a week (0.4%) by §7's
 model. The larger lever
 is #2689's GLM effort trial.
+
+**Follow-up results (#2689, 2026-11-15; tables and pause log in the evidence file).** 34 direct
+calls on paused routes: GLM 20, NVIDIA Ultra 10, Kilo 2, OpenRouter 2.
+
+| Item | Result | Action |
+|---|---|---|
+| GLM `reasoning_effort: low`, 10-request sample | Reasoning tokens p50 27.6k to 1.7k; latency p50 411 s to 37 s (max 838 s to 86 s); valid 9 of 10 in both arms; verdict agreement with A0 140 of 160 items (87.5%), against 88% for production against A0. A1 leans lenient: 16 flips to "supported", 4 the other way (59 against 47 items supported of 160) | Declared `reasoning_controls.low` on the route; `judge:adjudicator` asks for `low` on `zai/glm-5.3-flash` |
+| Ultra on NVIDIA, reasoning off, 10 new agenda requests | All 10 finished (16 to 127 s, 0 reasoning tokens). Line recall against production: mean 0.88, median 0.98, four requests below 0.9 (0.88, 0.80, 0.66, 0.50). Items: fewer in 7 of 10, more in 2. Valid 2 of 10 (production 3 of 10, both limited by the quote check) | None. Not enabled in a lane; the owner decides |
+| Kilo and OpenRouter Ultra, `reasoning_effort: "none"` | 0 reasoning tokens on 2 of 2 calls per route (5 to 15 s); the `reasoning: {effort: "none"}` fallback was not needed | Declared `reasoning_controls.off` on both routes; no lane uses it |
+
+The GLM change shortens the adjudicator's calls about 11-fold and removes its 720 to 780 s tail
+(two of ten default calls ran over 780 s). Its cost is a lean toward "supported" of about 7 points
+per item, which matters for a lane told to try to disprove each claim. Watch the adjudicator's
+supported share and its agreement with the second family after deploy; to revert, delete the
+`reasoning` entry for `zai/glm-5.3-flash` in `judge:adjudicator` and recompile.
 
 **What this changes and invalidates.** Merging deploys the Worker with the new tuning and limits.
 Nothing is re-keyed: response timeouts and reasoning controls are not in any recipe hash, and no

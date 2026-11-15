@@ -261,6 +261,10 @@ llm_lanes:
     models:
       - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4.1-flash"
+    # GLM reasons for 10k to 56k tokens per packet at the default; `low` cut that to a median
+    # 1.7k and the call from 411 s to 37 s on the 2026-11-15 sample (review/58 section 12.5, #2689).
+    reasoning:
+      "zai/glm-5.3-flash": "low"
     dispatch_shape: per_model
     # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
     # Contested subjects plus the 3% calibration sample, ~0.5 packets per judged meeting.

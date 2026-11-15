@@ -120,13 +120,26 @@ test("Nemotron 3 Ultra's declared reasoning switch is sent only when a lane asks
     upstreamRequestForRoute(payload, ultra, { reasoningLevel: "off" }).chat_template_kwargs,
     { enable_thinking: false },
   );
-  // The other slow routes declare nothing, so no lane level can change their requests.
-  for (const routeId of SLOW_ROUTES.filter((id) => !id.startsWith("nvidia_"))) {
+});
+
+test("GLM low effort is requested by judge:adjudicator; the Kilo and OpenRouter Ultra switches are unused", () => {
+  const payload = { messages: [{ role: "user", content: "x" }], max_tokens: 100 };
+  const glm = LIMITS.routes_by_id.orcarouter_zai_glm_5_3_flash_free;
+  assert.deepEqual(glm.reasoning_controls, { low: { reasoning_effort: "low" } });
+  // Only the adjudicator lane asks, and only for GLM (review/58 §12.5, #2689).
+  assert.deepEqual(RESERVATIONS.reservations["judge:adjudicator"].reasoning, { "zai/glm-5.3-flash": "low" });
+  assert.equal(upstreamRequestForRoute(payload, glm).reasoning_effort, undefined);
+  assert.equal(upstreamRequestForRoute(payload, glm, { reasoningLevel: "low" }).reasoning_effort, "low");
+  // Kilo and OpenRouter declare "off"; no lane sets a level for them, so requests are unchanged.
+  for (const routeId of SLOW_ROUTES.filter((id) => /^(kilo|openrouter)_/.test(id))) {
     const route = LIMITS.routes_by_id[routeId];
-    assert.equal(Object.keys(route.reasoning_controls || {}).length, 0, routeId);
-    const sent = upstreamRequestForRoute(payload, route, { reasoningLevel: "off" });
-    for (const key of ["chat_template_kwargs", "reasoning_effort", "reasoning"]) {
-      assert.equal(sent[key], undefined, `${routeId} ${key}`);
+    assert.deepEqual(route.reasoning_controls, { off: { reasoning_effort: "none" } }, routeId);
+    for (const lane of Object.values(RESERVATIONS.reservations)) {
+      assert.equal(lane.reasoning?.[route.model], undefined, routeId);
     }
+    assert.equal(upstreamRequestForRoute(payload, route).reasoning_effort, undefined, routeId);
+    assert.equal(
+      upstreamRequestForRoute(payload, route, { reasoningLevel: "off" }).reasoning_effort, "none", routeId,
+    );
   }
 });
