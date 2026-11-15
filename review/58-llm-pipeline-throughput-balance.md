@@ -1619,3 +1619,39 @@ action: the blocked markers stay as the audit record, and the producer routes ar
 - `tag-llm-oversized` rises by the parts that cannot split further.
 - No new `claim_failed_oversize_jobs` events for `-replan-` recipes. If some appear, the
   next run splits those parts again.
+
+### 12.14 `/v2/stats` lists only what can be scheduled
+
+**Symptom.** `claim.last_empty_diagnostics.candidate_frontiers` still carried
+`typesafe/jev-1.13` at a 2026-11-11 position, `model_aliases` still named the stood-down JEV and
+GLM routes, and a route that stopped being called kept the request count of its last day.
+
+**Causes.**
+
+- The claim's scan cursor is per model, and it is cleared only when a scan reaches the end of that
+  model's queue. A model whose every route is stood down (`rpd: 0`, the catalog's paused-route
+  convention) is never scanned, so its cursor stayed in memory and was written to the scheduler row
+  by every claim. The last empty claim's diagnostics are also persisted, so a route paused after
+  that claim stayed in them until the next empty one.
+- `_canonicalModelAliases` added every route's names, stood down or not.
+- `routes.all[].rpd_count` returned the ledger value without comparing its `rpd_day_key` to the
+  route's current day (the pacing code does compare).
+
+**Change (`coordinator.js`, no schema or config change).**
+
+| Output | Rule |
+|---|---|
+| Claim: the cursor map | Drops a model with no route that is neither stood down, deleted nor under a route or provider pause. Costs one scan restart at the head of that model's queue when a route returns, which "reached the end" already does |
+| `claim.last_empty_diagnostics`, `claim.last_diagnostics` (`?detail=1`) | Read through the same rule: cursors by model, `routes.route_concurrency`, `route_capacity` and `route_health` by route, `provider_concurrency` by provider. Aggregate `rejections` stay. A pause hides the entries while it lasts and resuming brings them back |
+| `model_aliases` | A stood-down route contributes none of its names; a declared alias is dropped when the model it resolves to (following chains) has no route left that is not stood down. Follows the configuration only, so a probe pause does not flap the list. Scheduling does not read this list |
+| `routes.all[].rpd_count` | 0 when `rpd_day_key` is not the current day in the route's reset timezone; `rpd_day_key` stays the ledger's own value |
+
+On the compiled catalog the only model without a schedulable route is `typesafe/jev-1.13`, and
+the alias list loses 7 names (JEV's three, and the route ids of the three other stood-down
+routes). `routes.all` still lists every ledger row, stood-down and `in_catalog: false` ones
+included, because it is the inventory used to find them; those rows now carry the corrected count.
+The plain and `?pending=1` stats differ only in the per-lane `pending` counts, and both carry the
+filtered claim diagnostics and aliases; `routes.all` is served by `?routes=1` and `?detail=1`.
+
+**Tests.** `test/stats-route-hygiene.test.js` (all six fail on the old code). **Deploy.** Merging
+deploys the Worker. **Revert.** Revert the commit; nothing else changed.
