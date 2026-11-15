@@ -71,16 +71,13 @@ python -m pip install --quiet "pip-tools==7.6.2"
 
 compile_once() {
   local out="$1" log="$2"
-  if [[ "$out" == decision-gpu ]]; then
-    local -x PIP_CONSTRAINT=constraints/.decision-gpu-bootstrap
-  fi
   # Version-pinned (no --generate-hashes): the constraints are consumed via `pip -c`
   # alongside editable `pip install -e .`, and hash-checking mode is incompatible with
   # an unhashable editable install. Hash-verified `--require-hashes -r` for the immutable
   # images is a documented follow-up (see review/22 / constraints/README.md).
   # --verbose (not part of the header command) goes to a log that is printed on failure.
   timeout --kill-after=10 "${LANE_TIMEOUT}" \
-    pip-compile --verbose --strip-extras --allow-unsafe \
+    pip-compile --verbose --strip-extras --allow-unsafe --constraint constraints/.decision-gpu-bootstrap \
     --output-file "constraints/${out}.txt" "constraints/${out}.in" >"${log}" 2>&1
 }
 
@@ -123,10 +120,6 @@ compile() {
 # Renovate's pip-compile manager tracks each lock as its own project. The lane -> extras map
 # lives in scripts/lane_inputs.py; keep constraints/README.md in sync with it.
 python scripts/lane_inputs.py
-compile prod
-compile asr
-compile chapter-research
 compile decision-gpu
-compile dev
 
 echo "Constraints recompiled. Review the diff before committing."
