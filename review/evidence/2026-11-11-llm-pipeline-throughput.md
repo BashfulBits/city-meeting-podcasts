@@ -859,7 +859,7 @@ route, one call each.
   where production on these legs reasons for 2k to 34k tokens and takes 100 s or more. The
   `reasoning: {effort: "none"}` fallback was not needed and not called.
 - Both answers failed `finalize_agenda_job` on the quote check, as production answers do.
-  Declared as `reasoning_controls.off`; no lane uses it.
+  Declared as `reasoning_controls.off`; `chapter-agenda` turns it on after the golden eval below.
 
 ### Pause log (2026-11-15, every pause, renewal and resume made by this run)
 

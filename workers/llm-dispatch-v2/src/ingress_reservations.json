@@ -20,7 +20,9 @@
       ],
       "backup_after_attempts": 12,
       "dispatch_shape": "pooled",
-      "reasoning": {},
+      "reasoning": {
+        "nvidia/nemotron-3-ultra-550b-a55b:free": "off"
+      },
       "write_units_per_job": 6
     },
     "chapter-locator": {

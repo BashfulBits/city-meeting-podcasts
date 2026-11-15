@@ -1058,8 +1058,8 @@ calls on paused routes: GLM 20, NVIDIA Ultra 10, Kilo 2, OpenRouter 2.
 | Item | Result | Action |
 |---|---|---|
 | GLM `reasoning_effort: low`, 10-request sample | Reasoning tokens p50 27.6k to 1.7k; latency p50 411 s to 37 s (max 838 s to 86 s); valid 9 of 10 in both arms; verdict agreement with A0 140 of 160 items (87.5%), against 88% for production against A0. A1 leans lenient: 16 flips to "supported", 4 the other way (59 against 47 items supported of 160) | Declared `reasoning_controls.low` on the route; `judge:adjudicator` asks for `low` on `zai/glm-5.3-flash` |
-| Ultra on NVIDIA, reasoning off, 10 new agenda requests | All 10 finished (16 to 127 s, 0 reasoning tokens). Line recall against production: mean 0.88, median 0.98, four requests below 0.9 (0.88, 0.80, 0.66, 0.50). Items: fewer in 7 of 10, more in 2. Valid 2 of 10 (production 3 of 10, both limited by the quote check) | None. Not enabled in a lane; the owner decides |
-| Kilo and OpenRouter Ultra, `reasoning_effort: "none"` | 0 reasoning tokens on 2 of 2 calls per route (5 to 15 s); the `reasoning: {effort: "none"}` fallback was not needed | Declared `reasoning_controls.off` on both routes; no lane uses it |
+| Ultra on NVIDIA, reasoning off, 10 new agenda requests | All 10 finished (16 to 127 s, 0 reasoning tokens). Line recall against production: mean 0.88, median 0.98, four requests below 0.9 (0.88, 0.80, 0.66, 0.50). Items: fewer in 7 of 10, more in 2. Valid 2 of 10 (production 3 of 10, both limited by the quote check) | Enabled after the golden agenda eval below |
+| Kilo and OpenRouter Ultra, `reasoning_effort: "none"` | 0 reasoning tokens on 2 of 2 calls per route (5 to 15 s); the `reasoning: {effort: "none"}` fallback was not needed | Declared `reasoning_controls.off` on both routes; `chapter-agenda` uses it (below) |
 
 The GLM change shortens the adjudicator's calls about 11-fold and removes its 720 to 780 s tail
 (two of ten default calls ran over 780 s). Its cost is a lean toward "supported" of about 7 points
@@ -1086,12 +1086,15 @@ the agenda lane's Ultra timeout share against 11 of 21. Super is weaker on main 
 holdout, and keeps a reasoning tail. Recommendation: turn Ultra reasoning off on `chapter-agenda`
 (`reasoning: {"nvidia/nemotron-3-ultra-550b-a55b:free": "off"}` in `llm_lanes`). The lane map is per model, so all
 three legs change together, and all three have a verified off switch. Not a re-key: reasoning
-controls are not in the agenda recipe hash. Owner decision; not enabled in this PR.
+controls are not in the agenda recipe hash. **Enabled in this PR** (owner, 2026-11-15):
+`llm_lanes.chapter-agenda.reasoning`; revert by deleting that entry and recompiling.
 
 **What this changes and invalidates.** Merging deploys the Worker with the new tuning and limits.
-Nothing is re-keyed: response timeouts and reasoning controls are not in any recipe hash, and no
-lane's request changes. Watch after deploy:
+Nothing is re-keyed: response timeouts and reasoning controls are not in any recipe hash. Two
+lanes' requests change: `judge:adjudicator` asks GLM for `low`, and `chapter-agenda` asks the
+three Ultra legs for reasoning off. Watch after deploy:
 
+- `chapter-agenda` Ultra timeout share (11 of 21 on NVIDIA before) and its agenda success share;
 - `bundle_completed` success share on the four routes;
 - successes with duration 720 to 780 s (WP7's verification);
 - timeout share;

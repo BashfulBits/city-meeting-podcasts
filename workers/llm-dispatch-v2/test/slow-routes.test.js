@@ -111,9 +111,9 @@ test("Nemotron 3 Ultra's declared reasoning switch is sent only when a lane asks
   const payload = { messages: [{ role: "user", content: "x" }], max_tokens: 100 };
   const ultra = LIMITS.routes_by_id.nvidia_nemotron_3_ultra_550b_a55b_free;
   assert.deepEqual(ultra.reasoning_controls, { off: { chat_template_kwargs: { enable_thinking: false } } });
-  // No lane sets a level for the model today (review/58 §12.5): the request is unchanged.
-  for (const lane of Object.values(RESERVATIONS.reservations)) {
-    assert.equal(lane.reasoning?.[ultra.model], undefined);
+  // Only chapter-agenda asks, for reasoning off (golden eval 2026-11-15, review/58 §12.5, #2689).
+  for (const [purpose, lane] of Object.entries(RESERVATIONS.reservations)) {
+    assert.equal(lane.reasoning?.[ultra.model], purpose === "chapter-agenda" ? "off" : undefined, purpose);
   }
   assert.equal(upstreamRequestForRoute(payload, ultra).chat_template_kwargs, undefined);
   assert.deepEqual(
@@ -122,7 +122,7 @@ test("Nemotron 3 Ultra's declared reasoning switch is sent only when a lane asks
   );
 });
 
-test("GLM low effort is requested by judge:adjudicator; the Kilo and OpenRouter Ultra switches are unused", () => {
+test("GLM low effort is requested by judge:adjudicator; chapter-agenda turns every Ultra leg off", () => {
   const payload = { messages: [{ role: "user", content: "x" }], max_tokens: 100 };
   const glm = LIMITS.routes_by_id.orcarouter_zai_glm_5_3_flash_free;
   assert.deepEqual(glm.reasoning_controls, { low: { reasoning_effort: "low" } });
@@ -130,13 +130,14 @@ test("GLM low effort is requested by judge:adjudicator; the Kilo and OpenRouter 
   assert.deepEqual(RESERVATIONS.reservations["judge:adjudicator"].reasoning, { "zai/glm-5.3-flash": "low" });
   assert.equal(upstreamRequestForRoute(payload, glm).reasoning_effort, undefined);
   assert.equal(upstreamRequestForRoute(payload, glm, { reasoningLevel: "low" }).reasoning_effort, "low");
-  // Kilo and OpenRouter declare "off"; no lane sets a level for them, so requests are unchanged.
+  // Kilo and OpenRouter declare "off" too, and share the NVIDIA leg's model key, so the
+  // chapter-agenda level reaches all three legs; no other lane sets one.
+  const agenda = RESERVATIONS.reservations["chapter-agenda"].reasoning;
   for (const routeId of SLOW_ROUTES.filter((id) => /^(kilo|openrouter)_/.test(id))) {
     const route = LIMITS.routes_by_id[routeId];
     assert.deepEqual(route.reasoning_controls, { off: { reasoning_effort: "none" } }, routeId);
-    for (const lane of Object.values(RESERVATIONS.reservations)) {
-      assert.equal(lane.reasoning?.[route.model], undefined, routeId);
-    }
+    assert.equal(route.model, LIMITS.routes_by_id.nvidia_nemotron_3_ultra_550b_a55b_free.model, routeId);
+    assert.equal(agenda[route.model], "off", routeId);
     assert.equal(upstreamRequestForRoute(payload, route).reasoning_effort, undefined, routeId);
     assert.equal(
       upstreamRequestForRoute(payload, route, { reasoningLevel: "off" }).reasoning_effort, "none", routeId,
