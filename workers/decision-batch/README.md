@@ -80,6 +80,13 @@ billing and IAM verification. The GitHub workflow starts disabled.
    taking another attempt. Compare the regular and delayed billing entries and keep the cloud
    workflow disabled when the canary finishes.
 
+The launcher checks effective Run permissions before making a reservation. If submission still
+fails without an execution ID, pause canary dispatch and inspect Cloud Audit Logs and the execution
+list. A verified rejection with no execution needs owner reconciliation of the matching
+`dispatch/admission.json` generation. Keep the attempt ID and reserved charges, and clear only
+that attempt's `outstanding` field with a generation-match write. An empty execution list alone
+cannot establish rejection. A generic CLI failure or timeout leaves the reservation fenced.
+
 ## Local smoke
 
 Run `python workers/decision-batch/run_batch.py --input input.jsonl.gz --output result.jsonl.gz

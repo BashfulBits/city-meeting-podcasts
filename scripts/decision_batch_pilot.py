@@ -96,7 +96,6 @@ def main(argv: list[str] | None = None) -> int:
     else:
         launcher = CloudRunLauncher(os.environ["CITYPODS_BATCH_JOB"], lambda: token)
         if args.command == "launch":
-            launcher.verify_canary_job(os.environ["CITYPODS_IMAGE_DIGEST"])
             attempt = uuid4().hex
             windows = _active_windows(datetime.now(UTC))
             # Print IDs before submission so an ambiguous acknowledgement can be reconciled.
@@ -109,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
                 reservations=dict.fromkeys(windows, PILOT_ATTEMPT_MICRODOLLARS),
                 allowances=dict.fromkeys(windows, PILOT_CAP_MICRODOLLARS),
                 mode=args.mode,
+                verify_image=launcher.verify_canary_job,
             )
             print(json.dumps({"execution": execution}))
         elif args.command == "collect":

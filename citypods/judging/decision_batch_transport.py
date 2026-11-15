@@ -12,7 +12,7 @@ import hashlib
 import io
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
 from citypods.judging.decision_batch import canonical_json, native_request, normalize_results
@@ -162,6 +162,7 @@ def reserve_and_launch(
     reservations: Mapping[str, int],
     mode: str,
     allowances: Mapping[str, int],
+    verify_image: Callable[[str], None] | None = None,
 ) -> str:
     """Reserve all potentially billed windows by CAS, then launch once.
 
@@ -201,6 +202,8 @@ def reserve_and_launch(
     spent = state["spent"]
     if any(spent.get(w, 0) + amount > allowances[w] for w, amount in reservations.items()):
         raise ValueError("allowance exhausted")
+    if verify_image is not None:
+        verify_image(manifest["image_digest"])
     for window, amount in reservations.items():
         spent[window] = spent.get(window, 0) + amount
     state["outstanding"] = {

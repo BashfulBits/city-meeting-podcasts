@@ -157,6 +157,11 @@ def run_cloud(
         ids = [row["item_id"] for row in rows]
         if len(set(ids)) != len(ids) or ids != manifest.get("item_ids"):
             raise ValueError("manifest item IDs mismatch")
+        source = directory / "input.gz"
+        compressed = gzip.compress(b"".join(_encoded(row) + b"\n" for row in rows), mtime=0)
+        if len(compressed) > MAX_COMPRESSED_BYTES:
+            raise ValueError("recompressed batch exceeds limit")
+        source.write_bytes(compressed)
         claim = _encoded(
             {
                 "schema_version": 1,
@@ -169,8 +174,6 @@ def run_cloud(
             store.put(f"{prefix}/claim.json", claim, 0)
         except PreconditionFailed:
             raise ValueError("attempt already claimed; reconcile before retry") from None
-        source = directory / "input.gz"
-        source.write_bytes(gzip.compress(b"".join(_encoded(row) + b"\n" for row in rows), mtime=0))
         output = directory / "output.gz"
         telemetry = run_batch(source, output, lambda: load_model(settings))
         telemetry["task_started_at"] = task_started_at

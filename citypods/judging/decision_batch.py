@@ -9,6 +9,8 @@ from typing import Any
 
 from citypods.judging.backends import Item
 
+GLIDE_MAX_OPTIONS = 255
+
 
 def canonical_json(value: Any) -> str:
     """Serialize a contract value deterministically, rejecting non-finite numbers."""
@@ -99,7 +101,7 @@ def native_request(row: Mapping[str, Any]) -> dict[str, Any]:
         valid = (
             set(question) == {"type", "instructions", "criteria"}
             and isinstance(criteria, list)
-            and bool(criteria)
+            and 0 < len(criteria) <= GLIDE_MAX_OPTIONS
             and all(isinstance(value, str) for value in criteria)
             and "subject_ids" not in row
         )
@@ -108,7 +110,7 @@ def native_request(row: Mapping[str, Any]) -> dict[str, Any]:
         valid = (
             set(question) == {"type", "instructions", "criteria"}
             and isinstance(criteria, Mapping)
-            and bool(criteria)
+            and 0 < len(criteria) <= GLIDE_MAX_OPTIONS
             and all(isinstance(k, str) and isinstance(v, str) for k, v in criteria.items())
             and isinstance(subject_ids, Mapping)
             and set(subject_ids) == set(criteria)

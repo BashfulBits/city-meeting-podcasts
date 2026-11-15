@@ -133,11 +133,17 @@ billing data, and ancillary charges can move, so the workflow allowance bounds i
 [Billing budgets](https://docs.cloud.google.com/billing/docs/how-to/budgets) ·
 [Cloud Run spend controls](https://docs.cloud.google.com/run/docs/jobs-cost-optimization)
 
-The maintainer allows up to 24 hours from enqueue to task start. Track submission, provisioning,
-runtime and collection separately. Reconcile hourly and submit at a measured fill target or an
-age threshold that reserves for provisioning. If using delayed mode, submit by age 10 hours to
-leave up to 12 hours for provisioning and two hours for scheduling slack. Regular mode can wait
-longer for the same start target. Record misses due to allowance or service capacity. Run a matched
+The recurring dispatcher checks for eligible work hourly. Submit one nonempty batch when it reaches
+the tested fill target (start the benchmark at 500 decisions), or when the **oldest eligible item
+has waited 24 hours**, whichever comes first. Keep the oldest item's timestamp across producer runs.
+An empty queue always skips launch. A quiet queue can therefore run once a day, with no fixed
+quota of daily launches. Apply the measured size and token bounds and the one-outstanding and
+budget gates ahead of any submit. A manual canary can explicitly use a smaller batch.
+
+The 24-hour target measures enqueue to **submission**. Track Google provisioning, runtime and
+collection separately. Prefer regular mode at equal measured cost so the oldest item does not
+gain a second queueing delay. Delayed mode can add up to 12 hours after submission. Record misses
+due to scheduler cadence, allowance or service capacity. Run a matched
 regular/delayed canary with identical input, image, region and task settings, then compare billed
 GPU time, net CPU/RAM, failed attempts and cost per 1,000 valid decisions. Review the actual GCP
 SKUs and credits. Set the recurring mode explicitly after that comparison. Retain a single mode
@@ -291,7 +297,7 @@ remain the proposal for a prefilter experiment.
 | Source of truth | Archived human labels plus a small fresh blind holdout. |
 | Eventual role | Qualify toward an alternate anchor under per-entry family rules. Keep later open weights possible where they add diversity or improve results. |
 | Gross allowance | Up to $4/month including storage and builds. |
-| Launch | Up to 24 hours before task start. Initial choice was Delayed Jobs with regular benchmarks. The cost follow-up calls for support for both modes and a measured price comparison before activation. |
+| Launch | Submit when the batch reaches its measured fill target or the oldest work reaches 24 hours. Empty queues skip. Compare regular and delayed modes, using regular when measured cost is tied. |
 | First implementation handoff | Offline contract plus a disabled Cloud Run workflow and worker. |
 
 Track the development-ready slices as issues when agreed, then update the design index. Record

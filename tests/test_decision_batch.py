@@ -151,6 +151,24 @@ def moment_item(question, *, reverse=False):
     )
 
 
+@pytest.mark.parametrize("count", [255, 256])
+def test_native_option_limit_for_choice_and_score(count):
+    from citypods.judging.moment_task import BEST, USEFULNESS
+
+    options = tuple((str(i), f"candidate-{i}") for i in range(count))
+    levels = tuple(f"level-{i}" for i in range(count))
+    items = [
+        replace(moment_item(BEST), options=options),
+        moment_item(replace(USEFULNESS, levels=levels)),
+    ]
+    for row in build_items(items):
+        if count == 255:
+            assert len(native_request(row)["questions"][row["item_id"]]["criteria"]) == count
+        else:
+            with pytest.raises(ValueError, match="invalid question"):
+                native_request(row)
+
+
 def test_moment_native_shapes_and_reverse_mapping():
     from citypods.judging.moment_task import BEST, PUBLISHABLE, SUPPORTED, USEFULNESS
 

@@ -144,10 +144,24 @@ class CloudRunLauncher:
         ):
             raise ValueError("Cloud Run job does not match the one-task Iowa L4 canary envelope")
         container = containers[0]
-        if not container["image"].endswith(f"@{image_digest}") or container.get(
-            "resources", {}
-        ).get("limits") != {"cpu": "4", "memory": "16Gi", "nvidia.com/gpu": "1"}:
+        env = {entry["name"]: entry.get("value") for entry in container.get("env", [])}
+        if (
+            not container["image"].endswith(f"@{image_digest}")
+            or env.get("CITYPODS_IMAGE_DIGEST") != image_digest
+            or container.get("resources", {}).get("limits")
+            != {"cpu": "4", "memory": "16Gi", "nvidia.com/gpu": "1"}
+        ):
             raise ValueError("canary image or resource limits differ from the reservation")
+        required = ["run.jobs.run", "run.jobs.runWithOverrides"]
+        request = _authorized(
+            f"{url}:testIamPermissions",
+            self.access_token(),
+            json.dumps({"permissions": required}).encode(),
+        )
+        request.add_header("Content-Type", "application/json")
+        allowed = json.loads(_read(request)).get("permissions", [])
+        if not set(required).issubset(allowed):
+            raise PermissionError("dispatcher lacks Cloud Run launch permissions")
 
     def launch(self, manifest_id: str, attempt_id: str, mode: str) -> str:
         command = cloud_run_command(

@@ -64,6 +64,7 @@ def test_launcher_checks_acknowledgement(monkeypatch):
     assert commands[0][5:7] == ["decision-batch", "--project=test"]
     with pytest.raises(ValueError):
         launcher.launch("m,OTHER=value", "a", "delayed")
+    assert len(commands) == 1
 
 
 def test_terminal_execution_must_match_attempt(monkeypatch):
@@ -100,14 +101,32 @@ def test_canary_refuses_more_tasks_or_retries_than_reserved(monkeypatch):
         "containers": [
             {
                 "image": f"registry/project/image@{digest}",
+                "env": [{"name": "CITYPODS_IMAGE_DIGEST", "value": digest}],
                 "resources": {"limits": {"cpu": "4", "memory": "16Gi", "nvidia.com/gpu": "1"}},
             }
         ],
     }
     template = {"taskCount": 1, "parallelism": 1, "template": task}
-    monkeypatch.setattr(cloud, "_read", lambda request: json.dumps({"template": template}).encode())
+    permissions = ["run.jobs.run", "run.jobs.runWithOverrides"]
+
+    def read(request):
+        if request.full_url.endswith(":testIamPermissions"):
+            assert json.loads(request.data)["permissions"] == [
+                "run.jobs.run",
+                "run.jobs.runWithOverrides",
+            ]
+            return json.dumps({"permissions": permissions}).encode()
+        return json.dumps({"template": template}).encode()
+
+    monkeypatch.setattr(cloud, "_read", read)
     launcher = cloud.CloudRunLauncher(JOB, lambda: "opaque")
     launcher.verify_canary_job(digest)
+    permissions.pop()
+    with pytest.raises(PermissionError):
+        launcher.verify_canary_job(digest)
+    task["containers"][0]["env"][0]["value"] = "sha256:" + "b" * 64
+    with pytest.raises(ValueError, match="image or resource"):
+        launcher.verify_canary_job(digest)
     task["maxRetries"] = 1
     with pytest.raises(ValueError, match="canary envelope"):
         launcher.verify_canary_job(digest)

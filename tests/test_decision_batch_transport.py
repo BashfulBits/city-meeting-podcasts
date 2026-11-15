@@ -136,6 +136,29 @@ def test_chunks_manifest_repeat_and_limits():
         )
 
 
+def test_launch_checks_manifest_image_before_reserving():
+    store, _, _, manifest, _ = setup()
+    checked = []
+
+    def reject_image(digest):
+        checked.append(digest)
+        raise ValueError("job image mismatch")
+
+    with pytest.raises(ValueError, match="job image mismatch"):
+        reserve_and_launch(
+            store,
+            None,
+            manifest,
+            "attempt",
+            mode="regular",
+            reservations={"2026-01": 10},
+            allowances={"2026-01": 20},
+            verify_image=reject_image,
+        )
+    assert checked == ["digest"]
+    assert store.get("dispatch/admission.json") is None
+
+
 def test_ambiguous_launch_fenced_and_allowance():
     store, _, _, manifest, _ = setup()
     launcher = Launch(fail=True)
