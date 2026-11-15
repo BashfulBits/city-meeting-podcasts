@@ -59,3 +59,25 @@ def test_asr_constraints_on_default_python_are_rejected(tmp_path, monkeypatch):
     )
     _found, problems = lanes()
     assert any("constraints/asr.txt" in p for p in problems)
+
+
+def test_decision_gpu_lane_uses_python_312():
+    found, problems = lanes()
+    assert problems == []
+    assert any(
+        lane["version_file"] == ASR_VERSION_FILE
+        and lane["constraints"] == "constraints/decision-gpu.txt"
+        and lane["extras"] == "decision-gpu"
+        for lane in found
+    )
+
+
+def test_decision_gpu_constraints_on_default_python_are_rejected(tmp_path, monkeypatch):
+    _write_workflow(
+        tmp_path,
+        monkeypatch,
+        f"python-version-file: {DEFAULT_VERSION_FILE}",
+        'pip install -c constraints/decision-gpu.txt -e ".[decision-gpu]"',
+    )
+    _found, problems = lanes()
+    assert any("constraints/decision-gpu.txt" in problem for problem in problems)
