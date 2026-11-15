@@ -51,7 +51,7 @@ on eligible subjects matters alongside raw benchmark scores.
 [Liquid model card](https://huggingface.co/LiquidAI/d1-3B) ·
 [Decision Index leaderboard](https://multimodalart-jev-decision-index.static.hf.space/index.html)
 
-#### Karpo as the next candidate
+#### Gemma-family follow-up candidates
 
 GLiDE-9B is an alternate Qwen-family capacity source. After qualification it can back up or
 replace OpenRouter's free Perplexity Decider route if that route loses capacity. Keep their
@@ -78,6 +78,23 @@ Karpo separately under the project budget before adding a model or enabling a vo
 [12B model card](https://huggingface.co/MachinePulseAI/karpo-decision-12B) ·
 [Cloud Run GPUs](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu) ·
 [Cloud Run pricing](https://cloud.google.com/run/pricing)
+
+`s1-gemma4-26b-decision` is another Gemma 4 candidate and the first to try if the follow-up
+targets one L4. It fine-tunes Gemma 4 26B-A4B IT and reads option probabilities from next-token
+logits for choice, yes/no, and ordinal decisions. Its roughly 4B active parameters describe
+compute per token. The author measured 48.5 GiB of BF16 weights and 25.8 GiB in FP8, both above
+L4 capacity. The published Ollama INT4 artifact is about 17 GB on disk, making it a plausible
+fit. Confirm that the Linux NVIDIA backend preserves the option logits, fits weights and runtime
+buffers within 24 GB of GPU memory and the job's host memory limit, and completes cold batches
+without runner restarts. The author's NVIDIA INT4 run reported restarts and 15 failed requests
+out of 1,700. Pin the artifact and use calibration for the exact backend and quantization.
+[Model card and measured sizing](https://huggingface.co/j-raghavan/s1-gemma4-26b-decision) ·
+[Typed decision runner](https://github.com/j-raghavan/s1-decision-model)
+
+The author reports 0.804 calibrated for INT4 versus 0.817 for BF16 on a 1,700-case JevBench
+subset. Use the same Citypods tag and moment holdout to compare S1 with Karpo, GLiDE, and the
+existing routes. The subset scores and Karpo's full Decision Index score use different
+evaluations. S1 and Karpo both count as `google` family under the current exclusion rule.
 
 ## Argon’s proposal and the findings that change it
 
