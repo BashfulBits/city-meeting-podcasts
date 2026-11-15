@@ -207,9 +207,19 @@ def main() -> None:
         raise ValueError("model directory must exist locally")
 
     def load_model(settings: dict[str, Any]) -> tuple[Any, type[Exception]]:
+        import torch
+        from fla.ops.gated_delta_rule import chunk_gated_delta_rule
         from glide.model import Glide
         from glide.prompt import RequestError
 
+        if not (
+            torch.cuda.is_available()
+            and torch.cuda.is_bf16_supported()
+            and torch.version.cuda == "13.0"
+            and "L4" in torch.cuda.get_device_name()
+            and callable(chunk_gated_delta_rule)
+        ):
+            raise RuntimeError("expected an L4 BF16 CUDA 13.0 runtime with flash-linear-attention")
         return Glide.from_pretrained(
             str(model_dir.resolve()),
             vision=False,

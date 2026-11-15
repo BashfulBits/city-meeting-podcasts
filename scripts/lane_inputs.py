@@ -37,6 +37,7 @@ LANES: dict[str, tuple[str, ...]] = {
     # them separately risks two constraint files disagreeing on the same package.
     "asr": ("storage", "asr", "asr-align2"),
     "chapter-research": ("chapter-research",),
+    "decision-gpu": ("decision-gpu",),
     # `wer` also needs to be in dev.txt: ci.yml's `test` job installs against this file, and
     # the H15 L3 tests exercise real jiwer computation.
     "dev": ("storage", "dev", "wer", "llm"),

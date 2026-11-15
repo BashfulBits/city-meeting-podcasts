@@ -40,28 +40,21 @@ billing and IAM verification. The GitHub workflow starts disabled.
 
 ## Reproducibility gates
 
-1. Add a shared GPU dependency lane under the [dependency policy](../../review/22-dependency-and-reproducibility-policy.md).
-   Declare floors in `pyproject.toml`, compile Linux/CPython target constraints, and exercise the
-   exact CUDA 13 wheels and kernel path. Include the pinned GLiDE source/runtime and its full
-   dependencies. This repository currently has **no GPU lane**; the template image is not buildable
-   reproducibly from this checkout alone.
-   The pinned upstream inference requirements resolved to Linux/amd64 CPython 3.12 wheels in a
-   cross-platform resolver check. The existing ASR lock uses a different Torch and Triton stack.
-   Keep a separate decision GPU lock and verify it with the repository compiler. The runtime must
-   provide a C compiler, Python and libc headers, and the CUDA driver library for Triton.
+1. Build from the dedicated `constraints/decision-gpu.txt` lock for Linux/amd64 and Python 3.12.
+   The normal repository lock workflow recompiled the initial upstream GLiDE Torch 2.14.0,
+   Triton 3.8.0 and CUDA 13.0 runtime pins. Keep it separate from the WhisperX ASR closure.
+   The Docker base digest supplies the C compiler and Python/libc headers for Triton. Cloud Run
+   supplies the GPU driver. [Dependency policy](../../review/22-dependency-and-reproducibility-policy.md)
 2. Review Fastino's license and notices. Pin the GLiDE-9B source and weights by the reviewed full
    revision `ab54df5acba0eebf7df45560ffdaacd64e32df3b`. Obtain the complete snapshot through an
    approved process, independently verify the snapshot bytes and mount it read-only at the
    configured local path. A directory name is not evidence of model identity.
-3. Review and supply a CUDA 13-compatible Python base by immutable `@sha256:` digest, with the
-   GPU lane installed from its compiled constraints. GLiDE is a source tree. Copy its reviewed
-   `glide/` package into `/opt/glide-src/glide/` in the base so the image controls executable code
-   and the model mount supplies weights. Record the digest, versions, model revision and compiled
-   lock digest in the run manifest. Build with
-   `--build-arg GPU_BASE_IMAGE=<reviewed-image@sha256:...>`; record the resulting image digest.
-   The Dockerfile intentionally has no mutable default and installs this project without resolving
-   or installing dependencies. Build from a minimal, reviewed context that excludes secrets and
-   local state. Do not treat an arbitrary supplied base as a verified build.
+3. Build with `docker build --platform linux/amd64 -f workers/decision-batch/Dockerfile .` from a
+   clean checkout. For a remote build, stage only `pyproject.toml`, `README.md`, `citypods/`, the
+   two decision GPU constraints files and the worker's Dockerfile and Python sources. Use a
+   private registry and record the result's digest. The Docker build vendors just the pinned
+   GLiDE source and attribution. The model bucket supplies the hash-verified weights at runtime.
+   Before loading the weights, the worker checks CUDA 13.0, L4 BF16 and the FLA kernel import.
 4. Confirm Cloud Run L4 availability, current image/job schema, GPU/kernel path and driver,
    project and region, scoped service identity, private bucket, retention policy, and read-only
    model mount, including its volume and `volumeMounts` configuration. Set

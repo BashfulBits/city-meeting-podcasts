@@ -8,6 +8,7 @@ fully-resolved pins that make installs reproducible. Policy: [`review/22`](../re
 | `prod.txt` | core + `storage` + `wer` + `llm` | `deploy.yml`, `audit.yml`, `audio.yml`, `asr-quality-review.yml`, … and the audio-runner image |
 | `asr.txt`  | core + `storage` + `asr-*` (incl. `asr-align2`) | `asr.yml`, `asr-bench.yml`, `asr-quality-eval.yml`, Modal/Beam worker images |
 | `dev.txt`  | core + `storage` + `dev` + `wer` + `llm` | `ci.yml` |
+| `decision-gpu.txt` | core + `decision-gpu` | GLiDE-9B GPU image and credential-free Linux/3.12 compatibility checks |
 | `chapter-research.txt` | core + `chapter-research` | local-only generated-chapter experiments; installed by `ci.yml`, never by a Worker |
 | `gh-cli.txt` | n/a (not pip-compile — hand-maintained, `gh` isn't a Python package) | `.github/actions/setup-gh-cli`, used by every workflow that calls `gh` |
 
@@ -57,3 +58,17 @@ In CI this is the **`lock.yml`** workflow (manual dispatch, and on `pyproject.to
 > The `*.txt` locks and `*.in` inputs are generated. Do not hand-edit them — change
 > `pyproject.toml`, then recompile. `gh-cli.txt` is the one exception: it's hand-maintained (see its own header),
 > since `gh` isn't a Python package and has nothing for `pip-compile` to resolve.
+
+## Decision GPU lane
+
+`decision-gpu` is separate from the WhisperX ASR stack: GLiDE's validated Torch 2.14
+runtime is incompatible with WhisperX's Torch 2.8 constraint. Generate its lock on Linux
+amd64 and CPython 3.12 through the ordinary lock workflow. The extra's floors describe the
+upstream tested baseline; the compiled file selects actual versions, which must be checked
+against the reviewed GLiDE revision before any inference. Torch, Triton, model code, kernel
+packages, model weights, and image changes affect shadow decision outputs; record the full
+identity and rerun qualification when they change. No stored judge artifacts are invalidated.
+
+GPU execution additionally requires a reviewed image with a C compiler, Python headers, CUDA
+13-compatible libraries, a matching host driver, and the pinned `glide` source on PYTHONPATH.
+The lock alone does not verify runtime kernel selection or L4 compatibility.

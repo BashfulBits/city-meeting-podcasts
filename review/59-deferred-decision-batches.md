@@ -51,6 +51,34 @@ on eligible subjects matters alongside raw benchmark scores.
 [Liquid model card](https://huggingface.co/LiquidAI/d1-3B) ·
 [Decision Index leaderboard](https://multimodalart-jev-decision-index.static.hf.space/index.html)
 
+#### Karpo as the next candidate
+
+GLiDE-9B is an alternate Qwen-family capacity source. After qualification it can back up or
+replace OpenRouter's free Perplexity Decider route if that route loses capacity. Keep their
+quality measurements separate and select one eligible Qwen vote per subject.
+
+Karpo Decision 31B is a strong second self-hosted candidate. It is a Gemma 4 31B IT fine-tune
+with a typed decision readout. Its 73.86 Decision Index 0.4.1 full score supports a matched
+civic holdout. Unlike GLiDE, Karpo's runner can score several questions about identical state
+in one forward pass. Test that grouping only where it preserves the evidence and question meaning.
+Karpo adds a separate lineage from Qwen. Apply the current `google` family exclusion when Gemini
+or a Google producer already occupies that family for a subject.
+[Benchmark publisher data](https://huggingface.co/datasets/multimodalart/decision-index-leaderboard) ·
+[31B model card](https://huggingface.co/MachinePulseAI/karpo-decision-31B) ·
+[Native runner](https://github.com/machinepulse-ai/karpo-decision)
+
+At 31.27B parameters, idealized weights alone take about 62.5 GB in BF16 or 31.3 GB in FP8/INT8.
+A 24 GB L4 would require a working low-bit path that preserves the decision readout, numeric
+calibration, and runtime headroom. Karpo also publishes a Gemma 4 12B weight set. Its BF16 weights
+take about 24 GB before runtime overhead, so measure or quantize that variant as well for an L4
+pilot. Iowa's 96 GB RTX PRO 6000 can support a BF16 31B trial. At 120 one-minute executions it
+costs about $2.63 in GPU charges, or $6.37 at regular full compute rates before storage and
+shared CPU/RAM credits. Neither latency nor cost per decision is measured for Citypods. Evaluate
+Karpo separately under the project budget before adding a model or enabling a vote.
+[12B model card](https://huggingface.co/MachinePulseAI/karpo-decision-12B) ·
+[Cloud Run GPUs](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu) ·
+[Cloud Run pricing](https://cloud.google.com/run/pricing)
+
 ## Argon’s proposal and the findings that change it
 
 | Proposal | Finding and design consequence |
@@ -256,8 +284,9 @@ GitHub environment. The maintainer authorized three one-task L4 attempts under $
 project, credit and IAM are verified. The launcher holds three $0.09 reservations for this
 canary, including ambiguous submissions, and requires the one-task Iowa job configuration.
 
-The offline replay establishes contract and state-machine behavior. Live GPU image build,
-measured prices and archived/holdout quality evidence remain rollout gates. The manual canary
+The offline replay establishes contract and state-machine behavior. The Linux GPU lock is
+separate from ASR and preserves the upstream CUDA 13.0 baseline. Image and GPU canary
+evidence, measured prices and archived/holdout quality remain rollout gates. The manual canary
 uses explicitly selected work and can replay a different launch mode as its own manifest.
 Scheduled export, multi-producer chunk discovery, expiry and autonomous admission stay with
 the recurring-shadow decision. Keep the admission ledger and receipts beyond raw-object expiry.
