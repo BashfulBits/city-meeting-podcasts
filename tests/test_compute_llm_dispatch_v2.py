@@ -2792,3 +2792,41 @@ def test_singleton_reconciliation_holds_legacy_unsubmitted_moments():
     )
     assert backend.reconcile(legacy) is None
     session.post.assert_not_called()
+
+
+def test_terminal_retry_uses_new_stable_idempotency_generation():
+    from citypods.compute.llm_deferred import discard_terminal_failure, snapshot_deferred_handles
+
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3.5-flash-lite", dispatch_v2_url="https://worker"),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        recipe_hash="retry-generation",
+        inputs={
+            "messages": [{"role": "user", "content": "classify"}],
+            "llm_policy": LLMRequestPolicy(
+                allowed_models=("gemini/gemini-3.5-flash-lite",), queue_only=True
+            ),
+        },
+    )
+    first = backend.enqueue_batch([job])[0]
+    first_key = session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"]
+    discard_terminal_failure(
+        storage,
+        snapshot_deferred_handles(storage, [first]),
+        first,
+        LLMDispatchTerminalError("failed"),
+    )
+    second = backend.enqueue_batch([job])[0]
+    second_key = session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"]
+    assert second.ref != first.ref
+    assert second_key != first_key
+    assert second_key.endswith(":recovery:terminal-1")
+    backend.enqueue_batch([job])
+    assert session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"] == second_key

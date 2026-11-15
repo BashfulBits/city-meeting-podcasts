@@ -442,6 +442,12 @@ shared, with existing 65-second spacing/cooldown. Existing UTC-day failure count
 one early route check daily, without becoming capacity evidence. Context, concurrency, paid/free
 policy, lanes and completed artifacts are unchanged.
 
+The tag producer gives each ordinary terminal retry its own idempotency generation, and duplicate
+observations of one failed Worker job count once. Queue model indexes use context compatibility;
+live admission applies calibrated input ceilings. A bounded reconciliation rebuilds older indexes,
+while oversized chapters split before deferral. Existing false-exhaustion markers are repaired only
+from audited job identities; successful outputs are not invalidated.
+
 Slice 3a (implemented in PR #2191; #2190) extends the existing coordinator reconciliation pass to repair
 queued model indexes and report typed structural failures after a catalog change. Structurally
 unusable primaries unlock already-declared backups while preserving paid/free policy. Pauses and

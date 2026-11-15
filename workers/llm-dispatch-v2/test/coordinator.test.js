@@ -4666,3 +4666,41 @@ test("stats aggregates lane completed counts from packed usage cells and fallbac
 });
 
 
+
+test("enqueue indexes context-fitting routes even above their static input ceiling", async () => {
+  const catalog = {
+    model_aliases: {},
+    model_routes_map: { gemini: ["gemini-route"] },
+    routes_by_id: {
+      "gemini-route": {
+        free: true, input_context_limit: 1000000, output_context_limit: 65536,
+        hard_input_ceiling: 218875, input_token_ratio: 2.15,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100", DISPATCH_LIMITS_OVERRIDE: catalog,
+  });
+  await coordinator.enqueueBatch([{
+    id: "calibrated", idempotency_key: "calibrated-key", request_digest: "calibrated-digest",
+    policy_json: JSON.stringify({ allowed_models: ["gemini"], allow_paid: false }),
+    prompt_family: "tag", input_token_estimate: 130813, max_output_token_estimate: 12288,
+    payload_key: "payloads/calibrated/request.json",
+  }]);
+  const models = [...sql.exec("SELECT model FROM job_models WHERE job_id='calibrated'")];
+  assert.deepEqual(models.map((row) => row.model), ["gemini"]);
+});
+
+test("terminal provider failure retains a bounded diagnostic class on its job", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await completeLeased(sql, coordinator, "terminal-diagnostic",
+    [["terminal-diagnostic-job", "topic-tags:tagger", 100, "shared-route"]], [{
+      job_id: "terminal-diagnostic-job", outcome: "terminal_error",
+      provider_status_code: 400, failure_class: "request_defect",
+    }]);
+  const row = sql.exec(
+    "SELECT state, terminal_reason FROM jobs WHERE id='terminal-diagnostic-job'"
+  )[0];
+  assert.equal(row.state, "failed");
+  assert.equal(row.terminal_reason, "provider_request_defect");
+});

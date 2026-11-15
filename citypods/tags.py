@@ -398,7 +398,12 @@ def _tag_route_fits(route: Any, input_tokens: int) -> bool:
     return (
         scaled <= limit
         and TAG_OUTPUT_TOKEN_BUDGET <= route.output_context_limit
-        and (route.quota.tpm is None or scaled + TAG_OUTPUT_TOKEN_BUDGET <= int(route.quota.tpm))
+        # Gemini's measured TPM is input-only; other providers may count the full request.
+        and (
+            route.quota.tpm is None
+            or scaled + (0 if route.provider == "gemini" else TAG_OUTPUT_TOKEN_BUDGET)
+            <= int(route.quota.tpm)
+        )
     )
 
 
@@ -1146,6 +1151,68 @@ def llm_tag_suggestions(
         for route in ROUTE_CANDIDATES.get(candidate, (ROUTES.get(candidate),))
         if route is not None
     ]
+
+    def replan_oversized():
+        pieces = split_unadmissible_tag_request(compact_chapters)
+        if pieces is None:
+            # One transcript segment cannot be split further: an oversized deferral, not an error.
+            return [], {}, True, "payload-too-large"
+        merged: dict[str, list[dict[str, Any]]] = {}
+        pending = False
+        payload_too_large = False
+        piece_metadata: list[dict[str, Any]] = []
+        resolved_models: list[str] = []
+        for index, piece in enumerate(pieces):
+            metadata: dict[str, Any] = {}
+            piece_digest = hashlib.sha1(
+                json.dumps(piece, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()[:16]
+            _, chapter_tags, piece_pending, resolved_model = llm_tag_suggestions(
+                backend,
+                taxonomy=taxonomy,
+                agenda_item_titles="",
+                agenda_text="",
+                transcript_text="",
+                recipe_hash=f"{recipe_hash}-replan-{index}-{piece_digest}",
+                chapter_inputs=piece,
+                agenda_documents=agenda_documents,
+                allow_paid=allow_paid,
+                purpose=purpose,
+                call_metadata_out=metadata,
+                _batched=True,
+            )
+            piece_metadata.append(metadata)
+            pending = pending or piece_pending
+            payload_too_large = payload_too_large or resolved_model == "payload-too-large"
+            if resolved_model and resolved_model != "payload-too-large":
+                resolved_models.append(resolved_model)
+            for chapter_id_value, tags in chapter_tags.items():
+                merged.setdefault(chapter_id_value, []).extend(tags)
+        call_metadata.update(
+            {
+                "job_recipe_hashes": [
+                    recipe
+                    for item in piece_metadata
+                    for recipe in item.get("job_recipe_hashes", [])
+                ],
+                "input_tokens_estimate": sum(
+                    int(item.get("input_tokens_estimate") or 0) for item in piece_metadata
+                ),
+                "tagger_replanned_from": recipe_hash,
+                "tagger_batches": len(pieces),
+                "tagger_batches_metadata": piece_metadata,
+            }
+        )
+        publish_call_metadata()
+        if pending:
+            return [], {}, True, "payload-too-large" if payload_too_large else None
+        return (
+            [],
+            _merge_split_chapter_tags(merged),
+            False,
+            resolved_models[-1] if resolved_models else backend_model,
+        )
+
     if candidate_routes:
         call_metadata["route_input_context_limit"] = max(
             route.input_context_limit for route in candidate_routes
@@ -1215,7 +1282,7 @@ def llm_tag_suggestions(
                     ).encode()
                 )
                 if not fits_any_allowed_route(single_messages, single_bytes):
-                    return [], {}, True, "payload-too-large"
+                    return replan_oversized()
             if current:
                 batches.append(current)
             if len(batches) > 1:
@@ -1270,13 +1337,13 @@ def llm_tag_suggestions(
                     return [], {}, True, "payload-too-large" if payload_too_large else None
                 return [], merged, False, resolved_models[-1] if resolved_models else backend_model
         if request_bytes > TAGGER_MAX_REQUEST_BYTES:
-            return [], {}, True, "payload-too-large"
+            return replan_oversized() if chapter_mode else ([], {}, True, "payload-too-large")
         if candidate_routes and all(
             input_tokens_estimate > route.input_context_limit
             or TAG_OUTPUT_TOKEN_BUDGET > route.output_context_limit
             for route in candidate_routes
         ):
-            return [], {}, True, "payload-too-large"
+            return replan_oversized() if chapter_mode else ([], {}, True, "payload-too-large")
     if backend_model and getattr(backend_storage, "cas_capable", False):
         # Allow the scheduler exactly the calibrated tag route(s): the primary ``model`` plus any
         # ``additional_models`` (config's ``tagging.llm_models``). Production tags one call per
@@ -1319,7 +1386,7 @@ def llm_tag_suggestions(
             # the docstring above. TagsStage must be able to tell this apart from a genuine
             # capacity-exhausted defer, or one oversized episode would stop the rest of the run's
             # episodes from even attempting a dispatch.
-            return [], {}, True, "payload-too-large"
+            return replan_oversized() if chapter_mode else ([], {}, True, "payload-too-large")
         inputs["llm_policy"] = LLMRequestPolicy(
             allowed_models=allowed_models,
             allow_paid=allow_paid,
@@ -1343,65 +1410,7 @@ def llm_tag_suggestions(
         # recovery gate now refuses on every run. Split it into new, smaller recipes instead.
         if not chapter_mode or not _tag_recipe_unadmissible(backend_storage, recipe_hash):
             raise
-        pieces = split_unadmissible_tag_request(compact_chapters)
-        if pieces is None:
-            # One transcript segment cannot be split further: an oversized deferral, not an error.
-            return [], {}, True, "payload-too-large"
-        merged: dict[str, list[dict[str, Any]]] = {}
-        pending = False
-        payload_too_large = False
-        piece_metadata: list[dict[str, Any]] = []
-        resolved_models: list[str] = []
-        for index, piece in enumerate(pieces):
-            metadata: dict[str, Any] = {}
-            piece_digest = hashlib.sha1(
-                json.dumps(piece, sort_keys=True, separators=(",", ":")).encode()
-            ).hexdigest()[:16]
-            _, chapter_tags, piece_pending, resolved_model = llm_tag_suggestions(
-                backend,
-                taxonomy=taxonomy,
-                agenda_item_titles="",
-                agenda_text="",
-                transcript_text="",
-                recipe_hash=f"{recipe_hash}-replan-{index}-{piece_digest}",
-                chapter_inputs=piece,
-                agenda_documents=agenda_documents,
-                allow_paid=allow_paid,
-                purpose=purpose,
-                call_metadata_out=metadata,
-                _batched=True,
-            )
-            piece_metadata.append(metadata)
-            pending = pending or piece_pending
-            payload_too_large = payload_too_large or resolved_model == "payload-too-large"
-            if resolved_model and resolved_model != "payload-too-large":
-                resolved_models.append(resolved_model)
-            for chapter_id_value, tags in chapter_tags.items():
-                merged.setdefault(chapter_id_value, []).extend(tags)
-        call_metadata.update(
-            {
-                "job_recipe_hashes": [
-                    recipe
-                    for item in piece_metadata
-                    for recipe in item.get("job_recipe_hashes", [])
-                ],
-                "input_tokens_estimate": sum(
-                    int(item.get("input_tokens_estimate") or 0) for item in piece_metadata
-                ),
-                "tagger_replanned_from": recipe_hash,
-                "tagger_batches": len(pieces),
-                "tagger_batches_metadata": piece_metadata,
-            }
-        )
-        publish_call_metadata()
-        if pending:
-            return [], {}, True, "payload-too-large" if payload_too_large else None
-        return (
-            [],
-            _merge_split_chapter_tags(merged),
-            False,
-            resolved_models[-1] if resolved_models else backend_model,
-        )
+        return replan_oversized()
     if isinstance(outcome, JobHandle):
         return [], {}, True, None
     if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):

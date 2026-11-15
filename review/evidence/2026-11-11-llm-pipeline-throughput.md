@@ -969,3 +969,23 @@ Single routes only, one at a time; each pause 900 s, renewed every 300 s while c
 While the Ultra NVIDIA leg was paused, `chapter-agenda` kept its Kilo and OpenRouter Ultra legs
 and its pool; while the Super NVIDIA leg was paused, its lanes kept the Kilo and OpenRouter Super
 legs. No pause made by this eval is outstanding.
+
+### 2026-11-15 retry and Gemini input investigation
+
+A read-only audit of the scheduler and deferred markers found three re-planned tag children
+(`b499a98c`, `19a42367`, `e8eb0e97`) with raw input estimates 113,347, 115,794, and 114,943.
+Each had one failed Worker row and an exhausted three-failure marker. The unchanged recipe-based
+idempotency key replayed that row; the former audit counted repeat observations as fresh failures.
+Their original unadmissible parents had zero provider attempts and their queue model indexes
+omitted Gemini 3.5 despite its presence in each allowed-model policy. This is a static indexing
+exclusion, not a Gemini rejection. Stored legacy markers do not prove all original failure causes;
+repair must identify individual affected lineages before touching state.
+
+A direct native Gemini 3.5 Flash Lite secondary-project probe paused and drained its Worker route,
+waited at least 65 seconds, and charged each generation to the route's request ledger. Google
+`countTokens` measured inputs of 400,011, 230,011, 200,011, 150,011, and 100,011 tokens. The first
+two returned 429 for the project's 250,000 input-TPM quota; 200,011 and 150,011 returned 503 high
+demand. The
+100,011-token control succeeded and reported 100,011 input tokens. These outcomes do not establish
+the route's exact request-size boundary or sustained throughput. No configuration
+limit is changed on that evidence, and temporary quota/capacity failures are not size rejections.
