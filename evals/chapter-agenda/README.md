@@ -94,6 +94,25 @@ the commit after it.
 `results/<date>.json` holds every run: per-model summary and per-episode outcome. The latest
 comparison is summarized in the PR or review that acted on it.
 
+### 2026-11-15 (main + holdout; Nemotron reasoning, review/58 #2689)
+
+`results/2026-11-15-nemotron-reasoning{,-holdout}.json`. Direct calls on one paused NVIDIA
+route per model, 780 s timeout, a response timeout recorded and not retried (the run measured
+timeouts against successes; there were none). The reasoning-on row is the 2026-09-24b Ultra run
+re-scored with today's validator (identical scores).
+
+| Model | Split | Valid | First-attempt valid | Precision | Recall | F1 | Median s | Timeouts |
+|---|---|---|---|---|---|---|---|---|
+| Nemotron 3 Ultra, reasoning off | main | 100% | 93.1% | 0.862 | 0.662 | 0.749 | 9 | 0 / 31 |
+| Nemotron 3 Ultra, reasoning off | holdout | 100% | 95.8% | 0.923 | 0.747 | 0.825 | 8 | 0 / 25 |
+| Nemotron 3.5 Super VL, default | main | 100% | 93.1% | 0.873 | 0.596 | 0.708 | 49 | 0 / 31 |
+| Nemotron 3.5 Super VL, default | holdout | 95.8% | 91.7% | 0.944 | 0.791 | 0.860 | 51 | 0 / 26 |
+| Nemotron 3 Ultra, reasoning on (09-24b) | main | 100% | 100% | 0.864 | 0.662 | 0.750 | 57 | |
+| Nemotron 3 Ultra, reasoning on (09-24b) | holdout | 91.7% | 91.7% | 0.949 | 0.753 | 0.840 | 44 | |
+
+Ultra reasoning-off is about equal to reasoning-on and does not strictly beat it (holdout F1 and
+precision are lower). Super does not beat either on both splits.
+
 ### 2026-09-24b (main + holdout; validator repairs; corrected scorer)
 
 These runs predate the single admission retry, so "Valid" below is first-attempt validity (the

@@ -1067,6 +1067,27 @@ per item, which matters for a lane told to try to disprove each claim. Watch the
 supported share and its agreement with the second family after deploy; to revert, delete the
 `reasoning` entry for `zai/glm-5.3-flash` in `judge:adjudicator` and recompile.
 
+**Golden agenda eval (2026-11-15; evidence file, results in
+`evals/chapter-agenda/results/2026-11-15-nemotron-reasoning*.json`).** Ultra's agenda failures
+are timeouts (NVIDIA leg 10 ok against 11 timeouts since 2026-11-12), so the owner asked for the
+golden set (main 29 + holdout 24) on two candidates, each on its own paused NVIDIA route at 780 s.
+
+| Arm | Timeouts / calls | Call p50 (max) | F1 main | F1 holdout | Valid main / holdout |
+|---|---:|---|---:|---:|---|
+| Ultra, reasoning off | 0 / 56 | 8 s (89 s) | 0.749 | 0.825 | 100% / 100% |
+| Super 3.5 VL, default reasoning | 0 / 57 | 50 s (454 s) | 0.708 | 0.860 | 100% / 96% |
+| Ultra, reasoning on (Sept. golden, re-scored today) | prod.: 11 / 21 on NVIDIA | 57 s | 0.750 | 0.840 | 100% / 92% |
+
+Ultra with reasoning off is about equal to reasoning on (same main F1 and recall; holdout 0.015
+lower, from precision), and none of its 56 calls timed out. That is this run's population (golden
+agendas are mostly short; R2-F saw five reasoning-off timeouts from provider queueing on
+2026-11-13), so the production timeout reduction is an outcome to verify after the change: watch
+the agenda lane's Ultra timeout share against 11 of 21. Super is weaker on main and best on the
+holdout, and keeps a reasoning tail. Recommendation: turn Ultra reasoning off on `chapter-agenda`
+(`reasoning: {"nvidia/nemotron-3-ultra-550b-a55b:free": "off"}` in `llm_lanes`). The lane map is per model, so all
+three legs change together, and all three have a verified off switch. Not a re-key: reasoning
+controls are not in the agenda recipe hash. Owner decision; not enabled in this PR.
+
 **What this changes and invalidates.** Merging deploys the Worker with the new tuning and limits.
 Nothing is re-keyed: response timeouts and reasoning controls are not in any recipe hash, and no
 lane's request changes. Watch after deploy:

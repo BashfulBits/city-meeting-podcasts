@@ -883,3 +883,89 @@ requested for 900 s and renewed every 300 s while calls ran (the GLM run renewed
 
 While one Ultra leg was paused, `chapter-agenda` kept its other two legs. No pause made by this
 run is outstanding.
+
+## Golden chapter-agenda eval: Ultra reasoning off against Super 3.5 VL (2026-11-15, #2689)
+
+**Question (owner).** Ultra fails on `chapter-agenda` mostly by timing out: Workers Logs since
+2026-11-12 show the NVIDIA leg at 10 ok against 11 timeouts and the Kilo leg at 10 ok against 3
+(OpenRouter 13 of 13 ok; T4 above), and the R2-F control arm finished 1 of 10. Is Nemotron 3 Ultra
+with reasoning off, or Nemotron 3.5 Super VL with its default reasoning, the better fix, judged by
+the golden set (`evals/chapter-agenda`, main 29 + holdout 24 episodes, provider chapters as truth)
+and by timeouts against successes?
+
+**Method.** One arm per model, each on its own paused direct NVIDIA route
+(`nvidia_nemotron_3_ultra_550b_a55b_free`, `nvidia_nemotron_3_5_super_vl_120b_a12b_free`), so both
+share a provider. Production's request (`build_agenda_job` messages, the route's `json_schema`),
+production's `finalize_agenda_job`, the eval's scorer and admission rule (one fresh retry of an
+invalid reply). Each call took a v2 reservation and was spaced by the route's rpm (4) with its
+concurrency (4). Timeout 780 s for both (Super's route has 420 s; the owner allowed 780 s for this
+task). A response timeout was recorded and not retried; capacity errors would have been retried
+(none occurred). Output budget: production's `route_max` (65,536) for Super; Ultra ran at the
+job's 16,384 by a harness slip, which cannot have bound it (largest Ultra answer finished `stop`;
+reasoning off emits no reasoning tokens). Results:
+`evals/chapter-agenda/results/2026-11-15-nemotron-reasoning{,-holdout}.json` (rescorable).
+
+**Calls and timeouts.**
+
+| Arm | Calls | Ok | Timeouts | Errors | Call p50 / p90 / max (s) | Reasoning tokens p50 / max |
+|---|---:|---:|---:|---:|---|---|
+| Ultra, reasoning off | 56 | 56 | 0 | 0 | 7.9 / 55 / 89 | 0 / 0 |
+| Super 3.5 VL, default reasoning | 57 | 57 | 0 | 0 | 50 / 148 / 454 | 7.0k / 42.7k |
+
+Every call ended `stop`. One Super call (454 s) would have timed out at its route's 420 s.
+
+**Quality** (current validator; the September rows are the stored replies of
+`results/2026-09-24b*.json` re-scored today with `--rescore`, which reproduced their published
+scores).
+
+| Model | Split | Valid (1 retry) | First-attempt valid | Precision | Recall | F1 | Median s |
+|---|---|---:|---:|---:|---:|---:|---:|
+| **Ultra, reasoning off** | main | 100% | 93.1% | 0.862 | 0.662 | 0.749 | 9 |
+| **Ultra, reasoning off** | holdout | 100% | 95.8% | 0.923 | 0.747 | 0.825 | 8 |
+| **Super 3.5 VL, default** | main | 100% | 93.1% | 0.873 | 0.596 | 0.708 | 49 |
+| **Super 3.5 VL, default** | holdout | 95.8% | 91.7% | 0.944 | 0.791 | 0.860 | 51 |
+| Ultra, reasoning on (Sept.) | main | 100% | 100% | 0.864 | 0.662 | 0.750 | 57 |
+| Ultra, reasoning on (Sept.) | holdout | 91.7% | 91.7% | 0.949 | 0.753 | 0.840 | 44 |
+| tencent/hy3 (Sept.) | main | 89.7% | 89.7% | 0.885 | 0.666 | 0.760 | 37 |
+| tencent/hy3 (Sept.) | holdout | 83.3% | 83.3% | 0.909 | 0.824 | 0.864 | 42 |
+| Gemini 3.1 Flash Lite (Sept.) | main | 96.6% | 96.6% | 0.802 | 0.705 | 0.750 | 7 |
+| Gemini 3.1 Flash Lite (Sept.) | holdout | 100% | 100% | 0.914 | 0.760 | 0.830 | 4 |
+
+**Reading.**
+
+- Ultra with reasoning off matches Ultra with reasoning on on the main set (F1 0.749 against
+  0.750, the same recall) and is 0.015 lower on the holdout (precision 0.923 against 0.949). Its
+  validity is higher (100% on both splits against 100% / 91.7%). Under the admission rule it does
+  not *beat* reasoning-on (holdout F1 and precision are lower), but it is about equal, and it ran
+  0 timeouts in 56 calls at a 7.9 s median where production reasoning-on times out on about half of
+  NVIDIA calls.
+- Super 3.5 VL is mixed: weaker on the main set (recall 0.596, F1 0.708, the lowest of the
+  pool) and the best on the holdout (F1 0.860). It reasons 7k tokens at the median, takes about
+  50 s, and its tail reaches 454 s, so it would not remove the timeout problem as cleanly. It does
+  not beat Ultra reasoning-off on both splits.
+- The R2-F note that Ultra's first five samples timed out in every arm, reasoning off included
+  (provider queueing on 2026-11-13), did not recur: 0 of 56 today. Queueing is a provider-side
+  condition the ladder and the pool already handle.
+- The #2689 item 2 recall loss (line recall against production answers) is not visible against
+  provider chapters: chapter recall is unchanged on main and 0.006 lower on the holdout.
+
+### Pause log (2026-11-15, golden agenda eval)
+
+Single routes only, one at a time; each pause 900 s, renewed every 300 s while calls ran.
+
+| Time (UTC) | Action | Target | Reason | Measured effect |
+|---|---|---|---|---|
+| 03:07:21 | status | route `nvidia_nemotron_3_ultra_550b_a55b_free` | before the Ultra arm | no pauses, 0 in flight |
+| 03:07:21 | pause, 900 s | same route | Ultra reasoning-off arm, 53 episodes | drained at once, 0 in flight |
+| 03:12 to 03:22 | renew, 900 s (3 times) | same route | calls running | none |
+| 03:22:42 | resume | same route | arm done | paused 15.4 min; 56 calls |
+| 03:22:42 | status | same route | after | no pauses |
+| 03:22:55 | status | route `nvidia_nemotron_3_5_super_vl_120b_a12b_free` | before the Super arm | no pauses |
+| 03:22:55 | pause, 900 s | same route | Super default-reasoning arm, 53 episodes | drained in 266 s (3 production calls in flight at the start) |
+| 03:32 to 03:52 | renew, 900 s (5 times) | same route | calls running | none |
+| 03:54:38 | resume | same route | arm done | paused 31.7 min; 57 calls |
+| 03:54:38 | status | same route | after | no pauses, 0 in flight |
+
+While the Ultra NVIDIA leg was paused, `chapter-agenda` kept its Kilo and OpenRouter Ultra legs
+and its pool; while the Super NVIDIA leg was paused, its lanes kept the Kilo and OpenRouter Super
+legs. No pause made by this eval is outstanding.
