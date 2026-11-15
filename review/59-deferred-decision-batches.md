@@ -57,7 +57,7 @@ GLiDE-9B is an alternate Qwen-family capacity source. After qualification it can
 replace OpenRouter's free Perplexity Decider route if that route loses capacity. Keep their
 quality measurements separate and select one eligible Qwen vote per subject.
 
-Karpo Decision 31B is a strong second self-hosted candidate. It is a Gemma 4 31B IT fine-tune
+Karpo Decision 31B is a dense Gemma 4 benchmark candidate. It is a Gemma 4 31B IT fine-tune
 with a typed decision readout. Its 73.86 Decision Index 0.4.1 full score supports a matched
 civic holdout. Unlike GLiDE, Karpo's runner can score several questions about identical state
 in one forward pass. Test that grouping only where it preserves the evidence and question meaning.
@@ -79,6 +79,39 @@ Karpo separately under the project budget before adding a model or enabling a vo
 [Cloud Run GPUs](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu) ·
 [Cloud Run pricing](https://cloud.google.com/run/pricing)
 
+MachinePulse distributes newly acquired Karpo 31B weights under its Community License as of
+November 12, 2026, including downloads of earlier revisions. The 12B release also uses the
+Community License. Karpo's 90-day language exempts a pilot with no paying customers from its
+production and external commercial use definitions. External commercial use, including a free
+service operated for commercial advantage, requires attribution. Commercial production by entities
+over $10M in annual revenue requires a separate agreement.
+[31B weight license](https://huggingface.co/MachinePulseAI/karpo-decision-31B/blob/main/LICENSE) ·
+[12B weight license](https://huggingface.co/MachinePulseAI/karpo-decision-12B/blob/main/LICENSE)
+
+For a dense Gemma comparison with permissive weight terms, shortlist Copernicus-31B first.
+It merges two Gemma 4 31B IT derivatives and exposes `choice`, `noul`, and `score`. The
+publisher declares Apache-2.0 and lists both upstream licenses in its attribution file. The
+reviewed revision lacks the standalone LICENSE file linked by the card. Confirm and archive
+the applicable notices with the selected revision before deployment. The published checkpoint
+contains 62.5 GB of tensors. A single 24 GB L4 needs a tested low-bit path with room for runtime
+buffers. FlexDM-LoRA-v2.1 ships a CC BY-SA 4.0 adapter for the same 31B base. The evaluated
+FP8 base still needs more than 24 GB before the adapter and runtime buffers. Its published
+reader supports choice and yes/no. Check attribution and share-alike terms when distributing
+adaptations of the adapter.
+[Copernicus card](https://huggingface.co/Poindexter-Labs/Copernicus-31B) ·
+[Upstream attribution](https://huggingface.co/Poindexter-Labs/Copernicus-31B/blob/main/ATTRIBUTION.md) ·
+[FlexDM card](https://huggingface.co/1000luca/FlexDM-LoRA-v2.1) ·
+[CC BY-SA 4.0 terms](https://creativecommons.org/licenses/by-sa/4.0/)
+
+In the November 12 Decision Index 0.4.1 snapshot, Karpo, Copernicus, and FlexDM-LoRA scored
+73.86, 72.11, and 71.61 Full respectively. Copernicus and FlexDM were fifth and eighth by
+point estimate. The board treats scores within 0.9 points as tied. Copernicus had 1.80 percentage
+points of expected calibration error (ECE), Karpo had 4.77, and FlexDM-LoRA had 5.36. Karpo had
+the lowest Brier score of the three (0.240 vs. 0.269 and 0.305). Measure both calibration and
+decision quality on the same Citypods holdout with each candidate's chosen runtime.
+[Full scores](https://huggingface.co/datasets/multimodalart/decision-index-leaderboard) ·
+[Published calibration data](https://huggingface.co/spaces/multimodalart/jev-decision-index/blob/main/data/index.json)
+
 `s1-gemma4-26b-decision` is another Gemma 4 candidate and the first to try if the follow-up
 targets one L4. It fine-tunes Gemma 4 26B-A4B IT and reads option probabilities from next-token
 logits for choice, yes/no, and ordinal decisions. Its roughly 4B active parameters describe
@@ -94,7 +127,8 @@ out of 1,700. Pin the artifact and use calibration for the exact backend and qua
 The author reports 0.804 calibrated for INT4 versus 0.817 for BF16 on a 1,700-case JevBench
 subset. Use the same Citypods tag and moment holdout to compare S1 with Karpo, GLiDE, and the
 existing routes. The subset scores and Karpo's full Decision Index score use different
-evaluations. S1 and Karpo both count as `google` family under the current exclusion rule.
+evaluations. All of these Gemma candidates count as `google` family under the current
+exclusion rule.
 
 ## Argon’s proposal and the findings that change it
 
@@ -109,6 +143,16 @@ evaluations. S1 and Karpo both count as `google` family under the current exclus
 | About $0.63/month at four launches a day | A started task has a one-minute minimum. At four launches a day, 30 days, and one billable minute each, GPU alone costs about $1.34. With no remaining free CPU or RAM, Delayed Jobs compute costs about $1.87 before storage and builds. [Cloud Run pricing](https://cloud.google.com/run/pricing) |
 
 ## Budget and latency
+
+On November 15, 2026, Cloud Run rejected the first job deployment at the non-zonal L4 quota
+check. Cloud Quotas accepted the Iowa request for one L4 and denied it before any task was
+launched. The project was eligible to submit the request and had zero allocation across the
+five generally available L4 regions checked. Cloud Billing Console shows whether the linked
+account is Free Trial or Paid. For a denied request, ask Cloud Customer Care or the account
+team for a manual review with the request trace. If a different region receives quota first,
+recheck the regional budget and keep model storage and the worker in the same region.
+[Free Trial and Paid billing](https://docs.cloud.google.com/free/docs/free-cloud-features#how-to-monitor-and-manage-your-costs) ·
+[Denied quota requests](https://docs.cloud.google.com/support/docs/checklists/plan-peak-capacity-event#request_a_quota_adjustment)
 
 As checked on 2026-11-14, Iowa list rates per second are `$0.0001867` for a non-zonal L4 in both
 modes. Regular Jobs list `$0.000018` per vCPU-second and `$0.000002` per GiB-second. Delayed Jobs
