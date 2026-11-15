@@ -1023,6 +1023,12 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
     # review/58 §12.5 (R2-F): a slow reasoning route; uses the full 780 s ceiling.
     response_timeout_seconds: 780
+    # Verified 2026-11-15 (review/58 §12.5, #2689): `reasoning_effort: "none"` returned 0
+    # reasoning tokens on 2 of 2 test requests (the default reasons 2k to 34k tokens). Declared,
+    # not used: no lane sets it, so requests are unchanged.
+    reasoning_controls:
+      "off":  # quoted: bare `off` is YAML's boolean false
+        reasoning_effort: "none"
     input_context_limit: 1000000
     output_context_limit: 65536
     # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
@@ -1069,6 +1075,12 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
     # review/58 §12.5 (R2-F): a slow reasoning route; uses the full 780 s ceiling.
     response_timeout_seconds: 780
+    # Verified 2026-11-15 (review/58 §12.5, #2689): `reasoning_effort: "none"` returned 0
+    # reasoning tokens on 2 of 2 test requests (the default reasons 2k to 34k tokens). Declared,
+    # not used: no lane sets it, so requests are unchanged.
+    reasoning_controls:
+      "off":  # quoted: bare `off` is YAML's boolean false
+        reasoning_effort: "none"
     input_context_limit: 1000000
     output_context_limit: 65536
     # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
@@ -1385,6 +1397,13 @@ routes:
     upstream_model: z-ai/glm-5.3-flash-free
     # review/58 §12.5 (R2-F): a slow reasoning route; uses the full 780 s ceiling.
     response_timeout_seconds: 780
+    # Verified 2026-11-15 (review/58 §12.5, #2689): `reasoning_effort: low` cut reasoning tokens
+    # from a median 27.6k to 1.7k and latency from 411 s to 37 s on 10 adjudicator requests, with
+    # the same pass rate and 87.5% verdict agreement (production against the default: 88%).
+    # `judge:adjudicator` requests it in `llm_lanes`.
+    reasoning_controls:
+      low:
+        reasoning_effort: low
     input_context_limit: 1000000
     output_context_limit: 131072
     account_id: primary

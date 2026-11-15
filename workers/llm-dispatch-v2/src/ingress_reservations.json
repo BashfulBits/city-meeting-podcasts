@@ -20,7 +20,9 @@
       ],
       "backup_after_attempts": 12,
       "dispatch_shape": "pooled",
-      "reasoning": {},
+      "reasoning": {
+        "nvidia/nemotron-3-ultra-550b-a55b:free": "off"
+      },
       "write_units_per_job": 6
     },
     "chapter-locator": {
@@ -48,7 +50,9 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "per_model",
-      "reasoning": {},
+      "reasoning": {
+        "zai/glm-5.3-flash": "low"
+      },
       "write_units_per_job": 4
     },
     "judge:anchor": {

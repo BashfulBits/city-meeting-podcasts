@@ -1142,8 +1142,8 @@ successful call is bounded by `RESULT_WRITE_TIMEOUT_SECONDS` (30, below the rese
 `validateConfig`); a write that runs out settles as a retryable `server_error`. The executor's
 start fence (`leaseCoversCall`) admits a call only if the response timeout plus that write fit in
 the lease. The NVIDIA
-Nemotron 3 Ultra route declares a verified `reasoning_controls.off`, which no lane sets (review/58
-§12.5, #2689). The Worker's
+Nemotron 3 Ultra routes (NVIDIA, Kilo, OpenRouter) declare a verified `reasoning_controls.off`,
+which `chapter-agenda` sets for all three (golden eval 2026-11-15; review/58 §12.5, #2689). The Worker's
 `effectiveResponseMs` uses the smaller of the two for every call on that route, including in-window
 429 and Google 5xx retries, and clamps again at runtime. The failure class stays
 `provider_response_timeout`; requeue, retry accounting, lease and bundle-deadline arithmetic are

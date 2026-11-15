@@ -1154,6 +1154,11 @@
       "provider": "kilo",
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "response_timeout_seconds": 780,
+      "reasoning_controls": {
+        "off": {
+          "reasoning_effort": "none"
+        }
+      },
       "input_context_limit": 1000000,
       "output_context_limit": 65536,
       "input_token_ratio": 1.75,
@@ -1225,6 +1230,11 @@
       "provider": "openrouter",
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "response_timeout_seconds": 780,
+      "reasoning_controls": {
+        "off": {
+          "reasoning_effort": "none"
+        }
+      },
       "input_context_limit": 1000000,
       "output_context_limit": 65536,
       "input_token_ratio": 1.75,
@@ -1544,6 +1554,11 @@
       "provider": "orcarouter",
       "upstream_model": "z-ai/glm-5.3-flash-free",
       "response_timeout_seconds": 780,
+      "reasoning_controls": {
+        "low": {
+          "reasoning_effort": "low"
+        }
+      },
       "input_context_limit": 1000000,
       "output_context_limit": 131072,
       "account_id": "primary",

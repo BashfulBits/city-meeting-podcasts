@@ -770,3 +770,202 @@ Only single routes were paused; no provider-wide or global pause was made.
 
 While the Ultra route was paused, `chapter-agenda` kept its Kilo and OpenRouter legs. Every direct
 call was reserved against its route first. No pause made by this package is outstanding.
+
+## Slow reasoning routes: GLM effort, Ultra reasoning off, Kilo and OpenRouter (#2689, 2026-11-15)
+
+Run early in the UTC day (01:32 to 02:25Z), when the OrcaRouter pool had room (764 of 800 requests
+left). Every call was a direct call on its own paused route, reserved first, with a response
+timeout of 840 s. Prices were checked first: all four routes are `free: true` with zero input and
+output prices. Request and response bodies are not committed. Plan fixed before the first call:
+GLM 10 requests × 2 arms (at most 20 calls), Ultra 10 new requests × 1 arm (at most 10), Kilo and
+OpenRouter 2 requests per route per form (at most 8).
+
+**Calls made:** OrcaRouter GLM 20, NVIDIA Ultra 10, Kilo 2, OpenRouter 2. Total 34 of the 38 to
+48 allowed (the fallback `reasoning: {effort: "none"}` form was not needed, so 4 reserved calls
+were not made). No call returned 429.
+
+### Item 1. GLM 5.3 Flash, `reasoning_effort: low` (the 10-request R2-F sample)
+
+The sample: 6 production successes of 236 to 706 s and 4 adjudicator jobs that timed out at 720 s.
+A0 is the production request; A1 adds `reasoning_effort: "low"` and changes nothing else.
+
+| Arm | Finished | Valid | Latency p50 (s) | Latency max (s) | Reasoning tokens p50 | Output tokens p50 |
+|---|---:|---:|---:|---:|---:|---:|
+| A0 as today | 10 of 10 | 9 | 411 | 838 | 27,624 | 29,183 |
+| A1 `low` | 10 of 10 | 9 | 37 | 86 | 1,656 | 3,111 |
+
+- Every call ended `stop`. Reasoning fell about 17-fold and latency about 11-fold. A0 had 2 calls
+  over the 780 s ceiling (781 s and 838 s); A1's slowest was 86 s.
+- The one invalid reply in each arm was a different request: A0 answered 19 of 20 ids, A1
+  answered the 20 ids plus one unrequested id. Both are validator rejections, not parse failures.
+- Verdict agreement of A1 with A0, on the 8 requests where both arms were valid: 140 of 160 items
+  (87.5%), per request 16 to 19 of 20. All 160 items are `validate` kind.
+- Noise floor: for the 5 sample requests that have a stored production answer, production against
+  A0 agrees on 88 of 100 items, and production against A1 on 89 of 100. A1 is as close to
+  production as A0 is.
+- Direction of the 20 A0-to-A1 flips: 16 items went from "not supported" to "supported" and 4
+  the other way. A1 marks 59 of 160 items supported against 47 for A0 (production on its subset:
+  33 of 100). `low` leans lenient by about 7 points (sign test on the flips, p about 0.01), which
+  matters for a lane that is told to try to disprove the claim. A0 itself leans strict against
+  production (9 flips to "not supported", 3 the other way).
+- Verdict: the effort control works and the agreement holds at the noise floor. The lenient
+  lean is the thing to watch after deploy.
+
+### Item 2. Nemotron 3 Ultra on NVIDIA, `chat_template_kwargs.enable_thinking: false`, chapter-agenda
+
+Ten new `chapter-agenda` requests, never used before: NVIDIA production successes of 111 to 491 s
+with a stored production answer. One arm (reasoning off), timeout 840 s, scored against the
+production answer for the same request. Recall is the share of the production answer's source
+lines that the new answer's items also cover (items' `line_start` to `line_end`); the item ratio
+is new items over production items.
+
+| Sample | Latency (s) | Reasoning tokens | Production items | New items | Item ratio | Line recall | Valid (new) | Valid (production) |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| gw:01a1c3c5 | 32 | 0 | 16 | 11 | 0.69 | 1.00 | no | no |
+| gw:01a1c2dc | 49 | 0 | 32 | 19 | 0.59 | 1.00 | no | yes |
+| gw:01a1c64c | 16 | 0 | 13 | 9 | 0.69 | 0.88 | no | yes |
+| gw:01a1c94d | 89 | 0 | 36 | 35 | 0.97 | 0.96 | no | no |
+| gw:01a1c413 | 127 | 0 | 41 | 81 | 1.98 | 0.66 | no | yes |
+| gw:01a1cc97 | 89 | 0 | 27 | 26 | 0.96 | 1.00 | yes | no |
+| gw:01a1cfbf | 32 | 0 | 12 | 18 | 1.50 | 0.50 | no | no |
+| gw:01a1cca0 | 103 | 0 | 19 | 15 | 0.79 | 1.00 | yes | no |
+| gw:01a1cfc8 | 45 | 0 | 17 | 15 | 0.88 | 1.00 | no | no |
+| gw:01a1cfd9 | 37 | 0 | 18 | 16 | 0.89 | 0.80 | no | no |
+
+- All 10 finished (16 to 127 s, p50 41 s), with 0 reasoning tokens. The 2026-11-13 run finished 5
+  of 10 with the same switch; there the first five samples timed out in every arm.
+- Line recall: mean 0.88, median 0.98; 6 of 10 at 0.96 or above, 4 below 0.9 (0.88, 0.80, 0.66,
+  0.50). Item count: 231 production items against 245 new, but per request the new answer has
+  fewer items in 7 of 10 (ratio 0.59 to 0.89) and more in 2 (1.50 and 1.98).
+- Validity under today's `finalize_agenda_job`: new 2 of 10, production 3 of 10. The failures are
+  the quote check on OCR-corrected text (6 new, 7 production), one over-wide line range and one
+  out-of-range line. The validator, not reasoning, rejects most of both arms (#2689 item 2's
+  separate finding).
+- Not enabled in any lane. The owner decides.
+
+### Item 3. Kilo and OpenRouter Ultra legs, `reasoning_effort: "none"`
+
+The two smallest requests of the item 2 sample (17.6k and 22.8k characters), shaped for each
+route, one call each.
+
+| Route | Request | Latency (s) | Reasoning tokens | Output tokens | Finish |
+|---|---|---:|---:|---:|---|
+| `kilo_nvidia_nemotron_3_ultra_550b_a55b_free` | gw:01a1c3c5 | 5.4 | 0 | 588 | stop |
+| `kilo_nvidia_nemotron_3_ultra_550b_a55b_free` | gw:01a1c64c | 14.3 | 0 | 1,412 | stop |
+| `openrouter_nvidia_nemotron_3_ultra_550b_a55b_free` | gw:01a1c3c5 | 4.8 | 0 | 588 | stop |
+| `openrouter_nvidia_nemotron_3_ultra_550b_a55b_free` | gw:01a1c64c | 14.5 | 0 | 1,377 | stop |
+
+- `reasoning_effort: "none"` takes effect on both legs: 0 reasoning tokens and no reasoning text,
+  where production on these legs reasons for 2k to 34k tokens and takes 100 s or more. The
+  `reasoning: {effort: "none"}` fallback was not needed and not called.
+- Both answers failed `finalize_agenda_job` on the quote check, as production answers do.
+  Declared as `reasoning_controls.off`; `chapter-agenda` turns it on after the golden eval below.
+
+### Pause log (2026-11-15, every pause, renewal and resume made by this run)
+
+Only single routes were paused; no provider-wide or global pause was made. Each pause was
+requested for 900 s and renewed every 300 s while calls ran (the GLM run renewed 9 times).
+
+| Time (UTC) | Action | Target | Reason | Measured effect |
+|---|---|---|---|---|
+| 01:31:49 | status | all | before the run | no pauses |
+| 01:32:34 | pause, 900 s | route `orcarouter_zai_glm_5_3_flash_free` | item 1, 20 calls | drained in 51 s (2 production calls in flight at the start) |
+| 01:33 to 02:18 | renew, 900 s (9 times) | same route | calls running | none |
+| 02:18:55 | resume | same route | item 1 done | paused 46 min; 20 calls made |
+| 02:19:52 | status | provider nvidia, Ultra route | before item 2 | no pauses; 3 in flight on the provider |
+| 02:19:54 | pause, 900 s | route `nvidia_nemotron_3_ultra_550b_a55b_free` | item 2, 10 calls | drained at once, 0 in flight |
+| 02:23:38 | resume | same route | item 2 done | paused 3.7 min; 10 calls made |
+| 02:24:33 | pause, 900 s | route `kilo_nvidia_nemotron_3_ultra_550b_a55b_free` | item 3, 2 calls | drained at once |
+| 02:24:54 | resume | same route | item 3 done | paused 21 s; 2 calls made |
+| 02:25:06 | pause, 900 s | route `openrouter_nvidia_nemotron_3_ultra_550b_a55b_free` | item 3, 2 calls | drained at once |
+| 02:25:28 | resume | same route | item 3 done | paused 22 s; 2 calls made |
+| 02:34:02 to 02:34:07 | status | the four routes | before finishing | no pauses on any of them; 2 production calls in flight on GLM |
+
+While one Ultra leg was paused, `chapter-agenda` kept its other two legs. No pause made by this
+run is outstanding.
+
+## Golden chapter-agenda eval: Ultra reasoning off against Super 3.5 VL (2026-11-15, #2689)
+
+**Question (owner).** Ultra fails on `chapter-agenda` mostly by timing out: Workers Logs since
+2026-11-12 show the NVIDIA leg at 10 ok against 11 timeouts and the Kilo leg at 10 ok against 3
+(OpenRouter 13 of 13 ok; T4 above), and the R2-F control arm finished 1 of 10. Is Nemotron 3 Ultra
+with reasoning off, or Nemotron 3.5 Super VL with its default reasoning, the better fix, judged by
+the golden set (`evals/chapter-agenda`, main 29 + holdout 24 episodes, provider chapters as truth)
+and by timeouts against successes?
+
+**Method.** One arm per model, each on its own paused direct NVIDIA route
+(`nvidia_nemotron_3_ultra_550b_a55b_free`, `nvidia_nemotron_3_5_super_vl_120b_a12b_free`), so both
+share a provider. Production's request (`build_agenda_job` messages, the route's `json_schema`),
+production's `finalize_agenda_job`, the eval's scorer and admission rule (one fresh retry of an
+invalid reply). Each call took a v2 reservation and was spaced by the route's rpm (4) with its
+concurrency (4). Timeout 780 s for both (Super's route has 420 s; the owner allowed 780 s for this
+task). A response timeout was recorded and not retried; capacity errors would have been retried
+(none occurred). Output budget: production's `route_max` (65,536) for Super; Ultra ran at the
+job's 16,384 by a harness slip, which cannot have bound it (largest Ultra answer finished `stop`;
+reasoning off emits no reasoning tokens). Results:
+`evals/chapter-agenda/results/2026-11-15-nemotron-reasoning{,-holdout}.json` (rescorable).
+
+**Calls and timeouts.**
+
+| Arm | Calls | Ok | Timeouts | Errors | Call p50 / p90 / max (s) | Reasoning tokens p50 / max |
+|---|---:|---:|---:|---:|---|---|
+| Ultra, reasoning off | 56 | 56 | 0 | 0 | 7.9 / 55 / 89 | 0 / 0 |
+| Super 3.5 VL, default reasoning | 57 | 57 | 0 | 0 | 50 / 148 / 454 | 7.0k / 42.7k |
+
+Every call ended `stop`. One Super call (454 s) would have timed out at its route's 420 s.
+
+**Quality** (current validator; the September rows are the stored replies of
+`results/2026-09-24b*.json` re-scored today with `--rescore`, which reproduced their published
+scores).
+
+| Model | Split | Valid (1 retry) | First-attempt valid | Precision | Recall | F1 | Median s |
+|---|---|---:|---:|---:|---:|---:|---:|
+| **Ultra, reasoning off** | main | 100% | 93.1% | 0.862 | 0.662 | 0.749 | 9 |
+| **Ultra, reasoning off** | holdout | 100% | 95.8% | 0.923 | 0.747 | 0.825 | 8 |
+| **Super 3.5 VL, default** | main | 100% | 93.1% | 0.873 | 0.596 | 0.708 | 49 |
+| **Super 3.5 VL, default** | holdout | 95.8% | 91.7% | 0.944 | 0.791 | 0.860 | 51 |
+| Ultra, reasoning on (Sept.) | main | 100% | 100% | 0.864 | 0.662 | 0.750 | 57 |
+| Ultra, reasoning on (Sept.) | holdout | 91.7% | 91.7% | 0.949 | 0.753 | 0.840 | 44 |
+| tencent/hy3 (Sept.) | main | 89.7% | 89.7% | 0.885 | 0.666 | 0.760 | 37 |
+| tencent/hy3 (Sept.) | holdout | 83.3% | 83.3% | 0.909 | 0.824 | 0.864 | 42 |
+| Gemini 3.1 Flash Lite (Sept.) | main | 96.6% | 96.6% | 0.802 | 0.705 | 0.750 | 7 |
+| Gemini 3.1 Flash Lite (Sept.) | holdout | 100% | 100% | 0.914 | 0.760 | 0.830 | 4 |
+
+**Reading.**
+
+- Ultra with reasoning off matches Ultra with reasoning on on the main set (F1 0.749 against
+  0.750, the same recall) and is 0.015 lower on the holdout (precision 0.923 against 0.949). Its
+  validity is higher (100% on both splits against 100% / 91.7%). Under the admission rule it does
+  not *beat* reasoning-on (holdout F1 and precision are lower), but it is about equal, and it ran
+  0 timeouts in 56 calls at a 7.9 s median where production reasoning-on times out on about half of
+  NVIDIA calls.
+- Super 3.5 VL is mixed: weaker on the main set (recall 0.596, F1 0.708, the lowest of the
+  pool) and the best on the holdout (F1 0.860). It reasons 7k tokens at the median, takes about
+  50 s, and its tail reaches 454 s, so it would not remove the timeout problem as cleanly. It does
+  not beat Ultra reasoning-off on both splits.
+- The R2-F note that Ultra's first five samples timed out in every arm, reasoning off included
+  (provider queueing on 2026-11-13), did not recur: 0 of 56 today. Queueing is a provider-side
+  condition the ladder and the pool already handle.
+- The #2689 item 2 recall loss (line recall against production answers) is not visible against
+  provider chapters: chapter recall is unchanged on main and 0.006 lower on the holdout.
+
+### Pause log (2026-11-15, golden agenda eval)
+
+Single routes only, one at a time; each pause 900 s, renewed every 300 s while calls ran.
+
+| Time (UTC) | Action | Target | Reason | Measured effect |
+|---|---|---|---|---|
+| 03:07:21 | status | route `nvidia_nemotron_3_ultra_550b_a55b_free` | before the Ultra arm | no pauses, 0 in flight |
+| 03:07:21 | pause, 900 s | same route | Ultra reasoning-off arm, 53 episodes | drained at once, 0 in flight |
+| 03:12 to 03:22 | renew, 900 s (3 times) | same route | calls running | none |
+| 03:22:42 | resume | same route | arm done | paused 15.4 min; 56 calls |
+| 03:22:42 | status | same route | after | no pauses |
+| 03:22:55 | status | route `nvidia_nemotron_3_5_super_vl_120b_a12b_free` | before the Super arm | no pauses |
+| 03:22:55 | pause, 900 s | same route | Super default-reasoning arm, 53 episodes | drained in 266 s (3 production calls in flight at the start) |
+| 03:32 to 03:52 | renew, 900 s (5 times) | same route | calls running | none |
+| 03:54:38 | resume | same route | arm done | paused 31.7 min; 57 calls |
+| 03:54:38 | status | same route | after | no pauses, 0 in flight |
+
+While the Ultra NVIDIA leg was paused, `chapter-agenda` kept its Kilo and OpenRouter Ultra legs
+and its pool; while the Super NVIDIA leg was paused, its lanes kept the Kilo and OpenRouter Super
+legs. No pause made by this eval is outstanding.

@@ -142,6 +142,12 @@ llm_lanes:
       - "nvidia/nemotron-3-ultra-550b-a55b:free"
       - "tencent/hy3"
       - "gemini/gemini-3.1-flash-lite"
+    # Ultra reasoning off on all three legs (each route declares its own `off` switch). Golden set
+    # 2026-11-15 (review/58 section 12.5, #2689): F1 0.749 / 0.825, valid 100% / 100%, 0 of 56
+    # calls timed out, p50 8 s, against reasoning on 0.750 / 0.840 and 11 of 21 production NVIDIA
+    # timeouts. Not in the recipe hash, so nothing is re-queued. Revert: delete this entry.
+    reasoning:
+      "nvidia/nemotron-3-ultra-550b-a55b:free": "off"
     # backup_models repeats two pooled models on purpose, for their retry budget, not capacity:
     # the Worker raises its per-class retry ceilings to backup_after_attempts + base ONLY when
     # backup_models is non-empty (coordinator.js completeBatch `_retryCeiling`); without it an
@@ -261,6 +267,10 @@ llm_lanes:
     models:
       - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4.1-flash"
+    # GLM reasons for 10k to 56k tokens per packet at the default; `low` cut that to a median
+    # 1.7k and the call from 411 s to 37 s on the 2026-11-15 sample (review/58 section 12.5, #2689).
+    reasoning:
+      "zai/glm-5.3-flash": "low"
     dispatch_shape: per_model
     # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
     # Contested subjects plus the 3% calibration sample, ~0.5 packets per judged meeting.
