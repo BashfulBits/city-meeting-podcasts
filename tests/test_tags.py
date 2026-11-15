@@ -870,11 +870,10 @@ def test_tag_route_fits_scales_by_the_measured_ratio_and_ceiling():
     from citypods.tags import _tag_route_capacity, _tag_route_fits
 
     lite = ROUTES["gemini/gemini-3.5-flash-lite"]
-    # Ceiling 218,875 provider tokens / ratio 2.15 = ~101.8k raw units, but the 225k per-minute
-    # cap binds first once the output budget is added: (225,000 - 12,288) / 2.15 = ~98.9k.
-    assert _tag_route_fits(lite, 95_000) is True
-    assert _tag_route_fits(lite, 100_000) is False
-    assert 98_500 <= _tag_route_capacity(lite) <= 99_500
+    # Google bills input TPM separately from output; the hard input ceiling binds here.
+    assert _tag_route_fits(lite, 100_000) is True
+    assert _tag_route_fits(lite, 102_000) is False
+    assert 101_000 <= _tag_route_capacity(lite) <= 102_000
 
 
 def test_tag_batch_target_is_a_fraction_of_the_primary_routes_measured_capacity():
@@ -887,7 +886,7 @@ def test_tag_batch_target_is_a_fraction_of_the_primary_routes_measured_capacity(
     target = tag_batch_target(primary)
     capacity = min(_tag_route_capacity(route) for route in primary)
     assert target == int(capacity * TAG_BATCH_CAPACITY_FRACTION)
-    assert 91_500 <= target <= 92_500  # ~98.9k capacity x 0.93
+    assert 94_000 <= target <= 95_000  # ~101.8k capacity x 0.93
     # No measured primary route: no target, so the splitter falls back to the provable routes.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]  # KeyError if the route is renamed
     assert deepseek and all(route.hard_input_ceiling is None for route in deepseek)
@@ -1567,3 +1566,21 @@ def test_other_gate_refusals_still_raise():
     with pytest.raises(LLMBackendError):
         _tag(backend, _one_long_chapter())
     assert [job.recipe_hash for job in backend.jobs] == ["episode-recipe"]
+
+
+def test_oversized_chapter_is_split_before_static_route_deferral(monkeypatch):
+    import citypods.tags as tags_module
+
+    backend = _refusing_backend(lambda _recipe: False)
+    chapter = _one_long_chapter()
+    for segment in chapter[0]["transcript_segments"]:
+        segment["text"] *= 1000
+    chapter[0]["transcript_text"] = "\n".join(
+        segment["text"] for segment in chapter[0]["transcript_segments"]
+    )
+    monkeypatch.setattr(tags_module, "_tag_route_fits", lambda _route, tokens: tokens < 9000)
+    _, _, pending, model = _tag(backend, chapter)
+    assert not pending
+    assert model == "gemini/gemini-3.5-flash-lite"
+    assert len(backend.jobs) > 1
+    assert all("-replan-" in job.recipe_hash for job in backend.jobs)

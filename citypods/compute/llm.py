@@ -336,6 +336,14 @@ class LLMDispatchTerminalError(LLMBackendError):
             and terminal_reason in {"route_retired", "unadmissible"}
             else None
         )
+        # Safe Worker failure class only; provider response bodies are never persisted.
+        self.failure_class = (
+            terminal_reason.removeprefix("provider_")
+            if isinstance(terminal_reason, str)
+            and terminal_reason.startswith("provider_")
+            and re.fullmatch(r"[a-z0-9_]{1,60}", terminal_reason.removeprefix("provider_"))
+            else None
+        )
         self.terminal_catalog_digest = (
             terminal_catalog_digest
             if isinstance(terminal_catalog_digest, str) and terminal_catalog_digest.strip()
@@ -2191,6 +2199,10 @@ class LiteLLMBackend(Backend):
                     )
                     telemetry_outcomes.append((job, "rejected", "terminal_recovery_blocked"))
                     continue
+                if marker.get("status") == "retryable":
+                    retry_count = marker.get("failure_count")
+                    if type(retry_count) is int and retry_count > 0:
+                        recovery_generations[i] = f"terminal-{retry_count}"
                 if marker.get("status") == "structural_blocked":
                     generation = terminal_recovery_generation(
                         self.storage, job.recipe_hash, context, marker=marker

@@ -1421,3 +1421,48 @@ def test_missing_capsule_version_stays_legacy_across_rewrites():
     assert llm_deferred.needs_moments_replan(legacy)
     write_deferred(storage, handle.recipe_hash, legacy)
     assert look_up_deferred(storage, handle.recipe_hash).deferred_request.metadata_version == 0
+
+
+def test_repeated_terminal_observation_of_same_worker_job_counts_once():
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="same-failure", backend="llm-dispatch-v2", ref="j1")
+    for _ in range(3):
+        write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+        snapshot = snapshot_deferred_handles(storage, [handle])
+        assert (
+            discard_terminal_failure(storage, snapshot, handle, RuntimeError("failed"), now=NOW)
+            == 1
+        )
+    marker = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert marker["status"] == "retryable"
+    assert marker["last_failed_ref"] == "j1"
+
+
+def test_out_of_order_terminal_replay_does_not_count_a_failed_job_twice():
+    storage = MemStorage()
+    for ref, expected in (("j1", 1), ("j2", 2), ("j1", 2)):
+        handle = JobHandle(
+            task="tag", recipe_hash="out-of-order", backend="llm-dispatch-v2", ref=ref
+        )
+        write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+        snapshot = snapshot_deferred_handles(storage, [handle])
+        assert (
+            discard_terminal_failure(storage, snapshot, handle, RuntimeError("failed"), now=NOW)
+            == expected
+        )
+    marker = _read_json(storage, deferred_failure_key("out-of-order"))
+    assert marker["failed_refs"] == ["j1", "j2"]
+
+
+def test_terminal_failure_marker_preserves_safe_worker_failure_class():
+    from citypods.compute.llm import LLMDispatchTerminalError
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="failure-class", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+    snapshot = snapshot_deferred_handles(storage, [handle])
+    error = LLMDispatchTerminalError("failed", terminal_reason="provider_server_error")
+    discard_terminal_failure(storage, snapshot, handle, error, now=NOW)
+    marker = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert marker["failure_class"] == "server_error"
+    assert error.structural is False

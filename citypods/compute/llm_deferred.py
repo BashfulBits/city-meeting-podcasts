@@ -669,7 +669,19 @@ def _discard_terminal_failure_locked(
     ):
         entry.deleted = False
         raise ValueError("structural recovery requires typed reason and catalog identity")
-    count = max(0, prior_count) + (0 if structural else 1)
+    # Re-observing the same failed Worker row is not a new provider attempt. Older producers
+    # replayed the same idempotency key, which could otherwise exhaust the retry budget.
+    prior_refs = prior.get("failed_refs", []) if isinstance(prior, Mapping) else []
+    prior_refs = (
+        [ref for ref in prior_refs if isinstance(ref, str)] if isinstance(prior_refs, list) else []
+    )
+    last_ref = prior.get("last_failed_ref") if isinstance(prior, Mapping) else None
+    if isinstance(last_ref, str) and last_ref not in prior_refs:
+        prior_refs.append(last_ref)
+    duplicate = not structural and handle.backend == "llm-dispatch-v2" and handle.ref in prior_refs
+    if not structural and handle.backend == "llm-dispatch-v2" and not duplicate:
+        prior_refs.append(handle.ref)
+    count = max(0, prior_count) + (0 if structural or duplicate else 1)
     # Adapter exceptions intentionally omit model output/provider bodies.  Cap the stored reason
     # anyway: this is durable operational metadata, not a transcript/error dump.
     reason = str(error).replace("\n", " ")[:500]
@@ -685,6 +697,8 @@ def _discard_terminal_failure_locked(
         "last_failed_at": now.isoformat(),
         "last_error_type": type(error).__name__,
         "last_error": reason,
+        "last_failed_ref": prior_refs[-1] if prior_refs else None,
+        "failed_refs": prior_refs[-MAX_TERMINAL_FAILURE_RETRIES:],
         "schema_correction_attempted": bool(
             isinstance(prior, Mapping) and prior.get("schema_correction_attempted")
         ),
@@ -694,6 +708,8 @@ def _discard_terminal_failure_locked(
     }
     if diagnostic := _marker_diagnostic(error):
         marker["diagnostic"] = diagnostic
+    if failure_class := getattr(error, "failure_class", None):
+        marker["failure_class"] = failure_class
     if structural:
         recovery = entry.data.get("recovery_context")
         if not isinstance(recovery, Mapping):

@@ -4958,7 +4958,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         if (quotaExcluded.has(routeId)) return false;
         if (timeoutExcluded.has(routeId)) return false;
         if (!allowPaid && !route.free) return false;
-        return routeFitsContext(route, inputTokens, outputTokens);
+        // Index by context capability only. The claim path has live calibration and accepted
+        // sizes; a static ceiling here can hide a route that has actually served this input.
+        return routeFitsContext(route, inputTokens, outputTokens, { skipSizeGate: true });
       });
       if (fitsSomeConfiguredRoute) models.add(canonical);
     }
@@ -5336,6 +5338,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const fields = ["provider", "account_id", "upstream_model", "free", "input_context_limit",
       "output_context_limit", "hard_input_ceiling", "hard_input_ceiling_tolerance", "input_token_ratio", "tpm"];
     const serialized = JSON.stringify({
+      // Force one bounded reconciliation of old queue indexes after indexing semantics change.
+      index_version: 2,
       aliases: Object.entries(catalog.model_aliases || {}).sort(([a], [b]) => a.localeCompare(b)),
       models: Object.entries(catalog.model_routes_map || {}).sort(([a], [b]) => a.localeCompare(b))
         .map(([model, ids]) => [model, [...ids].sort()]),
@@ -7881,7 +7885,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
               : newState === "failed" &&
                 (isQuotaRejection || isSizeRejection && quotaExcluded.size > 0)
               ? "quota_recovery_exhausted"
-              : isSizeRejection && newState === "failed" ? "input_too_large" : null,
+              : isSizeRejection && newState === "failed" ? "input_too_large"
+              : newState === "failed" && /^[a-z0-9_]{1,60}$/.test(result.failure_class || "")
+                ? `provider_${result.failure_class}` : null,
             nextQuotaExcludedRoutes,
             nextResponseTimeoutRoutes,
             result.job_id
