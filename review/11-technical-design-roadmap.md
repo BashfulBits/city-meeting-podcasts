@@ -646,6 +646,7 @@ or backfill change.
 ### Cross-cutting / ongoing · sketches §5.5
 | Item | #/GH | Maturity |
 |---|---|---|
+| Deferred Decision API batches (GLiDE on Cloud Run L4) | new (Infra) | L2 · [review/59](59-deferred-decision-batches.md) · shadow tags and moments with GLiDE-9B, a $4/month gross allowance and up to 24 hours to task start. The first PR adds the offline contract, GCS transport, capped operator workflow and worker template. The gate is disabled pending cloud setup and measured regular/delayed canaries. |
 | Strong Towns-focused city discovery | #27/#32 (rescoped) | L1 |
 | City-request issue + `/approve` onboarding | #28 | L1 |
 | User "report a feed problem" template | #56 | L1 |

@@ -1779,6 +1779,13 @@ an eligible model, for Google-produced entries, with `DeciderBackend`. The Worke
 the `openrouter_decisions` API shape (`POST /api/alpha/decisions`: JEV's body with the decisions
 key map, Bearer auth) on provider `openrouter_decisions`, gateway slug `custom-openrouter-api`; its
 route is held at `rpd: 0` until that custom gateway provider is registered.
+**Deferred decision pilot (review/59).** The manual `decision-batch.yml` workflow exports frozen tag
+and moment questions as versioned gzip JSONL for a file-based decision worker. Private GCS objects
+pin request and result generations. A conditional admission ledger reserves a bounded canary and
+allows one outstanding Cloud Run execution. A separate collection action validates every result ID
+and writes an evaluation receipt. Cloud execution starts disabled and the pilot writes outside the
+episode judging ledger. [Design and acceptance gates](review/59-deferred-decision-batches.md)
+
 Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
 state, conditional, and other storage reads continue to use their owning backend directly. For
 B2-backed runs, judge transcript reads try the configured public CDN URL through the guarded HTTP
