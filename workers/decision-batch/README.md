@@ -11,8 +11,8 @@ billing and IAM verification. The GitHub workflow starts disabled.
    link it to the same account and confirm the credit is active before provisioning.
    [Google Developer Program credits](https://developers.google.com/profile/help/benefits) ·
    [Cloud Billing project linking](https://docs.cloud.google.com/billing/docs/how-to/modify-project)
-2. In the project, enable Cloud Run, Cloud Storage, Artifact Registry, IAM Credentials and Security
-   Token Service. Use `us-central1` for the job, private buckets and registry. Check the Cloud Run
+2. In the project, enable Cloud Run, Cloud Storage, Artifact Registry, IAM, IAM Credentials and
+   Security Token Service. Use `us-central1` for the job, private buckets and registry. Check the Cloud Run
    quota for non-zonal L4. Add a $4 project budget. Use a supported Cloud Run spend cap if
    available and keep the three-attempt launcher guard regardless of budget type.
    [GPU quotas](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu) ·
@@ -26,14 +26,15 @@ billing and IAM verification. The GitHub workflow starts disabled.
    `refs/heads/main`, the `decision-batch.yml` workflow and the protected `decision-batch-canary`
    environment. Use service-account impersonation. Restrict the producer to request and manifest
    creation and reads. The dispatcher needs manifest/chunk reads, admission CAS and read/run with
-   overrides on the fixed job. The collector needs execution reads, result verification, admission
-   CAS and receipt writes. The task service account needs admission, manifest, chunk and model reads
-   and attempt-object creation. Keep deploy permissions on a separate owner identity.
+   overrides on the fixed job. The collector needs execution, manifest, chunk and attempt reads,
+   admission CAS, and receipt creation and reads. The task service account needs admission,
+   manifest, chunk and model reads as well as attempt-object creation and reads. Keep deploy
+   permissions on a separate owner identity.
    [GitHub federation](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines)
 5. Complete the runtime gates below. Configure repository variables `DECISION_BATCH_WIF_PROVIDER`,
    `DECISION_BATCH_PRODUCER_SA`, `DECISION_BATCH_DISPATCHER_SA`, `DECISION_BATCH_COLLECTOR_SA`,
-   `DECISION_BATCH_BUCKET`, `DECISION_BATCH_JOB`, `DECISION_BATCH_IMAGE_DIGEST`, and
-   `DECISION_BATCH_CLOUD_SDK_VERSION`. The job is a fully qualified resource name and the
+   `DECISION_BATCH_BUCKET`, `DECISION_BATCH_JOB`, and `DECISION_BATCH_IMAGE_DIGEST`.
+   The workflow pins Cloud SDK 593.0.0. The job is a fully qualified resource name and the
    digest has the form `sha256:<64 hex characters>`. Set `DECISION_BATCH_CLOUD_ENABLED=true` only
    when ready. Add a required reviewer to the GitHub environment during the canary.
 
@@ -44,13 +45,19 @@ billing and IAM verification. The GitHub workflow starts disabled.
    exact CUDA 13 wheels and kernel path. Include the pinned GLiDE source/runtime and its full
    dependencies. This repository currently has **no GPU lane**; the template image is not buildable
    reproducibly from this checkout alone.
+   The pinned upstream inference requirements resolved to Linux/amd64 CPython 3.12 wheels in a
+   cross-platform resolver check. The existing ASR lock uses a different Torch and Triton stack.
+   Keep a separate decision GPU lock and verify it with the repository compiler. The runtime must
+   provide a C compiler, Python and libc headers, and the CUDA driver library for Triton.
 2. Review Fastino's license and notices. Pin the GLiDE-9B source and weights by the reviewed full
    revision `ab54df5acba0eebf7df45560ffdaacd64e32df3b`. Obtain the complete snapshot through an
    approved process, independently verify the snapshot bytes and mount it read-only at the
    configured local path. A directory name is not evidence of model identity.
 3. Review and supply a CUDA 13-compatible Python base by immutable `@sha256:` digest, with the
-   GPU lane installed from its compiled constraints and the pinned GLiDE code. Record its digest,
-   installed versions, model revision and compiled lock digest in the run manifest. Build with
+   GPU lane installed from its compiled constraints. GLiDE is a source tree. Copy its reviewed
+   `glide/` package into `/opt/glide-src/glide/` in the base so the image controls executable code
+   and the model mount supplies weights. Record the digest, versions, model revision and compiled
+   lock digest in the run manifest. Build with
    `--build-arg GPU_BASE_IMAGE=<reviewed-image@sha256:...>`; record the resulting image digest.
    The Dockerfile intentionally has no mutable default and installs this project without resolving
    or installing dependencies. Build from a minimal, reviewed context that excludes secrets and

@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
@@ -7,8 +8,14 @@ import pytest
 
 from citypods.judging import decision_batch_cloud as cloud
 from citypods.judging.decision_batch_transport import PreconditionFailed
+from scripts.decision_batch_pilot import _active_windows
 
 JOB = "projects/test/locations/us-central1/jobs/decision-batch"
+
+
+def test_reservation_covers_billing_month_boundary():
+    pending_at = datetime(2026, 12, 1, 1, tzinfo=UTC)
+    assert _active_windows(pending_at) == {"canary", "2026-11", "2026-12"}
 
 
 def test_gcs_reads_pinned_generation(monkeypatch):
@@ -47,13 +54,14 @@ def test_launcher_checks_acknowledgement(monkeypatch):
 
     def run(args, **kwargs):
         commands.append(args)
-        return SimpleNamespace(returncode=0, stdout=json.dumps({"name": f"{JOB}/executions/e"}))
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"metadata": {"name": "e"}}))
 
     monkeypatch.setattr(cloud.subprocess, "run", run)
     launcher = cloud.CloudRunLauncher(JOB, lambda: "opaque")
     assert launcher.launch("m", "a", "regular") == f"{JOB}/executions/e"
     assert "--no-delay-execution" in commands[0]
     assert "--async" in commands[0]
+    assert commands[0][5:7] == ["decision-batch", "--project=test"]
     with pytest.raises(ValueError):
         launcher.launch("m,OTHER=value", "a", "delayed")
 

@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             windows = _active_windows(datetime.now(UTC))
             # Print IDs before submission so an ambiguous acknowledgement can be reconciled.
             print(json.dumps({"manifest_id": args.manifest, "attempt_id": attempt}), flush=True)
-            operation = reserve_and_launch(
+            execution = reserve_and_launch(
                 store,
                 launcher,
                 args.manifest,
@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
                 allowances=dict.fromkeys(windows, PILOT_CAP_MICRODOLLARS),
                 mode=args.mode,
             )
-            print(json.dumps({"operation": operation}))
+            print(json.dumps({"execution": execution}))
         elif args.command == "collect":
             state = launcher.execution_state(args.execution, args.manifest, args.attempt)
             if state != "CONDITION_SUCCEEDED":

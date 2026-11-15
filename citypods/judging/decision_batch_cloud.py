@@ -99,13 +99,15 @@ def cloud_run_command(
         raise ValueError("expected a fully qualified job in the configured region")
     if not IDENTIFIER_RE.fullmatch(manifest_id) or not IDENTIFIER_RE.fullmatch(attempt_id):
         raise ValueError("invalid manifest or attempt ID")
+    _, project, _, _, _, job_name = job.split("/")
     return [
         "gcloud",
         "beta",
         "run",
         "jobs",
         "execute",
-        job,
+        job_name,
+        f"--project={project}",
         f"--region={region}",
         "--async",
         LAUNCH_FLAGS[mode],
@@ -164,14 +166,11 @@ class CloudRunLauncher:
         )
         if completed.returncode:
             raise RuntimeError("Cloud Run launch acknowledgement unavailable")
-        response = json.loads(completed.stdout)
-        name = response.get("name") or response.get("metadata", {}).get("name")
-        if not isinstance(name, str) or not (
-            name.startswith(f"{self.job}/executions/")
-            or re.fullmatch(r"projects/[^/]+/locations/[^/]+/operations/[^/]+", name)
-        ):
-            raise ValueError("Cloud Run launch acknowledgement lacks an operation or execution")
-        return name
+        # The beta SDK returns a v1 Execution resource, including for --async.
+        name = json.loads(completed.stdout).get("metadata", {}).get("name")
+        if not isinstance(name, str) or not IDENTIFIER_RE.fullmatch(name):
+            raise ValueError("Cloud Run launch acknowledgement lacks an execution name")
+        return f"{self.job}/executions/{name}"
 
     def execution_state(self, execution: str, manifest_id: str, attempt_id: str) -> str | None:
         """Read a matching execution's terminal Completed condition, if present."""

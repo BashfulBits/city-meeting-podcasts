@@ -8,5 +8,5 @@ COPY pyproject.toml README.md ./
 COPY citypods/ citypods/
 COPY workers/decision-batch/cloud_batch.py workers/decision-batch/run_batch.py workers/decision-batch/
 RUN python -m pip install --no-deps --no-build-isolation .
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 PYTHONPATH=/opt/glide-src
 ENTRYPOINT ["python", "workers/decision-batch/cloud_batch.py"]
