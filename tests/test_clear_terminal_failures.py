@@ -117,3 +117,60 @@ def test_clear_terminal_failures_resilient_to_storage_read_error(monkeypatch):
     ret = ctf.main(["--task", "tag", "--apply"])
     assert ret == 0
     assert not storage.exists(ctf.deferred_failure_key("r-good"))
+
+
+def _seed(storage, recipe, task, error, status="exhausted"):
+    marker = {"recipe_hash": recipe, "task": task, "status": status, "last_error": error}
+    _write_json(storage, ctf.deferred_failure_key(recipe), json.dumps(marker).encode())
+    return marker
+
+
+def test_clear_by_cause_clears_only_the_matching_marker_and_archives_it(monkeypatch, capsys):
+    storage = MemStorage()
+    keep = _seed(storage, "r-keep", "agenda-chapter-locate", "quote is absent from cited lines")
+    gone = _seed(storage, "r-gone", "agenda-chapter-locate", "duplicate locator unit: u00001")
+    monkeypatch.setattr(ctf, "load_site_config", lambda _path: {})
+    monkeypatch.setattr(ctf, "make_storage", lambda _cfg, _base, _out: storage)
+
+    ret = ctf.main(
+        [
+            "--task",
+            "agenda-chapter-locate",
+            "--last-error-contains",
+            "duplicate locator unit",
+            "--apply",
+        ]
+    )
+
+    assert ret == 0
+    assert storage.exists(ctf.deferred_failure_key("r-keep"))
+    assert not storage.exists(ctf.deferred_failure_key("r-gone"))
+    audit = ctf._safe_read_json(storage, f"{ctf.AUDIT_PREFIX}{datetime.now(UTC).date().isoformat()}/r-gone.json")
+    assert audit == gone
+    assert keep["recipe_hash"] == "r-keep"
+    assert "Markers by cause" in capsys.readouterr().out
+
+
+def test_dry_run_prints_a_cause_histogram_with_ids_collapsed(monkeypatch, capsys):
+    storage = MemStorage()
+    _seed(storage, "r1", "moment-extraction", "job 1234abcd5678 failed permanently")
+    _seed(storage, "r2", "moment-extraction", "job 99ffee001122 failed permanently")
+    monkeypatch.setattr(ctf, "load_site_config", lambda _path: {})
+    monkeypatch.setattr(ctf, "make_storage", lambda _cfg, _base, _out: storage)
+
+    assert ctf.main(["--task", "moment-extraction"]) == 0
+
+    out = capsys.readouterr().out
+    assert "2  moment-extraction | exhausted |  | job # failed permanently" in out
+    assert storage.exists(ctf.deferred_failure_key("r1"))
+
+
+def test_apply_refuses_more_markers_than_max_clear(monkeypatch):
+    storage = MemStorage()
+    for index in range(3):
+        _seed(storage, f"r{index}", "tag", "boom")
+    monkeypatch.setattr(ctf, "load_site_config", lambda _path: {})
+    monkeypatch.setattr(ctf, "make_storage", lambda _cfg, _base, _out: storage)
+
+    assert ctf.main(["--task", "tag", "--apply", "--max-clear", "2"]) == 1
+    assert all(storage.exists(ctf.deferred_failure_key(f"r{index}")) for index in range(3))
