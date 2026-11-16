@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Add a guarded manual repair for 123 audited tagger retry markers that counted the same failed
+Worker job repeatedly. Originals are archived, and each corrected marker retains the failed job ID.
+
 Add a manual, audited repair for twelve tagger recipes exhausted by input TPM refusals before
 quota recovery was deployed. Original markers are archived before being converted to quota fences.
 
