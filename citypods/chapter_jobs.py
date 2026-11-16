@@ -331,9 +331,11 @@ def finalize_locator_job(
         content, agenda_item_count=len(agenda.items), units=units
     )
     anchors = validation.anchors
-    if validation.conflicts and not anchors:
-        # Nothing trustworthy survived (typically every item parked on one unit), so completing
-        # would publish an empty result for an episode the model simply failed to locate.
+    accepted = {item.index for item in agenda.items if item.status == "accepted"}
+    if validation.conflicts and not any(a.agenda_item_index in accepted for a in anchors):
+        # Nothing publishable survived (typically every item parked on one unit; an anchor on a
+        # rejected item does not count, since the stage never publishes it), so completing would
+        # save an empty result for an episode the model simply failed to locate.
         first = validation.conflicts[0]
         raise DuplicateLocatorUnitError(first.unit.id, first.agenda_item_indices[:2])
     normalized = []

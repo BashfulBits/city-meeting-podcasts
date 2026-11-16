@@ -787,3 +787,53 @@ def test_finalize_locator_job_keeps_unconflicted_anchors_and_records_the_conflic
         units=units,
     )
     assert "unit_conflicts" not in clean.diagnostics
+
+
+def test_finalize_locator_job_repairs_when_only_a_rejected_item_survives_the_collision():
+    from citypods.chapter_artifacts import AgendaCandidate, AgendaCandidatesArtifact
+    from citypods.chapter_locator import DuplicateLocatorUnitError, LocatorUnit
+
+    agenda = AgendaCandidatesArtifact(
+        episode_uid="ep-1",
+        source_hash="h",
+        model="m",
+        prompt_version="p",
+        recipe="agenda-recipe-1",
+        items=tuple(
+            AgendaCandidate(
+                index=i,
+                title=f"Item {i}",
+                kind="substantive_action",
+                line_start=i + 1,
+                line_end=i + 1,
+                evidence_text=f"{i}. Item {i}",
+                display_ref=str(i),
+                status="rejected" if i == 1 else "accepted",
+            )
+            for i in range(3)
+        ),
+    )
+    units = [
+        LocatorUnit(id="u00001", start=0.0, end=5.0, text="Call to order"),
+        LocatorUnit(id="u00003", start=20.0, end=25.0, text="Item three"),
+    ]
+    anchors = [
+        {
+            "agenda_item_index": index,
+            "unit_id": unit,
+            "transition_quote": "q q q",
+            "confidence": 0.9,
+            "rationale": "r",
+        }
+        for index, unit in ((0, "u00001"), (2, "u00001"), (1, "u00003"))
+    ]
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="r",
+        output={"choices": [{"message": {"content": json.dumps({"anchors": anchors})}}]},
+    )
+
+    with pytest.raises(DuplicateLocatorUnitError):
+        finalize_locator_job(
+            result, episode_uid="ep-1", agenda=agenda, transcript_hash="t", units=units
+        )
