@@ -9748,6 +9748,13 @@ def fold_locator_work_outcomes(stage_totals, snapshot: Mapping[str, Any]) -> Non
     zero = (locator.get("outcomes") or {}).get("zero-agenda", 0)
     if zero:
         stage_totals["chapter_locator"]["quality_counts"]["locator-zero-agenda"] = int(zero)
+    # The agenda census labels every blocked episode once (no agenda link, document rejected for
+    # <reason>, fetch failed, not yet fetched, extraction retries exhausted); surface those as
+    # quality figures so each run log says why the agenda lane's backlog is not submittable.
+    agenda = (purposes or {}).get("chapter-agenda") or {}
+    for label, count in (agenda.get("outcomes") or {}).items():
+        if count and (label == "no-agenda-link" or str(label).startswith("agenda-")):
+            stage_totals["chapter_agenda"]["quality_counts"][label] = int(count)
 
 
 def _locator_policy_fingerprint(models: Sequence[str]) -> str:
