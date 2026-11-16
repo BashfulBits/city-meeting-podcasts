@@ -1568,6 +1568,24 @@ def test_other_gate_refusals_still_raise():
     assert [job.recipe_hash for job in backend.jobs] == ["episode-recipe"]
 
 
+def test_quota_blocked_tag_recipe_replans_without_calling_it_oversized():
+    backend = _refusing_backend(
+        lambda recipe: recipe == "episode-recipe", marker='{"status":"quota_blocked"}'
+    )
+    _, chapter_tags, pending, model = _tag(backend, _one_long_chapter())
+    assert chapter_tags and not pending
+    assert model == "gemini/gemini-3.5-flash-lite"
+    assert len(backend.jobs) == 3
+    assert all("-quota-replan-" in job.recipe_hash for job in backend.jobs[1:])
+
+
+def test_quota_replanning_stops_after_two_generations():
+    backend = _refusing_backend(lambda _recipe: True, marker='{"status":"quota_blocked"}')
+    _, chapter_tags, pending, model = _tag(backend, _one_long_chapter())
+    assert (chapter_tags, pending, model) == ({}, True, "quota-replan-limit")
+    assert len(backend.jobs) == 7
+
+
 def test_oversized_chapter_is_split_before_static_route_deferral(monkeypatch):
     import citypods.tags as tags_module
 

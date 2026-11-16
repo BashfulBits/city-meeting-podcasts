@@ -3870,6 +3870,25 @@ test("Google-only quota recovery is finite and never claims proven oversize", as
   assert.equal((await coordinator.claimDispatchWindow(start + 240_000, 25)).jobs.length, 0);
 });
 
+test("multi-model tag quota recovery rotates routes without spending transient retries", async () => {
+  const { coordinator, sql } = makeQuotaRecoveryCoordinator({ overflow: false });
+  await coordinator.enqueueBatch([quotaRecoveryJob("tag-quota", {
+    allowed_models: [GEMMA_MODEL, "gemini/gemini-3.5-flash-lite"],
+  })]);
+  sql.exec("UPDATE jobs SET purpose='topic-tags:tagger' WHERE id='tag-quota'");
+  const start = Date.now();
+  for (let index = 0; index < 2; index += 1) {
+    const plan = await coordinator.claimDispatchWindow(start + index * 120_000, 25);
+    assert.equal(plan.jobs[0].route_id, ["google-a", "google-b"][index]);
+    await refuseQuota(coordinator, plan);
+  }
+  const [row] = [...sql.exec("SELECT * FROM jobs WHERE id='tag-quota'")];
+  assert.equal(row.state, "failed");
+  assert.equal(row.terminal_reason, "tag_quota_recovery_exhausted");
+  assert.equal(row.transient_retry_count, 0);
+  assert.equal(row.size_excluded_routes, null);
+});
+
 test("overflow failures retain the existing independent transient bound", async () => {
   const { coordinator, sql } = makeQuotaRecoveryCoordinator();
   await coordinator.enqueueBatch([quotaRecoveryJob("quota-5xx")]);

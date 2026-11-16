@@ -67,6 +67,7 @@ STAGE_TOKENS: dict[str, dict[str, tuple[str, str]]] = {
         "tag-llm-stop": ("tagger", "stopped"),
         "tag-budget-stop": ("tagger", "stopped"),
         "tag-llm-oversized": ("tagger", "blocked"),
+        "tag-llm-quota-replan-limit": ("tagger", "blocked"),
         "tag-prelabeler-dispatch": ("prelabeler", "queued"),
         "tag-prelabeler-no-quota": ("prelabeler", "ingress_limited"),
         "tag-prelabeler-stop": ("prelabeler", "stopped"),
