@@ -2975,3 +2975,28 @@ def test_a_later_anchor_packs_first_but_takes_only_its_share_of_the_run_cap(monk
     assert anchors.count(DECIDER) == 2  # 8 x 0.25
     assert anchors.count(DECISION) == 1  # the primary's one packet still goes
     assert stats.counts[f"run_cap_share:{DECIDER}"] == 1
+
+
+def test_the_judge_census_calls_only_episodes_with_real_work_ready():
+    """The census used to call every episode with candidates `ready` for all three roles, so the
+    ~16,200 per role it reported were never what a pass visited (~900 episodes with real work)."""
+    from citypods.stages import JudgeStage, judge_episode_dirty
+
+    ctx = _stage_ctx(enabled=True)
+    ctx.judging_config = {**ctx.judging_config, "all_tiers_sample_rate": 0.0}
+    waiting = _episode()
+    waiting.uid = "waiting"
+    waiting.transcript_key = None
+    working = _episode()
+    working.uid = "working"
+    working.transcript_key = "t.vtt"
+
+    states = {
+        (purpose, uid): state
+        for purpose, uid, state in JudgeStage().work_items(_city(), [waiting, working], ctx)
+    }
+
+    assert {state for (_, uid), state in states.items() if uid == "waiting"} == {"blocked"}
+    assert {state for (_, uid), state in states.items() if uid == "working"} == {"ready"}
+    assert judge_episode_dirty(working, ctx.judging_config)
+    assert not judge_episode_dirty(waiting, ctx.judging_config)

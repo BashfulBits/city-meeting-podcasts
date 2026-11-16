@@ -1607,6 +1607,15 @@ the same figure (10,816) stood on 11-11 and 11-12, while those runs queued norma
 Whether a primary-model change should re-tag the catalog (about 10,700 jobs) or be treated as
 throughput only is an owner decision, set out in #2686.
 
+*Resolved 2026-11-14 (owner) and implemented 2026-11-16:* a primary-model change is throughput
+only. `tag_inputs_current` is now the one question the census, the lane prefilter and the stage's
+triage ask, and it accepts a stored fingerprint computed under any of the lane's models or a
+retired primary (`TAG_RETIRED_PRIMARY_ROUTES`). The ~10,800 episodes read `reused`, so the tag
+`ready` figure falls to genuinely new work (episodes with chapters and no resolved recipe). The
+judge census had the same defect: it called every episode with candidates `ready` for all three
+roles (~16,200 each) while a pass visits only episodes `judge_episode_dirty` selects (~900). It now
+asks that same question; an episode without a transcript is `blocked`.
+
 **Deploy.** Python only. Merging does not deploy the Worker, and nothing needs a production
 action: the blocked markers stay as the audit record, and the producer routes around them.
 

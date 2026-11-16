@@ -1602,3 +1602,81 @@ def test_oversized_chapter_is_split_before_static_route_deferral(monkeypatch):
     assert model == "gemini/gemini-3.5-flash-lite"
     assert len(backend.jobs) > 1
     assert all("-replan-" in job.recipe_hash for job in backend.jobs)
+
+
+def test_tag_input_fingerprint_variants_match_the_single_route_fingerprint():
+    from citypods.tags import tag_input_fingerprint_variants
+
+    ep, taxonomy = _fp_episode(), _fp_taxonomy()
+    routes = ("litellm:a", "litellm:b")
+
+    variants = tag_input_fingerprint_variants(ep, taxonomy, routes, llm_enabled=True)
+
+    assert variants == [
+        tag_input_fingerprint(ep, taxonomy, llm_enabled=True, llm_route=route) for route in routes
+    ]
+    assert variants[0] != variants[1]
+
+
+def test_inputs_tagged_under_a_previous_primary_still_count_as_current():
+    """A primary-model change is throughput, not a new recipe (owner decision, GH#2686): episodes
+    tagged under the previous primary must not read as stale, to the prefilter or the census."""
+    from citypods.tags import episode_needs_tagging, tag_inputs_current
+
+    ep, taxonomy = _fp_episode(), _fp_taxonomy()
+    ep.chapters = [{"start": 0, "title": "Item"}]
+    ep.source_chapters = [dict(chapter) for chapter in ep.chapters]
+    ep.tags_input_fingerprint = tag_input_fingerprint(
+        ep, taxonomy, llm_enabled=True, llm_route="litellm:old-primary"
+    )
+    ep.tags_spec_hash = "spec"
+    ep.chapter_tags = [{"chapter_id": "c"}]
+    ep.tags_llm_recipe_hash = "recipe"
+    new = "litellm:new-primary"
+
+    assert not tag_inputs_current(ep, taxonomy, llm_enabled=True, llm_route=new)
+    assert tag_inputs_current(
+        ep, taxonomy, llm_enabled=True, llm_route=new, accepted_routes=("litellm:old-primary",)
+    )
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route=new)
+    assert not episode_needs_tagging(
+        ep,
+        taxonomy,
+        llm_enabled=True,
+        llm_route=new,
+        accepted_routes=("litellm:old-primary",),
+    )
+
+
+def test_a_changed_chapter_still_invalidates_an_accepted_route_fingerprint():
+    from citypods.tags import tag_inputs_current
+
+    ep, taxonomy = _fp_episode(), _fp_taxonomy()
+    ep.chapters = [{"start": 0, "title": "Item"}]
+    ep.source_chapters = [dict(chapter) for chapter in ep.chapters]
+    ep.tags_input_fingerprint = tag_input_fingerprint(
+        ep, taxonomy, llm_enabled=True, llm_route="litellm:old"
+    )
+    ep.chapters = [{"start": 0, "title": "Renamed item"}]
+    ep.source_chapters = [dict(chapter) for chapter in ep.chapters]
+
+    assert not tag_inputs_current(
+        ep, taxonomy, llm_enabled=True, llm_route="litellm:new", accepted_routes=("litellm:old",)
+    )
+
+
+def test_accepted_routes_cover_the_lane_models_and_retired_primaries():
+    from types import SimpleNamespace
+
+    from citypods.tags import TAG_RETIRED_PRIMARY_ROUTES, tag_accepted_routes
+
+    backend = SimpleNamespace(
+        name="litellm", config=SimpleNamespace(model="p/primary", additional_models=("p/second",))
+    )
+
+    routes = tag_accepted_routes(backend)
+
+    assert "litellm:p/primary" not in routes
+    assert "litellm:p/second" in routes
+    assert set(TAG_RETIRED_PRIMARY_ROUTES) <= set(routes)
+    assert tag_accepted_routes(None) == ()
