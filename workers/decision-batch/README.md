@@ -1,7 +1,8 @@
 # Deferred decision worker: offline preparation
 
 This directory supplies the gzip JSONL runner, cloud entrypoint and deployment templates.
-The maintainer approved nine one-task canaries within $4/month gross; seven have been used.
+The maintainer approved nine one-task canaries within $4/month gross; eight have been used and
+one remains.
 The GitHub workflow starts disabled. A project budget does not automatically guarantee a spend cap.
 The completed canaries used regular jobs on a Virginia L4, not delayed jobs.
 
@@ -104,3 +105,9 @@ start of inference, but cannot observe first result time inside that call withou
 Compare regular and delayed modes on matched work before selecting a recurring mode. Keep results
 private and expiring; collect no evidence text in telemetry. Do not promote this shadow output to
 judge votes without the qualification and maintainer decision described in review/59.
+
+The bounded-buffer FUSE canary loaded GLiDE directly in 109.71 seconds and returned 158/158
+structurally valid results after 87.11 seconds of inference. Peak host RSS was 16,748,707,840
+bytes against a 16 GiB limit. All 13 object generations matched the trusted manifest before and
+afterward, but FUSE does not pin generations and the run did not rehash mounted bytes. See
+review/59 for the comparison, integrity caveat, and pending billing reconciliation.

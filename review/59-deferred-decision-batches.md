@@ -157,6 +157,16 @@ charges, with startup/shutdown, CPU, RAM, disk, build, storage and transfer char
 Actual billed cost and labeled accuracy are pending. A preceding retry failed on a Python
 module-path packaging error and was settled.
 
+A later regular Virginia L4 canary loaded directly from read-only FUSE with buffered reads and
+`read-global-max-blocks=16`, without a disk copy. With the same 158 frozen decisions, 4 CPUs,
+16 GiB, 300-second timeout and no retries, it loaded in 109.71 seconds, ran inference in 87.11
+seconds and returned 158 structurally valid results in 196.84 seconds of processing. Peak GPU
+allocation was 18,933,681,152 bytes and peak host RSS was 16,748,707,840 bytes. The host memory
+margin remains narrow. All 13 model object generations matched the trusted manifest before and
+after the run. FUSE does not pin object generations, and the run did not rehash the mounted bytes;
+the earlier generation-pinned SHA-256 verification and pre/post checks do not rule out a transient
+replacement. Actual incremental charges remain pending billing reconciliation.
+
 Karpo 9B and 4B are Qwen3.5 family models with respective published BF16 weights of 16.8 GB
 and 9.1 GB. Both completed a regular Virginia L4 canary over the same 158 frozen decisions. Karpo 4B
 returned 158 structurally valid results, with 100.44 seconds of load, 103.06 seconds of
@@ -202,14 +212,14 @@ out without a result. Its warning identified the PyTorch causal-convolution fall
 used an instrumented worker and Cloud Storage FUSE buffered reads. It logged the beginning of
 model loading, then timed out after 300 seconds without logging load completion. Both attempts
 are settled in the admission ledger. The logs establish that model loading exceeded the second
-task's limit. They do not isolate the exact operation inside the model loader. Buffered reads
-did not produce a successful five-minute run, so the job template keeps the original mount.
+task's limit. They do not isolate the exact operation inside the model loader. That attempt did
+not complete within five minutes; the job template keeps the original mount.
 The third canary copied the model from the mounted bucket to a 20 GiB ephemeral disk before
 loading. Its copy did not finish before the 300-second timeout. It used buffered FUSE reads and
 four file-copy workers, with a worker image derived from the second canary image. The logs show
 the copy exceeded 264 seconds and do not identify a specific stall within it. The third attempt
 is settled. The maintainer subsequently authorized six additional GPU attempts, for nine total
-under the $4 gross monthly project budget. Seven attempts have been used. The successful GLiDE
+under the $4 gross monthly project budget. Eight attempts have been used. The successful GLiDE
 and Karpo runs above used regular jobs only; no delayed-mode comparison or tag or moment
 quality qualification is complete. Check project charges before another attempt.
 
@@ -280,8 +290,8 @@ verify that the pilot SKUs actually draw the credit on the billing report.
 [Google Developer Program benefits](https://developers.google.com/profile/help/benefits)
 
 Use the maintainer's **$4/month gross envelope including ancillary GCP costs**.
-Keep live runs manual. The authorized canary envelope is nine L4 task attempts, seven used,
-each with a 300-second timeout and zero task retries. Derive the
+Keep live runs manual. The authorized canary envelope is nine L4 task attempts, eight used and
+one remaining, each with a 300-second timeout and zero task retries. Derive the
 recurring attempt allowance only after estimating ancillary spend and measuring runtime. Before a
 launch, reserve `max(60 s, task timeout) × gross rate × task count × max attempts`, including
 ambiguous submissions until reconciled. Count manual launches through the same ledger. Reserve
@@ -411,7 +421,8 @@ The first PR exercises A and the explicit-manifest canary path in B and C offlin
 runtime dependency and model pins, and the two launch modes. The `decision_batch_pilot` CLI
 prepares the existing frozen set, reserves a launch, and collects a generation-pinned result.
 The Cloud Run gate starts off and accepts only manual dispatches on main with a protected
-GitHub environment. The maintainer authorized nine one-task L4 attempts under $4/month gross; seven have been used.
+GitHub environment. The maintainer authorized nine one-task L4 attempts under $4/month gross;
+eight have been used.
 The launcher reserves $0.09 per attempt, including ambiguous submissions. The completed canaries
 used the one-task Virginia L4 job configuration.
 
