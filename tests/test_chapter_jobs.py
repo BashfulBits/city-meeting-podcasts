@@ -721,6 +721,124 @@ def test_an_outline_reference_is_not_confirmed_across_a_peer_section():
     ]
 
 
+def test_finalize_locator_job_keeps_unconflicted_anchors_and_records_the_conflict():
+    from citypods.chapter_artifacts import AgendaCandidate, AgendaCandidatesArtifact
+    from citypods.chapter_locator import LocatorUnit
+
+    agenda = AgendaCandidatesArtifact(
+        episode_uid="ep-1",
+        source_hash="h",
+        model="m",
+        prompt_version="p",
+        recipe="agenda-recipe-1",
+        items=tuple(
+            AgendaCandidate(
+                index=i,
+                title=f"Item {i}",
+                kind="substantive_action",
+                line_start=i + 1,
+                line_end=i + 1,
+                evidence_text=f"{i}. Item {i}",
+                display_ref=str(i),
+                status="accepted",
+            )
+            for i in range(3)
+        ),
+    )
+    units = [
+        LocatorUnit(id="u00001", start=0.0, end=5.0, text="Call to order"),
+        LocatorUnit(id="u00002", start=10.0, end=15.0, text="Item two"),
+        LocatorUnit(id="u00003", start=20.0, end=25.0, text="Item three"),
+    ]
+
+    def anchor(index, unit_id):
+        return {
+            "agenda_item_index": index,
+            "unit_id": unit_id,
+            "transition_quote": "some quote",
+            "confidence": 0.9,
+            "rationale": "because",
+        }
+
+    def result(anchors):
+        return JobResult(
+            task="agenda-chapter-locate",
+            recipe_hash="r",
+            output={"choices": [{"message": {"content": json.dumps({"anchors": anchors})}}]},
+        )
+
+    boundary = finalize_locator_job(
+        result([anchor(0, "u00001"), anchor(1, "u00001"), anchor(2, "u00003")]),
+        episode_uid="ep-1",
+        agenda=agenda,
+        transcript_hash="t",
+        units=units,
+    )
+    assert [a["agenda_item_index"] for a in boundary.anchors] == [2]
+    assert boundary.diagnostics["unit_conflicts"] == [
+        {"unit_id": "u00001", "start": 0.0, "agenda_item_indices": [0, 1]}
+    ]
+
+    clean = finalize_locator_job(
+        result([anchor(0, "u00001"), anchor(2, "u00003")]),
+        episode_uid="ep-1",
+        agenda=agenda,
+        transcript_hash="t",
+        units=units,
+    )
+    assert "unit_conflicts" not in clean.diagnostics
+
+
+def test_finalize_locator_job_repairs_when_only_a_rejected_item_survives_the_collision():
+    from citypods.chapter_artifacts import AgendaCandidate, AgendaCandidatesArtifact
+    from citypods.chapter_locator import DuplicateLocatorUnitError, LocatorUnit
+
+    agenda = AgendaCandidatesArtifact(
+        episode_uid="ep-1",
+        source_hash="h",
+        model="m",
+        prompt_version="p",
+        recipe="agenda-recipe-1",
+        items=tuple(
+            AgendaCandidate(
+                index=i,
+                title=f"Item {i}",
+                kind="substantive_action",
+                line_start=i + 1,
+                line_end=i + 1,
+                evidence_text=f"{i}. Item {i}",
+                display_ref=str(i),
+                status="rejected" if i == 1 else "accepted",
+            )
+            for i in range(3)
+        ),
+    )
+    units = [
+        LocatorUnit(id="u00001", start=0.0, end=5.0, text="Call to order"),
+        LocatorUnit(id="u00003", start=20.0, end=25.0, text="Item three"),
+    ]
+    anchors = [
+        {
+            "agenda_item_index": index,
+            "unit_id": unit,
+            "transition_quote": "q q q",
+            "confidence": 0.9,
+            "rationale": "r",
+        }
+        for index, unit in ((0, "u00001"), (2, "u00001"), (1, "u00003"))
+    ]
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="r",
+        output={"choices": [{"message": {"content": json.dumps({"anchors": anchors})}}]},
+    )
+
+    with pytest.raises(DuplicateLocatorUnitError):
+        finalize_locator_job(
+            result, episode_uid="ep-1", agenda=agenda, transcript_hash="t", units=units
+        )
+
+
 def test_mostly_ungrounded_agenda_raises_a_citation_error_naming_every_reason():
     from citypods.chapter_jobs import AgendaCitationError, agenda_citation_retry_hint
 

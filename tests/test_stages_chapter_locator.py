@@ -1451,3 +1451,94 @@ def test_zero_agenda_count_comes_from_the_census_once():
     empty = defaultdict(lambda: {"quality_counts": {}})
     fold_locator_work_outcomes(empty, {"purposes": {}})
     assert dict(empty) == {}
+
+
+def _three_item_episode(uid: str) -> Episode:
+    ep = _make_episode(uid)
+    raw = dict(ep.generated_agenda_candidates)
+    raw["items"] = [
+        {**raw["items"][0], "index": index, "title": f"Item {index}", "status": "accepted"}
+        for index in range(3)
+    ]
+    ep.generated_agenda_candidates = raw
+    return ep
+
+
+_VTT_THREE = b"""WEBVTT
+
+00:00:10.000 --> 00:00:20.000
+Meeting is called to order by the chair.
+
+00:00:30.000 --> 00:00:45.000
+Moving on to the second item.
+
+00:00:50.000 --> 00:01:00.000
+Now the third item.
+"""
+
+
+def _anchor_json(*pairs: tuple[int, str]) -> str:
+    return json.dumps(
+        {
+            "anchors": [
+                {
+                    "agenda_item_index": index,
+                    "unit_id": unit_id,
+                    "transition_quote": "quote text",
+                    "confidence": 0.9,
+                    "rationale": "because",
+                }
+                for index, unit_id in pairs
+            ]
+        }
+    )
+
+
+def test_locator_stage_completes_with_unconflicted_anchors_when_two_items_share_a_unit(
+    tmp_path: Path,
+):
+    stage = ChapterBoundaryLocatorStage()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _three_item_episode("ep-partial")
+    _put_storage_bytes(storage, ep.transcript_key, _VTT_THREE)
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="recipe-partial-1",
+        output={
+            "choices": [
+                {"message": {"content": _anchor_json((0, "u00001"), (1, "u00001"), (2, "u00003"))}}
+            ]
+        },
+    )
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = FakeBackend(result)
+
+    stats = stage.process(None, _make_city(), [ep], ctx)
+
+    assert not stats.errors
+    assert [c["agenda_item_index"] for c in ep.generated_chapters] == [2]
+    assert ep.generated_agenda_candidates["locator_status"] == "completed"
+    assert stats.quality_counts == {"locator-unit-conflict": 2}
+
+
+def test_locator_stage_repairs_once_when_every_anchor_collides(tmp_path: Path):
+    stage = ChapterBoundaryLocatorStage()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _three_item_episode("ep-all-collide")
+    _put_storage_bytes(storage, ep.transcript_key, _VTT_THREE)
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="recipe-collide-1",
+        output={"choices": [{"message": {"content": _anchor_json((0, "u00001"), (1, "u00001"))}}]},
+    )
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = FakeBackend(result)
+
+    stage.process(None, _make_city(), [ep], ctx)
+
+    state = ep.generated_agenda_candidates
+    assert state["locator_status"] == "repair_pending"
+    assert state["locator_retry_count"] == 1
+    assert "u00001" in state["locator_retry_hint"]
+    assert "never reuse a unit" in state["locator_retry_hint"]
+    assert not ep.generated_chapters
