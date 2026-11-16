@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Submit collected tag jobs to the dispatch Worker as soon as 100 have gathered or the oldest has
+waited 30 seconds, instead of only at the state checkpoint (minutes apart) and the end of the run.
+Pin the LLM producer and sweep workflows to `ubuntu-24.04`: long tag and moments runs on runner
+image `ubuntu26/20261111.82` repeatedly lost runner communication and their unsent jobs.
+
 Add a guarded manual repair for 123 audited tagger retry markers that counted the same failed
 Worker job repeatedly. Originals are archived, and each corrected marker retains the failed job ID.
 
