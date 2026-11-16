@@ -14,6 +14,7 @@ from citypods.stages import (
     ChapterBoundaryLocatorStage,
     StageContext,
     _legacy_stage_complete,
+    episode_needs_chapter_agenda,
     stage_input_fingerprint,
     stage_output_pointer,
 )
@@ -875,3 +876,143 @@ def test_agenda_current_cached_recipe_does_not_spend_new_work_cap(tmp_path):
     assert not stats.defer_reasons.get("producer-cap")
     assert ctx.chapter_agenda_dispatches_count == 1
     assert len(ctx.chapter_llm_backend.submitted_jobs) == 2
+
+
+_BAD_CITATIONS = json.dumps(
+    {
+        "items": [
+            {
+                "title": "Call to order",
+                "evidence_quote": "words that appear nowhere in the agenda",
+                "line_start": 1,
+                "line_end": 1,
+            }
+        ]
+    }
+)
+
+
+def _failing_result(recipe: str) -> JobResult:
+    return JobResult(
+        task="agenda-item-extract",
+        recipe_hash=recipe,
+        output={"choices": [{"message": {"content": _BAD_CITATIONS}}]},
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
+
+
+def _agenda_ctx(tmp_path: Path, result: JobResult):
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-citations")
+    _put_storage_bytes(
+        storage, ep.links["agenda_text_artifact_key"], b"1. Call to order\n2. Public comment"
+    )
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = FakeBackend(result)
+    return storage, ep, ctx
+
+
+def test_ungrounded_citations_get_one_corrective_retry_then_stop(tmp_path: Path):
+    stage = AgendaChapterCandidatesStage()
+    storage, ep, ctx = _agenda_ctx(tmp_path, _failing_result("recipe-first"))
+
+    stage.process(None, _make_city(), [ep], ctx)
+
+    state = ep.generated_agenda_candidates
+    assert state["status"] == "retry_pending"
+    assert state["agenda_retry_count"] == 1
+    assert "1 to 2" in state["agenda_retry_hint"]
+    assert episode_needs_chapter_agenda(ep)
+
+    # The retry is a new recipe that carries the hint to the model.
+    ctx.chapter_llm_backend = FakeBackend(_failing_result("recipe-second"))
+    stage.process(None, _make_city(), [ep], ctx)
+    sent = ctx.chapter_llm_backend.submitted_jobs[0]
+    assert sent.inputs["messages"][-1]["content"] == state["agenda_retry_hint"]
+
+    state = ep.generated_agenda_candidates
+    assert state["status"] == "retry_exhausted"
+    assert not episode_needs_chapter_agenda(ep)
+
+    # Exhausted means no further jobs: the extraction is not re-rolled every run.
+    ctx.chapter_llm_backend = FakeBackend(_failing_result("recipe-third"))
+    stats = stage.process(None, _make_city(), [ep], ctx)
+    assert ctx.chapter_llm_backend.submitted_jobs == []
+    assert stats.defer_reasons == {"agenda-repair-exhausted": 1}
+
+
+def test_a_successful_corrective_retry_completes_without_spent_retry_state(tmp_path: Path):
+    stage = AgendaChapterCandidatesStage()
+    good = json.dumps(
+        {
+            "items": [
+                {
+                    "title": "Call to order",
+                    "evidence_quote": "Call to order",
+                    "line_start": 1,
+                    "line_end": 1,
+                    "display_ref": "1.",
+                }
+            ]
+        }
+    )
+    storage, ep, ctx = _agenda_ctx(
+        tmp_path,
+        JobResult(
+            task="agenda-item-extract",
+            recipe_hash="recipe-ok",
+            output={"choices": [{"message": {"content": good}}]},
+            model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        ),
+    )
+    ep.generated_agenda_candidates = {
+        "status": "retry_pending",
+        "agenda_retry_count": 1,
+        "agenda_retry_hint": "Fix the quotes.",
+    }
+
+    stage.process(None, _make_city(), [ep], ctx)
+
+    state = ep.generated_agenda_candidates
+    assert state["status"] in {"completed", "accepted"} or state.get("items")
+    assert "agenda_retry_count" not in state and "agenda_retry_hint" not in state
+
+
+def test_census_explains_why_agenda_text_is_missing(tmp_path: Path):
+    from citypods.stages import _agenda_text_gap_reason
+
+    no_link = _make_episode("none")
+    no_link.links = {}
+    assert _agenda_text_gap_reason(no_link) == "no-agenda-link"
+
+    unfetched = _make_episode("unfetched")
+    unfetched.links = {"agenda": "https://x/agenda"}
+    assert _agenda_text_gap_reason(unfetched) == "agenda-not-yet-fetched"
+
+    failed = _make_episode("failed")
+    failed.links = {"agenda": "https://x/agenda"}
+    failed.agenda_text_attempts = 2
+    assert _agenda_text_gap_reason(failed) == "agenda-fetch-failed"
+
+    rejected = _make_episode("rejected")
+    rejected.links = {"agenda": "https://x/agenda"}
+    rejected.agenda_text_quality = {"status": "rejected", "reason": "viewer-placeholder"}
+    assert _agenda_text_gap_reason(rejected) == "agenda-rejected-viewer-placeholder"
+
+
+def test_census_counts_blocked_agenda_episodes_by_reason(tmp_path: Path):
+    stage = AgendaChapterCandidatesStage()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ctx = _ctx(storage=storage, dry_run=False)
+    blocked = []
+    for uid, links in (("a", {}), ("b", {"agenda": "https://x/agenda"}), ("c", {})):
+        ep = _make_episode(uid)
+        ep.links = links
+        blocked.append(ep)
+
+    stage.census(_make_city(), blocked, ctx)
+    ctx.llm_work.finish()
+
+    row = ctx.llm_work.snapshot()["purposes"]["chapter-agenda"]
+    assert row["states"] == {"blocked": 3}
+    assert row["outcomes"] == {"no-agenda-link": 2, "agenda-not-yet-fetched": 1}
