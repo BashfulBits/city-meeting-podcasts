@@ -205,9 +205,15 @@ def main() -> None:
     image_digest = os.environ["CITYPODS_IMAGE_DIGEST"]
     model_dir = Path(os.environ["CITYPODS_MODEL_DIR"])
     manifest_path = os.environ.get("CITYPODS_MODEL_MANIFEST")
+    model_manifest = None
     if manifest_path:
-        if not model_dir.parent.is_dir():
-            raise ValueError("model cache volume must exist locally")
+        from scripts.download_glide_weights import validate_destination, validate_manifest
+
+        model_manifest = json.loads(Path(manifest_path).read_text())
+        validate_manifest(model_manifest)
+        if model_manifest["revision"] != MODEL_REVISION:
+            raise ValueError("model download manifest revision mismatch")
+        validate_destination(model_dir)
     elif not model_dir.is_dir():
         raise ValueError("model directory must exist locally")
 
@@ -227,10 +233,7 @@ def main() -> None:
             raise RuntimeError("expected an L4 BF16 CUDA 13.0 runtime with flash-linear-attention")
         from scripts.download_glide_weights import download
 
-        if manifest_path:
-            model_manifest = json.loads(Path(manifest_path).read_text())
-            if model_manifest.get("revision") != MODEL_REVISION:
-                raise ValueError("model download manifest revision mismatch")
+        if model_manifest is not None:
             print("decision batch model download started", flush=True)
             timings = download(model_manifest, model_dir, metadata_access_token())
             print(json.dumps({"model_download": timings}), flush=True)

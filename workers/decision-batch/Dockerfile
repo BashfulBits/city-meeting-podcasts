@@ -19,6 +19,6 @@ RUN python -c 'from huggingface_hub import snapshot_download; snapshot_download(
     allow_patterns=["glide/*", "LICENSE", "NOTICE", "licenses/*"], local_dir="/opt/glide-src")' && \
     test -f /opt/glide-src/glide/model.py
 ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app:/opt/glide-src HF_HUB_OFFLINE=1
-RUN python -c 'from glide.model import Glide; from citypods.judging import decision_batch_cloud'
+RUN python -c 'from glide.model import Glide; from citypods.judging import decision_batch_cloud; from scripts.download_glide_weights import download'
 
 ENTRYPOINT ["python", "workers/decision-batch/cloud_batch.py"]

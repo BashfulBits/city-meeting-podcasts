@@ -8,7 +8,13 @@ from cloud_batch import run_cloud
 from karpo_batch import KarpoAdapter
 
 from citypods.judging.decision_batch_cloud import GCSObjectStore, metadata_access_token
-from scripts.download_glide_weights import MODEL_PREFIXES, REVISION, download
+from scripts.download_glide_weights import (
+    MODEL_PREFIXES,
+    REVISION,
+    download,
+    validate_destination,
+    validate_manifest,
+)
 
 KARPO_REVISIONS = set(MODEL_PREFIXES) - {REVISION}
 
@@ -16,12 +22,12 @@ KARPO_REVISIONS = set(MODEL_PREFIXES) - {REVISION}
 def main() -> None:
     manifest_path = Path("/app/model-manifest.json")
     model_manifest = json.loads(manifest_path.read_text())
-    revision = model_manifest.get("revision")
+    validate_manifest(model_manifest)
+    revision = model_manifest["revision"]
     if revision not in KARPO_REVISIONS:
         raise ValueError("expected an approved Karpo checkpoint")
     model_dir = Path(os.environ["CITYPODS_MODEL_DIR"])
-    if not model_dir.parent.is_dir():
-        raise ValueError("model cache volume must exist locally")
+    validate_destination(model_dir)
 
     def load_model(settings):
         import torch

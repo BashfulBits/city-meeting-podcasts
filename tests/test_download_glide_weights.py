@@ -82,3 +82,71 @@ def test_bad_hash_cleans_partial_output(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="SHA-256"):
         downloader.download(model, tmp_path / "model", "token")
     assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("revision", sorted(set(downloader.MODEL_PREFIXES) - {downloader.REVISION}))
+def test_karpo_revision_prefixes(revision):
+    model = manifest(b"x")
+    model["revision"] = revision
+    model["objects"][0]["name"] = downloader.MODEL_PREFIXES[revision] + "/model.safetensors"
+    assert downloader.validate_manifest(model) == model["objects"]
+    model["objects"][0]["name"] = downloader.REVISION + "/model.safetensors"
+    with pytest.raises(ValueError, match="outside pinned revision"):
+        downloader.validate_manifest(model)
+
+
+@pytest.mark.parametrize("failure", ["429", "503", "timeout", "connection", "url-timeout"])
+def test_range_transient_failure_retries(tmp_path, monkeypatch, failure):
+    import urllib.error
+
+    calls = 0
+
+    def get(url, token, headers=None):
+        nonlocal calls
+        if "/o/" not in url:
+            return Response(b'{"location":"US-EAST4"}')
+        if headers is None:
+            return Response(b'{"generation":"123","size":"1"}')
+        calls += 1
+        if calls == 1:
+            if failure.isdigit():
+                raise urllib.error.HTTPError(url, int(failure), "transient", {}, None)
+            if failure == "timeout":
+                raise TimeoutError()
+            if failure == "connection":
+                raise ConnectionError()
+            raise urllib.error.URLError(TimeoutError())
+        return Response(b"x", 206, {"Content-Range": "bytes 0-0/1"})
+
+    monkeypatch.setattr(downloader, "api_get", get)
+    monkeypatch.setattr(downloader.time, "sleep", lambda _: None)
+    downloader.download(manifest(b"x"), tmp_path / "model", "token")
+    assert calls == 2
+
+
+def test_range_retry_is_bounded_and_integrity_errors_are_not_retried(tmp_path, monkeypatch):
+    calls = 0
+    integrity = False
+
+    def get(url, token, headers=None):
+        nonlocal calls
+        if "/o/" not in url:
+            return Response(b'{"location":"US-EAST4"}')
+        if headers is None:
+            return Response(b'{"generation":"123","size":"1"}')
+        calls += 1
+        if integrity:
+            return Response(b"x", 200)
+        raise TimeoutError()
+
+    monkeypatch.setattr(downloader, "api_get", get)
+    monkeypatch.setattr(downloader.time, "sleep", lambda _: None)
+    with pytest.raises(RuntimeError, match="retries exhausted"):
+        downloader.download(manifest(b"x"), tmp_path / "model", "token")
+    assert calls == 3
+    calls = 0
+    integrity = True
+    with pytest.raises(ValueError, match="invalid range"):
+        downloader.download(manifest(b"x"), tmp_path / "model", "token")
+    assert calls == 1
+    assert not list(tmp_path.iterdir())

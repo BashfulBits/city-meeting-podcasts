@@ -16,6 +16,7 @@ import re
 import shutil
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
@@ -38,7 +39,8 @@ MAX_OBJECTS = 1000
 
 def validate_manifest(manifest):
     if (
-        manifest.get("bucket") != BUCKET
+        not isinstance(manifest, dict)
+        or manifest.get("bucket") != BUCKET
         or manifest.get("location") != LOCATION
         or manifest.get("revision") not in MODEL_PREFIXES
     ):
@@ -50,6 +52,8 @@ def validate_manifest(manifest):
     seen = set()
     total = 0
     for obj in objects:
+        if not isinstance(obj, dict):
+            raise ValueError("invalid object metadata")
         name = obj.get("name")
         if not isinstance(name, str) or not name.startswith(prefix + "/"):
             raise ValueError("object is outside pinned revision")
@@ -94,20 +98,26 @@ def object_url(name):
     )
 
 
+def validate_destination(destination):
+    destination = Path(destination)
+    if not destination.parent.is_dir():
+        raise ValueError("model cache volume must exist locally")
+    if destination.exists() or destination.is_symlink():
+        raise ValueError("destination already exists")
+
+
 def download(manifest, destination, token, workers=8, slice_bytes=64 * 1024**2):
     objects = validate_manifest(manifest)
     prefix = MODEL_PREFIXES[manifest["revision"]]
     if not 1 <= workers <= 16 or not 1024**2 <= slice_bytes <= 1024**3:
         raise ValueError("invalid concurrency or slice size")
     destination = Path(destination)
-    if destination.exists() or destination.is_symlink():
-        raise ValueError("destination already exists")
+    validate_destination(destination)
     started = time.monotonic()
     with api_get(f"https://storage.googleapis.com/storage/v1/b/{BUCKET}", token) as response:
         bucket = json.load(response)
     if bucket.get("location", "").upper() != LOCATION:
         raise ValueError("bucket location mismatch")
-    destination.parent.mkdir(parents=True, exist_ok=True)
     temp = Path(tempfile.mkdtemp(prefix=".glide-download-", dir=destination.parent))
     try:
         jobs = []
@@ -128,7 +138,7 @@ def download(manifest, destination, token, workers=8, slice_bytes=64 * 1024**2):
                 end = min(start + slice_bytes, obj["size"]) - 1
                 jobs.append((f"{url}?{query}&alt=media", path, start, end, obj["size"]))
 
-        def fetch(job):
+        def fetch_once(job):
             url, path, start, end, size = job
             with api_get(url, token, {"Range": f"bytes={start}-{end}"}) as response:
                 expected = f"bytes {start}-{end}/{size}"
@@ -151,6 +161,22 @@ def download(manifest, destination, token, workers=8, slice_bytes=64 * 1024**2):
                         raise ValueError("oversized range response")
                 finally:
                     os.close(fd)
+
+        def fetch(job):
+            for attempt in range(3):
+                try:
+                    return fetch_once(job)
+                except urllib.error.HTTPError as error:
+                    if error.code != 429 and not 500 <= error.code < 600:
+                        raise
+                except urllib.error.URLError as error:
+                    if not isinstance(error.reason, (TimeoutError, ConnectionError)):
+                        raise
+                except (TimeoutError, ConnectionError):
+                    pass
+                if attempt == 2:
+                    raise RuntimeError("range download retries exhausted")
+                time.sleep(0.25 * (2**attempt))
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             list(pool.map(fetch, jobs))

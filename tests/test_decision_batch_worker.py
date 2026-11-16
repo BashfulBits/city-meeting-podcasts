@@ -355,3 +355,21 @@ def test_cloud_worker_hands_off_to_collector(monkeypatch):
     receipt = collect(store, manifest_id, "attempt")
     assert store.get(f"receipts/{receipt}.json") is not None
     assert collect(store, manifest_id, "attempt") == receipt
+
+
+def test_glide_rejects_bad_model_manifest_before_cloud_claim(tmp_path, monkeypatch):
+    cloud = _cloud_module(monkeypatch)
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{}")
+    for key in (
+        "DECISION_BATCH_MANIFEST_ID",
+        "DECISION_BATCH_ATTEMPT_ID",
+        "CLOUD_RUN_EXECUTION",
+        "CITYPODS_IMAGE_DIGEST",
+    ):
+        monkeypatch.setenv(key, "unused")
+    monkeypatch.setenv("CITYPODS_MODEL_DIR", str(tmp_path / "model"))
+    monkeypatch.setenv("CITYPODS_MODEL_MANIFEST", str(manifest_path))
+    monkeypatch.setattr(cloud, "run_cloud", lambda *args: pytest.fail("claimed batch"))
+    with pytest.raises(ValueError, match="unexpected bucket"):
+        cloud.main()
