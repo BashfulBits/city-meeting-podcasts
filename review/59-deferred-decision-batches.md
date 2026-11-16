@@ -180,6 +180,23 @@ and verified small files by SHA-256. Its slice manifest was derived from a previ
 SHA-256 verification and baked into the immutable experimental image. This custom loader is not
 promoted into the repository worker. GPU allocator peaks do not include all driver allocations.
 
+A separately authorized eight-reader streaming run used the same inputs and settings; its sealed
+manifest differed only in the image digest. All 158 results, including all numerical values,
+matched the four-reader streaming results exactly. Load fell from 115.954 to 90.382 seconds
+(25.572 seconds, 22.1%); inference was 86.959 seconds and total local processing was 177.362
+seconds. The kernel cgroup peak was 2,600,767,488 bytes and GPU allocator peak was unchanged at
+18,936,318,976 bytes. This is one paired observation, not a performance distribution. The
+64-MiB-slice loader allows eight parallel readers; its conservative retained payload bound is ten
+slices, excluding transient copies and other memory. Local tests verified eight concurrent reads,
+ordered reconstruction and rejection of nine readers; image CPU smoke tests passed.
+
+The image digest was `sha256:387ef8f2dc4c8d2035ad7b72aa6278f679d2583733b2fc23fa9eba5c94ffe34e`.
+Execution `citypods-decision-batch-xf6hf` succeeded in 3m14.53s; collection verified the output
+generation and SHA-256 and created receipt
+`ce25878dc25173fbfa6204b7f56aac0d74ad4f8664a9fd560ad7125ea1ad5faf`. The original Cloud Run job
+spec was restored and verified. Before launch the $4 monthly gross project budget displayed $0.55
+before credits, but billing can lag recent usage; actual incremental charges remain pending.
+
 Against the original 4-CPU FUSE results, streaming returned 153 of 158 results bit-identically.
 The other five differed in NOUL probability or confidence; maximum absolute differences were
 0.0038631 and 0.0077262 respectively. None changed the 0.5 NOUL classification or the 12 choice
@@ -244,8 +261,9 @@ The third canary copied the model from the mounted bucket to a 20 GiB ephemeral 
 loading. Its copy did not finish before the 300-second timeout. It used buffered FUSE reads and
 four file-copy workers, with a worker image derived from the second canary image. The logs show
 the copy exceeded 264 seconds and do not identify a specific stall within it. The third attempt
-is settled. The maintainer subsequently authorized seven additional GPU attempts, for ten total
-under the $4 gross monthly project budget. All ten attempts have been used. The successful GLiDE
+is settled. The maintainer subsequently authorized seven additional GPU attempts, for ten total,
+then one further eight-reader attempt, under the $4 gross monthly project budget. All eleven
+attempts have been used. The successful GLiDE
 and Karpo runs above used regular jobs only; no delayed-mode comparison or tag or moment
 quality qualification is complete. Check project charges before another attempt.
 
@@ -316,9 +334,10 @@ verify that the pilot SKUs actually draw the credit on the billing report.
 [Google Developer Program benefits](https://developers.google.com/profile/help/benefits)
 
 Use the maintainer's **$4/month gross envelope including ancillary GCP costs**.
-Keep live runs manual. The authorized canary envelope was ten L4 task attempts, all used, each
-with a 300-second timeout and zero task retries. The CAS ledger retains $0.93 in reservations: eight
-at $0.09, the 6-CPU run at $0.12, and the streaming run at $0.09. Derive the
+Keep live runs manual. The authorized canary envelope was eleven L4 task attempts, all used, each
+with a 300-second timeout and zero task retries. The CAS ledger retains $1.02 in reservations:
+ten at $0.09 and the 6-CPU run at $0.12. No attempt is outstanding. Reservations are not actual
+charges. Derive the
 recurring attempt allowance only after estimating ancillary spend and measuring runtime. Before a
 launch, reserve `max(60 s, task timeout) × gross rate × task count × max attempts`, including
 ambiguous submissions until reconciled. Count manual launches through the same ledger. Reserve
@@ -448,10 +467,10 @@ The first PR exercises A and the explicit-manifest canary path in B and C offlin
 runtime dependency and model pins, and the two launch modes. The `decision_batch_pilot` CLI
 prepares the existing frozen set, reserves a launch, and collects a generation-pinned result.
 The Cloud Run gate starts off and accepts only manual dispatches on main with a protected
-GitHub environment. The maintainer authorized ten one-task L4 attempts under $4/month gross;
+GitHub environment. The maintainer authorized eleven one-task L4 attempts under $4/month gross;
 all have been used.
-The repository launcher retains its existing nine-attempt, $0.09-per-attempt guard. The two
-additional prototypes used isolated guarded launchers and a shared $0.93 ledger cap; this does
+The repository launcher retains its existing nine-attempt, $0.09-per-attempt guard. The three
+additional prototypes used isolated guarded launchers and a shared $1.02 ledger cap; this does
 not extend the repository launcher. Reservations include ambiguous submissions. The completed
 canaries used the one-task Virginia L4 job configuration.
 

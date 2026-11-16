@@ -1,8 +1,8 @@
 # Deferred decision worker: offline preparation
 
 This directory supplies the gzip JSONL runner, cloud entrypoint and deployment templates.
-The maintainer approved ten one-task canaries within $4/month gross; all ten have been used.
-The shared ledger retains $0.93 in reservations, with no outstanding attempt.
+The maintainer approved eleven one-task canaries within $4/month gross; all eleven have been used.
+The shared ledger retains $1.02 in reservations, with no outstanding attempt.
 The GitHub workflow starts disabled. A project budget does not automatically guarantee a spend cap.
 The completed canaries used regular jobs on a Virginia L4, not delayed jobs.
 
@@ -76,7 +76,7 @@ share Qwen lineage with GLiDE; their upstream runtime was experimental and is no
    the job definition and reserves $0.09 before calling Cloud Run. It prints the attempt ID
    before submission and the operation or execution name after acknowledgement. The ledger holds
    one outstanding attempt and retains reservations even across months. Its nine-attempt guard
-   has not been extended to the two isolated prototypes; all ten authorized attempts are used.
+   has not been extended to the three isolated prototypes; all eleven authorized attempts are used.
    Use one task, parallelism one, a 300-second timeout and zero task retries.
 6. Use `status` and Cloud Run **Executions** to find the fully qualified execution name. Run
    `collect` after a matching execution succeeds. Use `settle-failed` only after the matching
@@ -119,3 +119,10 @@ hashes, with a kernel cgroup peak of 2,598,539,264 bytes and 206.03 seconds tota
 It remains an experimental image, not the repository worker. Numerical outputs differed slightly
 between configurations, including one NOUL threshold crossing against the 6-CPU FUSE run;
 review/59 records the comparison and its limits. Charges remain pending billing reconciliation.
+
+The eight-reader streaming follow-up returned all 158 rows exactly as the four-reader run,
+including numerical values. Load fell from 115.954 to 90.382 seconds; inference was 86.959
+seconds and total processing was 177.362 seconds. Kernel cgroup peak was 2,600,767,488 bytes;
+GPU allocator peak was 18,936,318,976 bytes. This is one paired observation. The ledger includes
+a $0.09 reservation for this execution, not a measured charge. The original job spec was restored
+and verified. See review/59 for integrity, test and billing details.
