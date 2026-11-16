@@ -1963,6 +1963,18 @@ _LOCATOR_AGENDA_CANDIDATE_KEYS: frozenset[str] = frozenset(
 # The one locator key the chapter-agenda stage writes itself (``not_applicable`` when provider
 # chapters make both chapter stages moot); it may still add it where the remote record has none.
 _AGENDA_LANE_ADDABLE_LOCATOR_KEYS: frozenset[str] = frozenset({"locator_status"})
+# Bookkeeping of the chapter-agenda stage's one corrective retry. The agenda lane owns these keys
+# outright, removals included: a retry that succeeded must not leave its spent hint and count on the
+# remote copy, where a later failure would read the count as already used.
+_AGENDA_RETRY_KEYS: frozenset[str] = frozenset(
+    {
+        "agenda_retry_count",
+        "agenda_retry_hint",
+        "agenda_retry_error",
+        "agenda_retry_source",
+        "agenda_retry_pipeline",
+    }
+)
 
 
 def _owned_agenda_candidate_keys(lane: str | None, local_agenda: dict) -> frozenset[str]:
@@ -2222,6 +2234,13 @@ def merge_preserving_foreign(
                             # the agenda lane's stale snapshot, which would resurrect a value the
                             # locator lane removed (a spent retry hint, say).
                             merged_agenda[key] = value
+                    if lane in {"chapter-agenda", "chapter", None} and isinstance(
+                        local_agenda, dict
+                    ):
+                        # Every lane that owns extraction, including the combined and unscoped
+                        # runs; the locator and other lanes never write these keys.
+                        for key in _AGENDA_RETRY_KEYS - frozenset(local_agenda):
+                            merged_agenda.pop(key, None)
                     if protected and lane == "chapter-locator" and isinstance(local_agenda, dict):
                         # The locator lane owns its keys outright, removals included: a key it
                         # dropped (retry bookkeeping after a success, a dead recipe after a

@@ -2069,6 +2069,7 @@ def _run_enrich_global_queue(
             TAG_PROMPT_VERSION,
             episode_needs_tagging,
             load_taxonomy,
+            tag_accepted_routes,
         )
 
         with ctx.tag_taxonomy_cache_lock:
@@ -2089,6 +2090,7 @@ def _run_enrich_global_queue(
                 else ""
             )
             llm_enabled = ctx.tag_backend is not None
+            accepted_routes = tag_accepted_routes(ctx.tag_backend)
             for state in prepared.values():
                 state["candidate_episodes"] = [
                     ep
@@ -2100,6 +2102,7 @@ def _run_enrich_global_queue(
                         llm_route=llm_route,
                         prompt_version=TAG_PROMPT_VERSION,
                         admission_policy=admission_policy,
+                        accepted_routes=accepted_routes,
                     )
                 ]
     elif ctx.lane == "chapter-agenda":
