@@ -537,3 +537,153 @@ def test_orcarouter_prompt_cap_metadata_is_non_retryable_size_failure():
         )
         assert result.failure_class == "free_prompt_cap"
         assert result.retry_after_seconds is None
+
+
+def test_gemini_input_quota_oversize_classified_as_route_input_limit():
+    body = {
+        "error": {
+            "message": (
+                "Quota exceeded for metric: .../generate_content_free_tier_input_token_count, "
+                "limit: 16000, model: gemma-4-26b"
+            ),
+            "status": "RESOURCE_EXHAUSTED",
+        }
+    }
+    route = {"provider": "gemini", "tpm": 16000, "input_token_ratio": 2.0}
+    # Scaled tokens = 10000 * 2.0 = 20000 >= 16000 limit -> route_input_limit
+    res = classify_provider_failure(
+        status=429,
+        body=body,
+        route=route,
+        input_tokens=10000,
+    )
+    assert res.failure_class == "route_input_limit"
+    assert res.rule_id == "gemini-input-quota-oversize"
+
+    # Sub-quota request: scaled tokens = 4000 * 2.0 = 8000 < 16000 limit -> own_tpm
+    res_sub = classify_provider_failure(
+        status=429,
+        body=body,
+        route=route,
+        input_tokens=4000,
+    )
+    assert res_sub.failure_class == "own_tpm"
+    assert res_sub.rule_id == "gemini-tpm"
+
+    # Exact equality: scaled tokens = 8000 * 2.0 = 16000 == 16000 limit -> stays own_tpm
+    res_eq = classify_provider_failure(
+        status=429,
+        body=body,
+        route=route,
+        input_tokens=8000,
+    )
+    assert res_eq.failure_class == "own_tpm"
+    assert res_eq.rule_id == "gemini-tpm"
+
+    # Exceeded-limit form where input exceeds reported limit (10000) below route TPM (16000)
+    res_exceeded = classify_provider_failure(
+        status=429,
+        body={
+            "error": {
+                "message": "Resource exhausted: InputTokensPerMinute exceeded, limit: 10000",
+                "status": "RESOURCE_EXHAUSTED",
+            }
+        },
+        route={"provider": "gemini", "tpm": 16000, "input_token_ratio": 1.0},
+        input_tokens=12000,
+    )
+    assert res_exceeded.failure_class == "route_input_limit"
+    assert res_exceeded.rule_id == "gemini-input-quota-oversize"
+
+
+def test_gemini_input_quota_does_not_confuse_rpm_limit_in_either_order():
+    route = {"provider": "gemini", "tpm": 16000, "input_token_ratio": 2.0}
+    # Scaled tokens = 4000 * 2.0 = 8000 (> 15 RPM limit, but < 16000 TPM limit) -> own_tpm
+
+    # Order 1: InputTokensPerMinute first
+    res1 = classify_provider_failure(
+        status=429,
+        body={"error": {"message": "InputTokensPerMinute exceeded, requests per minute limit: 15"}},
+        route=route,
+        input_tokens=4000,
+    )
+    assert res1.failure_class == "own_tpm"
+    assert res1.rule_id == "gemini-tpm"
+
+    # Order 2: requests per minute limit first
+    res2 = classify_provider_failure(
+        status=429,
+        body={"error": {"message": "requests per minute limit: 15, InputTokensPerMinute exceeded"}},
+        route=route,
+        input_tokens=4000,
+    )
+    assert res2.failure_class == "own_tpm"
+    assert res2.rule_id == "gemini-tpm"
+
+
+def test_gemini_uses_reported_limit_across_comma_when_larger_than_configured_tpm():
+    body = {
+        "error": {
+            "message": (
+                "Quota exceeded for metric: .../generate_content_free_tier_input_token_count, "
+                "limit: 250000, model: gemini-3.5-flash-lite"
+            ),
+            "status": "RESOURCE_EXHAUSTED",
+        }
+    }
+    route = {"provider": "gemini", "tpm": 225000, "input_token_ratio": 1.0}
+    # Scaled 240000 > 225000 route TPM, but fits 250000 reported limit -> own_tpm
+    res = classify_provider_failure(
+        status=429,
+        body=body,
+        route=route,
+        input_tokens=240000,
+    )
+    assert res.failure_class == "own_tpm"
+    assert res.rule_id == "gemini-tpm"
+
+
+def test_gemini_uses_reported_limit_across_comma_when_smaller_than_configured_tpm():
+    body = {
+        "error": {
+            "message": (
+                "Quota exceeded for metric: .../generate_content_free_tier_input_token_count, "
+                "limit: 16000, model: gemma-4-26b"
+            ),
+            "status": "RESOURCE_EXHAUSTED",
+        }
+    }
+    route = {"provider": "gemini", "tpm": 30000, "input_token_ratio": 1.0}
+    # Scaled 20000 fits 30000 route TPM, but exceeds 16000 reported limit -> route_input_limit
+    res = classify_provider_failure(
+        status=429,
+        body=body,
+        route=route,
+        input_tokens=20000,
+    )
+    assert res.failure_class == "route_input_limit"
+    assert res.rule_id == "gemini-input-quota-oversize"
+
+
+def test_google_prohibited_content_classified_as_content_policy_violation():
+    body = {
+        "error": {
+            "code": 400,
+            "message": (
+                "User location is not supported for the API use or Generative AI "
+                "Prohibited Use policy violated"
+            ),
+            "status": "INVALID_ARGUMENT",
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "PROHIBITED_CONTENT",
+                    "domain": "googleapis.com",
+                }
+            ],
+        }
+    }
+    route = {"provider": "gemini", "route_id": "gemini-3.5-flash-lite"}
+    res = classify_provider_failure(status=400, body=body, route=route)
+    assert res.failure_class == "content_policy_violation"
+    assert res.rule_id == "google-prohibited-content"

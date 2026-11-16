@@ -146,6 +146,7 @@ const NON_CONSUMING_FAILURE_CLASSES = new Set([
   "request_defect",
   // A 410 for a retired model: nothing was served.
   "route_unavailable",
+  "content_policy_violation",
 ]);
 
 /**
@@ -7205,10 +7206,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const routeId = job.lease_route_id;
       this._recordRouteFailure(sql, now, routeId, failureClass, 429);
 
-      // A size refusal belongs to this job, not the route's rate/backoff state.
-      if (failureClass === "route_input_limit") {
-        return { authorized: false, retry_not_before: null };
-      }
       // TPM feedback must update the route even when this job has spent its retry allowance.
       if (job.attempts > this._max429Retries() && failureClass !== "own_tpm") {
         return { authorized: false, retry_not_before: null };
@@ -7350,9 +7347,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           return { authorized: false, retry_not_before: null };
         }
         case "free_prompt_cap":
-        case "request_defect": {
-          // A request defect (e.g. OrcaRouter free-tier prompt cap exceeded with no Retry-After)
-          // cannot succeed by retrying unchanged. Refuse in-batch retry immediately.
+        case "request_defect":
+        case "route_input_limit":
+        case "content_policy_violation": {
+          // A request defect, input limit, or policy violation cannot succeed by retrying
+          // unchanged on the same route. Refuse in-batch retry immediately.
           this._updateRoute(routeId, { last_provider_status: 429, last_failure_class: failureClass });
           return { authorized: false, retry_not_before: null };
         }
@@ -7688,8 +7687,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // route is unreachable rather than the job defective, so it gets the 5xx treatment: one
         // durable retry from the shared budget, and the route stood down so sibling jobs are not
         // admitted onto a model that would destroy them in turn.
+        const isContentPolicyViolation = result.failure_class === "content_policy_violation";
         const isUpstreamCapacityFailure =
-          result.outcome === "retryable_error" && result.provider_status_code === 400;
+          result.outcome === "retryable_error" &&
+          result.provider_status_code === 400 &&
+          !isContentPolicyViolation;
         const isDeadlineAbort = result.failure_class === "provider_response_timeout" &&
           result.provider_status_code == null;
         const isGatewayTimeout = result.failure_class === "server_error" &&
@@ -7715,6 +7717,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // recorded by the route-ceiling tracker, not by quarantining the route.
         const isSizeRejection = result.failure_class === "route_input_limit";
         const isRouteInputLimit = isSizeRejection || isPromptCap;
+        const isRouteExcluded = isSizeRejection || isContentPolicyViolation;
         // The route's model is retired (410 -- classify.js rule 8). Not this job's fault, so it
         // draws on the larger upstream budget and the route itself is stood down for hours.
         const isRouteUnavailable = result.failure_class === "route_unavailable";
@@ -7723,7 +7726,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
               isResponseTimeout ? nextRouteTimeoutCount : nextTransientRetryCount, now
             )
           : null;
-        const sizeExcluded = isSizeRejection
+        const sizeExcluded = isRouteExcluded
           ? new Set([...sizeExcludedRoutes(job), job.lease_route_id].filter(Boolean))
           : null;
         const nextSizeExcludedRoutes = sizeExcluded
@@ -7772,8 +7775,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           }), new Map())
         ).length : 0;
         // Routes of the job's model pool that have not yet rejected it. None left: it fails to its
-        // producer (terminal_reason input_too_large), which re-packs it smaller.
-        const sizeRoutesLeft = isSizeRejection
+        // producer (terminal_reason input_too_large or content_policy_violation), which re-plans.
+        const sizeRoutesLeft = isRouteExcluded
           ? routesEligibleFor(
               { ...job, size_excluded_routes: nextSizeExcludedRoutes,
                 quota_excluded_routes: nextQuotaExcludedRoutes,
@@ -7782,7 +7785,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
               this._dispatchLimits(),
               this._sizingResolver(
                 now,
-                (route) => ({ ...route, ...this._getOrCreateRouteLedger(route.route_id, now, route) }),
+                (route) => ({
+                  ...route,
+                  ...this._getOrCreateRouteLedger(route.route_id, now, route),
+                }),
                 new Map()
               )
             ).length
@@ -7805,6 +7811,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ? sizeRoutesLeft > 0
           : isPromptCap &&
             job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
+        const shouldRetryContentPolicy = isContentPolicyViolation && sizeRoutesLeft > 0;
         const shouldRetryRouteUnavailable =
           isRouteUnavailable &&
           job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
@@ -7816,7 +7823,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const allowedModels = Array.isArray(backupPolicy?.allowed_models)
           ? new Set(backupPolicy.allowed_models)
           : null;
-        const isSingleModelJob = allowedModels !== null && allowedModels.size === 1 && backupAfterAttempts === 0;
+        const isSingleModelJob =
+          allowedModels !== null && allowedModels.size === 1 && backupAfterAttempts === 0;
         const shouldRetryOutputBudget =
           isOutputBudgetExhausted &&
           job.transient_retry_count < (isSingleModelJob
@@ -7827,15 +7835,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // job with no route left (or spend their budget on one that has).
         const shouldRequeue = isSizeRejection
           ? shouldRetryRouteInputLimit
-          : isQuotaRejection ? quotaRoutesLeft > 0
-          : isResponseTimeout ? timeoutRoutesLeft > 0
-          : shouldRetryOutputBudget ||
-            shouldRetryRouteUnavailable ||
-            shouldRetry5xx ||
-            shouldRetryRouteInputLimit ||
-            isPaymentRequired ||
-            isRateLimitTerminal ||
-            isUpstreamRetryable;
+          : isContentPolicyViolation
+            ? shouldRetryContentPolicy
+            : isQuotaRejection ? quotaRoutesLeft > 0
+            : isResponseTimeout ? timeoutRoutesLeft > 0
+            : shouldRetryOutputBudget ||
+              shouldRetryRouteUnavailable ||
+              shouldRetry5xx ||
+              shouldRetryRouteInputLimit ||
+              isPaymentRequired ||
+              isRateLimitTerminal ||
+              isUpstreamRetryable;
 
         // Route health ladder class (review/58 WP3b, route_health.js): only a call that reached
         // the provider counts. A 4xx with no class is the request_defect the failure cells below
@@ -7951,7 +7961,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
                              attempts = MAX(0, attempts - ?), updated_at=?
              WHERE id=?`,
             // Job-local exclusions have a finite route bound; preserve the transient budget.
-            isSizeRejection || isQuotaRejection || isResponseTimeout
+            isRouteExcluded || isQuotaRejection || isResponseTimeout
               ? (job.transient_retry_count || 0) : nextTransientRetryCount,
             JSON.stringify(queueModels),
             nextSizeExcludedRoutes,
@@ -7981,16 +7991,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
             newState,
             uncountedAttempt,
             now,
-            newState === "failed" && (isResponseTimeout ||
-              isSizeRejection && [...timeoutCounts.values()].some(count => count >= 2))
-              ? "timeout_recovery_exhausted"
-              : newState === "failed" &&
-                (isQuotaRejection || isSizeRejection && quotaExcluded.size > 0)
-              ? (job.purpose === "topic-tags:tagger"
-                  ? "tag_quota_recovery_exhausted" : "quota_recovery_exhausted")
-              : isSizeRejection && newState === "failed" ? "input_too_large"
-              : newState === "failed" && /^[a-z0-9_]{1,60}$/.test(result.failure_class || "")
-                ? `provider_${result.failure_class}` : null,
+            isContentPolicyViolation && newState === "failed"
+              ? "content_policy_violation"
+              : newState === "failed" && (isResponseTimeout ||
+                isSizeRejection && [...timeoutCounts.values()].some(count => count >= 2))
+                ? "timeout_recovery_exhausted"
+                : newState === "failed" &&
+                  (isQuotaRejection || isSizeRejection && quotaExcluded.size > 0)
+                ? (job.purpose === "topic-tags:tagger"
+                    ? "tag_quota_recovery_exhausted" : "quota_recovery_exhausted")
+                : isSizeRejection && newState === "failed" ? "input_too_large"
+                : newState === "failed" && /^[a-z0-9_]{1,60}$/.test(result.failure_class || "")
+                  ? `provider_${result.failure_class}` : null,
             nextQuotaExcludedRoutes,
             nextResponseTimeoutRoutes,
             result.job_id
