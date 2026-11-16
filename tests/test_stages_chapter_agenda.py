@@ -969,9 +969,14 @@ def test_a_successful_corrective_retry_completes_without_spent_retry_state(tmp_p
         "status": "retry_pending",
         "agenda_retry_count": 1,
         "agenda_retry_hint": "Fix the quotes.",
+        "agenda_retry_source": ep.links["agenda_text_artifact_key"],
+        "agenda_retry_pipeline": CHAPTER_AGENDA_PIPELINE_VERSION,
     }
 
     stage.process(None, _make_city(), [ep], ctx)
+
+    sent = ctx.chapter_llm_backend.submitted_jobs[0]
+    assert sent.inputs["messages"][-1]["content"] == "Fix the quotes."
 
     state = ep.generated_agenda_candidates
     assert state["status"] in {"completed", "accepted"} or state.get("items")
@@ -1016,3 +1021,56 @@ def test_census_counts_blocked_agenda_episodes_by_reason(tmp_path: Path):
     row = ctx.llm_work.snapshot()["purposes"]["chapter-agenda"]
     assert row["states"] == {"blocked": 3}
     assert row["outcomes"] == {"no-agenda-link": 2, "agenda-not-yet-fetched": 1}
+
+
+def test_retry_exhaustion_is_lifted_when_the_agenda_text_or_pipeline_changes(tmp_path: Path):
+    """Exhaustion judged one input. A corrected agenda (new content-addressed key) or a pipeline
+    bump must make the episode eligible again, in the pre-filter and in the stage itself."""
+    stage = AgendaChapterCandidatesStage()
+    storage, ep, ctx = _agenda_ctx(tmp_path, _failing_result("recipe-after-change"))
+    key = ep.links["agenda_text_artifact_key"]
+    exhausted = {
+        "status": "retry_exhausted",
+        "agenda_retry_count": 1,
+        "agenda_retry_source": key,
+        "agenda_retry_pipeline": CHAPTER_AGENDA_PIPELINE_VERSION,
+    }
+
+    ep.generated_agenda_candidates = dict(exhausted)
+    assert not episode_needs_chapter_agenda(ep)
+
+    ep.generated_agenda_candidates = {**exhausted, "agenda_retry_source": "documents/other/key"}
+    assert episode_needs_chapter_agenda(ep)
+    ep.generated_agenda_candidates = {**exhausted, "agenda_retry_pipeline": "an-older-version"}
+    assert episode_needs_chapter_agenda(ep)
+    ep.generated_agenda_candidates = {"status": "retry_exhausted", "agenda_retry_count": 1}
+    assert episode_needs_chapter_agenda(ep)  # written before the binding existed
+
+    ep.generated_agenda_candidates = {**exhausted, "agenda_retry_source": "documents/other/key"}
+    stage.process(None, _make_city(), [ep], ctx)
+    assert len(ctx.chapter_llm_backend.submitted_jobs) == 1  # re-planned, not blocked
+
+
+def test_a_malformed_corrective_reply_spends_the_retry_instead_of_restarting_it(tmp_path: Path):
+    stage = AgendaChapterCandidatesStage()
+    storage, ep, ctx = _agenda_ctx(
+        tmp_path,
+        JobResult(
+            task="agenda-item-extract",
+            recipe_hash="recipe-garbled",
+            output={"choices": [{"message": {"content": "not json at all"}}]},
+            model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        ),
+    )
+    ep.generated_agenda_candidates = {
+        "status": "retry_pending",
+        "agenda_retry_count": 1,
+        "agenda_retry_hint": "Fix the quotes.",
+        "agenda_retry_source": ep.links["agenda_text_artifact_key"],
+        "agenda_retry_pipeline": CHAPTER_AGENDA_PIPELINE_VERSION,
+    }
+
+    stage.process(None, _make_city(), [ep], ctx)
+
+    assert ep.generated_agenda_candidates["status"] == "retry_exhausted"
+    assert not episode_needs_chapter_agenda(ep)

@@ -2656,3 +2656,25 @@ def test_locator_lane_leaves_agenda_retry_bookkeeping_alone():
     )
 
     assert merged["u1"]["generated_agenda_candidates"]["agenda_retry_count"] == 1
+
+
+def test_every_agenda_owning_lane_removes_spent_retry_bookkeeping():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "retry_pending",
+                "agenda_retry_count": 1,
+                "agenda_retry_hint": "Fix the quotes.",
+                "agenda_retry_source": "documents/x",
+                "agenda_retry_pipeline": "v",
+            },
+        }
+    }
+    local = {"u1": {"uid": "u1", "generated_agenda_candidates": {"status": "completed"}}}
+
+    for lane in ("chapter", None):
+        merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane(lane), lane=lane)
+        agenda = merged["u1"]["generated_agenda_candidates"]
+        assert agenda["status"] == "completed"
+        assert not [key for key in agenda if key.startswith("agenda_retry_")], lane

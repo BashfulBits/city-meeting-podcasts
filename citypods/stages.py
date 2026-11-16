@@ -8746,7 +8746,9 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
             reason = None
             if not (ep.links or {}).get("agenda_text_artifact_key"):
                 state, reason = "blocked", _agenda_text_gap_reason(ep)
-            elif (ep.generated_agenda_candidates or {}).get("status") == "retry_exhausted":
+            elif not episode_needs_chapter_agenda(ep) and (
+                (ep.generated_agenda_candidates or {}).get("status") == "retry_exhausted"
+            ):
                 state, reason = "blocked", "agenda-extraction-retry-exhausted"
             yield "chapter-agenda", uid, state
             if reason is not None:
@@ -8839,6 +8841,16 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
 
             raw_agenda = ep.generated_agenda_candidates or {}
             agenda_status = raw_agenda.get("status")
+            if agenda_status in {
+                "retry_exhausted",
+                "retry_pending",
+            } and not _agenda_retry_identity_matches(raw_agenda, source_artifact):
+                # The agenda text, or the pipeline that reads it, changed since the retry state was
+                # written. Its hint cites the old line count and its exhaustion judged the old
+                # input, so start over.
+                raw_agenda = {}
+                ep.generated_agenda_candidates = {}
+                agenda_status = None
             if agenda_status == "retry_exhausted":
                 # The one corrective retry was spent and the response was still ungrounded. The
                 # agenda text is the likelier problem now, so stop re-rolling the same extraction.
@@ -8850,7 +8862,12 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
             # corrective retry could never be recognised as spent.
             carry = {
                 key: raw_agenda[key]
-                for key in ("agenda_retry_count", "agenda_retry_hint")
+                for key in (
+                    "agenda_retry_count",
+                    "agenda_retry_hint",
+                    "agenda_retry_source",
+                    "agenda_retry_pipeline",
+                )
                 if key in raw_agenda
             }
             # A completed/accepted artifact is only current -- and therefore safe to reuse without
@@ -9016,15 +9033,21 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
                 # under it, no matter how many times this episode is retried or its own state
                 # reset, would just replay this identical bad content forever. Discard it first.
                 discard_completed_result(ctx.storage, result.recipe_hash, result)
-                if isinstance(exc, AgendaCitationError):
-                    # Mostly ungrounded citations. Re-rolling the identical request just redraws
-                    # the same mistakes (and spent a call per run per episode); name what failed
-                    # once, then stop.
-                    if carry.get("agenda_retry_count", 0) >= 1:
+                # A failure of the corrective job itself, whatever its kind (a malformed reply
+                # included), spends the retry. Only the very first citation failure earns one;
+                # anything else keeps the old clear-and-redraw behaviour below.
+                spent = carry.get("agenda_retry_count", 0) >= 1
+                if spent or isinstance(exc, AgendaCitationError):
+                    identity = {
+                        "agenda_retry_source": (ep.links or {}).get("agenda_text_artifact_key"),
+                        "agenda_retry_pipeline": CHAPTER_AGENDA_PIPELINE_VERSION,
+                    }
+                    if spent:
                         ep.generated_agenda_candidates = {
                             "status": "retry_exhausted",
                             "agenda_retry_count": carry["agenda_retry_count"],
                             "agenda_retry_error": str(exc)[:300],
+                            **identity,
                         }
                         stats.defer("agenda-repair-exhausted")
                     else:
@@ -9034,6 +9057,7 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
                             "agenda_retry_hint": agenda_citation_retry_hint(
                                 exc, line_count=len(agenda_text.splitlines())
                             ),
+                            **identity,
                         }
                         stats.defer("agenda-repair-pending")
                     continue
@@ -9528,6 +9552,19 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
         return stats
 
 
+def _agenda_retry_identity_matches(raw_agenda: Mapping[str, Any], source_key: Any) -> bool:
+    """Whether retry state still describes the extraction input and pipeline now in force.
+
+    Retry bookkeeping is bound to the agenda artifact key (content-addressed, so a corrected agenda
+    gets a new key) and the chapter-agenda pipeline version. State written before this binding
+    existed carries neither and counts as stale.
+    """
+    return (
+        raw_agenda.get("agenda_retry_source") == source_key
+        and raw_agenda.get("agenda_retry_pipeline") == CHAPTER_AGENDA_PIPELINE_VERSION
+    )
+
+
 def _agenda_text_gap_reason(ep: Episode) -> str:
     """Why an episode has no agenda text for chapter extraction, as a stable counter name."""
     links = ep.links or {}
@@ -9564,7 +9601,9 @@ def episode_needs_chapter_agenda(ep: Episode) -> bool:
         return False
     raw_agenda = ep.generated_agenda_candidates or {}
     status = raw_agenda.get("status")
-    if status == "retry_exhausted":
+    if status == "retry_exhausted" and _agenda_retry_identity_matches(
+        raw_agenda, (ep.links or {}).get("agenda_text_artifact_key")
+    ):
         return False
     if status not in {"completed", "accepted", "not_applicable"}:
         return True
