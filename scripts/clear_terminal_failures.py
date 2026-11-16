@@ -74,15 +74,35 @@ def print_inventory(matched: list[tuple[str, str, dict[str, Any]]]) -> None:
     print(flush=True)
 
 
-def clear_with_audit(storage: Any, recipe_hash: str, *, date: str | None = None) -> str:
-    """Archive the marker, then clear it, under the record lock. Returns the outcome."""
+def clear_with_audit(
+    storage: Any,
+    recipe_hash: str,
+    *,
+    expected: Mapping[str, Any] | None = None,
+    date: str | None = None,
+) -> str:
+    """Archive the marker, then clear it, under the record lock. Returns the outcome.
+
+    ``expected`` is the marker as it was when selected. A sweep can replace it between the scan and
+    the lock, so the live marker must still equal it or nothing is archived or deleted. Storage
+    read failures are outcomes of their own: an unreadable archive is never treated as absent, which
+    would overwrite its history.
+    """
     day = date or datetime.now(UTC).date().isoformat()
     with _deferred_record_lock(storage, recipe_hash):
-        marker = _safe_read_json(storage, deferred_failure_key(recipe_hash))
+        try:
+            marker = _read_json(storage, deferred_failure_key(recipe_hash))
+        except Exception:
+            return "marker-read-failed"
         if not isinstance(marker, Mapping):
             return "missing-marker"
+        if expected is not None and dict(marker) != dict(expected):
+            return "marker-changed"
         audit_key = f"{AUDIT_PREFIX}{day}/{recipe_hash}.json"
-        existing = _safe_read_json(storage, audit_key)
+        try:
+            existing = _read_json(storage, audit_key)
+        except Exception:
+            return "audit-read-failed"
         if existing is not None and dict(existing) != dict(marker):
             return "audit-conflict"
         if existing is None:
@@ -155,16 +175,30 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.recipe_hash:
         key = deferred_failure_key(args.recipe_hash)
-        data = _safe_read_json(storage, key)
+        try:
+            data = _read_json(storage, key)
+        except Exception as exc:  # noqa: BLE001 -- unreadable is not the same as absent
+            print(f"Could not read the marker for {args.recipe_hash}: {exc}", flush=True)
+            return 1
         if not data:
             print(f"No failure marker found for recipe {args.recipe_hash}", flush=True)
             return 0
         task = data.get("task")
         status = data.get("status")
         print(f"Found marker for {args.recipe_hash}: task={task} status={status}", flush=True)
+        if args.last_error_contains and args.last_error_contains not in str(
+            data.get("last_error") or ""
+        ):
+            print(
+                f"Marker for {args.recipe_hash} does not match --last-error-contains; "
+                "nothing to clear.",
+                flush=True,
+            )
+            return 0
         if args.apply:
-            outcome = clear_with_audit(storage, args.recipe_hash)
+            outcome = clear_with_audit(storage, args.recipe_hash, expected=data)
             print(f"Marker for {args.recipe_hash}: {outcome}", flush=True)
+            return 0 if outcome == "cleared" else 1
         else:
             print("Dry-run: pass --apply to delete this marker", flush=True)
         return 0
@@ -278,7 +312,9 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
         return 1
-    outcomes = Counter(clear_with_audit(storage, r_hash) for _key, r_hash, _ in matched)
+    outcomes = Counter(
+        clear_with_audit(storage, r_hash, expected=data) for _key, r_hash, data in matched
+    )
     print(f"Cleared {outcomes['cleared']}/{len(matched)} failure markers: {dict(outcomes)}.")
     return 0 if outcomes["cleared"] == len(matched) else 1
 

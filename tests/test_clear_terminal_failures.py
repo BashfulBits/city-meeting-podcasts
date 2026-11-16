@@ -175,3 +175,58 @@ def test_apply_refuses_more_markers_than_max_clear(monkeypatch):
 
     assert ctf.main(["--task", "tag", "--apply", "--max-clear", "2"]) == 1
     assert all(storage.exists(ctf.deferred_failure_key(f"r{index}")) for index in range(3))
+
+
+def _args(monkeypatch, storage):
+    monkeypatch.setattr(ctf, "load_site_config", lambda _path: {})
+    monkeypatch.setattr(ctf, "make_storage", lambda _cfg, _base, _out: storage)
+
+
+def test_single_hash_honours_the_cause_filter(monkeypatch):
+    storage = MemStorage()
+    _seed(storage, "r1", "agenda-chapter-locate", "quote absent")
+    _args(monkeypatch, storage)
+
+    ret = ctf.main(
+        ["--recipe-hash", "r1", "--last-error-contains", "duplicate locator unit", "--apply"]
+    )
+
+    assert ret == 0
+    assert storage.exists(ctf.deferred_failure_key("r1"))
+
+
+def test_single_hash_fails_loudly_when_it_cannot_clear(monkeypatch):
+    storage = MemStorage()
+    _seed(storage, "r1", "tag", "boom")
+    day = datetime.now(UTC).date().isoformat()
+    # A different archive already exists for today: clearing must not overwrite it.
+    _write_json(storage, f"{ctf.AUDIT_PREFIX}{day}/r1.json", json.dumps({"other": 1}).encode())
+    _args(monkeypatch, storage)
+
+    assert ctf.main(["--recipe-hash", "r1", "--apply"]) == 1
+    assert storage.exists(ctf.deferred_failure_key("r1"))
+
+
+def test_an_unreadable_archive_is_not_treated_as_absent(monkeypatch):
+    storage = MemStorage()
+    marker = _seed(storage, "r1", "tag", "boom")
+    real_read = ctf._read_json
+
+    def flaky(store, key):
+        if key.startswith(ctf.AUDIT_PREFIX):
+            raise StorageReadUnavailable("archive offline")
+        return real_read(store, key)
+
+    monkeypatch.setattr(ctf, "_read_json", flaky)
+
+    assert ctf.clear_with_audit(storage, "r1", expected=marker) == "audit-read-failed"
+    assert storage.exists(ctf.deferred_failure_key("r1"))
+
+
+def test_a_marker_replaced_after_the_scan_is_not_cleared(monkeypatch):
+    storage = MemStorage()
+    scanned = _seed(storage, "r1", "tag", "duplicate locator unit")
+    _seed(storage, "r1", "tag", "a different failure since the scan", status="retryable")
+
+    assert ctf.clear_with_audit(storage, "r1", expected=scanned) == "marker-changed"
+    assert storage.exists(ctf.deferred_failure_key("r1"))
