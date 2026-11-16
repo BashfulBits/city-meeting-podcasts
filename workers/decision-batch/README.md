@@ -1,8 +1,8 @@
 # Deferred decision worker: offline preparation
 
 This directory supplies the gzip JSONL runner, cloud entrypoint and deployment templates.
-The maintainer approved nine one-task canaries within $4/month gross; eight have been used and
-one remains.
+The maintainer approved ten one-task canaries within $4/month gross; all ten have been used.
+The shared ledger retains $0.93 in reservations, with no outstanding attempt.
 The GitHub workflow starts disabled. A project budget does not automatically guarantee a spend cap.
 The completed canaries used regular jobs on a Virginia L4, not delayed jobs.
 
@@ -24,7 +24,7 @@ share Qwen lineage with GLiDE; their upstream runtime was experimental and is no
    Security Token Service. Use a supported region with approved L4 quota for the job and model
    bucket. The canary allows `us-central1` and `us-east4`. Check the Cloud Run
    quota for non-zonal L4. Add a $4 project budget. Use a supported Cloud Run spend cap if
-   available and keep the nine-attempt launcher guard regardless of budget type.
+   available and keep the repository launcher guard regardless of budget type.
    [GPU quotas](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu) ·
    [Cloud Run spend controls](https://docs.cloud.google.com/run/docs/jobs-cost-optimization)
 3. Create separate private regional buckets for batches and the pinned model. Enable uniform
@@ -75,7 +75,8 @@ share Qwen lineage with GLiDE; their upstream runtime was experimental and is no
 5. Run `prepare` for each mode from the manual workflow. Record its manifest ID. `launch` checks
    the job definition and reserves $0.09 before calling Cloud Run. It prints the attempt ID
    before submission and the operation or execution name after acknowledgement. The ledger holds
-   one outstanding attempt and retains nine attempts' worth of reservations even across months.
+   one outstanding attempt and retains reservations even across months. Its nine-attempt guard
+   has not been extended to the two isolated prototypes; all ten authorized attempts are used.
    Use one task, parallelism one, a 300-second timeout and zero task retries.
 6. Use `status` and Cloud Run **Executions** to find the fully qualified execution name. Run
    `collect` after a matching execution succeeds. Use `settle-failed` only after the matching
@@ -111,3 +112,10 @@ structurally valid results after 87.11 seconds of inference. Peak host RSS was 1
 bytes against a 16 GiB limit. All 13 object generations matched the trusted manifest before and
 afterward, but FUSE does not pin generations and the run did not rehash mounted bytes. See
 review/59 for the comparison, integrity caveat, and pending billing reconciliation.
+
+The 6-CPU/24-GiB FUSE and 4-CPU/16-GiB authenticated streaming prototypes each returned 158
+structurally valid results. Streaming used pinned object generations and verified 64-MiB slice
+hashes, with a kernel cgroup peak of 2,598,539,264 bytes and 206.03 seconds total processing.
+It remains an experimental image, not the repository worker. Numerical outputs differed slightly
+between configurations, including one NOUL threshold crossing against the 6-CPU FUSE run;
+review/59 records the comparison and its limits. Charges remain pending billing reconciliation.

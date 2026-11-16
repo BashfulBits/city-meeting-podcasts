@@ -167,6 +167,32 @@ after the run. FUSE does not pin object generations, and the run did not rehash 
 the earlier generation-pinned SHA-256 verification and pre/post checks do not rule out a transient
 replacement. Actual incremental charges remain pending billing reconciliation.
 
+On November 16, two additional regular L4 prototypes used the identical 158 inputs and settings.
+The 6-CPU, 24-GiB bounded FUSE run loaded in 115.39 seconds and inferred in 88.73 seconds;
+all 158 results passed structural validation. Process peak RSS was 16,952,311,808 bytes and
+GPU allocator peak was 18,933,681,152 bytes. Sampled container memory was not a cgroup peak.
+The 4-CPU, 16-GiB streaming prototype loaded in 115.95 seconds and inferred in 90.06 seconds;
+all 158 results passed structural validation. Its kernel cgroup peak was 2,598,539,264 bytes
+against a 17,179,869,184-byte limit; process peak RSS was 1,757,290,496 bytes and GPU allocator
+peak was 18,936,318,976 bytes. The streaming prototype fetched generation-pinned objects in four
+bounded concurrent readers, checked trusted 64-MiB slice hashes before copying weights to GPU,
+and verified small files by SHA-256. Its slice manifest was derived from a previous whole-object
+SHA-256 verification and baked into the immutable experimental image. This custom loader is not
+promoted into the repository worker. GPU allocator peaks do not include all driver allocations.
+
+Against the original 4-CPU FUSE results, streaming returned 153 of 158 results bit-identically.
+The other five differed in NOUL probability or confidence; maximum absolute differences were
+0.0038631 and 0.0077262 respectively. None changed the 0.5 NOUL classification or the 12 choice
+and 24 score classes. The original generation-pinned disk-download and 4-CPU FUSE results were
+identical for all 158. The 6-CPU FUSE results matched 57 of 158 original FUSE results exactly;
+one of 122 NOUL outcomes crossed 0.5, with no choice or score class changes. Streaming versus
+6-CPU FUSE matched 52 exactly and had the same one NOUL crossing. Maximum absolute NOUL and
+confidence differences for both comparisons with 6-CPU FUSE were 0.0078119 and 0.0156238.
+The cause of the numerical variation is unestablished; structural validity and agreement are not
+quality or calibration qualification. FUSE generation checks before and after the 6-CPU run
+matched all 13 pinned objects but do not exclude a transient replacement. Actual incremental
+charges remain pending billing reconciliation.
+
 Karpo 9B and 4B are Qwen3.5 family models with respective published BF16 weights of 16.8 GB
 and 9.1 GB. Both completed a regular Virginia L4 canary over the same 158 frozen decisions. Karpo 4B
 returned 158 structurally valid results, with 100.44 seconds of load, 103.06 seconds of
@@ -218,8 +244,8 @@ The third canary copied the model from the mounted bucket to a 20 GiB ephemeral 
 loading. Its copy did not finish before the 300-second timeout. It used buffered FUSE reads and
 four file-copy workers, with a worker image derived from the second canary image. The logs show
 the copy exceeded 264 seconds and do not identify a specific stall within it. The third attempt
-is settled. The maintainer subsequently authorized six additional GPU attempts, for nine total
-under the $4 gross monthly project budget. Eight attempts have been used. The successful GLiDE
+is settled. The maintainer subsequently authorized seven additional GPU attempts, for ten total
+under the $4 gross monthly project budget. All ten attempts have been used. The successful GLiDE
 and Karpo runs above used regular jobs only; no delayed-mode comparison or tag or moment
 quality qualification is complete. Check project charges before another attempt.
 
@@ -290,8 +316,9 @@ verify that the pilot SKUs actually draw the credit on the billing report.
 [Google Developer Program benefits](https://developers.google.com/profile/help/benefits)
 
 Use the maintainer's **$4/month gross envelope including ancillary GCP costs**.
-Keep live runs manual. The authorized canary envelope is nine L4 task attempts, eight used and
-one remaining, each with a 300-second timeout and zero task retries. Derive the
+Keep live runs manual. The authorized canary envelope was ten L4 task attempts, all used, each
+with a 300-second timeout and zero task retries. The CAS ledger retains $0.93 in reservations: eight
+at $0.09, the 6-CPU run at $0.12, and the streaming run at $0.09. Derive the
 recurring attempt allowance only after estimating ancillary spend and measuring runtime. Before a
 launch, reserve `max(60 s, task timeout) × gross rate × task count × max attempts`, including
 ambiguous submissions until reconciled. Count manual launches through the same ledger. Reserve
@@ -421,10 +448,12 @@ The first PR exercises A and the explicit-manifest canary path in B and C offlin
 runtime dependency and model pins, and the two launch modes. The `decision_batch_pilot` CLI
 prepares the existing frozen set, reserves a launch, and collects a generation-pinned result.
 The Cloud Run gate starts off and accepts only manual dispatches on main with a protected
-GitHub environment. The maintainer authorized nine one-task L4 attempts under $4/month gross;
-eight have been used.
-The launcher reserves $0.09 per attempt, including ambiguous submissions. The completed canaries
-used the one-task Virginia L4 job configuration.
+GitHub environment. The maintainer authorized ten one-task L4 attempts under $4/month gross;
+all have been used.
+The repository launcher retains its existing nine-attempt, $0.09-per-attempt guard. The two
+additional prototypes used isolated guarded launchers and a shared $0.93 ledger cap; this does
+not extend the repository launcher. Reservations include ambiguous submissions. The completed
+canaries used the one-task Virginia L4 job configuration.
 
 The offline replay establishes contract and state-machine behavior. The Linux GPU lock is
 separate from ASR and preserves the upstream CUDA 13.0 baseline. Image and GPU canary
