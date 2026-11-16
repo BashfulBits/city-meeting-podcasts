@@ -153,8 +153,13 @@ model loading, then timed out after 300 seconds without logging load completion.
 are settled in the admission ledger. The logs establish that model loading exceeded the second
 task's limit. They do not isolate the exact operation inside the model loader. Buffered reads
 did not produce a successful five-minute run, so the job template keeps the original mount.
-One of the three authorized canary reservations remains. Measure a different loading approach
-and confirm remaining project charges before using it. No tag or moment qualification is complete.
+The third canary copied the model from the mounted bucket to a 20 GiB ephemeral disk before
+loading. Its copy did not finish before the 300-second timeout. It used buffered FUSE reads and
+four file-copy workers, with a worker image derived from the second canary image. The logs show
+the copy exceeded 264 seconds and do not identify a specific stall within it. The third attempt
+is settled. All three authorized canary reservations are spent. Evaluate a different model
+delivery method and current project charges before requesting additional runs. No tag or moment
+qualification is complete.
 
 On November 15, 2026, Cloud Run rejected the first job deployment at the non-zonal L4 quota
 check. Cloud Quotas accepted the Iowa request for one L4 and denied it before any task was
