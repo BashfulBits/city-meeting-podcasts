@@ -1481,8 +1481,19 @@ class JudgeStage(LLMProducerStage):
             uid = ep.uid or ep.guid
             if not uid or not any(spec.subjects(ep) for spec in tasks):
                 continue
+            # The same question the stage's dirtiness check asks (`judge_episode_dirty`), so the
+            # census cannot call an episode `ready` that no pass will ever visit. It used to call
+            # every episode with candidates ready for all three roles: ~16,200 per role against
+            # ~900 episodes with real work. Every tier but a tag's matched spans needs a
+            # transcript, so an episode without one is waiting on it, not ready.
+            if not ep.transcript_key:
+                state = "blocked"
+            elif judge_episode_dirty(ep, ctx.judging_config, ctx.judge_audit_rows):
+                state = "ready"
+            else:
+                state = "reused"
             for purpose in self.PURPOSES:
-                yield purpose, uid, "ready"
+                yield purpose, uid, state
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1918,7 +1929,7 @@ class TagsStage(LLMProducerStage):
 
     def work_items(self, city, episodes, ctx):
         from citypods.chapters import episode_served_chapters
-        from citypods.tags import tag_input_fingerprint
+        from citypods.tags import tag_accepted_routes, tag_inputs_current
 
         purposes = self.telemetry_purposes(ctx)
         if not purposes:
@@ -1931,17 +1942,19 @@ class TagsStage(LLMProducerStage):
             f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
             f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
         )
+        accepted_routes = tag_accepted_routes(ctx.tag_backend)
         for ep in episodes:
             uid = ep.uid or ep.guid
             if not uid:
                 continue
             current_inputs = False
             if taxonomy is not None:
-                current_inputs = ep.tags_input_fingerprint == tag_input_fingerprint(
+                current_inputs = tag_inputs_current(
                     ep,
                     taxonomy,
                     llm_enabled=True,
                     llm_route=route,
+                    accepted_routes=accepted_routes,
                     admission_policy=ctx.tag_taxonomy_cache.get("admission_policy", ""),
                 )
             if episode_served_chapters(ep):
@@ -1972,13 +1985,16 @@ class TagsStage(LLMProducerStage):
             merge_tag_sources,
             rollup_tags,
             rule_phrase_audit,
+            tag_accepted_routes,
             tag_episode,
             tag_input_fingerprint,
+            tag_inputs_current,
             tag_recipe_hash,
             visible_candidates,
         )
 
         stats = StageStats(self.name)
+        accepted_routes = tag_accepted_routes(ctx.tag_backend)
 
         def remember_call_attempt(
             episode: Episode,
@@ -2085,6 +2101,15 @@ class TagsStage(LLMProducerStage):
                 prompt_version=TAG_PROMPT_VERSION,
                 admission_policy=admission_policy,
             )
+            inputs_current = tag_inputs_current(
+                ep,
+                taxonomy,
+                llm_enabled=llm_enabled,
+                llm_route=llm_route,
+                accepted_routes=accepted_routes,
+                prompt_version=TAG_PROMPT_VERSION,
+                admission_policy=admission_policy,
+            )
             # ---- In-memory triage, BEFORE any storage fetch -----------------------------------
             # Everything needed to decide what to do with this episode is already in the loaded
             # record + the storage-free `tag_input_fingerprint`. The two agenda/transcript fetches
@@ -2092,8 +2117,7 @@ class TagsStage(LLMProducerStage):
             # first and only fetch for episodes that will actually be tagged this run.
             has_chapters = bool(episode_served_chapters(ep))
             inputs_unchanged = (
-                ep.tags_input_fingerprint is not None
-                and ep.tags_input_fingerprint == cheap_fingerprint
+                inputs_current
                 and ep.tags_spec_hash is not None
                 and (not has_chapters or ep.chapter_tags)
             )

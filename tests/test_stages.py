@@ -1405,6 +1405,46 @@ def test_cached_tags_census_initializes_inputs_before_completion_skip(tmp_path):
     assert row["states"] == {"reused": 1}
 
 
+def test_episode_tagged_under_a_retired_primary_is_reused_by_census_and_clean_to_the_stage(
+    tmp_path,
+):
+    """GH#2686: ~10,800 episodes tagged under the previous primary read as census `ready` while the
+    completion marker called them clean, so nothing visited them and the backlog never moved. The
+    census must now agree with the stage."""
+    from types import SimpleNamespace
+
+    from citypods.stages import TagsStage
+    from citypods.tags import TAG_ADMISSION_POLICY, load_taxonomy, tag_input_fingerprint
+
+    ctx = _ctx(tmp_path)
+    ctx.tag_backend = SimpleNamespace(
+        name="litellm",
+        config=SimpleNamespace(model="new/primary", additional_models=("old/primary",)),
+    )
+    episode = _ep("retired-primary")
+    episode.chapters = [{"start": 0, "title": "Budget"}]
+    episode.source_chapters = [dict(chapter) for chapter in episode.chapters]
+    episode.tags_llm_recipe_hash = "resolved-recipe"
+    episode.tags_input_fingerprint = tag_input_fingerprint(
+        episode,
+        load_taxonomy(ctx.taxonomy_path),
+        llm_enabled=True,
+        llm_route="litellm:old/primary",
+        admission_policy=TAG_ADMISSION_POLICY,
+    )
+    stage = TagsStage()
+    city = _city()
+    _mark_stage_complete(stage, [episode], city, StageStats(stage.name))
+
+    stats = run_stages(None, city, [episode], [stage], ctx, quiet=True)
+    ctx.llm_work.finish()
+
+    assert stats[0].reused == 1
+    row = ctx.llm_work.snapshot()["purposes"]["topic-tags:tagger"]
+    assert row["states"] == {"reused": 1}
+    assert not stage_is_dirty(stage, episode, city, tag_llm_enabled=True)
+
+
 def test_run_stages_returns_stats_per_stage(tmp_path):
     eps = [_ep("g1")]
     stats = run_stages(FakeProvider(), _city(), eps, default_stages(), _ctx(tmp_path))
