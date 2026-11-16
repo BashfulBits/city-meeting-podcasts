@@ -1822,6 +1822,72 @@ test("authorizeRetry with upstream_capacity sets cooldown and preserves healthy 
   assert.equal(row.last_failure_class, "upstream_capacity");
 });
 
+test("authorizeRetry with route_input_limit refuses in-window retry immediately", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-size', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemini_3_5_flash_primary',
+      'ltok', 'tags', 100000, 50, 'payloads/j-size/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry(
+    "j-size", "ltok", "att-1", now, null, "route_input_limit"
+  );
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec(
+    "SELECT throttle_streak, buffer_seconds, blocked_until, last_failure_class " +
+    "FROM routes WHERE route_id = 'gemini_3_5_flash_primary'"
+  )][0];
+  assert.equal(row.throttle_streak, 0, "route_input_limit must not increase throttle_streak");
+  assert.equal(row.buffer_seconds, 0, "route_input_limit must not add buffer_seconds");
+  assert.ok(!row.blocked_until, "route_input_limit must not block the route");
+  assert.equal(row.last_failure_class, "route_input_limit");
+});
+
+test("authorizeRetry with content_policy_violation refuses in-window retry", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-policy', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemini_3_5_flash_primary',
+      'ltok', 'tags', 500, 50, 'payloads/j-policy/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry(
+    "j-policy", "ltok", "att-1", now, null, "content_policy_violation"
+  );
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec(
+    "SELECT throttle_streak, buffer_seconds, blocked_until, last_failure_class " +
+    "FROM routes WHERE route_id = 'gemini_3_5_flash_primary'"
+  )][0];
+  assert.equal(row.throttle_streak, 0, "policy violation must not increase throttle_streak");
+  assert.equal(row.buffer_seconds, 0, "policy violation must not add buffer_seconds");
+  assert.ok(!row.blocked_until, "policy violation must not block the route");
+  assert.equal(row.last_failure_class, "content_policy_violation");
+});
+
 test("a non-consuming refund does not decrement a route window newer than the one it reserved", async () => {
   // claimDispatchWindow stores only lease_route_id/token_reservation on the job -- not the
   // reservation's own rpm/rpd/tpm window identity. If the route's window rolls over between claim

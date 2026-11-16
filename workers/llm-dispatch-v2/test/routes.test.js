@@ -391,6 +391,25 @@ for (const cause of ["input", "combined", "output", "missing", "paid"]) {
   });
 }
 
+test("primary route in size_excluded_routes unlocks declared backup", () => {
+  const { catalog, policy, job } = structuralFixture();
+  job.input_token_estimate = 100;
+  job.size_excluded_routes = JSON.stringify(["p"]);
+  assert.deepEqual(modelsForJob(job, policy, catalog), ["alias", "backup"]);
+  assert.deepEqual(routesEligibleFor(job, catalog).map((route) => route.route_id), ["b"]);
+});
+
+test("unpinned primary route does not suppress backup when pinned primary is excluded", () => {
+  const { catalog, policy, job } = structuralFixture();
+  catalog.model_routes_map.primary.push("unpinned");
+  catalog.routes_by_id.unpinned = { ...catalog.routes_by_id.p, route_id: "unpinned" };
+  policy.allowed_route_ids = ["p", "b"];
+  job.input_token_estimate = 100;
+  job.size_excluded_routes = JSON.stringify(["p"]);
+  assert.deepEqual(modelsForJob(job, policy, catalog), ["alias", "backup"]);
+  assert.deepEqual(routesEligibleFor(job, catalog).map((route) => route.route_id), ["b"]);
+});
+
 test("structural backup activation retains paid permission and every primary alternative", () => {
   const { catalog, policy, job } = structuralFixture();
   catalog.routes_by_id.b.free = false;

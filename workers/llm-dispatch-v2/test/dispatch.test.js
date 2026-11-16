@@ -2331,6 +2331,126 @@ test("a size rejection records the smallest refused input on the route", async (
   assert.ok(row.input_rejected_at >= t);
 });
 
+test("a 429 route_input_limit updates input_rejected_min and excludes route", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([
+    makeJob("j-429-oversize", { input_token_estimate: 80000 }),
+  ]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = plan.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-429-oversize",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "terminal_error",
+      provider_status_code: 429,
+      failure_class: "route_input_limit",
+    },
+  ]);
+  const routeRow = [...sql.exec(
+    "SELECT input_rejected_min, input_rejected_at, last_failure_class, blocked_until " +
+    "FROM routes WHERE route_id=?",
+    claimed.route_id
+  )][0];
+  assert.ok(routeRow.input_rejected_min >= 80000, "input_rejected_min is updated");
+  assert.ok(routeRow.input_rejected_at >= t);
+  assert.equal(routeRow.last_failure_class, "route_input_limit");
+  assert.ok(!routeRow.blocked_until, "route is not blocked");
+
+  const jobRow = [...sql.exec(
+    "SELECT state, size_excluded_routes FROM jobs WHERE id='j-429-oversize'"
+  )][0];
+  assert.equal(jobRow.state, "queued");
+  assert.deepEqual(JSON.parse(jobRow.size_excluded_routes), [claimed.route_id]);
+});
+
+test("content_policy_violation excludes route without setting input_rejected_min", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([
+    makeJob("j-policy-1", { input_token_estimate: 500 }),
+  ]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = plan.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-policy",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "retryable_error",
+      provider_status_code: 400,
+      failure_class: "content_policy_violation",
+    },
+  ]);
+
+  const routeRow = [...sql.exec(
+    "SELECT input_rejected_min, blocked_until, input_window_json FROM routes WHERE route_id=?",
+    claimed.route_id
+  )][0];
+  assert.equal(routeRow.input_rejected_min || 0, 0, "must not update input_rejected_min");
+  assert.ok(!routeRow.blocked_until, "must not block route");
+  const windowEntries = JSON.parse(routeRow.input_window_json || "[]");
+  assert.equal(windowEntries.length, 0, "non-consuming failure must prune input_window_json");
+
+  const jobRow = [...sql.exec(
+    "SELECT state, transient_retry_count, size_excluded_routes FROM jobs WHERE id='j-policy-1'"
+  )][0];
+  assert.equal(jobRow.state, "queued");
+  assert.equal(jobRow.transient_retry_count, 0, "transient retry count untouched");
+  assert.deepEqual(JSON.parse(jobRow.size_excluded_routes), [claimed.route_id]);
+
+  // Re-claim moves to a sibling route, not the excluded one
+  const second = await coordinator.claimDispatchWindow(t + 1000, 25);
+  assert.equal(second.jobs.length, 1);
+  assert.equal(second.jobs[0].id, "j-policy-1");
+  assert.notEqual(second.jobs[0].route_id, claimed.route_id);
+});
+
+test("content_policy_violation on sole allowed route fails terminally", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([
+    makeJob("j-policy-sole", {
+      input_token_estimate: 500,
+      policy_json: JSON.stringify({
+        allowed_models: ["gemini/gemini-flash-lite"],
+        allow_paid: false,
+        allowed_route_ids: ["route-a"],
+      }),
+    }),
+  ]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs.length, 1);
+  const claimed = plan.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-policy-sole",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 100,
+      outcome: "retryable_error",
+      provider_status_code: 400,
+      failure_class: "content_policy_violation",
+    },
+  ]);
+
+  const jobRow = [...sql.exec(
+    "SELECT state, terminal_reason FROM jobs WHERE id='j-policy-sole'"
+  )][0];
+  assert.equal(jobRow.state, "failed");
+  assert.equal(jobRow.terminal_reason, "content_policy_violation");
+});
+
 test("a success raises the route's accepted-input high-water mark and never lowers it", async () => {
   const { coordinator, sql } = makeCoordinator();
   let pinned = null;
