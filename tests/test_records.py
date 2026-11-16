@@ -2611,3 +2611,70 @@ def test_agenda_lane_may_still_add_locator_status_where_the_remote_has_none():
     merged = _push(remote, local, "chapter-agenda")
     assert merged["status"] == "not_applicable"
     assert merged["locator_status"] == "not_applicable"
+
+
+def test_agenda_lane_removes_spent_retry_bookkeeping_from_the_remote_copy():
+    """A corrective retry that succeeded must not leave its count and hint on the remote record,
+    where a later failure would read the count as already spent."""
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "retry_pending",
+                "agenda_retry_count": 1,
+                "agenda_retry_hint": "Fix the quotes.",
+            },
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {"status": "completed", "recipe": "r"},
+        }
+    }
+
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("chapter-agenda"), lane="chapter-agenda"
+    )
+
+    agenda = merged["u1"]["generated_agenda_candidates"]
+    assert agenda["status"] == "completed"
+    assert "agenda_retry_count" not in agenda and "agenda_retry_hint" not in agenda
+
+
+def test_locator_lane_leaves_agenda_retry_bookkeeping_alone():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {"status": "retry_pending", "agenda_retry_count": 1},
+        }
+    }
+    local = {"u1": {"uid": "u1", "generated_agenda_candidates": {"status": "retry_pending"}}}
+
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("chapter-locator"), lane="chapter-locator"
+    )
+
+    assert merged["u1"]["generated_agenda_candidates"]["agenda_retry_count"] == 1
+
+
+def test_every_agenda_owning_lane_removes_spent_retry_bookkeeping():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "retry_pending",
+                "agenda_retry_count": 1,
+                "agenda_retry_hint": "Fix the quotes.",
+                "agenda_retry_source": "documents/x",
+                "agenda_retry_pipeline": "v",
+            },
+        }
+    }
+    local = {"u1": {"uid": "u1", "generated_agenda_candidates": {"status": "completed"}}}
+
+    for lane in ("chapter", None):
+        merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane(lane), lane=lane)
+        agenda = merged["u1"]["generated_agenda_candidates"]
+        assert agenda["status"] == "completed"
+        assert not [key for key in agenda if key.startswith("agenda_retry_")], lane

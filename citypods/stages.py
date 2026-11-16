@@ -1481,8 +1481,19 @@ class JudgeStage(LLMProducerStage):
             uid = ep.uid or ep.guid
             if not uid or not any(spec.subjects(ep) for spec in tasks):
                 continue
+            # The same question the stage's dirtiness check asks (`judge_episode_dirty`), so the
+            # census cannot call an episode `ready` that no pass will ever visit. It used to call
+            # every episode with candidates ready for all three roles: ~16,200 per role against
+            # ~900 episodes with real work. Every tier but a tag's matched spans needs a
+            # transcript, so an episode without one is waiting on it, not ready.
+            if not ep.transcript_key:
+                state = "blocked"
+            elif judge_episode_dirty(ep, ctx.judging_config, ctx.judge_audit_rows):
+                state = "ready"
+            else:
+                state = "reused"
             for purpose in self.PURPOSES:
-                yield purpose, uid, "ready"
+                yield purpose, uid, state
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1918,7 +1929,7 @@ class TagsStage(LLMProducerStage):
 
     def work_items(self, city, episodes, ctx):
         from citypods.chapters import episode_served_chapters
-        from citypods.tags import tag_input_fingerprint
+        from citypods.tags import tag_accepted_routes, tag_inputs_current
 
         purposes = self.telemetry_purposes(ctx)
         if not purposes:
@@ -1931,17 +1942,19 @@ class TagsStage(LLMProducerStage):
             f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
             f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
         )
+        accepted_routes = tag_accepted_routes(ctx.tag_backend)
         for ep in episodes:
             uid = ep.uid or ep.guid
             if not uid:
                 continue
             current_inputs = False
             if taxonomy is not None:
-                current_inputs = ep.tags_input_fingerprint == tag_input_fingerprint(
+                current_inputs = tag_inputs_current(
                     ep,
                     taxonomy,
                     llm_enabled=True,
                     llm_route=route,
+                    accepted_routes=accepted_routes,
                     admission_policy=ctx.tag_taxonomy_cache.get("admission_policy", ""),
                 )
             if episode_served_chapters(ep):
@@ -1972,13 +1985,16 @@ class TagsStage(LLMProducerStage):
             merge_tag_sources,
             rollup_tags,
             rule_phrase_audit,
+            tag_accepted_routes,
             tag_episode,
             tag_input_fingerprint,
+            tag_inputs_current,
             tag_recipe_hash,
             visible_candidates,
         )
 
         stats = StageStats(self.name)
+        accepted_routes = tag_accepted_routes(ctx.tag_backend)
 
         def remember_call_attempt(
             episode: Episode,
@@ -2085,6 +2101,15 @@ class TagsStage(LLMProducerStage):
                 prompt_version=TAG_PROMPT_VERSION,
                 admission_policy=admission_policy,
             )
+            inputs_current = tag_inputs_current(
+                ep,
+                taxonomy,
+                llm_enabled=llm_enabled,
+                llm_route=llm_route,
+                accepted_routes=accepted_routes,
+                prompt_version=TAG_PROMPT_VERSION,
+                admission_policy=admission_policy,
+            )
             # ---- In-memory triage, BEFORE any storage fetch -----------------------------------
             # Everything needed to decide what to do with this episode is already in the loaded
             # record + the storage-free `tag_input_fingerprint`. The two agenda/transcript fetches
@@ -2092,8 +2117,7 @@ class TagsStage(LLMProducerStage):
             # first and only fetch for episodes that will actually be tagged this run.
             has_chapters = bool(episode_served_chapters(ep))
             inputs_unchanged = (
-                ep.tags_input_fingerprint is not None
-                and ep.tags_input_fingerprint == cheap_fingerprint
+                inputs_current
                 and ep.tags_spec_hash is not None
                 and (not has_chapters or ep.chapter_tags)
             )
@@ -8742,15 +8766,30 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
             if ep.source_chapters or not (ep.uid or ep.guid):
                 continue
             state = "ready" if episode_needs_chapter_agenda(ep) else "reused"
+            uid = ep.uid or ep.guid
+            reason = None
             if not (ep.links or {}).get("agenda_text_artifact_key"):
-                state = "blocked"
-            yield "chapter-agenda", ep.uid or ep.guid, state
+                state, reason = "blocked", _agenda_text_gap_reason(ep)
+            elif not episode_needs_chapter_agenda(ep) and (
+                (ep.generated_agenda_candidates or {}).get("status") == "retry_exhausted"
+            ):
+                state, reason = "blocked", "agenda-extraction-retry-exhausted"
+            yield "chapter-agenda", uid, state
+            if reason is not None:
+                # Counted as a run-event quality figure, so "6,000 episodes blocked on agenda text"
+                # reads as no agenda published / document rejected for <reason> / not yet fetched.
+                ctx.llm_work.item("chapter-agenda", uid, producer=self.name).outcome(reason)
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         from citypods.chapter_artifacts import artifact_key
-        from citypods.chapter_jobs import build_agenda_job, finalize_agenda_job
+        from citypods.chapter_jobs import (
+            AgendaCitationError,
+            agenda_citation_retry_hint,
+            build_agenda_job,
+            finalize_agenda_job,
+        )
         from citypods.chapter_titles import (
             AGENDA_BACKUP_MODELS,
             AGENDA_PRODUCTION_MODEL,
@@ -8826,6 +8865,35 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
 
             raw_agenda = ep.generated_agenda_candidates or {}
             agenda_status = raw_agenda.get("status")
+            if agenda_status in {
+                "retry_exhausted",
+                "retry_pending",
+            } and not _agenda_retry_identity_matches(raw_agenda, source_artifact):
+                # The agenda text, or the pipeline that reads it, changed since the retry state was
+                # written. Its hint cites the old line count and its exhaustion judged the old
+                # input, so start over.
+                raw_agenda = {}
+                ep.generated_agenda_candidates = {}
+                agenda_status = None
+            if agenda_status == "retry_exhausted":
+                # The one corrective retry was spent and the response was still ungrounded. The
+                # agenda text is the likelier problem now, so stop re-rolling the same extraction.
+                if work is not None:
+                    work.defer("blocked")
+                stats.defer("agenda-repair-exhausted")
+                continue
+            # Retry bookkeeping must survive the pending record this stage writes next, or the
+            # corrective retry could never be recognised as spent.
+            carry = {
+                key: raw_agenda[key]
+                for key in (
+                    "agenda_retry_count",
+                    "agenda_retry_hint",
+                    "agenda_retry_source",
+                    "agenda_retry_pipeline",
+                )
+                if key in raw_agenda
+            }
             # A completed/accepted artifact is only current -- and therefore safe to reuse without
             # redoing the extraction -- if it was produced by a CURRENTLY valid production model
             # (primary or backup: finalize_agenda_job legitimately records result.model as a
@@ -8901,6 +8969,11 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
                     agenda_text=agenda_text,
                     agenda_source_hash=source_hash,
                     pipeline_version=CHAPTER_AGENDA_PIPELINE_VERSION,
+                    retry_hint=(
+                        carry["agenda_retry_hint"]
+                        if isinstance(carry.get("agenda_retry_hint"), str)
+                        else None
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # build pass for every other episode
@@ -8920,18 +8993,18 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
                 stats.defer("producer-cap")
                 continue
             job = work.bind(job)
-            prepared.append((ep, uid, job, agenda_text, source_hash, is_new_dispatch))
+            prepared.append((ep, uid, job, agenda_text, source_hash, is_new_dispatch, carry))
 
         if not prepared:
             return stats
 
         # Pass 2: one dispatch for the whole batch.
         results = dispatch_job_batch(
-            _chapter_llm_backend(ctx), [job for _, _, job, _, _, _ in prepared]
+            _chapter_llm_backend(ctx), [job for _, _, job, _, _, _, _ in prepared]
         )
 
         # Pass 3: finalize each episode against its own result, same as the old per-job code.
-        for (ep, uid, job, agenda_text, source_hash, is_new_dispatch), result in zip(
+        for (ep, uid, job, agenda_text, source_hash, is_new_dispatch, carry), result in zip(
             prepared, results, strict=True
         ):
             work = ctx.llm_work.item("chapter-agenda", uid, producer=self.name)
@@ -8952,6 +9025,7 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
                     "model": result.model or AGENDA_PRODUCTION_MODEL,
                     "source_hash": source_hash,
                     "job_ref": result.ref,
+                    **carry,
                 }
                 if work is not None:
                     work.defer("queued")
@@ -8983,6 +9057,34 @@ class AgendaChapterCandidatesStage(LLMProducerStage):
                 # under it, no matter how many times this episode is retried or its own state
                 # reset, would just replay this identical bad content forever. Discard it first.
                 discard_completed_result(ctx.storage, result.recipe_hash, result)
+                # A failure of the corrective job itself, whatever its kind (a malformed reply
+                # included), spends the retry. Only the very first citation failure earns one;
+                # anything else keeps the old clear-and-redraw behaviour below.
+                spent = carry.get("agenda_retry_count", 0) >= 1
+                if spent or isinstance(exc, AgendaCitationError):
+                    identity = {
+                        "agenda_retry_source": (ep.links or {}).get("agenda_text_artifact_key"),
+                        "agenda_retry_pipeline": CHAPTER_AGENDA_PIPELINE_VERSION,
+                    }
+                    if spent:
+                        ep.generated_agenda_candidates = {
+                            "status": "retry_exhausted",
+                            "agenda_retry_count": carry["agenda_retry_count"],
+                            "agenda_retry_error": str(exc)[:300],
+                            **identity,
+                        }
+                        stats.defer("agenda-repair-exhausted")
+                    else:
+                        ep.generated_agenda_candidates = {
+                            "status": "retry_pending",
+                            "agenda_retry_count": 1,
+                            "agenda_retry_hint": agenda_citation_retry_hint(
+                                exc, line_count=len(agenda_text.splitlines())
+                            ),
+                            **identity,
+                        }
+                        stats.defer("agenda-repair-pending")
+                    continue
                 # `result` is already a terminally-resolved JobResult -- re-fetching it next run
                 # (Pass 1's `agenda_status == "pending"` branch, keyed on this same stored recipe)
                 # would hand finalize_agenda_job the identical content and fail identically,
@@ -9498,6 +9600,37 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
         return stats
 
 
+def _agenda_retry_identity_matches(raw_agenda: Mapping[str, Any], source_key: Any) -> bool:
+    """Whether retry state still describes the extraction input and pipeline now in force.
+
+    Retry bookkeeping is bound to the agenda artifact key (content-addressed, so a corrected agenda
+    gets a new key) and the chapter-agenda pipeline version. State written before this binding
+    existed carries neither and counts as stale.
+    """
+    return (
+        raw_agenda.get("agenda_retry_source") == source_key
+        and raw_agenda.get("agenda_retry_pipeline") == CHAPTER_AGENDA_PIPELINE_VERSION
+    )
+
+
+def _agenda_text_gap_reason(ep: Episode) -> str:
+    """Why an episode has no agenda text for chapter extraction, as a stable counter name."""
+    links = ep.links or {}
+    if not (links.get("agenda_portal") or links.get("agenda") or links.get("agenda_packet")):
+        return "no-agenda-link"
+    quality = ep.agenda_text_quality or {}
+    status = quality.get("status")
+    if status == "accepted":
+        # Accepted but never linked: the diagnostic case agenda_text already reports separately.
+        return "agenda-accepted-without-artifact"
+    if status:
+        reason = str(quality.get("reason") or status)
+        return f"agenda-rejected-{reason}"
+    if ep.agenda_text_attempts:
+        return "agenda-fetch-failed"
+    return "agenda-not-yet-fetched"
+
+
 def episode_needs_chapter_agenda(ep: Episode) -> bool:
     """Return True if episode requires agenda chapter extraction or status reconciliation.
 
@@ -9516,6 +9649,10 @@ def episode_needs_chapter_agenda(ep: Episode) -> bool:
         return False
     raw_agenda = ep.generated_agenda_candidates or {}
     status = raw_agenda.get("status")
+    if status == "retry_exhausted" and _agenda_retry_identity_matches(
+        raw_agenda, (ep.links or {}).get("agenda_text_artifact_key")
+    ):
+        return False
     if status not in {"completed", "accepted", "not_applicable"}:
         return True
     if status == "not_applicable":

@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -322,6 +323,30 @@ def tag_input_fingerprint(
     admission_policy: str = "",
     chapter_pipeline_version: str = CHAPTER_PIPELINE_VERSION,
 ) -> str:
+    """Fingerprint for one route; see :func:`tag_input_fingerprint_variants` for the contract."""
+    return tag_input_fingerprint_variants(
+        ep,
+        taxonomy,
+        (llm_route,),
+        llm_enabled=llm_enabled,
+        prompt_version=prompt_version,
+        llm_schema_version=llm_schema_version,
+        admission_policy=admission_policy,
+        chapter_pipeline_version=chapter_pipeline_version,
+    )[0]
+
+
+def tag_input_fingerprint_variants(
+    ep: Any,
+    taxonomy: Taxonomy,
+    llm_routes: Sequence[str],
+    *,
+    llm_enabled: bool,
+    prompt_version: str = TAG_PROMPT_VERSION,
+    llm_schema_version: str = TAG_LLM_SCHEMA_VERSION,
+    admission_policy: str = "",
+    chapter_pipeline_version: str = CHAPTER_PIPELINE_VERSION,
+) -> list[str]:
     """Cheap, storage-I/O-free stand-in for what :func:`tag_recipe_hash` would eventually hash.
 
     ``agenda_text``/``transcript_text`` (episode- and chapter-scoped) are pure functions of the
@@ -357,7 +382,7 @@ def tag_input_fingerprint(
         "tagger": TAGGER_VERSION,
         "chapter_pipeline_version": chapter_pipeline_version,
         "llm": llm_enabled,
-        "llm_route": llm_route if llm_enabled else "",
+        "llm_route": "",
         "prompt_version": prompt_version if llm_enabled else "",
         "llm_schema_version": llm_schema_version if llm_enabled else "",
         "admission_policy": admission_policy if llm_enabled else "",
@@ -374,9 +399,15 @@ def tag_input_fingerprint(
         "transcript_format": ep.transcript_format,
         "chapters": chapter_fingerprint,
     }
-    return hashlib.sha1(
-        json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str).encode()
-    ).hexdigest()[:16]
+    fingerprints = []
+    for llm_route in llm_routes:
+        payload["llm_route"] = llm_route if llm_enabled else ""
+        fingerprints.append(
+            hashlib.sha1(
+                json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str).encode()
+            ).hexdigest()[:16]
+        )
+    return fingerprints
 
 
 # Share of the primary route's tested capacity one tag batch may fill. ``input_token_ratio`` is a
@@ -539,6 +570,67 @@ def _merge_split_chapter_tags(
     return result
 
 
+# Routes whose completed tag results stay current when the lane's primary model changes. The
+# primary is part of the recipe, but a primary switch is a capacity change, not a quality change
+# (owner decision on GH#2686, 2026-11-14: do not re-tag episodes tagged under the previous
+# primary). Without this, ~10,800 episodes tagged under Gemini 3.1 Flash Lite counted as `ready`
+# in the census and the lane prefilter while the stage's completion marker called them clean, so
+# nothing ever visited them and the backlog figure never moved.
+TAG_RETIRED_PRIMARY_ROUTES = ("litellm:gemini/gemini-3.1-flash-lite",)
+
+
+def tag_accepted_routes(backend: Any) -> tuple[str, ...]:
+    """Routes under which an episode's stored tag inputs still count as current.
+
+    Every model the lane may dispatch to (they are pooled capacity, not distinct recipes) plus the
+    retired primaries above. The backend's own primary is excluded; callers compare it separately.
+    """
+    if backend is None:
+        return ()
+    name = getattr(backend, "name", "litellm")
+    config = getattr(backend, "config", None)
+    models = [getattr(config, "model", ""), *(getattr(config, "additional_models", None) or ())]
+    routes = [f"{name}:{model}" for model in models if model]
+    primary = routes[0] if routes else None
+    return tuple(
+        dict.fromkeys(route for route in [*routes, *TAG_RETIRED_PRIMARY_ROUTES] if route != primary)
+    )
+
+
+def tag_inputs_current(
+    ep: Any,
+    taxonomy: Taxonomy,
+    *,
+    llm_enabled: bool,
+    llm_route: str = "",
+    accepted_routes: Sequence[str] = (),
+    prompt_version: str = TAG_PROMPT_VERSION,
+    admission_policy: str = "",
+) -> bool:
+    """Whether the stored tag-input fingerprint matches the current inputs.
+
+    The census, the lane prefilter and the stage's own triage all ask this one question, so a
+    stored fingerprint can never be stale to one and current to another. A fingerprint computed
+    under any of ``accepted_routes`` counts as current.
+    """
+    stored = ep.tags_input_fingerprint
+    if stored is None:
+        return False
+    routes = (
+        (llm_route, *(r for r in accepted_routes if r != llm_route))
+        if llm_enabled
+        else (llm_route,)
+    )
+    return stored in tag_input_fingerprint_variants(
+        ep,
+        taxonomy,
+        routes,
+        llm_enabled=llm_enabled,
+        prompt_version=prompt_version,
+        admission_policy=admission_policy,
+    )
+
+
 def episode_needs_tagging(
     ep: Any,
     taxonomy: Taxonomy,
@@ -547,6 +639,7 @@ def episode_needs_tagging(
     llm_route: str = "",
     prompt_version: str = TAG_PROMPT_VERSION,
     admission_policy: str = "",
+    accepted_routes: Sequence[str] = (),
 ) -> bool:
     """Return whether this episode requires rule-tag derivation, LLM suggestion dispatch,
     or chapter tagging.
@@ -556,17 +649,16 @@ def episode_needs_tagging(
     and (if LLM is enabled) its tags_llm_recipe_hash is populated.
     """
     has_chapters = bool(episode_served_chapters(ep))
-    cheap_fingerprint = tag_input_fingerprint(
-        ep,
-        taxonomy,
-        llm_enabled=llm_enabled,
-        llm_route=llm_route,
-        prompt_version=prompt_version,
-        admission_policy=admission_policy,
-    )
     inputs_unchanged = (
-        ep.tags_input_fingerprint is not None
-        and ep.tags_input_fingerprint == cheap_fingerprint
+        tag_inputs_current(
+            ep,
+            taxonomy,
+            llm_enabled=llm_enabled,
+            llm_route=llm_route,
+            accepted_routes=accepted_routes,
+            prompt_version=prompt_version,
+            admission_policy=admission_policy,
+        )
         and ep.tags_spec_hash is not None
         and (not has_chapters or ep.chapter_tags)
     )

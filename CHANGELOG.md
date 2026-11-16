@@ -15,6 +15,21 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Chapter agenda: when most items in an extraction fail source verification (quote not in the cited
+lines, line range outside the agenda), retry once with a message that names the failure classes
+and the real line bounds, then stop (`retry_exhausted`) instead of re-rolling the same request
+every run. The retry carries its hint in the recipe, so it is a new lineage and is not blocked by
+the failed recipe's terminal-failure marker. The census now counts episodes blocked on agenda text
+by reason (`no-agenda-link`, `agenda-rejected-<reason>`, `agenda-fetch-failed`,
+`agenda-not-yet-fetched`) so the ~6,100 blocked episodes can be sized. No recipe changes for
+episodes that do not fail.
+
+Make the LLM work census agree with the stages it counts. Tags: an episode tagged under a
+previous or pooled lane model (including the retired Gemini 3.1 Flash Lite primary) is current, so
+~10,800 episodes stop reading `ready` while the stage never visits them (owner decision, GH#2686).
+Judge: `ready` now means `judge_episode_dirty`, not "has candidates", and an episode without a
+transcript is `blocked`. No jobs are submitted or re-queued by this change.
+
 - **Dispatch v2 Gemini oversize 429 and prohibited content 400 routing.** Classified Gemini 429
   responses with `input_token_count` or `inputtokensperminute` whose scaled input estimate meets
   or exceeds the route ceiling or TPM as `route_input_limit` (`gemini-input-quota-oversize`).
