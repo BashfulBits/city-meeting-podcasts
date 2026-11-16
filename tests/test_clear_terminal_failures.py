@@ -145,7 +145,8 @@ def test_clear_by_cause_clears_only_the_matching_marker_and_archives_it(monkeypa
     assert ret == 0
     assert storage.exists(ctf.deferred_failure_key("r-keep"))
     assert not storage.exists(ctf.deferred_failure_key("r-gone"))
-    audit = ctf._safe_read_json(storage, f"{ctf.AUDIT_PREFIX}{datetime.now(UTC).date().isoformat()}/r-gone.json")
+    audit_key = f"{ctf.AUDIT_PREFIX}{datetime.now(UTC).date().isoformat()}/r-gone.json"
+    audit = ctf._safe_read_json(storage, audit_key)
     assert audit == gone
     assert keep["recipe_hash"] == "r-keep"
     assert "Markers by cause" in capsys.readouterr().out
