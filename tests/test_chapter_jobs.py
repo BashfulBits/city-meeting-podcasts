@@ -719,3 +719,40 @@ def test_an_outline_reference_is_not_confirmed_across_a_peer_section():
     assert [i.display_ref for i in _finalize(agenda, [{**item, "display_ref": "4.A"}]).items] == [
         "4.A"
     ]
+
+
+def test_mostly_ungrounded_agenda_raises_a_citation_error_naming_every_reason():
+    from citypods.chapter_jobs import AgendaCitationError, agenda_citation_retry_hint
+
+    items = [
+        _numbered_item(1, evidence_quote="words that are not in the agenda"),
+        _numbered_item(2, line_start=99, line_end=99),
+        _numbered_item(3),
+    ]
+    with pytest.raises(AgendaCitationError) as info:
+        _finalize(_numbered_agenda(3), items)
+
+    assert len(info.value.reasons) == 2
+    assert str(info.value) == info.value.reasons[0]
+    hint = agenda_citation_retry_hint(info.value, line_count=3)
+    assert "2 of 3 items" in hint
+    assert "1 to 3" in hint
+    assert "Omit any item you cannot quote verbatim" in hint
+
+
+def test_agenda_retry_hint_is_part_of_the_recipe_and_the_request():
+    from citypods.chapter_jobs import build_agenda_job
+
+    plain = build_agenda_job(
+        episode_uid="e1", agenda_text="1. Item\n2. Item two", agenda_source_hash="s"
+    )
+    hinted = build_agenda_job(
+        episode_uid="e1",
+        agenda_text="1. Item\n2. Item two",
+        agenda_source_hash="s",
+        retry_hint="Fix the quotes.",
+    )
+
+    assert plain.recipe_hash != hinted.recipe_hash
+    assert hinted.inputs["messages"][-1] == {"role": "user", "content": "Fix the quotes."}
+    assert len(hinted.inputs["messages"]) == len(plain.inputs["messages"]) + 1
