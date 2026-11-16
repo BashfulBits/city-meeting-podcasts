@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Tagger jobs now rotate among their eligible routes after an input TPM refusal without spending
+their normal retry budget. When all routes refuse, the tagger tries at most two smaller
+generations and reports a distinct quota block if they cannot proceed. Existing completed work
+is not invalidated.
+
 - **`/v2/stats` no longer reports stood-down, deleted or paused routes as live** (review/58
   §12.14).
   `claim.last_empty_diagnostics` (and `claim.last_diagnostics` under `?detail=1`) keeps only the
