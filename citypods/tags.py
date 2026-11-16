@@ -455,6 +455,19 @@ def _tag_recipe_unadmissible(storage: Any, recipe_hash: str) -> bool:
         return False
 
 
+def _tag_recipe_quota_blocked(storage: Any, recipe_hash: str) -> bool:
+    """A quota refusal exhausted the job's candidate routes, not its retry budget."""
+    if storage is None:
+        return False
+    from citypods.compute.llm_deferred import _read_json, deferred_failure_key
+
+    try:
+        marker = _read_json(storage, deferred_failure_key(recipe_hash))
+        return isinstance(marker, dict) and marker.get("status") == "quota_blocked"
+    except Exception:  # noqa: BLE001 -- preserve the backend's original refusal
+        return False
+
+
 def split_unadmissible_tag_request(
     chapters: list[dict[str, Any]],
 ) -> list[list[dict[str, Any]]] | None:
@@ -1152,14 +1165,17 @@ def llm_tag_suggestions(
         if route is not None
     ]
 
-    def replan_oversized():
+    def replan_oversized(*, quota: bool = False):
+        # Quota is ambiguous; limit speculative splitting to two generations.
+        if quota and recipe_hash.count("-quota-replan-") >= 2:
+            return [], {}, True, "quota-replan-limit"
         pieces = split_unadmissible_tag_request(compact_chapters)
         if pieces is None:
             # One transcript segment cannot be split further: an oversized deferral, not an error.
-            return [], {}, True, "payload-too-large"
+            return [], {}, True, "quota-replan-limit" if quota else "payload-too-large"
         merged: dict[str, list[dict[str, Any]]] = {}
         pending = False
-        payload_too_large = False
+        blocked_reason = None
         piece_metadata: list[dict[str, Any]] = []
         resolved_models: list[str] = []
         for index, piece in enumerate(pieces):
@@ -1173,7 +1189,9 @@ def llm_tag_suggestions(
                 agenda_item_titles="",
                 agenda_text="",
                 transcript_text="",
-                recipe_hash=f"{recipe_hash}-replan-{index}-{piece_digest}",
+                recipe_hash=(
+                    f"{recipe_hash}-{'quota-replan' if quota else 'replan'}-{index}-{piece_digest}"
+                ),
                 chapter_inputs=piece,
                 agenda_documents=agenda_documents,
                 allow_paid=allow_paid,
@@ -1183,8 +1201,9 @@ def llm_tag_suggestions(
             )
             piece_metadata.append(metadata)
             pending = pending or piece_pending
-            payload_too_large = payload_too_large or resolved_model == "payload-too-large"
-            if resolved_model and resolved_model != "payload-too-large":
+            if resolved_model in {"payload-too-large", "quota-replan-limit"}:
+                blocked_reason = resolved_model
+            if resolved_model and resolved_model not in {"payload-too-large", "quota-replan-limit"}:
                 resolved_models.append(resolved_model)
             for chapter_id_value, tags in chapter_tags.items():
                 merged.setdefault(chapter_id_value, []).extend(tags)
@@ -1205,7 +1224,7 @@ def llm_tag_suggestions(
         )
         publish_call_metadata()
         if pending:
-            return [], {}, True, "payload-too-large" if payload_too_large else None
+            return [], {}, True, blocked_reason
         return (
             [],
             _merge_split_chapter_tags(merged),
@@ -1288,7 +1307,7 @@ def llm_tag_suggestions(
             if len(batches) > 1:
                 merged: dict[str, list[dict[str, Any]]] = {}
                 pending = False
-                payload_too_large = False
+                blocked_reason = None
                 batch_metadata: list[dict[str, Any]] = []
                 resolved_models: list[str] = []
                 for index, batch in enumerate(batches):
@@ -1312,8 +1331,12 @@ def llm_tag_suggestions(
                     )
                     batch_metadata.append(metadata)
                     pending = pending or batch_pending
-                    payload_too_large = payload_too_large or resolved_model == "payload-too-large"
-                    if resolved_model and resolved_model != "payload-too-large":
+                    if resolved_model in {"payload-too-large", "quota-replan-limit"}:
+                        blocked_reason = resolved_model
+                    if resolved_model and resolved_model not in {
+                        "payload-too-large",
+                        "quota-replan-limit",
+                    }:
                         resolved_models.append(resolved_model)
                     for chapter_id_value, tags in chapter_tags.items():
                         merged.setdefault(chapter_id_value, []).extend(tags)
@@ -1334,7 +1357,7 @@ def llm_tag_suggestions(
                 )
                 publish_call_metadata()
                 if pending:
-                    return [], {}, True, "payload-too-large" if payload_too_large else None
+                    return [], {}, True, blocked_reason
                 return [], merged, False, resolved_models[-1] if resolved_models else backend_model
         if request_bytes > TAGGER_MAX_REQUEST_BYTES:
             return replan_oversized() if chapter_mode else ([], {}, True, "payload-too-large")
@@ -1408,9 +1431,13 @@ def llm_tag_suggestions(
         # expects the producer to re-plan it smaller (review/58 §12.13, #2671). The batches above
         # are deterministic, so resubmitting would rebuild the same recipe that the structural
         # recovery gate now refuses on every run. Split it into new, smaller recipes instead.
-        if not chapter_mode or not _tag_recipe_unadmissible(backend_storage, recipe_hash):
+        if not chapter_mode:
             raise
-        return replan_oversized()
+        if _tag_recipe_unadmissible(backend_storage, recipe_hash):
+            return replan_oversized()
+        if _tag_recipe_quota_blocked(backend_storage, recipe_hash):
+            return replan_oversized(quota=True)
+        raise
     if isinstance(outcome, JobHandle):
         return [], {}, True, None
     if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):

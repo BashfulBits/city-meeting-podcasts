@@ -777,6 +777,14 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   payloads; superseding a payload clears its exclusions. Already-failed jobs are not revived.
   Ambiguous quota refusals do not update size calibration or learned input ceilings.
 
+  **Tagger TPM recovery** extends route exclusion to the tagger's declared multi-model policy.
+  If every fitting route refuses with `own_tpm`, `tag_quota_recovery_exhausted` leaves the
+  producer's failure budget unchanged and fences the original recipe. The tagger may split it
+  at most twice into new child recipes; an unsplittable or twice-replanned refusal reports
+  `tag-llm-quota-replan-limit` for operator review. A quota refusal is not proof of an input-size
+  limit. Provider ceilings, paid-route policy, completed artifacts, and pipeline versions are
+  unchanged; existing completed work is not invalidated.
+
   **Provider response deadlines** use a distinct `provider_response_timeout` failure only after
   the provider request starts and the executor's own abort timer fires. Explicit HTTP 504/524
   server errors use the same timeout accounting. Two recorded deadlines

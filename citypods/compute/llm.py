@@ -333,7 +333,7 @@ class LLMDispatchTerminalError(LLMBackendError):
         self.terminal_reason = (
             terminal_reason
             if isinstance(terminal_reason, str)
-            and terminal_reason in {"route_retired", "unadmissible"}
+            and terminal_reason in {"route_retired", "unadmissible", "tag_quota_recovery_exhausted"}
             else None
         )
         # Safe Worker failure class only; provider response bodies are never persisted.
@@ -352,7 +352,10 @@ class LLMDispatchTerminalError(LLMBackendError):
 
     @property
     def structural(self) -> bool:
-        return self.terminal_reason is not None and self.terminal_catalog_digest is not None
+        return (
+            self.terminal_reason in {"route_retired", "unadmissible"}
+            and self.terminal_catalog_digest is not None
+        )
 
 
 class LLMDispatchMissingError(LLMDispatchTerminalError):

@@ -5430,7 +5430,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           `UPDATE jobs SET state='failed', terminal_reason=?, terminal_catalog_digest=?,
            updated_at=? WHERE id=? AND state='queued'`,
           timeoutExcludedRoutes(job).size > 0 ? "timeout_recovery_exhausted"
-            : quotaExcludedRoutes(job).size > 0 ? "quota_recovery_exhausted"
+            : quotaExcludedRoutes(job).size > 0
+              ? (job.purpose === "topic-tags:tagger"
+                ? "tag_quota_recovery_exhausted" : "quota_recovery_exhausted")
             : routes.length ? "unadmissible" : "route_retired", digest, now, job.id
         );
         for (const routeId of routes) {
@@ -6822,7 +6824,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           `UPDATE jobs SET state='failed', terminal_reason=?,
            terminal_catalog_digest=?, updated_at=? WHERE id=?`,
           timeoutExcludedRoutes(job).size > 0 ? "timeout_recovery_exhausted"
-            : quotaExcludedRoutes(job).size > 0 ? "quota_recovery_exhausted" : "unadmissible",
+            : quotaExcludedRoutes(job).size > 0
+              ? (job.purpose === "topic-tags:tagger"
+                ? "tag_quota_recovery_exhausted" : "quota_recovery_exhausted") : "unadmissible",
           structuralDigest, now, job.id
         );
         this._unindexQueuedJob(job);
@@ -7633,8 +7637,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ? JSON.stringify([...sizeExcluded])
           : (job.size_excluded_routes ?? null);
         // A Google TPM refusal does not prove oversize. Move this packet off the refusing
-        // project without spending its 5xx allowance or teaching a global size ceiling. Restrict
-        // this recovery to a single declared Gemma model, with no cross-model backups.
+        // project without spending its 5xx allowance or teaching a global size ceiling. Allow
+        // cross-model recovery for tagging; other purposes retain the single-model Gemma rule.
         const catalog = this._dispatchLimits();
         const leasedRoute = catalog.routes_by_id?.[job.lease_route_id];
         const leasedModel = modelForRouteId(job.lease_route_id, catalog);
@@ -7646,10 +7650,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const isQuotaRejection =
           (result.outcome === "retryable_error" || result.outcome === "terminal_error") &&
           uncountedAttempt === 0 && result.provider_status_code === 429 &&
-          result.failure_class === "own_tpm" && leasedRoute?.provider === "gemini" &&
-          String(leasedModel || "").startsWith("google/gemma-4-") &&
-          declaredModels.size === 1 && declaredModels.has(leasedModel) &&
-          (!Array.isArray(backupPolicy.backup_models) || backupPolicy.backup_models.length === 0);
+          result.failure_class === "own_tpm" && leasedRoute &&
+          ((leasedRoute.provider === "gemini" &&
+            String(leasedModel || "").startsWith("google/gemma-4-") &&
+            declaredModels.size === 1 && declaredModels.has(leasedModel) &&
+            (!Array.isArray(backupPolicy.backup_models) || backupPolicy.backup_models.length === 0)) ||
+           job.purpose === "topic-tags:tagger");
         const quotaExcluded = quotaExcludedRoutes(job);
         if (isQuotaRejection) quotaExcluded.add(job.lease_route_id);
         const nextQuotaExcludedRoutes = isQuotaRejection
@@ -7657,7 +7663,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // Full catalog, not the pause-filtered claim catalog or live ledger. An exhausted daily
         // quota or busy overflow slot means waiting in queue, not a terminal recovery failure.
         const quotaRoutesLeft = isQuotaRejection ? routesEligibleFor(
-          { ...job, quota_excluded_routes: nextQuotaExcludedRoutes }, catalog
+          { ...job, quota_excluded_routes: nextQuotaExcludedRoutes }, catalog, catalog,
+          this._sizingResolver(now, route => ({
+            ...route, ...this._getOrCreateRouteLedger(route.route_id, now, route),
+          }), new Map())
         ).length : 0;
         // Providers have different execution speeds. Two deadlines exhaust only this physical
         // route for this packet; try fitting siblings without consuming their timeout allowance.
@@ -7884,7 +7893,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
               ? "timeout_recovery_exhausted"
               : newState === "failed" &&
                 (isQuotaRejection || isSizeRejection && quotaExcluded.size > 0)
-              ? "quota_recovery_exhausted"
+              ? (job.purpose === "topic-tags:tagger"
+                  ? "tag_quota_recovery_exhausted" : "quota_recovery_exhausted")
               : isSizeRejection && newState === "failed" ? "input_too_large"
               : newState === "failed" && /^[a-z0-9_]{1,60}$/.test(result.failure_class || "")
                 ? `provider_${result.failure_class}` : null,

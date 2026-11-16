@@ -2464,7 +2464,7 @@ class TagsStage(LLMProducerStage):
                             )
                         queued_dispatch = bool(
                             dispatched
-                            and resolved_model != "payload-too-large"
+                            and resolved_model not in {"payload-too-large", "quota-replan-limit"}
                             and (
                                 not isinstance(ctx.tag_backend, BatchingDispatchBackend)
                                 or tag_work.has_prepared_jobs()
@@ -2483,12 +2483,16 @@ class TagsStage(LLMProducerStage):
                         )
                         if dispatched:
                             tag_work.defer(
-                                "blocked" if resolved_model == "payload-too-large" else "queued"
+                                "blocked"
+                                if resolved_model in {"payload-too-large", "quota-replan-limit"}
+                                else "queued"
                             )
                             completed_llm_recipe = None
                             stats.defer(
                                 "tag-llm-oversized"
                                 if resolved_model == "payload-too-large"
+                                else "tag-llm-quota-replan-limit"
+                                if resolved_model == "quota-replan-limit"
                                 else "tag-llm-dispatch",
                                 sample=ep.uid or ep.guid,
                             )
