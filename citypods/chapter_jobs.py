@@ -17,10 +17,11 @@ from citypods.chapter_locator import (
     LOCATOR_ROUTING_VERSION,
     PRODUCTION_LOCATOR_MODEL,
     PRODUCTION_LOCATOR_MODELS,
+    DuplicateLocatorUnitError,
     LocatorAgendaItem,
     LocatorUnit,
     build_production_locator_request,
-    validate_locator_response,
+    validate_locator_response_partial,
 )
 from citypods.chapter_titles import (
     AGENDA_BACKUP_AFTER_ATTEMPTS,
@@ -326,7 +327,15 @@ def finalize_locator_job(
     """Validate unit references and map selected units to durable boundary records."""
 
     content = _response_content(result.output)
-    anchors = validate_locator_response(content, agenda_item_count=len(agenda.items), units=units)
+    validation = validate_locator_response_partial(
+        content, agenda_item_count=len(agenda.items), units=units
+    )
+    anchors = validation.anchors
+    if validation.conflicts and not anchors:
+        # Nothing trustworthy survived (typically every item parked on one unit), so completing
+        # would publish an empty result for an episode the model simply failed to locate.
+        first = validation.conflicts[0]
+        raise DuplicateLocatorUnitError(first.unit.id, first.agenda_item_indices[:2])
     normalized = []
     for anchor in anchors:
         normalized.append(
@@ -355,7 +364,26 @@ def finalize_locator_job(
         prompt_version=LOCATOR_PROMPT_VERSION,
         recipe=result.recipe_hash,
         anchors=tuple(normalized),
-        diagnostics={"unit_count": len(units), "agenda_item_count": len(agenda.items)},
+        diagnostics={
+            "unit_count": len(units),
+            "agenda_item_count": len(agenda.items),
+            # Items the response put on a unit another item also claimed. They are left out of
+            # `anchors` rather than guessed between; recorded so a later pass can place them.
+            **(
+                {
+                    "unit_conflicts": [
+                        {
+                            "unit_id": conflict.unit.id,
+                            "start": conflict.unit.start,
+                            "agenda_item_indices": list(conflict.agenda_item_indices),
+                        }
+                        for conflict in validation.conflicts
+                    ]
+                }
+                if validation.conflicts
+                else {}
+            ),
+        },
     )
 
 

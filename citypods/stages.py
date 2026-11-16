@@ -9060,6 +9060,7 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
         )
         from citypods.chapter_locator import (
             DuplicateLocatorStartError,
+            DuplicateLocatorUnitError,
             LocatorInputOverCapError,
             build_locator_units,
         )
@@ -9392,6 +9393,23 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                         work.defer("blocked")
                     stats.defer("locator-repair-exhausted")
                     continue
+                if isinstance(exc, DuplicateLocatorUnitError):
+                    first, second = exc.agenda_item_indices
+                    stale["locator_retry_count"] = 1
+                    stale["locator_retry_hint"] = (
+                        "Every anchor in the previous answer was placed on transcript unit "
+                        f"{exc.unit_id} or collided there, including agenda items {first} and "
+                        f"{second}. One unit can start only one chapter. Return an anchor only "
+                        "for an item whose announcement or discussion you can quote from its own "
+                        "supplied unit, and never reuse a unit. Omit any item you cannot place "
+                        "that way; omitting is correct. Never invent or offset a timestamp. "
+                        "Return the complete corrected JSON object in assistant message content, "
+                        "matching the requested schema."
+                    )
+                    stale["locator_status"] = "repair_pending"
+                    ep.generated_agenda_candidates = stale
+                    stats.defer("locator-repair-pending")
+                    continue
                 if isinstance(exc, DuplicateLocatorStartError):
                     first, second = exc.agenda_item_indices
                     stale["locator_retry_count"] = 1
@@ -9449,6 +9467,12 @@ class ChapterBoundaryLocatorStage(LLMProducerStage):
                         "prompt_version": boundary.prompt_version,
                         "artifact_key": boundary_key,
                     }
+                )
+            unit_conflicts = boundary.diagnostics.get("unit_conflicts") or []
+            if unit_conflicts:
+                stats.quality(
+                    "locator-unit-conflict",
+                    sum(len(conflict["agenda_item_indices"]) for conflict in unit_conflicts),
                 )
             ep.generated_chapters = generated
             ep.generated_chapters_spec_hash = boundary.recipe
