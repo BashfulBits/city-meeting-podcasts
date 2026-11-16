@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Make the LLM work census agree with the stages it counts. Tags: an episode tagged under a
+previous or pooled lane model (including the retired Gemini 3.1 Flash Lite primary) is current, so
+~10,800 episodes stop reading `ready` while the stage never visits them (owner decision, GH#2686).
+Judge: `ready` now means `judge_episode_dirty`, not "has candidates", and an episode without a
+transcript is `blocked`. No jobs are submitted or re-queued by this change.
+
 - **Dispatch v2 Gemini oversize 429 and prohibited content 400 routing.** Classified Gemini 429
   responses with `input_token_count` or `inputtokensperminute` whose scaled input estimate meets
   or exceeds the route ceiling or TPM as `route_input_limit` (`gemini-input-quota-oversize`).
