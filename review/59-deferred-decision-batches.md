@@ -144,6 +144,32 @@ exclusion rule.
 
 ## Budget and latency
 
+Google's current GPU-job guidance recommends concurrent Cloud Storage downloads for large
+models. A follow-up experiment should use a Virginia private bucket, Direct VPC egress with
+`all-traffic`, Private Google Access, and sliced concurrent `gcloud storage cp` or the
+Cloud Storage transfer manager to download each large shard to the approved 20 GiB ephemeral
+disk. Verify the pinned object generations and SHA-256 digests before loading the local
+safetensors into GPU memory. Record download, local load, inference, GPU and host memory,
+task duration, and all incremental network, disk, build and storage costs. The third canary
+copied files through FUSE and did not perform parallel ranged downloads, so it does not measure
+this recommended configuration. Verify Google API connectivity with a bounded CPU-only job
+before consuming another GPU attempt.
+[GPU job guidance](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu-best-practices) ·
+[Sliced downloads](https://docs.cloud.google.com/storage/docs/sliced-object-downloads) ·
+[Direct VPC](https://docs.cloud.google.com/run/docs/configuring/vpc-direct-vpc)
+
+For comparison, a separate image can place the pinned model weights in their own stable layers
+and keep the image in a Virginia Artifact Registry repository. Cloud Run imports an image at
+deployment and uses optimized container streaming. This can eliminate a repeated application
+download, but Google recommends considering image-baked models primarily below 10 GB. GLiDE's
+15.9 GB checkpoint requires measurement of image build, initial import, subsequent cold starts,
+GPU loading and registry storage costs. Keep the runtime source and model revision pinned and
+preserve integrity checks. A direct-to-GPU streaming option exists in Google's GKE/vLLM
+documentation, but compatibility with GLiDE's custom typed readout and Cloud Run is unproven.
+[Container and model trade-offs](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu-best-practices) ·
+[Registry pricing](https://cloud.google.com/artifact-registry/pricing) ·
+[Run:ai streamer on GKE](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/run-ai-model-streamer)
+
 On November 15 the approved Iowa L4 quota remained zero, while Virginia granted one L4.
 Two regular Virginia canaries used the same 158 frozen decisions and a 300-second timeout.
 The first reached inference approximately 289 seconds after the model bucket mounted and timed
