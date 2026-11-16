@@ -20,10 +20,14 @@ from citypods.judging.decision_batch_transport import (
 )
 from scripts.eval_decision_batch import frozen_items
 
-MODEL_REVISION = "ab54df5acba0eebf7df45560ffdaacd64e32df3b"
+MODEL_REVISIONS = {
+    "glide-9b": "ab54df5acba0eebf7df45560ffdaacd64e32df3b",
+    "karpo-9b": "cd6f85bbf3669f66fb3f792cce6498c394b88bea",
+    "karpo-4b": "4e52f27899229934797e8e13174d9935a786836d",
+}
 LIMITS = {"max_rows": 1000, "max_bytes": 8 * 1024 * 1024, "max_estimated_tokens": 3_000_000}
 PILOT_ATTEMPT_MICRODOLLARS = 90_000
-PILOT_CAP_MICRODOLLARS = 3 * PILOT_ATTEMPT_MICRODOLLARS
+PILOT_CAP_MICRODOLLARS = 9 * PILOT_ATTEMPT_MICRODOLLARS
 
 
 def _active_windows(now: datetime) -> set[str]:
@@ -66,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     prepare = commands.add_parser("prepare")
     prepare.add_argument("--mode", choices=("regular", "delayed"), required=True)
+    prepare.add_argument("--model", choices=tuple(MODEL_REVISIONS), default="glide-9b")
     launch = commands.add_parser("launch")
     launch.add_argument("--manifest", required=True)
     launch.add_argument("--mode", choices=("regular", "delayed"), required=True)
@@ -84,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest = seal_manifest(
             store,
             [chunk],
-            model_revision=MODEL_REVISION,
+            model_revision=MODEL_REVISIONS[args.model],
             image_digest=os.environ["CITYPODS_IMAGE_DIGEST"],
             settings={"launch_mode": args.mode, "max_len": 4096, "token_budget": 16384},
             **LIMITS,

@@ -1,8 +1,16 @@
 # Deferred decision worker: offline preparation
 
 This directory supplies the gzip JSONL runner, cloud entrypoint and deployment templates.
-The maintainer approved up to three one-task canaries within $4/month gross, subject to project,
-billing and IAM verification. The GitHub workflow starts disabled.
+The maintainer approved nine one-task canaries within $4/month gross; seven have been used.
+The GitHub workflow starts disabled. A project budget does not automatically guarantee a spend cap.
+The completed canaries used regular jobs on a Virginia L4, not delayed jobs.
+
+On 158 frozen decisions, GLiDE produced 158 structurally valid results (133.92 seconds load,
+86.70 seconds inference, 17.63 GiB peak GPU). Karpo 4B produced 158 (100.44 seconds load,
+103.06 seconds inference, 10.82 GiB peak GPU), and Karpo 9B produced 158 (149.39 seconds load,
+109.34 seconds inference, 18.0 GiB peak GPU). Karpo 9B wall time was 285.53 seconds, close to
+the 300-second timeout. Structural validation is not a quality assessment. Both Karpo models
+share Qwen lineage with GLiDE; their upstream runtime was experimental and is not repo locked.
 
 ## Google Cloud project setup
 
@@ -15,7 +23,7 @@ billing and IAM verification. The GitHub workflow starts disabled.
    Security Token Service. Use a supported region with approved L4 quota for the job and model
    bucket. The canary allows `us-central1` and `us-east4`. Check the Cloud Run
    quota for non-zonal L4. Add a $4 project budget. Use a supported Cloud Run spend cap if
-   available and keep the three-attempt launcher guard regardless of budget type.
+   available and keep the nine-attempt launcher guard regardless of budget type.
    [GPU quotas](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu) ·
    [Cloud Run spend controls](https://docs.cloud.google.com/run/docs/jobs-cost-optimization)
 3. Create separate private regional buckets for batches and the pinned model. Enable uniform
@@ -52,7 +60,8 @@ billing and IAM verification. The GitHub workflow starts disabled.
    configured local path. A directory name is not evidence of model identity.
 3. Build with `docker build --platform linux/amd64 -f workers/decision-batch/Dockerfile .` from a
    clean checkout. For a remote build, stage only `pyproject.toml`, `README.md`, `citypods/`, the
-   two decision GPU constraints files and the worker's Dockerfile and Python sources. Use a
+   two decision GPU constraints files, `scripts/download_glide_weights.py`, and the worker's
+   Dockerfile and Python sources. Use a
    private registry and record the result's digest. The Docker build vendors just the pinned
    GLiDE source and attribution. The model bucket supplies the hash-verified weights at runtime.
    Before loading the weights, the worker checks CUDA 13.0, L4 BF16 and the FLA kernel import.
@@ -65,7 +74,7 @@ billing and IAM verification. The GitHub workflow starts disabled.
 5. Run `prepare` for each mode from the manual workflow. Record its manifest ID. `launch` checks
    the job definition and reserves $0.09 before calling Cloud Run. It prints the attempt ID
    before submission and the operation or execution name after acknowledgement. The ledger holds
-   one outstanding attempt and retains three attempts' worth of reservations even across months.
+   one outstanding attempt and retains nine attempts' worth of reservations even across months.
    Use one task, parallelism one, a 300-second timeout and zero task retries.
 6. Use `status` and Cloud Run **Executions** to find the fully qualified execution name. Run
    `collect` after a matching execution succeeds. Use `settle-failed` only after the matching

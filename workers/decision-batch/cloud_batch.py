@@ -56,6 +56,7 @@ def run_cloud(
     execution_id: str,
     image_digest: str,
     load_model: Any,
+    model_revision: str = MODEL_REVISION,
 ) -> dict[str, Any]:
     """Read pinned inputs, claim one attempt and publish its complete gzip result once."""
     task_started_at = datetime.now(UTC).isoformat()
@@ -90,7 +91,7 @@ def run_cloud(
     if (
         type(manifest.get("schema_version")) is not int
         or manifest["schema_version"] != 1
-        or manifest.get("model_revision") != MODEL_REVISION
+        or manifest.get("model_revision") != model_revision
         or manifest.get("image_digest") != image_digest
         or not isinstance(image_digest, str)
         or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_digest)
@@ -203,7 +204,11 @@ def main() -> None:
     execution_id = os.environ["CLOUD_RUN_EXECUTION"]
     image_digest = os.environ["CITYPODS_IMAGE_DIGEST"]
     model_dir = Path(os.environ["CITYPODS_MODEL_DIR"])
-    if not model_dir.is_dir():
+    manifest_path = os.environ.get("CITYPODS_MODEL_MANIFEST")
+    if manifest_path:
+        if not model_dir.parent.is_dir():
+            raise ValueError("model cache volume must exist locally")
+    elif not model_dir.is_dir():
         raise ValueError("model directory must exist locally")
 
     def load_model(settings: dict[str, Any]) -> tuple[Any, type[Exception]]:
@@ -220,6 +225,15 @@ def main() -> None:
             and callable(chunk_gated_delta_rule)
         ):
             raise RuntimeError("expected an L4 BF16 CUDA 13.0 runtime with flash-linear-attention")
+        from scripts.download_glide_weights import download
+
+        if manifest_path:
+            model_manifest = json.loads(Path(manifest_path).read_text())
+            if model_manifest.get("revision") != MODEL_REVISION:
+                raise ValueError("model download manifest revision mismatch")
+            print("decision batch model download started", flush=True)
+            timings = download(model_manifest, model_dir, metadata_access_token())
+            print(json.dumps({"model_download": timings}), flush=True)
         return Glide.from_pretrained(
             str(model_dir.resolve()),
             vision=False,

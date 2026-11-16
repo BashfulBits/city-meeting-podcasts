@@ -144,16 +144,41 @@ exclusion rule.
 
 ## Budget and latency
 
+On November 15 in Chicago, a CPU-only Virginia transfer probe fetched all 15,895,578,201
+model bytes over Direct VPC and verified their SHA-256 hashes. It measured 75.99 seconds to
+download and 79.69 seconds to hash. The subsequent L4 canary used the same pinned generations,
+a 20 GiB ephemeral disk and eight parallel ranged readers. It downloaded in 43.21 seconds,
+hashed in 45.02 seconds, initialized in 133.92 seconds total, and ran inference in 86.70 seconds.
+It produced 158 structurally valid results from 158 questions. Peak GPU allocation was
+18,933,681,152 bytes and peak host RSS was 16,867,889,152 bytes against a 16 GiB host limit.
+Cold-start and memory headroom require further measurement before recurring use. At the Iowa/
+Virginia regular L4 list rate, 220.64 seconds of processing implies about $0.0412 in GPU
+charges, with startup/shutdown, CPU, RAM, disk, build, storage and transfer charges additional.
+Actual billed cost and labeled accuracy are pending. A preceding retry failed on a Python
+module-path packaging error and was settled.
+
+Karpo 9B and 4B are Qwen3.5 family models with respective published BF16 weights of 16.8 GB
+and 9.1 GB. Both completed a regular Virginia L4 canary over the same 158 frozen decisions. Karpo 4B
+returned 158 structurally valid results, with 100.44 seconds of load, 103.06 seconds of
+inference and 10.82 GiB peak GPU memory. Karpo 9B also returned 158 structurally valid results,
+with 149.39 seconds of load, 109.34 seconds of inference and 18.0 GiB peak GPU memory. Its
+285.53-second wall time leaves little margin under the 300-second task timeout. Structural
+validation does not measure decision quality or calibration. Their native reader and
+model-specific decision head require a separate experimental upstream runtime that is not
+locked by this repository.
+They share the `qwen` producer family with GLiDE and Perplexity Decider for the existing
+independence rule. Karpo's 31B and 12B BF16 weights exceed or nearly fill L4 VRAM before
+inference overhead. The maintainer limits live experiments to candidates with a credible
+24 GB L4 path.
+[Karpo 9B](https://huggingface.co/MachinePulseAI/karpo-decision-9B) ·
+[Karpo 4B](https://huggingface.co/MachinePulseAI/karpo-decision-4B)
+
 Google's current GPU-job guidance recommends concurrent Cloud Storage downloads for large
-models. A follow-up experiment should use a Virginia private bucket, Direct VPC egress with
-`all-traffic`, Private Google Access, and sliced concurrent `gcloud storage cp` or the
-Cloud Storage transfer manager to download each large shard to the approved 20 GiB ephemeral
-disk. Verify the pinned object generations and SHA-256 digests before loading the local
-safetensors into GPU memory. Record download, local load, inference, GPU and host memory,
-task duration, and all incremental network, disk, build and storage costs. The third canary
-copied files through FUSE and did not perform parallel ranged downloads, so it does not measure
-this recommended configuration. Verify Google API connectivity with a bounded CPU-only job
-before consuming another GPU attempt.
+models. The successful canaries used a Virginia private bucket, Direct VPC egress with
+`all-traffic`, Private Google Access, and concurrent ranged downloads to a 20 GiB ephemeral
+disk. They verified pinned object generations and SHA-256 digests before loading. The earlier
+FUSE-copy canary did not measure this configuration. Actual incremental network, disk, build,
+and storage charges still need to be reconciled before recurring use.
 [GPU job guidance](https://docs.cloud.google.com/run/docs/configuring/jobs/gpu-best-practices) ·
 [Sliced downloads](https://docs.cloud.google.com/storage/docs/sliced-object-downloads) ·
 [Direct VPC](https://docs.cloud.google.com/run/docs/configuring/vpc-direct-vpc)
@@ -183,9 +208,10 @@ The third canary copied the model from the mounted bucket to a 20 GiB ephemeral 
 loading. Its copy did not finish before the 300-second timeout. It used buffered FUSE reads and
 four file-copy workers, with a worker image derived from the second canary image. The logs show
 the copy exceeded 264 seconds and do not identify a specific stall within it. The third attempt
-is settled. All three authorized canary reservations are spent. Evaluate a different model
-delivery method and current project charges before requesting additional runs. No tag or moment
-qualification is complete.
+is settled. The maintainer subsequently authorized six additional GPU attempts, for nine total
+under the $4 gross monthly project budget. Seven attempts have been used. The successful GLiDE
+and Karpo runs above used regular jobs only; no delayed-mode comparison or tag or moment
+quality qualification is complete. Check project charges before another attempt.
 
 On November 15, 2026, Cloud Run rejected the first job deployment at the non-zonal L4 quota
 check. Cloud Quotas accepted the Iowa request for one L4 and denied it before any task was
@@ -254,14 +280,15 @@ verify that the pilot SKUs actually draw the credit on the billing report.
 [Google Developer Program benefits](https://developers.google.com/profile/help/benefits)
 
 Use the maintainer's **$4/month gross envelope including ancillary GCP costs**.
-Make the first live runs manual. An example canary envelope is up to three L4 task attempts,
-each 300 seconds, with zero task retries, about $0.27 at the higher regular list rate. Derive the
+Keep live runs manual. The authorized canary envelope is nine L4 task attempts, seven used,
+each with a 300-second timeout and zero task retries. Derive the
 recurring attempt allowance only after estimating ancillary spend and measuring runtime. Before a
 launch, reserve `max(60 s, task timeout) × gross rate × task count × max attempts`, including
 ambiguous submissions until reconciled. Count manual launches through the same ledger. Reserve
 across billing-window boundaries for jobs that may start in the next window. Use Cloud Billing
 alerts as a secondary signal and check spend-cap eligibility for this project. Provider rates,
-billing data, and ancillary charges can move, so the workflow allowance bounds its own launches.
+billing data, and ancillary charges can move, so the workflow allowance bounds its own launches;
+the project budget does not automatically guarantee a spending cap.
 [Billing budgets](https://docs.cloud.google.com/billing/docs/how-to/budgets) ·
 [Cloud Run spend controls](https://docs.cloud.google.com/run/docs/jobs-cost-optimization)
 
@@ -384,9 +411,9 @@ The first PR exercises A and the explicit-manifest canary path in B and C offlin
 runtime dependency and model pins, and the two launch modes. The `decision_batch_pilot` CLI
 prepares the existing frozen set, reserves a launch, and collects a generation-pinned result.
 The Cloud Run gate starts off and accepts only manual dispatches on main with a protected
-GitHub environment. The maintainer authorized three one-task L4 attempts under $4/month once
-project, credit and IAM are verified. The launcher holds three $0.09 reservations for this
-canary, including ambiguous submissions, and requires the one-task Iowa job configuration.
+GitHub environment. The maintainer authorized nine one-task L4 attempts under $4/month gross; seven have been used.
+The launcher reserves $0.09 per attempt, including ambiguous submissions. The completed canaries
+used the one-task Virginia L4 job configuration.
 
 The offline replay establishes contract and state-machine behavior. The Linux GPU lock is
 separate from ASR and preserves the upstream CUDA 13.0 baseline. Image and GPU canary

@@ -8,6 +8,7 @@ RUN python -m pip install --no-cache-dir --only-binary=:all: \
 
 COPY pyproject.toml README.md ./
 COPY citypods/ citypods/
+COPY scripts/download_glide_weights.py /app/scripts/download_glide_weights.py
 COPY workers/decision-batch/cloud_batch.py workers/decision-batch/run_batch.py workers/decision-batch/
 RUN python -m pip install --no-cache-dir --no-deps --no-build-isolation . && \
     python -m pip check
@@ -17,7 +18,7 @@ RUN python -c 'from huggingface_hub import snapshot_download; snapshot_download(
     "fastino/GLiDE-9B", revision="ab54df5acba0eebf7df45560ffdaacd64e32df3b", \
     allow_patterns=["glide/*", "LICENSE", "NOTICE", "licenses/*"], local_dir="/opt/glide-src")' && \
     test -f /opt/glide-src/glide/model.py
-ENV PYTHONUNBUFFERED=1 PYTHONPATH=/opt/glide-src HF_HUB_OFFLINE=1
+ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app:/opt/glide-src HF_HUB_OFFLINE=1
 RUN python -c 'from glide.model import Glide; from citypods.judging import decision_batch_cloud'
 
 ENTRYPOINT ["python", "workers/decision-batch/cloud_batch.py"]
