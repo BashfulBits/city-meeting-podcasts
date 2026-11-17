@@ -18,6 +18,7 @@ from citypods.judging.decision_batch import canonical_json
 from citypods.judging.decision_batch_transport import ObjectStore, PreconditionFailed
 
 MODEL_REVISION = "ab54df5acba0eebf7df45560ffdaacd64e32df3b"
+_cgroup_memory = None
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ATTEMPT = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
@@ -178,6 +179,8 @@ def run_cloud(
         output = directory / "output.gz"
         telemetry = run_batch(source, output, lambda: load_model(settings))
         telemetry["task_started_at"] = task_started_at
+        if _cgroup_memory is not None:
+            telemetry["cgroup_memory"] = _cgroup_memory.snapshot()
         _admitted(store, manifest_id, attempt_id)
         data = output.read_bytes()
         generation = _immutable(store, result_key, data)
@@ -196,6 +199,18 @@ def run_cloud(
         return completion
 
 
+def _matches_gpu(gpu_type: str, device_name: str) -> bool:
+    if gpu_type == "L4":
+        return device_name in ("L4", "NVIDIA L4")
+    if gpu_type == "RTX_PRO_6000":
+        return bool(
+            re.fullmatch(
+                r"NVIDIA RTX PRO 6000(?: Blackwell(?: Server| Workstation)? Edition)?", device_name
+            )
+        )
+    raise ValueError("unsupported configured GPU type")
+
+
 def main() -> None:
     from citypods.judging.decision_batch_cloud import GCSObjectStore, metadata_access_token
 
@@ -203,9 +218,18 @@ def main() -> None:
     attempt_id = os.environ["DECISION_BATCH_ATTEMPT_ID"]
     execution_id = os.environ["CLOUD_RUN_EXECUTION"]
     image_digest = os.environ["CITYPODS_IMAGE_DIGEST"]
-    model_dir = Path(os.environ["CITYPODS_MODEL_DIR"])
+    model_dir = Path(os.environ.get("CITYPODS_MODEL_DIR", "/models/glide-9b"))
+    slice_manifest_path = os.environ.get("CITYPODS_MODEL_SLICE_MANIFEST")
+    slice_manifest = None
+    if slice_manifest_path:
+        from citypods.judging.glide_stream import validate_manifest as validate_slice_manifest
+
+        slice_manifest = json.loads(Path(slice_manifest_path).read_text())
+        validate_slice_manifest(slice_manifest)
     manifest_path = os.environ.get("CITYPODS_MODEL_MANIFEST")
     model_manifest = None
+    if slice_manifest_path and manifest_path:
+        raise ValueError("choose one model manifest mode")
     if manifest_path:
         from scripts.download_glide_weights import validate_destination, validate_manifest
 
@@ -214,7 +238,7 @@ def main() -> None:
         if model_manifest["revision"] != MODEL_REVISION:
             raise ValueError("model download manifest revision mismatch")
         validate_destination(model_dir)
-    elif not model_dir.is_dir():
+    elif slice_manifest is None and not model_dir.is_dir():
         raise ValueError("model directory must exist locally")
 
     def load_model(settings: dict[str, Any]) -> tuple[Any, type[Exception]]:
@@ -223,14 +247,27 @@ def main() -> None:
         from glide.model import Glide
         from glide.prompt import RequestError
 
+        gpu_type = os.environ.get("CITYPODS_DECISION_GPU", "L4")
+        device_name = torch.cuda.get_device_name() if torch.cuda.is_available() else ""
+        gpu_matches = _matches_gpu(gpu_type, device_name)
         if not (
             torch.cuda.is_available()
             and torch.cuda.is_bf16_supported()
             and torch.version.cuda == "13.0"
-            and "L4" in torch.cuda.get_device_name()
+            and gpu_matches
             and callable(chunk_gated_delta_rule)
         ):
-            raise RuntimeError("expected an L4 BF16 CUDA 13.0 runtime with flash-linear-attention")
+            raise RuntimeError("unexpected GPU or unsupported BF16 CUDA 13.0 runtime")
+        if slice_manifest is not None:
+            from citypods.judging.glide_stream import load_glide
+
+            worker_count = os.environ.get("CITYPODS_MODEL_STREAM_WORKERS", "8")
+            if not re.fullmatch(r"[0-9]{1,2}", worker_count) or not 1 <= int(worker_count) <= 32:
+                raise ValueError("invalid model stream worker count")
+            return load_glide(
+                slice_manifest, metadata_access_token(), settings, workers=int(worker_count)
+            ), RequestError
+
         from scripts.download_glide_weights import download
 
         if model_manifest is not None:
@@ -249,4 +286,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from citypods.judging.cgroup_memory import CgroupMemory
+
+    _cgroup_memory = CgroupMemory()
+    _cgroup_memory.start()
+    try:
+        main()
+    finally:
+        print(json.dumps({"cgroup_memory_final": _cgroup_memory.stop()}), flush=True)

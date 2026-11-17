@@ -37,11 +37,11 @@ MAX_BYTES = 20 * 1024**3
 MAX_OBJECTS = 1000
 
 
-def validate_manifest(manifest):
+def validate_manifest(manifest, *, allowed_bucket=BUCKET, allowed_location=LOCATION):
     if (
         not isinstance(manifest, dict)
-        or manifest.get("bucket") != BUCKET
-        or manifest.get("location") != LOCATION
+        or manifest.get("bucket") != allowed_bucket
+        or manifest.get("location") != allowed_location
         or manifest.get("revision") not in MODEL_PREFIXES
     ):
         raise ValueError("unexpected bucket, location, or revision")

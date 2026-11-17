@@ -373,3 +373,22 @@ def test_glide_rejects_bad_model_manifest_before_cloud_claim(tmp_path, monkeypat
     monkeypatch.setattr(cloud, "run_cloud", lambda *args: pytest.fail("claimed batch"))
     with pytest.raises(ValueError, match="unexpected bucket"):
         cloud.main()
+
+
+def test_stream_gpu_type_guard(monkeypatch):
+    cloud = _cloud_module(monkeypatch)
+    assert cloud._matches_gpu("L4", "NVIDIA L4")
+    assert cloud._matches_gpu("RTX_PRO_6000", "NVIDIA RTX PRO 6000 Blackwell Server Edition")
+    assert not cloud._matches_gpu("L4", "NVIDIA RTX PRO 6000 Blackwell Server Edition")
+    assert not cloud._matches_gpu("RTX_PRO_6000", "NVIDIA RTX PRO 6000 fake")
+    with pytest.raises(ValueError, match="unsupported"):
+        cloud._matches_gpu("other", "NVIDIA L4")
+
+
+def test_stream_manifest_revision_matches_batch_revision(monkeypatch):
+    from citypods.judging.glide_stream import REVISION, validate_manifest
+
+    cloud = _cloud_module(monkeypatch)
+    assert cloud.MODEL_REVISION == REVISION
+    with pytest.raises(ValueError, match="revision"):
+        validate_manifest({"bucket": "test-bucket", "revision": "other"})

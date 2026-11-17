@@ -116,7 +116,8 @@ review/59 for the comparison, integrity caveat, and pending billing reconciliati
 The 6-CPU/24-GiB FUSE and 4-CPU/16-GiB authenticated streaming prototypes each returned 158
 structurally valid results. Streaming used pinned object generations and verified 64-MiB slice
 hashes, with a kernel cgroup peak of 2,598,539,264 bytes and 206.03 seconds total processing.
-It remains an experimental image, not the repository worker. Numerical outputs differed slightly
+That run used an experimental image; the opt-in repository adapter is described below. Numerical
+outputs differed slightly
 between configurations, including one NOUL threshold crossing against the 6-CPU FUSE run;
 review/59 records the comparison and its limits. Charges remain pending billing reconciliation.
 
@@ -126,3 +127,30 @@ seconds and total processing was 177.362 seconds. Kernel cgroup peak was 2,600,7
 GPU allocator peak was 18,936,318,976 bytes. This is one paired observation. The ledger includes
 a $0.09 reservation for this execution, not a measured charge. The original job spec was restored
 and verified. See review/59 for integrity, test and billing details.
+
+### Authenticated streaming experiment
+
+The worker supports an opt-in authenticated streaming path through
+`CITYPODS_MODEL_SLICE_MANIFEST`, a local path to a trusted slice manifest. It is mutually
+exclusive with `CITYPODS_MODEL_MANIFEST`; with neither, the existing local-directory path
+continues to apply. The worker still needs access to the pinned model-code revision in the image.
+`CITYPODS_DECISION_GPU` selects `L4` (the default) or `RTX_PRO_6000`; the runtime also checks
+its actual GPU name, BF16 support and CUDA version before loading. This option does not provision
+or select a GPU. Set `CITYPODS_MODEL_STREAM_WORKERS` to an integer from 1 through 32
+(default 8) to bound concurrent range reads. One RTX PRO 6000 canary passed structural
+validation; recurring or production use still requires the qualification described in review/59.
+
+Generate a candidate manifest offline from a trusted, generation-pinned full-object manifest
+and matching local files:
+
+```sh
+python -m scripts.derive_glide_slices trusted-objects.json /path/to/model > candidate-slices.json
+```
+
+The derivation verifies every file's full SHA-256 and size before returning slice hashes. The
+input manifest's authenticity and the mapping between it and the cloud object generations must
+be independently established; the output must be reviewed and protected as a trust root before
+use. The loader verifies each slice before copying it and discards a partial model after a failure.
+See [streaming package documentation](../../citypods/weight_streaming/README.md) for the adapter
+contract and memory bounds. L4 and RTX PRO 6000 canaries passed structural validation; those
+results do not by themselves establish model quality or qualify recurring use.

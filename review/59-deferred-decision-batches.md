@@ -177,8 +177,8 @@ against a 17,179,869,184-byte limit; process peak RSS was 1,757,290,496 bytes an
 peak was 18,936,318,976 bytes. The streaming prototype fetched generation-pinned objects in four
 bounded concurrent readers, checked trusted 64-MiB slice hashes before copying weights to GPU,
 and verified small files by SHA-256. Its slice manifest was derived from a previous whole-object
-SHA-256 verification and baked into the immutable experimental image. This custom loader is not
-promoted into the repository worker. GPU allocator peaks do not include all driver allocations.
+SHA-256 verification and baked into the immutable experimental image. The prototype was subsequently adapted into the repository worker as an experimental,
+opt-in path described below. GPU allocator peaks do not include all driver allocations.
 
 A separately authorized eight-reader streaming run used the same inputs and settings; its sealed
 manifest differed only in the image digest. All 158 results, including all numerical values,
@@ -196,6 +196,116 @@ generation and SHA-256 and created receipt
 `ce25878dc25173fbfa6204b7f56aac0d74ad4f8664a9fd560ad7125ea1ad5faf`. The original Cloud Run job
 spec was restored and verified. Before launch the $4 monthly gross project budget displayed $0.55
 before credits, but billing can lag recent usage; actual incremental charges remain pending.
+
+Further single-run comparisons used the same 158 frozen decisions, a Virginia L4, 4 CPUs,
+16 GiB host memory, 64 MiB slices and otherwise matched inference settings. Each completed within
+a 300-second timeout without task retries or a quota failure:
+
+| Loader | Load | Inference | Kernel cgroup peak | Valid results |
+|---|---:|---:|---:|---:|
+| Matched eight-reader reference (`kp67r`) | 95.664 s | 88.289 s | 2,599,170,048 bytes | 158/158 |
+| Sixteen readers (`99b4c`, same image) | 92.849 s | 90.538 s | 2,593,357,824 bytes | 158/158 |
+| Eight readers, pinned double-buffer prototype (`vm9fn`) | 134.045 s | 87.821 s | 2,704,986,112 bytes | 158/158 |
+| Instrumented repository reference (`bp2jg`) | 102.725 s | 91.841 s | 2,603,671,552 bytes | 158/158 |
+| 16-slice prefetch prototype (`nlff9`) | 92.480 s | 88.988 s | 2,599,157,760 bytes | 158/158 |
+
+The matched eight- and sixteen-reader runs used the same image; sixteen readers reduced observed
+load by 2.815 seconds in this pair, while inference took 2.249 seconds longer. They had 153
+bit-identical results; the five remaining outputs differed only in numerical confidence or NOUL
+probability, with no answer-type change or 0.5 NOUL threshold crossing. The largest differences were
+0.0077262 and 0.0038631, respectively. The pinned double-buffer prototype matched all 158 results
+from the sixteen-reader run but did not improve load in this observation. The prefetch prototype
+matched all 158 results from the instrumented repository reference. Its conservative raw-range
+buffer bound was 25 slices (1.5625 GiB) plus overhead; this is a design bound, not measured
+resident memory. All reported GPU allocator peaks were 18,936,318,976 bytes; those peaks exclude
+other driver allocations. These are single samples, with startup variability and synchronous instrumentation, so none establishes a causal
+speedup or justifies a production default. The prototypes are not part of the repository worker.
+
+After final-image L4 and RTX collection, the guarded ledger recorded 21 attempts and $2.34 in gross
+reservations, including two $0.30 RTX reserves, against a 23-attempt and $2.40 cap, with no
+outstanding execution. Each L4 attempt reserved $0.09.
+Reservations are accounting ceilings, not measured charges; actual incremental compute, network,
+storage and build charges remain pending billing reconciliation. No quota increase is implied by
+these experiments, and capacity or later availability is not guaranteed.
+
+A paired prefetch comparison varied only the prototype's authenticated slice window (16 versus
+32 slices), using eight range readers and the same L4 envelope above. The 16-slice run (`nlff9`)
+loaded in 92.48 seconds with 2,599,157,760 bytes peak cgroup memory; the 32-slice run (`tgx47`)
+loaded in 100.60 seconds with 3,633,790,976 bytes peak. Inference was 88.99 versus 88.44 seconds;
+all 158 rows matched exactly. The 32-slice run showed no speedup and used about 0.96 GiB more
+peak cgroup memory in this single comparison. Startup and network variability and synchronized
+shard timing probes limit attribution. Both jobs were restored and verified. These prototypes are
+not the repository loader and do not justify a production buffer choice.
+
+A repository-integrated streaming canary on November 16 used the same 158 inputs, L4, 4 CPUs,
+16 GiB and eight readers. The immutable image was
+`sha256:56bd1a905b8fc8e34b451a088733dfb2dbd554beecbb0cc33fc924bf038e0c1f` and the execution was
+`citypods-decision-batch-h65zr`. Its independently authenticated manifest pinned object generations
+and slice hashes. Load was 93.15 seconds, inference 87.59 seconds and local processing 180.76
+seconds. All 158 outputs passed structural validation; peak kernel cgroup memory was 2,602,553,344
+bytes and GPU allocator peak was 18,936,318,976 bytes. Against the matched eight-reader prototype,
+153 outputs were identical; five differed only in NOUL probabilities or confidence, without a
+0.5 classification crossing. The largest absolute changes were 0.003864 and 0.007727 respectively.
+The variation's cause is unknown. Collection verified the output and produced receipt
+`a10cfd37ffdbf25cc4b5a6b78a69c9f1d3e19e28af8f88a125c82b6bafa7cac4`; the original job was restored
+and verified. Incremental billing remains pending. This is a single L4 integration observation,
+not a production or quality qualification. RTX PRO 6000 validation was subsequently run as
+described below. A subsequent parser hardening change rejects non-UTF-8 headers; that source
+change was not in this initial L4 canary image.
+
+The post-review repository image
+`sha256:1bcb37c637f10b61c2e2e632a592a766f845d646774ad46d6f4502fab1470624` contains the UTF-8,
+odd-byte BF16 copy, failed-load cleanup and cgroup fallback fixes. Independent CPU smoke tested
+module paths, both regional manifest hashes and the parser and byte-copy cases. On the same L4
+inputs and envelope, execution `citypods-decision-batch-htq4r` returned 158/158 structurally valid
+results, all bit-identical to the earlier repository L4 canary. Load was 104.082 seconds,
+inference 88.177 seconds, local processing 192.279 seconds, and kernel cgroup peak 2,602,921,984
+bytes. Collection verified the output and produced receipt
+`dad3152e710ad3ebb426abf56b098fe184e30bc6309fb490ab1624da1ec84a1e`; the shared job was restored
+and its full template verified. This is one successful final-image L4 observation, not a quality
+or recurring-production qualification.
+
+A subsequent Iowa RTX PRO 6000 canary used repository image
+`sha256:bc6937f5687e795b08a041349e9abe82a8931830f4e9bd783281c455095f9842`, including the
+post-L4 parser hardening. The image passed CPU smoke tests for its actual import paths, both
+embedded regional manifest hashes and non-UTF-8 header rejection. The Iowa manifest bound each
+object to independently verified generation and slice hashes; the regional manifest must remain
+an authenticated trust root. With 20 CPUs, 80 GiB host memory and the same 158 decisions, execution
+`citypods-decision-batch-rtx-n9qbq` loaded in 80.24 seconds, inferred in 38.68 seconds and returned
+158 structurally valid results. The kernel cgroup peak was 2,741,825,536 bytes. Collection verified
+the output and produced receipt
+`364042926c57ca8f40d82a70497819d4d938529c3030a8ffee25deeb1d437467`. The L4 and RTX envelopes differ
+in accelerator and host resources, so this is not an isolated GPU-speed comparison. Compared with
+the repository L4 canary, 32 of 158 answers were bit-identical. None of the 122
+NOUL decisions crossed 0.5, and none of the 12 choice or 24 integer score decisions changed.
+Maximum absolute NOUL and confidence changes were 0.00781 and 0.01562, respectively; the cause
+is unestablished. Quality and calibration and actual billed costs require separate analysis;
+structural validity alone does not establish model accuracy. This remains an experimental path.
+Subsequent source changes synchronized cgroup fallback updates, supported odd byte boundaries in
+the BF16 sink, and cleared retained tensor owners on load failure. Those changes have offline tests
+and were absent from the earlier GPU images. The hardened L4 and RTX canaries tested the rebuilt
+source as described here.
+
+A second Iowa RTX PRO 6000 canary tested the same post-review image
+`sha256:1bcb37c637f10b61c2e2e632a592a766f845d646774ad46d6f4502fab1470624` as the hardened
+L4 run, using the Iowa generation-pinned manifest and the same 20-CPU, 80-GiB envelope as the
+first RTX run. Execution `citypods-decision-batch-rtx-wkpqh` returned 158 structurally valid
+results, loading in 61.06 seconds and inferring in 37.96 seconds, with 99.03 seconds total local
+processing. Peak kernel cgroup memory was 2,744,397,824 bytes and GPU allocator peak was
+18,961,353,728 bytes. Collection produced receipt
+`aff56035217d5b27c206d929a0a5b9d2964db36e697b990140463f6bffe88223`. Compared with hardened L4,
+32 of 158 rows were bit-identical; no NOUL, choice or integer-score classifications changed.
+Maximum absolute NOUL and confidence differences were 0.00781 and 0.01562, respectively.
+The different host and GPU envelopes and single observations do not isolate performance causes
+or establish quality or calibration; actual billed costs remain pending reconciliation.
+
+The reusable `citypods/weight_streaming` package separates generation-pinned, authenticated GCS
+range reads and safetensors validation from a model-specific sink. `citypods/judging/glide_stream`
+is an opt-in GLiDE adapter, with independently authenticated manifests, synchronous copies, and
+partial-model disposal on failure. Slice hashes can be derived offline only after validating files
+against trusted whole-object hashes; the manifest itself remains a trust root. The existing local
+model path remains the default. This experimental path needs further validation before recurring
+or production use, including cost, failure recovery and model quality assessment.
 
 Against the original 4-CPU FUSE results, streaming returned 153 of 158 results bit-identically.
 The other five differed in NOUL probability or confidence; maximum absolute differences were
