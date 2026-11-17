@@ -8,8 +8,11 @@ RUN python -m pip install --no-cache-dir --only-binary=:all: \
 
 COPY pyproject.toml README.md ./
 COPY citypods/ citypods/
+COPY config/fla/ config/fla/
+COPY config/gpu_profiles.json config/gpu_profiles.json
 COPY scripts/download_glide_weights.py /app/scripts/download_glide_weights.py
-COPY workers/decision-batch/cloud_batch.py workers/decision-batch/run_batch.py workers/decision-batch/
+COPY workers/decision-batch/cloud_batch.py workers/decision-batch/run_batch.py \
+    workers/decision-batch/warmup.py workers/decision-batch/
 RUN python -m pip install --no-cache-dir --no-deps --no-build-isolation . && \
     python -m pip check
 

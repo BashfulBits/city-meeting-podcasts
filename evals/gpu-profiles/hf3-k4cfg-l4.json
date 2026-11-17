@@ -1,0 +1,102 @@
+{
+ "gpu": "NVIDIA L4",
+ "kernel_fallbacks": [
+  "causal_conv1d_fn"
+ ],
+ "load_errors": [],
+ "load_seconds": 106.8,
+ "loader": "AutoModelForImageTextToText missing=0 unexpected=0",
+ "logits_to_keep": true,
+ "model_id": "hf3-k4cfg-l4",
+ "params_b": 4.54,
+ "records": [
+  {
+   "micro_batches": [
+    {
+     "child_cpu_seconds": 0.05,
+     "cold_seconds": 4.6908,
+     "new_cache_entries": 3,
+     "padded_tokens": 16384,
+     "rows": 64,
+     "warm_seconds": 4.0803,
+     "width": 256
+    },
+    {
+     "child_cpu_seconds": 0.03,
+     "cold_seconds": 4.0957,
+     "new_cache_entries": 1,
+     "padded_tokens": 16384,
+     "rows": 32,
+     "warm_seconds": 4.1024,
+     "width": 512
+    },
+    {
+     "child_cpu_seconds": 0.02,
+     "cold_seconds": 4.1815,
+     "new_cache_entries": 1,
+     "padded_tokens": 16384,
+     "rows": 16,
+     "warm_seconds": 4.187,
+     "width": 1024
+    },
+    {
+     "child_cpu_seconds": 0.04,
+     "cold_seconds": 4.4513,
+     "new_cache_entries": 2,
+     "padded_tokens": 16384,
+     "rows": 8,
+     "warm_seconds": 4.34,
+     "width": 2048
+    },
+    {
+     "child_cpu_seconds": 0.06,
+     "cold_seconds": 4.3749,
+     "new_cache_entries": 2,
+     "padded_tokens": 16200,
+     "rows": 54,
+     "warm_seconds": 4.1793,
+     "width": 300
+    },
+    {
+     "child_cpu_seconds": 0.01,
+     "cold_seconds": 4.1825,
+     "new_cache_entries": 1,
+     "padded_tokens": 16100,
+     "rows": 23,
+     "warm_seconds": 4.1754,
+     "width": 700
+    },
+    {
+     "child_cpu_seconds": 0.03,
+     "cold_seconds": 3.9442,
+     "new_cache_entries": 1,
+     "padded_tokens": 15000,
+     "rows": 10,
+     "warm_seconds": 3.9165,
+     "width": 1500
+    },
+    {
+     "child_cpu_seconds": 0.02,
+     "cold_seconds": 4.0475,
+     "new_cache_entries": 1,
+     "padded_tokens": 15000,
+     "rows": 5,
+     "warm_seconds": 4.0189,
+     "width": 3000
+    }
+   ],
+   "oom": false,
+   "peak_gpu_gib": 14.14,
+   "token_budget": 16384
+  }
+ ],
+ "runtime": {
+  "causal-conv1d": null,
+  "fla-core": "0.5.2",
+  "flash-linear-attention": "0.5.2",
+  "torch": "2.14.0",
+  "transformers": "5.17.0",
+  "triton": "3.8.0"
+ },
+ "weights_gib": 8.46
+}

@@ -8,12 +8,15 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from run_batch import MAX_COMPRESSED_BYTES, MAX_EXPANDED_BYTES, MAX_ROWS, _read_requests, run_batch
 
+from citypods.gpu_launch import kernel_cache
+from citypods.gpu_launch.profiles import GPU_CLASSES
 from citypods.judging.decision_batch import canonical_json
 from citypods.judging.decision_batch_transport import ObjectStore, PreconditionFailed
 
@@ -21,6 +24,49 @@ MODEL_REVISION = "ab54df5acba0eebf7df45560ffdaacd64e32df3b"
 _cgroup_memory = None
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ATTEMPT = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+DEFAULT_CACHE_DIR = "/tmp/triton-cache"
+FLA_CONFIG_ROOT = Path(__file__).resolve().parents[2] / "config" / "fla"
+FLA_MODES = ("fuzzy", "strict", "disabled")
+_MANIFEST_KEYS = {
+    "schema_version",
+    "chunks",
+    "item_ids",
+    "model_revision",
+    "image_digest",
+    "settings",
+    "gpu",
+    "kernel_cache",
+}
+
+
+def enable_fla_configs(gpu: str) -> dict[str, Any]:
+    """Apply the committed prebaked fla configs for this GPU architecture before fla imports.
+
+    Fuzzy mode applies a config tuned for one numeric key value (an NB or batch row count) to any
+    other, so an unseen micro-batch shape costs one compile instead of an autotune sweep.
+    """
+    mode = os.environ.get("CITYPODS_FLA_CACHE_MODE", "fuzzy")
+    if mode not in FLA_MODES:
+        raise ValueError(f"CITYPODS_FLA_CACHE_MODE must be one of {FLA_MODES}")
+    arch = GPU_CLASSES[gpu].cuda_arch
+    directory = FLA_CONFIG_ROOT / arch
+    if mode == "disabled" or not directory.is_dir():
+        return {"enabled": False, "arch": arch}
+    os.environ.setdefault("FLA_CONFIG_DIR", str(directory))
+    os.environ.setdefault("FLA_CACHE_MODE", mode)
+    return {
+        "enabled": True,
+        "mode": os.environ["FLA_CACHE_MODE"],
+        "arch": arch,
+        "files": len(list(directory.glob("*.json"))),
+    }
+
+
+def _declared_gpu() -> str:
+    gpu = os.environ.get("CITYPODS_DECISION_GPU", "L4")
+    if gpu not in GPU_CLASSES:
+        raise ValueError("unsupported configured GPU type")
+    return gpu
 
 
 def _hash(data: bytes) -> str:
@@ -103,7 +149,9 @@ def run_cloud(
         )
         or settings["launch_mode"] not in ("regular", "delayed")
         or settings["max_len"] > 4096
-        or settings["token_budget"] > 16384
+        or settings["token_budget"] > GPU_CLASSES[_declared_gpu()].max_token_budget
+        or manifest.get("gpu", _declared_gpu()) != _declared_gpu()
+        or not set(manifest) <= _MANIFEST_KEYS
     ):
         raise ValueError("unapproved runtime identity or settings")
     chunks = manifest.get("chunks")
@@ -177,7 +225,17 @@ def run_cloud(
         except PreconditionFailed:
             raise ValueError("attempt already claimed; reconcile before retry") from None
         output = directory / "output.gz"
+        pin = manifest.get("kernel_cache")
+        cache_dir = Path(os.environ.get("TRITON_CACHE_DIR", DEFAULT_CACHE_DIR))
+        cache = (
+            kernel_cache.restore_pinned(store, pin, cache_dir, gpu=_declared_gpu())
+            if pin is not None
+            else {"restored": False}
+        )
+        print(json.dumps({"kernel_cache": cache}), flush=True)
         telemetry = run_batch(source, output, lambda: load_model(settings))
+        telemetry["kernel_cache"] = cache
+        telemetry["fla_cache_mode"] = os.environ.get("FLA_CACHE_MODE")
         telemetry["task_started_at"] = task_started_at
         if _cgroup_memory is not None:
             telemetry["cgroup_memory"] = _cgroup_memory.snapshot()
@@ -211,13 +269,10 @@ def _matches_gpu(gpu_type: str, device_name: str) -> bool:
     raise ValueError("unsupported configured GPU type")
 
 
-def main() -> None:
-    from citypods.judging.decision_batch_cloud import GCSObjectStore, metadata_access_token
+def build_load_model() -> Callable[[dict[str, Any]], tuple[Any, type[Exception]]]:
+    """Select the model loader from the environment: streaming, hashed download or local files."""
+    from citypods.judging.decision_batch_cloud import metadata_access_token
 
-    manifest_id = os.environ["DECISION_BATCH_MANIFEST_ID"]
-    attempt_id = os.environ["DECISION_BATCH_ATTEMPT_ID"]
-    execution_id = os.environ["CLOUD_RUN_EXECUTION"]
-    image_digest = os.environ["CITYPODS_IMAGE_DIGEST"]
     model_dir = Path(os.environ.get("CITYPODS_MODEL_DIR", "/models/glide-9b"))
     slice_manifest_path = os.environ.get("CITYPODS_MODEL_SLICE_MANIFEST")
     slice_manifest = None
@@ -281,6 +336,19 @@ def main() -> None:
             max_len=settings["max_len"],
         ), RequestError
 
+    return load_model
+
+
+def main() -> None:
+    from citypods.judging.decision_batch_cloud import GCSObjectStore, metadata_access_token
+
+    manifest_id = os.environ["DECISION_BATCH_MANIFEST_ID"]
+    attempt_id = os.environ["DECISION_BATCH_ATTEMPT_ID"]
+    execution_id = os.environ["CLOUD_RUN_EXECUTION"]
+    image_digest = os.environ["CITYPODS_IMAGE_DIGEST"]
+    os.environ.setdefault("TRITON_CACHE_DIR", DEFAULT_CACHE_DIR)
+    print(json.dumps({"fla_configs": enable_fla_configs(_declared_gpu())}), flush=True)
+    load_model = build_load_model()
     store = GCSObjectStore(os.environ["CITYPODS_BATCH_BUCKET"], metadata_access_token)
     run_cloud(store, manifest_id, attempt_id, execution_id, image_digest, load_model)
 

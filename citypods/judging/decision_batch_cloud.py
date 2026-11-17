@@ -10,6 +10,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from citypods.gpu_launch.profiles import GpuClass
 from citypods.judging.decision_batch_transport import PreconditionFailed
 
 STORAGE = "https://storage.googleapis.com"
@@ -92,7 +93,13 @@ class GCSObjectStore:
 
 
 def cloud_run_command(
-    *, mode: str, job: str, region: str, manifest_id: str, attempt_id: str
+    *,
+    mode: str,
+    job: str,
+    region: str,
+    manifest_id: str,
+    attempt_id: str,
+    task_timeout: int | None = None,
 ) -> list[str]:
     """Build an asynchronous call using a preconfigured job and bounded override values."""
     if not JOB_RE.fullmatch(job) or job.split("/")[3] != region:
@@ -100,6 +107,11 @@ def cloud_run_command(
     if not IDENTIFIER_RE.fullmatch(manifest_id) or not IDENTIFIER_RE.fullmatch(attempt_id):
         raise ValueError("invalid manifest or attempt ID")
     _, project, _, _, _, job_name = job.split("/")
+    timeout = []
+    if task_timeout is not None:
+        if type(task_timeout) is not int or not 30 <= task_timeout <= 3600:
+            raise ValueError("task timeout must be an integer from 30 to 3600 seconds")
+        timeout = [f"--task-timeout={task_timeout}s"]
     return [
         "gcloud",
         "beta",
@@ -111,6 +123,7 @@ def cloud_run_command(
         f"--region={region}",
         "--async",
         LAUNCH_FLAGS[mode],
+        *timeout,
         f"--update-env-vars=DECISION_BATCH_MANIFEST_ID={manifest_id},"
         f"DECISION_BATCH_ATTEMPT_ID={attempt_id}",
     ]
@@ -163,13 +176,56 @@ class CloudRunLauncher:
         if not set(required).issubset(allowed):
             raise PermissionError("dispatcher lacks Cloud Run launch permissions")
 
-    def launch(self, manifest_id: str, attempt_id: str, mode: str) -> str:
+    def verify_job(self, image_digest: str, gpu: GpuClass) -> None:
+        """Fail closed unless the job is the one-task envelope the planner priced for ``gpu``."""
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_digest):
+            raise ValueError("an immutable image digest is required")
+        url = f"{RUN}/{self.job}"
+        job = json.loads(_read(_authorized(url, self.access_token())))
+        execution = job.get("template", {})
+        task = execution.get("template", {})
+        containers = task.get("containers", [])
+        if (
+            self.job.split("/")[3] != gpu.region
+            or execution.get("taskCount") != 1
+            or execution.get("parallelism") != 1
+            or task.get("maxRetries") != 0
+            or task.get("gpuZonalRedundancyDisabled") is not True
+            or task.get("nodeSelector", {}).get("accelerator") != gpu.accelerator
+            or len(containers) != 1
+        ):
+            raise ValueError(f"Cloud Run job does not match the one-task {gpu.name} envelope")
+        container = containers[0]
+        env = {entry["name"]: entry.get("value") for entry in container.get("env", [])}
+        limits = {"cpu": str(gpu.cpu), "memory": f"{gpu.memory_gib}Gi", "nvidia.com/gpu": "1"}
+        if (
+            not container["image"].endswith(f"@{image_digest}")
+            or env.get("CITYPODS_IMAGE_DIGEST") != image_digest
+            or env.get("CITYPODS_DECISION_GPU") != gpu.name
+            or container.get("resources", {}).get("limits") != limits
+        ):
+            raise ValueError("job image, GPU declaration or resource limits differ from the plan")
+        required = ["run.jobs.run", "run.jobs.runWithOverrides"]
+        request = _authorized(
+            f"{url}:testIamPermissions",
+            self.access_token(),
+            json.dumps({"permissions": required}).encode(),
+        )
+        request.add_header("Content-Type", "application/json")
+        allowed = json.loads(_read(request)).get("permissions", [])
+        if not set(required).issubset(allowed):
+            raise PermissionError("dispatcher lacks Cloud Run launch permissions")
+
+    def launch(
+        self, manifest_id: str, attempt_id: str, mode: str, task_timeout: int | None = None
+    ) -> str:
         command = cloud_run_command(
             mode=mode,
             job=self.job,
             region=self.job.split("/")[3],
             manifest_id=manifest_id,
             attempt_id=attempt_id,
+            task_timeout=task_timeout,
         )
         completed = subprocess.run(
             [*command, "--format=json", "--quiet"],

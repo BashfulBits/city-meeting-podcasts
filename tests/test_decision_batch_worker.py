@@ -392,3 +392,119 @@ def test_stream_manifest_revision_matches_batch_revision(monkeypatch):
     assert cloud.MODEL_REVISION == REVISION
     with pytest.raises(ValueError, match="revision"):
         validate_manifest({"bucket": "test-bucket", "revision": "other"})
+
+
+def _sealed_with(cloud, store, row, image, **extra):
+    from citypods.judging.decision_batch_transport import put_chunk, seal_manifest
+
+    chunk = put_chunk(store, [row], max_rows=1000, max_bytes=100000, max_estimated_tokens=100000)
+    manifest_id = seal_manifest(
+        store,
+        [chunk],
+        model_revision=cloud.MODEL_REVISION,
+        image_digest=image,
+        settings={"token_budget": 16384, "max_len": 4096, "launch_mode": "regular"},
+        max_rows=1000,
+        max_bytes=100000,
+        max_estimated_tokens=100000,
+        **extra,
+    )
+    store.objects["dispatch/admission.json"] = (
+        canonical_json(
+            {"outstanding": {"manifest_id": manifest_id, "attempt_id": "attempt"}}
+        ).encode(),
+        99,
+    )
+    return manifest_id
+
+
+def _published_pin(store, tmp_path, image, gpu="L4"):
+    from citypods.gpu_launch import kernel_cache
+
+    source = tmp_path / "src"
+    (source / "k").mkdir(parents=True)
+    (source / "k" / "a.json").write_text("{}")
+    key = kernel_cache.cache_key(
+        gpu_arch="sm_89" if gpu == "L4" else "sm_120",
+        image_digest=image,
+        model_revision="ab54df5acba0eebf7df45560ffdaacd64e32df3b",
+        adapter="glide-9b",
+        token_budget=16384,
+    )
+    return kernel_cache.publish(store, key, kernel_cache.build_archive(source), gpu=gpu, entries=1)
+
+
+def test_cloud_restores_the_pinned_kernel_cache_before_loading(tmp_path, monkeypatch):
+    cloud = _cloud_module(monkeypatch)
+    store, _, image, row, load = _cloud_fixture(cloud)
+    pin = _published_pin(store, tmp_path, image)
+    manifest_id = _sealed_with(cloud, store, row, image, gpu="L4", kernel_cache=pin)
+    cache_dir = tmp_path / "triton"
+    monkeypatch.setenv("TRITON_CACHE_DIR", str(cache_dir))
+    seen = []
+
+    def checked_load(settings):
+        seen.append((cache_dir / "k" / "a.json").exists())
+        return load(settings)
+
+    result = cloud.run_cloud(store, manifest_id, "attempt", "execution", image, checked_load)
+    assert seen == [True]
+    assert result["telemetry"]["kernel_cache"]["restored"] is True
+    assert result["telemetry"]["kernel_cache"]["sha256"] == pin["sha256"]
+
+
+def test_cloud_rejects_gpu_and_budget_mismatches_before_model(tmp_path, monkeypatch):
+    cloud = _cloud_module(monkeypatch)
+    store, _, image, row, _ = _cloud_fixture(cloud)
+    manifest_id = _sealed_with(cloud, store, row, image, gpu="RTX_PRO_6000")
+    with pytest.raises(ValueError, match="unapproved runtime"):  # job declares the default L4
+        cloud.run_cloud(
+            store,
+            manifest_id,
+            "attempt",
+            "execution",
+            image,
+            lambda settings: pytest.fail("model loaded"),
+        )
+    monkeypatch.setenv("CITYPODS_DECISION_GPU", "H100")
+    with pytest.raises(ValueError, match="unsupported configured GPU"):
+        cloud._declared_gpu()
+
+
+def test_fla_configs_are_enabled_per_architecture_and_can_be_disabled(monkeypatch):
+    cloud = _cloud_module(monkeypatch)
+    for name in ("FLA_CONFIG_DIR", "FLA_CACHE_MODE", "CITYPODS_FLA_CACHE_MODE"):
+        monkeypatch.delenv(name, raising=False)
+    info = cloud.enable_fla_configs("L4")
+    assert info["enabled"] and info["arch"] == "sm_89" and info["files"] == 6
+    assert os.environ["FLA_CACHE_MODE"] == "fuzzy"
+    assert os.environ["FLA_CONFIG_DIR"].endswith("config/fla/sm_89")
+    monkeypatch.delenv("FLA_CONFIG_DIR")
+    monkeypatch.delenv("FLA_CACHE_MODE")
+    assert cloud.enable_fla_configs("RTX_PRO_6000")["arch"] == "sm_120"
+    monkeypatch.delenv("FLA_CONFIG_DIR")
+    monkeypatch.delenv("FLA_CACHE_MODE")
+    monkeypatch.setenv("CITYPODS_FLA_CACHE_MODE", "disabled")
+    assert cloud.enable_fla_configs("L4") == {"enabled": False, "arch": "sm_89"}
+    monkeypatch.setenv("CITYPODS_FLA_CACHE_MODE", "full")
+    with pytest.raises(ValueError, match="must be one of"):
+        cloud.enable_fla_configs("L4")
+
+
+def test_committed_fla_configs_parse_and_cover_the_expected_kernels():
+    root = Path(__file__).resolve().parents[1] / "config" / "fla"
+    expected = {
+        "chunk_fwd_kernel_o",
+        "chunk_gated_delta_rule_fwd_kernel_h_blockdim64",
+        "chunk_gated_delta_rule_fwd_kkt_solve_kernel",
+        "chunk_local_cumsum_scalar_kernel",
+        "l2norm_fwd_kernel",
+        "recompute_w_u_fwd_kernel",
+    }
+    for arch in ("sm_89", "sm_120"):
+        files = {p.stem: json.loads(p.read_text()) for p in (root / arch).glob("*.json")}
+        assert set(files) == expected
+        for document in files.values():
+            for name in ("num_warps", "num_stages", "num_ctas", "kwargs"):
+                assert name in document["default_config"]
+            assert document["autotune_entries"]

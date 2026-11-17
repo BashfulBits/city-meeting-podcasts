@@ -1787,7 +1787,11 @@ and writes an evaluation receipt. Cloud execution starts disabled and the pilot 
 episode judging ledger. Its experimental, opt-in GLiDE streaming adapter uses a model-neutral
 safetensors package to authenticate bounded GCS slices before synchronous GPU copies; the manifest
 is an independently authenticated trust root. A failed load must discard the partial model. The
-existing local model path remains the default. [Design and acceptance gates](review/59-deferred-decision-batches.md)
+existing local model path remains the default. A reusable GPU launcher (`citypods/gpu_launch`)
+plans the cheapest GPU class, timeout and ledger reservation from measured per-model calibrations
+(`config/gpu_profiles.json`), pins the plan in the manifest, and applies committed fla autotune configs
+(`config/fla/<arch>`) in the worker so cold inference stops paying for kernel compilation.
+[Design and acceptance gates](review/59-deferred-decision-batches.md)
 
 Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
 state, conditional, and other storage reads continue to use their owning backend directly. For

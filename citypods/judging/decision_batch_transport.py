@@ -118,8 +118,15 @@ def seal_manifest(
     max_rows: int,
     max_bytes: int,
     max_estimated_tokens: int,
+    gpu: str | None = None,
+    kernel_cache: Mapping[str, Any] | None = None,
 ) -> str:
-    """Create an immutable manifest pinned to chunk generations and runtime identity."""
+    """Create an immutable manifest pinned to chunk generations and runtime identity.
+
+    ``gpu`` names the planned GPU class and ``kernel_cache`` pins an authenticated compile cache
+    (``citypods.gpu_launch.kernel_cache``); both are omitted when unset so earlier manifests keep
+    their identity.
+    """
     if not chunks or not model_revision or not image_digest:
         raise ValueError("manifest needs inputs and runtime identity")
     rows = _load_chunks(store, chunks)
@@ -136,6 +143,10 @@ def seal_manifest(
         "image_digest": image_digest,
         "settings": dict(settings),
     }
+    if gpu is not None:
+        manifest["gpu"] = gpu
+    if kernel_cache is not None:
+        manifest["kernel_cache"] = dict(kernel_cache)
     payload = _bytes(manifest)
     identity = _hash(payload)
     _immutable(store, f"manifests/{identity}.json", payload)
