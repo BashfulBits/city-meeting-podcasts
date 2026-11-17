@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Chapter-agenda run logs now print the blocked-episode reasons (no agenda link, document rejected
+for a reason, fetch failed, not yet fetched, extraction retries exhausted) in the stage `quality:`
+line, instead of only in the run event's `llm_work` snapshot.
+
 Make the manual terminal-failure clearing workflow safe to use on every LLM lane (tag, agenda,
 locator, moments). Every run now prints the matching markers grouped by cause;
 `--last-error-contains` (workflow input `last_error_contains`) clears only a cause a shipped fix
