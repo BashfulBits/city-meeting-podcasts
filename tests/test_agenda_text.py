@@ -685,3 +685,22 @@ def test_an_office_listed_without_a_name_is_not_a_person():
         "Sara Hensley"
     ]
     assert [r["name"] for r in parse_roster("Present: Mark Manager")] == ["Mark Manager"]
+
+
+def test_pdf_served_as_octet_stream_from_an_extensionless_url_is_read_as_a_pdf():
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/octet-stream",
+        source_url="https://example.test/videos/46567/agenda",
+        ocr_runner=lambda *args, **kwargs: ("", None),
+    )
+    assert assessment.status == "accepted"
+    assert assessment.reason != "placeholder-or-low-quality-html"
+
+
+def test_html_that_merely_mentions_pdf_is_not_sniffed_as_a_pdf():
+    from citypods.agenda_text import _is_pdf
+
+    assert not _is_pdf("text/html", "https://example.test/a", b"<html>%PDF- later</html>")
+    assert _is_pdf("application/octet-stream", "https://example.test/a", b"\n %PDF-1.7\n...")

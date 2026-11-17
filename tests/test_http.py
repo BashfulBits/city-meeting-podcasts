@@ -530,3 +530,66 @@ class TestPreflightMediaSize:
         session = self._session(monkeypatch, validate=_reject)
         with pytest.raises(SecurityError):
             preflight_media_size("https://archive-video.granicus.com/x.mp4", 2000, session=session)
+
+
+class _DocResponse:
+    def __init__(self, url, body, content_type="text/html"):
+        self.url = url
+        self.content = body
+        self.headers = {"Content-Type": content_type}
+        self.closed = False
+
+    def raise_for_status(self):
+        return None
+
+    def close(self):
+        self.closed = True
+
+
+class _DocSession:
+    def __init__(self, responses):
+        self.responses = responses
+        self.requested = []
+
+    def get(self, url, timeout=None):
+        self.requested.append(url)
+        return self.responses[url]
+
+
+def test_fetch_document_bytes_unwraps_a_same_origin_google_viewer_redirect():
+    from citypods.http import fetch_document_bytes
+
+    start = "https://city.granicus.com/AgendaViewer.php?view_id=1&clip_id=9"
+    inner = "https://city.granicus.com/DocumentViewer.php?file=a.pdf&view=1"
+    wrapped = (
+        "https://docs.google.com/gview?url="
+        + requests.utils.quote(inner, safe="")
+        + "&embedded=true"
+    )
+    session = _DocSession(
+        {
+            start: _DocResponse(wrapped, b"<html>shell</html>"),
+            inner: _DocResponse(inner, b"%PDF-1.7 real", "application/pdf"),
+        }
+    )
+    assert fetch_document_bytes(session, start) == (b"%PDF-1.7 real", "application/pdf")
+    assert session.requested == [start, inner]
+
+
+def test_fetch_document_bytes_ignores_a_viewer_redirect_to_another_host():
+    from citypods.http import fetch_document_bytes
+
+    start = "https://city.granicus.com/AgendaViewer.php?view_id=1&clip_id=9"
+    wrapped = "https://docs.google.com/gview?url=https%3A%2F%2Fevil.example%2Fx.pdf&embedded=true"
+    session = _DocSession({start: _DocResponse(wrapped, b"shell")})
+    assert fetch_document_bytes(session, start)[0] == b"shell"
+    assert session.requested == [start]
+
+
+def test_fetch_document_bytes_leaves_ordinary_responses_alone():
+    from citypods.http import fetch_document_bytes
+
+    url = "https://city.example/agenda.pdf"
+    session = _DocSession({url: _DocResponse(url, b"%PDF-1.4", "application/pdf")})
+    assert fetch_document_bytes(session, url) == (b"%PDF-1.4", "application/pdf")
+    assert session.requested == [url]
