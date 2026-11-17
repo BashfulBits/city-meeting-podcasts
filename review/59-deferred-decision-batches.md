@@ -8,12 +8,13 @@ the judge stack and use as a tag prefilter each require separate evidence and a 
 
 ## Recommendation
 
-Start with a finite shadow replay of tags and moments using GLiDE-9B BF16 on one NVIDIA L4 in
-`us-central1`. GLiDE-9B is the sole self-hosted model in this pilot. Use an independent GitHub
-Actions producer and collector, private GCS objects, and asynchronous Cloud Run Jobs. Keep local
-batch accumulation independent of Google's provisioning mode. Prefer regular Cloud Run Jobs when
-the expected cost is tied, subject to pilot approval. Qualify the model and measure the whole bill
-before scheduling recurring GPU runs.
+Use the implemented, reusable authenticated eight-reader streaming loader for the finite GLiDE-9B
+BF16 shadow pilot on one NVIDIA L4. RTX PRO 6000 is an optional hardware-tested path, not a
+requirement. Use an independent GitHub Actions producer and collector, private GCS objects, and
+asynchronous Cloud Run Jobs. The intended recurring design submits delayed batches at the fill
+target or 24 hours from oldest enqueue, subject to the admission, budget and qualification gates
+below. The cloud workflow remains disabled;
+qualify the model and measure the whole bill before any recurring or production enablement.
 Reuse the typed judge question and evidence builders. Give future producers the same file contract,
 with a model adapter responsible for the native request and response conversion.
 
@@ -445,9 +446,10 @@ verify that the pilot SKUs actually draw the credit on the billing report.
 
 Use the maintainer's **$4/month gross envelope including ancillary GCP costs**.
 Keep live runs manual. The authorized canary envelope was eleven L4 task attempts, all used, each
-with a 300-second timeout and zero task retries. The CAS ledger retains $1.02 in reservations:
-ten at $0.09 and the 6-CPU run at $0.12. No attempt is outstanding. Reservations are not actual
-charges. Derive the
+with a 300-second timeout and zero task retries. The original eleven reserved $1.02: ten at $0.09
+and the 6-CPU run at $0.12. Ten later GPU tests bring the guarded ledger to 21 attempts and
+$2.34 in reservations; no attempt is outstanding.
+Reservations are not actual charges. Derive the
 recurring attempt allowance only after estimating ancillary spend and measuring runtime. Before a
 launch, reserve `max(60 s, task timeout) × gross rate × task count × max attempts`, including
 ambiguous submissions until reconciled. Count manual launches through the same ledger. Reserve
@@ -458,21 +460,31 @@ the project budget does not automatically guarantee a spending cap.
 [Billing budgets](https://docs.cloud.google.com/billing/docs/how-to/budgets) ·
 [Cloud Run spend controls](https://docs.cloud.google.com/run/docs/jobs-cost-optimization)
 
-The recurring dispatcher checks for eligible work hourly. Submit one nonempty batch when it reaches
-the tested fill target (start the benchmark at 500 decisions), or when the **oldest eligible item
-has waited 24 hours**, whichever comes first. Keep the oldest item's timestamp across producer runs.
-An empty queue always skips launch. A quiet queue can therefore run once a day, with no fixed
-quota of daily launches. Apply the measured size and token bounds and the one-outstanding and
-budget gates ahead of any submit. A manual canary can explicitly use a smaller batch.
+The proposed recurring dispatcher checks eligible work hourly and submits one delayed batch when
+the measured fill target is reached or the oldest item has waited 24 hours, whichever comes first.
+Benchmark approximately 400 decisions per batch, subject to measured token and size bounds. Quiet
+queues can run once daily; there is no fixed quota of daily launches. This aggregation and scheduling
+are not implemented by the manual canary path. Keep the oldest enqueue time across producer runs,
+skip empty queues, and enforce one outstanding execution and budget gates. The 24-hour target covers
+enqueue to submission, subject to scheduler cadence. Delayed provisioning can add up to 12 hours,
+followed by runtime and collection, so completion within 24 hours is not guaranteed without a
+policy change. Record misses from cadence, allowance or capacity. Charge retries through
+the same budget.
 
-The 24-hour target measures enqueue to **submission**. Track Google provisioning, runtime and
-collection separately. Prefer regular mode at equal measured cost so the oldest item does not
-gain a second queueing delay. Delayed mode can add up to 12 hours after submission. Record misses
-due to scheduler cadence, allowance or service capacity. Run a matched
-regular/delayed canary with identical input, image, region and task settings, then compare billed
-GPU time, net CPU/RAM, failed attempts and cost per 1,000 valid decisions. Review the actual GCP
-SKUs and credits. Set the recurring mode explicitly after that comparison. Retain a single mode
-per execution and charge retries through the same budget.
+The final-image 158-decision observation estimates 400 decisions at
+`104.082 + 88.177 × 400 / 158 = 327.3` seconds of processing, assuming linear inference and
+constant load. At one execution daily for 30 days, this implies about 39,278 vCPU-s ($0.495),
+157,111 GiB-s ($0.220) at delayed rates, and 9,819 GPU-s ($1.833): $2.548 gross compute,
+or $1.833 if pooled CPU/RAM free-tier headroom covers the usage. Google's current delayed-rate
+equivalents are 342,857 vCPU-s and 642,857 GiB-s; free-tier discounts are pooled across projects
+on the billing account and must not be assumed unused. This is an estimate, not a measured
+400-decision run; startup, retries, storage and build costs are excluded.
+
+The existing 300-second timeout and per-attempt admission cap cannot safely cover that estimate.
+Keep the workflow disabled. Before admitting 400 decisions or enabling production, update and
+test the admission guard with a safe bounded timeout ceiling and matching worst-case reservation,
+confirm the full $4 gross budget including ancillary costs, and complete representative scale,
+delayed-mode and model-quality qualification. Do not raise the timeout alone.
 
 ## Producer and worker contract
 
@@ -579,10 +591,10 @@ prepares the existing frozen set, reserves a launch, and collects a generation-p
 The Cloud Run gate starts off and accepts only manual dispatches on main with a protected
 GitHub environment. The maintainer authorized eleven one-task L4 attempts under $4/month gross;
 all have been used.
-The repository launcher retains its existing nine-attempt, $0.09-per-attempt guard. The three
-additional prototypes used isolated guarded launchers and a shared $1.02 ledger cap; this does
-not extend the repository launcher. Reservations include ambiguous submissions. The completed
-canaries used the one-task Virginia L4 job configuration.
+The repository launcher retains its existing nine-attempt, $0.09-per-attempt guard; later
+prototypes used isolated guarded launchers and did not extend it. The later guarded ledger
+records 21 attempts and $2.34 in reservations, as detailed above. Reservations include ambiguous
+submissions. Completed canaries used one-task L4 jobs in Virginia and RTX jobs in Iowa.
 
 The offline replay establishes contract and state-machine behavior. The Linux GPU lock is
 separate from ASR and preserves the upstream CUDA 13.0 baseline. Image and GPU canary
@@ -626,7 +638,7 @@ remain the proposal for a prefilter experiment.
 | Source of truth | Archived human labels plus a small fresh blind holdout. |
 | Eventual role | Qualify toward an alternate anchor under per-entry family rules. Keep later open weights possible where they add diversity or improve results. |
 | Gross allowance | Up to $4/month including storage and builds. |
-| Launch | Submit when the batch reaches its measured fill target or the oldest work reaches 24 hours. Empty queues skip. Compare regular and delayed modes, using regular when measured cost is tied. |
+| Launch | Submit a delayed batch at the measured fill target or 24 hours from oldest enqueue; benchmark about 400 decisions. Quiet queues can run once daily. Allow up to another 12 hours of provisioning. Disabled pending the explicit gates above. |
 | First implementation handoff | Offline contract plus a disabled Cloud Run workflow and worker. |
 
 Track the development-ready slices as issues when agreed, then update the design index. Record

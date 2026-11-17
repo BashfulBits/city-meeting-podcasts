@@ -1,10 +1,12 @@
 # Deferred decision worker: offline preparation
 
 This directory supplies the gzip JSONL runner, cloud entrypoint and deployment templates.
-The maintainer approved eleven one-task canaries within $4/month gross; all eleven have been used.
-The shared ledger retains $1.02 in reservations, with no outstanding attempt.
+The original eleven approved one-task canaries were used, followed by ten GPU tests, under the
+$4/month gross envelope. Actual charges remain pending reconciliation.
+The later guarded ledger records 21 attempts and $2.34 in reservations, with no outstanding
+attempt; reservations are not measured charges.
 The GitHub workflow starts disabled. A project budget does not automatically guarantee a spend cap.
-The completed canaries used regular jobs on a Virginia L4, not delayed jobs.
+The completed canaries used regular jobs on a Virginia L4 and an Iowa RTX, not delayed jobs.
 
 On 158 frozen decisions, GLiDE produced 158 structurally valid results (133.92 seconds load,
 86.70 seconds inference, 17.63 GiB peak GPU). Karpo 4B produced 158 (100.44 seconds load,
@@ -76,7 +78,7 @@ share Qwen lineage with GLiDE; their upstream runtime was experimental and is no
    the job definition and reserves $0.09 before calling Cloud Run. It prints the attempt ID
    before submission and the operation or execution name after acknowledgement. The ledger holds
    one outstanding attempt and retains reservations even across months. Its nine-attempt guard
-   has not been extended to the three isolated prototypes; all eleven authorized attempts are used.
+   has not been extended to the later isolated tests; the original eleven attempts are used.
    Use one task, parallelism one, a 300-second timeout and zero task retries.
 6. Use `status` and Cloud Run **Executions** to find the fully qualified execution name. Run
    `collect` after a matching execution succeeds. Use `settle-failed` only after the matching
@@ -103,7 +105,7 @@ A real GPU canary must separately record queue/start, model load, inference and 
 peak host/GPU memory, token distribution, validated decisions per second, kernel availability,
 and actual total charges. The native API returns one batch as a whole: the worker can report the
 start of inference, but cannot observe first result time inside that call without runtime changes.
-Compare regular and delayed modes on matched work before selecting a recurring mode. Keep results
+The intended recurring design uses delayed batches, subject to the gates below. Keep results
 private and expiring; collect no evidence text in telemetry. Do not promote this shadow output to
 judge votes without the qualification and maintainer decision described in review/59.
 
@@ -154,3 +156,26 @@ use. The loader verifies each slice before copying it and discards a partial mod
 See [streaming package documentation](../../citypods/weight_streaming/README.md) for the adapter
 contract and memory bounds. L4 and RTX PRO 6000 canaries passed structural validation; those
 results do not by themselves establish model quality or qualify recurring use.
+
+## Intended recurring pilot
+
+Use the implemented authenticated eight-reader streaming loader on L4; RTX PRO 6000 is optional.
+The proposed recurring dispatcher submits a delayed batch when its measured fill target is reached
+or the oldest item has waited 24 hours. Benchmark approximately 400 decisions; quiet queues can run
+once daily. Aggregation and scheduling are not implemented by the manual canary. The 24-hour target
+covers enqueue to submission, subject to scheduler cadence; delayed provisioning can add up to
+12 hours, followed by runtime and collection. Completion within 24 hours is not guaranteed without
+a policy change.
+
+The final-image observation estimates `104.082 + 88.177 × 400 / 158 = 327.3` seconds per batch.
+At one daily execution for 30 days, estimated delayed compute is 39,278 vCPU-s ($0.495),
+157,111 GiB-s ($0.220), and 9,819 GPU-s ($1.833), totaling $2.548 gross or $1.833 if pooled
+CPU/RAM free-tier headroom covers it. Startup, storage and builds are excluded; linear scaling
+and the single 158-decision observation are not qualification of a 400-decision run.
+
+Keep the workflow disabled: the existing 300-second timeout and per-attempt admission cap cannot
+cover this estimate. Before 400-decision production admission, update and test the admission guard
+with a safe bounded timeout ceiling and corresponding worst-case reservation, confirm the $4 gross
+budget including ancillary costs, and complete scale, delayed-mode and model-quality qualification.
+The 16-reader and prefetch comparisons in review/59 are single observations and do not establish
+a better production default.
