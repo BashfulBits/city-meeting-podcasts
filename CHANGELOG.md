@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Agenda text fetching now unwraps Granicus `AgendaViewer.php` redirects to the Google Docs viewer
+(fetching the same-origin document it wraps) and recognises a PDF by its `%PDF-` signature when the
+content type and URL do not say so, so those agendas are no longer rejected as
+placeholder-or-low-quality-html.
+
 Chapter-agenda run logs now print the blocked-episode reasons (no agenda link, document rejected
 for a reason, fetch failed, not yet fetched, extraction retries exhausted) in the stage `quality:`
 line, instead of only in the run event's `llm_work` snapshot.
