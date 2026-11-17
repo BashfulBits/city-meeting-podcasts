@@ -430,7 +430,7 @@ def assess_agenda_document(
     ocr_runner=None,
 ) -> tuple[AgendaTextAssessment, list[DocumentLink]]:
     """Assess one fetched agenda candidate and optionally recover suspicious PDFs with OCR."""
-    is_pdf = _is_pdf(content_type, source_url)
+    is_pdf = _is_pdf(content_type, source_url, content)
     native, discovered = extract_document(content, content_type=content_type, source_url=source_url)
     page_count = _pdf_page_count(content) if is_pdf else 0
     native = native[:AGENDA_TEXT_MAX_CHARS]
@@ -728,9 +728,16 @@ def extract_pdf_layout_text(content: bytes) -> str:
         return _extract_pdf(content)[0]
 
 
-def _is_pdf(content_type: str, source_url: str | None) -> bool:
-    return "pdf" in content_type.lower() or (source_url or "").lower().split("?", 1)[0].endswith(
-        ".pdf"
+def _is_pdf(content_type: str, source_url: str | None, content: bytes | None = None) -> bool:
+    """PDF by content type, URL suffix, or -- when ``content`` is given -- the file signature.
+
+    Some portals serve a real PDF as ``application/octet-stream`` from an extensionless URL
+    (swagit ``/videos/N/agenda``); without the byte check those fall into the HTML path and are
+    rejected as placeholder-or-low-quality-html."""
+    return (
+        "pdf" in content_type.lower()
+        or (source_url or "").lower().split("?", 1)[0].endswith(".pdf")
+        or (content is not None and content.lstrip()[:5] == b"%PDF-")
     )
 
 
@@ -830,7 +837,7 @@ def extract_agenda_outline(
     Callers preserve it separately from ``extract_document``'s full text so a future prompt can
     use visual/semantic heading evidence without losing the original searchable agenda artifact.
     """
-    if _is_pdf(content_type, source_url):
+    if _is_pdf(content_type, source_url, content):
         return extract_pdf_layout_text(content)
     return extract_html_outline(content)
 
@@ -1111,7 +1118,7 @@ def extract_backup_item(url: str, session) -> tuple[str | None, bool]:
 def extract_document(
     content: bytes, *, content_type: str = "", source_url: str | None = None
 ) -> tuple[str, list[DocumentLink]]:
-    is_pdf = _is_pdf(content_type, source_url)
+    is_pdf = _is_pdf(content_type, source_url, content)
     if is_pdf:
         return _extract_pdf(content, source_url=source_url)
     return extract_html(content, source_url)
