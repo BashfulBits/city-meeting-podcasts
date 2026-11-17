@@ -1542,3 +1542,32 @@ def test_locator_stage_repairs_once_when_every_anchor_collides(tmp_path: Path):
     assert "u00001" in state["locator_retry_hint"]
     assert "never reuse a unit" in state["locator_retry_hint"]
     assert not ep.generated_chapters
+
+
+def test_agenda_blocked_reasons_fold_into_quality_counts():
+    from collections import defaultdict
+
+    from citypods.stages import fold_locator_work_outcomes
+
+    totals = defaultdict(lambda: {"quality_counts": {}})
+    snapshot = {
+        "purposes": {
+            "chapter-agenda": {
+                "outcomes": {
+                    "no-agenda-link": 4,
+                    "agenda-fetch-failed": 2,
+                    "agenda-rejected-placeholder-or-low-quality-html": 3,
+                    "agenda-extraction-retry-exhausted": 1,
+                    "something-else": 9,
+                    "agenda-not-yet-fetched": 0,
+                }
+            }
+        }
+    }
+    fold_locator_work_outcomes(totals, snapshot)
+    assert totals["chapter_agenda"]["quality_counts"] == {
+        "no-agenda-link": 4,
+        "agenda-fetch-failed": 2,
+        "agenda-rejected-placeholder-or-low-quality-html": 3,
+        "agenda-extraction-retry-exhausted": 1,
+    }
