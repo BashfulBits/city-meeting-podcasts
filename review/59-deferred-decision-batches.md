@@ -480,11 +480,86 @@ equivalents are 342,857 vCPU-s and 642,857 GiB-s; free-tier discounts are pooled
 on the billing account and must not be assumed unused. This is an estimate, not a measured
 400-decision run; startup, retries, storage and build costs are excluded.
 
-The existing 300-second timeout and per-attempt admission cap cannot safely cover that estimate.
-Keep the workflow disabled. Before admitting 400 decisions or enabling production, update and
-test the admission guard with a safe bounded timeout ceiling and matching worst-case reservation,
-confirm the full $4 gross budget including ancillary costs, and complete representative scale,
-delayed-mode and model-quality qualification. Do not raise the timeout alone.
+### Inference-time diagnosis and kernel-cache design (measured 2026-11-17)
+
+**Finding.** Most GLiDE inference time was one-time Triton work, not GPU compute. The frozen 158
+decisions are short (44,282 prompt tokens; median 233, p90 479, max 605) and the checkpoint runs layers
+12–23 twice (about 1.375 forward passes). On a cold cache the L4 spent 56 of the first 89 forward
+seconds in micro-batch 1 and the GPU sat at 0–6% utilization while `flash-linear-attention` compiled and
+autotuned kernels on the host. The same four micro-batches repeated warm took 28.8 s. Restoring the saved
+Triton cache into a fresh container ran the real batch in **32.2 s instead of about 88 s** on the L4 with
+no new compiles and 84% GPU utilization; with the cache the RTX PRO 6000 ran inference in **8.5 s instead of
+about 38 s**. Load, not inference, is now the dominant cost (80–100 s on both GPUs).
+
+**Cause, per fla 0.5.2.** `l2norm_fwd_kernel` autotunes 25–30 configurations for every new
+`NB = cdiv(tokens × 32, 65536) = cdiv(tokens, 2048)`, where tokens is the micro-batch's padded
+`rows × width`. A 16,384-token budget produces NB 1–8. Each unseen NB costs about 12–15 s on the L4
+(3 s of `ptxas`) and about 5–6 s on the RTX. `chunk_local_cumsum_scalar_kernel` re-tunes four configurations
+for every new row count `B` (about 0.6–3.8 s). Every observed recompile in these runs matches that rule.
+
+**What did not matter.** The `causal_conv1d` PyTorch fallback is about 5% of warm L4 GPU time, so installing
+it is not worth a new dependency. Warm L4 time is 54–57% tensor-core matmul at about 60% of peak;
+the remaining 25–30% is fp32 casts and elementwise ops. Loader variants (FUSE, four to sixteen readers,
+prefetch) never changed inference time because compile cost is independent of the loader.
+
+| Warm-cache steady state | L4 | RTX PRO 6000 |
+|---|---:|---:|
+| Padded tokens/s (8–16k-token micro-batches) | ~1,700–1,850 | ~8,400–12,300 |
+| Frozen-batch inference, cold → warm cache | ~88 s → ~30 s (32.2 s measured) | ~38 s → 8.5 s |
+| One-time grid warm-up (36 shapes) | 147 s | 75 s |
+| Cache archive after the 36-shape grid | 8.0 MB, 326 entries | 8.7 MB, 322 entries |
+
+**Design (model- and GPU-neutral).**
+
+1. **Persistent compile cache.** Archive the Triton cache directory (and `TORCHINDUCTOR_CACHE_DIR` or
+   `CUDA_CACHE_PATH` when a model uses them) as one gzip tar per cache key
+   `(GPU compute capability, driver major, image digest, model revision, torch/triton/fla versions,
+   adapter ID)`. Restore before model load and extract with a data filter. L4 (sm_89) and RTX (sm_120)
+   archives are separate objects. This is the part that removes most of the cost on any model that uses
+   Triton, Inductor or CUDA JIT.
+2. **Authenticated, write-protected archives.** Cached cubins execute on the GPU, so treat an archive as code.
+   Only a separate warm-up identity may write it; pin its SHA-256 in the batch manifest (as the slice
+   manifest pins weights); the runtime identity gets read-only access and rejects a mismatch. Do not let
+   production runs publish new kernels. Log misses and refresh through the warm-up job.
+3. **Key-space warm-up recipe.** A manually dispatched warm-up job derives forward shapes from
+   `(token_budget, max_len, packing rule)` and runs them through the model's real forward path: one
+   micro-batch for every `NB` in 1…⌈budget/2048⌉ (use exact `2048·k` padded tokens), a row-count sweep
+   `B = 1…⌊budget/min_prompt⌋`, and the padded-width classes the packer emits. Each model adapter declares
+   its own shape classes; fla's NB/B keys apply to GLiDE and to the Qwen3.5-based Karpo 4B/9B (same
+   kernels, not yet measured). The grid used here missed NB 3, 5 and 7, and the one remaining recompile
+   was a 5,445-token micro-batch with NB 3; widen it to all eight values.
+4. **Miss telemetry and gate.** Record per-micro-batch cold/warm seconds, child CPU and newly compiled kernel
+   names (implemented in the probe, partly in `decision_profile`). Treat more than a small number of
+   compiles in a production run as a signal to refresh the archive, and keep the existing abort when the
+   gated-delta-rule kernels fall back to PyTorch.
+5. **Batch policy follows load time.** With the cache, load (80–100 s) is about 40% of a 158-decision job.
+   Dispatch thresholds should therefore be set by padded tokens per launch, not by decision count: the L4
+   costs less per run until about 600,000 padded tokens (roughly 400 decisions at 1,300+ padded tokens
+   each); above that the RTX is cheaper as well as about six times faster in wall time. Both estimates use
+   list rates, a constant load time and the steady-state throughputs above.
+6. **Defer deeper kernel work.** Fusing fp32 casts (`torch.compile`) might gain 1.2–1.3× but adds its own
+   cache; fla's prebaked-config mode (`FLA_CACHE_MODE`/`FLA_CONFIG_DIR`) could remove the autotune pass
+   entirely. Neither was tested.
+
+**Other decision models.** The cache and telemetry layers are model-neutral because they wrap the
+adapter's forward and the compile cache directories. Gemma-family candidates (S1 26B-A4B, Karpo 31B,
+Copernicus) do not use fla; they probably carry less cold overhead unless their runtime uses Triton MoE or
+`torch.compile`. d1-3B's hybrid convolution backbone may reuse the same fallbacks. Each needs the same
+cold-versus-warm probe before it gets a warm-up recipe; do not assume the NB/B findings transfer.
+
+**Revised 400-decision estimate** (warm cache, L4, regular launch, frozen-like prompts averaging about 280
+tokens): `~90 s load + ~73 s inference + ~12 s startup ≈ 175 s`, about $0.051 per run gross or $1.53 per
+30 days at one run a day, down from the 327 s and $2.55 above and inside the existing 300 s timeout.
+With about 1,500-token live prompts the same batch is about 600,000 padded tokens: about 430 s on the L4
+(above the current timeout) versus about 140 s on the RTX at a similar cost. Both remain estimates, not
+measured 400-decision runs.
+
+**Evidence and cost.** Twelve Cloud Run calls (two probe jobs, three image updates, seven executions, all
+under a probe identity that wrote only `attempts/probe-*` and left `dispatch/admission.json` unchanged)
+carried this investigation. Result objects, cache archives and per-run kernel traces are under
+`attempts/probe-*` in the batches bucket. Estimated gross list charges are about $0.65 (L4 about $0.30,
+RTX about $0.33, plus startup and build), which is not in the admission ledger's $2.34; actual billing is
+pending reconciliation.
 
 ## Producer and worker contract
 

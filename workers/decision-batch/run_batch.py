@@ -20,10 +20,15 @@ from pathlib import Path
 from typing import Any
 
 from citypods.judging.decision_batch import canonical_json, native_request, normalize_results
+from citypods.judging.decision_profile import FallbackWatch, InferenceProfile
 
 MAX_COMPRESSED_BYTES = 16 * 1024 * 1024
 MAX_EXPANDED_BYTES = 64 * 1024 * 1024
 MAX_ROWS = 1000
+# Opt-in diagnostic: re-run the first N forward micro-batches on identical inputs and record the
+# warm time beside the cold one. Costs up to N extra forwards, so size the task timeout for it.
+WARM_REPEATS_ENV = "CITYPODS_DECISION_PROFILE_WARM_REPEATS"
+MAX_WARM_REPEATS = 16
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -55,6 +60,19 @@ def _read_requests(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any
     return rows, requests
 
 
+def _cuda_sync() -> None:
+    torch = sys.modules.get("torch")
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
+def _warm_repeats() -> int:
+    value = os.environ.get(WARM_REPEATS_ENV, "0")
+    if not value.isdecimal() or int(value) > MAX_WARM_REPEATS:
+        raise ValueError(f"{WARM_REPEATS_ENV} must be an integer from 0 through {MAX_WARM_REPEATS}")
+    return int(value)
+
+
 def run_batch(
     input_path: Path,
     output_path: Path,
@@ -67,13 +85,20 @@ def run_batch(
     started_at = datetime.now(UTC).isoformat()
     started = time.monotonic()
     rows, requests = _read_requests(input_path)
+    warm_repeats = _warm_repeats()
     load_started = time.monotonic()
     print("decision batch model load started", flush=True)
-    model, request_error = load_model()
-    inference_started = time.monotonic()
-    print(f"decision batch model loaded in {inference_started - load_started:.2f}s", flush=True)
-    replies = model.decide_batch(requests)
-    inference_finished = time.monotonic()
+    watch = FallbackWatch().install()
+    try:
+        model, request_error = load_model()
+        inference_started = time.monotonic()
+        print(f"decision batch model loaded in {inference_started - load_started:.2f}s", flush=True)
+        profile = InferenceProfile(model, watch, sync=_cuda_sync, warm_repeats=warm_repeats)
+        replies = model.decide_batch(requests)
+        inference_finished = time.monotonic()
+        watch.assert_fast()
+    finally:
+        watch.uninstall()
     print(
         f"decision batch inference finished in {inference_finished - inference_started:.2f}s",
         flush=True,
@@ -109,11 +134,13 @@ def run_batch(
         gpu_peak_bytes = torch.cuda.max_memory_allocated()
     host_peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     host_peak_bytes = host_peak if sys.platform == "darwin" else host_peak * 1024
+    input_tokens = [result["input_tokens"] for result in results if "input_tokens" in result]
     return {
         "local_processing_started_at": started_at,
         "input_count": len(rows),
         "valid_count": sum(result["status"] == "ok" for result in results),
-        "input_tokens": [result["input_tokens"] for result in results if "input_tokens" in result],
+        "input_tokens": input_tokens,
+        "profile": profile.finish(input_tokens),
         "validation_seconds": load_started - started,
         "load_seconds": inference_started - load_started,
         "inference_seconds": inference_finished - inference_started,

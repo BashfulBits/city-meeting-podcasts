@@ -9,3 +9,6 @@
   The existing local model path remains the default; one L4 canary passed structural validation,
   and an RTX PRO 6000 canary also passed structural validation; quality qualification remains
   pending.
+- Add inference diagnostics to the decision-batch worker: a prompt-length distribution, per-forward
+  timings, kernel-version and Triton-cache counters in the completion telemetry, an abort when
+  the gated-delta-rule kernels fall back to PyTorch, and an opt-in warm-repeat probe.
