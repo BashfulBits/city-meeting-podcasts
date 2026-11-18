@@ -1,0 +1,1339 @@
+{
+ "labeler": "claude-sonnet-5-5 (not human)",
+ "note": "Chapter tag choices from the 12 blind-shown tags; transcript read in full only up to ~6.5k chars per chapter (head 4.5k + tail 2k). Human labels are in the separate human file.",
+ "chapters": [
+  {
+   "chapter_id": "ch-2377f4871377",
+   "src": "6540eef2dc2e",
+   "uid": "7dad50e2d5cd28b6",
+   "shown": [
+    "missing-middle-housing",
+    "annexation-outward-expansion",
+    "road-widening",
+    "placemaking-public-space",
+    "parking-mandates",
+    "street-safety-vision-zero",
+    "minimum-lot-size-setbacks",
+    "rezoning",
+    "housing-supply",
+    "anti-displacement-equity",
+    "zoning-reform",
+    "affordable-housing"
+   ],
+   "claude_tags": [
+    "annexation-outward-expansion"
+   ]
+  },
+  {
+   "chapter_id": "ch-badbc5c3bdc7",
+   "src": "9a95e7173fe6",
+   "uid": "17ebf28157c7ca21",
+   "shown": [
+    "stormwater-utility-maintenance",
+    "main-street",
+    "form-based-codes",
+    "debt-bonds-tif-subsidies",
+    "budget-structural-balance",
+    "neighborhood-planning",
+    "climate-resilience",
+    "traffic-calming-road-diets",
+    "parking-mandates",
+    "infrastructure-maintenance-liability",
+    "incremental-development",
+    "anti-displacement-equity"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-868cbce6fc87",
+   "src": "ecc3710ac47f",
+   "uid": "e780cc2f74a66551",
+   "shown": [
+    "community-wealth-local-ownership",
+    "road-widening",
+    "budget-structural-balance",
+    "infill-redevelopment",
+    "infrastructure-maintenance-liability",
+    "accessibility-universal-design",
+    "tactical-urbanism",
+    "debt-bonds-tif-subsidies",
+    "climate-resilience",
+    "traffic-calming-road-diets",
+    "adaptive-reuse",
+    "stormwater-utility-maintenance"
+   ],
+   "claude_tags": [
+    "budget-structural-balance"
+   ]
+  },
+  {
+   "chapter_id": "ch-5d41b563bc4f",
+   "src": "6540eef2dc2e",
+   "uid": "b0f4fdd1e144e733",
+   "shown": [
+    "minimum-lot-size-setbacks",
+    "affordable-housing",
+    "form-based-codes",
+    "anti-displacement-equity",
+    "adaptive-reuse",
+    "community-wealth-local-ownership",
+    "missing-middle-housing",
+    "annexation-outward-expansion",
+    "infill-redevelopment",
+    "accessory-dwelling-units",
+    "traffic-calming-road-diets",
+    "tactical-urbanism"
+   ],
+   "claude_tags": [
+    "annexation-outward-expansion"
+   ]
+  },
+  {
+   "chapter_id": "ch-2bc251d577fe",
+   "src": "7039dbcce556",
+   "uid": "fe251ef152b92715",
+   "shown": [
+    "adaptive-reuse",
+    "road-widening",
+    "housing-supply",
+    "home-based-business",
+    "form-based-codes",
+    "neighborhood-planning",
+    "infrastructure-maintenance-liability",
+    "anti-displacement-equity",
+    "budget-structural-balance",
+    "parks-recreation",
+    "rezoning",
+    "missing-middle-housing"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-8d6436b2c09e",
+   "src": "ecc3710ac47f",
+   "uid": "b48e3739aacd2bd7",
+   "shown": [
+    "main-street",
+    "infrastructure-maintenance-liability",
+    "debt-bonds-tif-subsidies",
+    "form-based-codes",
+    "accessory-dwelling-units",
+    "traffic-calming-road-diets",
+    "small-business-permitting",
+    "climate-resilience",
+    "missing-middle-housing",
+    "stormwater-utility-maintenance",
+    "road-widening",
+    "budget-structural-balance"
+   ],
+   "claude_tags": [
+    "climate-resilience"
+   ]
+  },
+  {
+   "chapter_id": "ch-52e50941e799",
+   "src": "6540eef2dc2e",
+   "uid": "8edf71e5225dea5d",
+   "shown": [
+    "tactical-urbanism",
+    "accessibility-universal-design",
+    "historic-preservation",
+    "neighborhood-planning",
+    "affordable-housing",
+    "third-places-public-life",
+    "community-wealth-local-ownership",
+    "road-widening",
+    "parks-recreation",
+    "incremental-development",
+    "street-trees-green-infrastructure",
+    "public-art-culture"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-eb269972d760",
+   "src": "f9afe970563e",
+   "uid": "2b99ed14be196ad3",
+   "shown": [
+    "third-places-public-life",
+    "placemaking-public-space",
+    "tactical-urbanism",
+    "historic-preservation",
+    "infill-redevelopment",
+    "main-street",
+    "debt-bonds-tif-subsidies",
+    "traffic-calming-road-diets",
+    "budget-structural-balance",
+    "accessibility-universal-design",
+    "community-wealth-local-ownership",
+    "infrastructure-maintenance-liability"
+   ],
+   "claude_tags": [
+    "historic-preservation"
+   ]
+  },
+  {
+   "chapter_id": "ch-b99c34d092a4",
+   "src": "6540eef2dc2e",
+   "uid": "bd28b8f21ac2cfaf",
+   "shown": [
+    "third-places-public-life",
+    "form-based-codes",
+    "zoning-reform",
+    "annexation-outward-expansion",
+    "incremental-development",
+    "rezoning",
+    "community-wealth-local-ownership",
+    "parks-recreation",
+    "accessory-dwelling-units",
+    "traffic-calming-road-diets",
+    "minimum-lot-size-setbacks",
+    "anti-displacement-equity"
+   ],
+   "claude_tags": [
+    "annexation-outward-expansion",
+    "rezoning"
+   ]
+  },
+  {
+   "chapter_id": "ch-6461f8243de5",
+   "src": "3b7588310856",
+   "uid": "b791feba17966c65",
+   "shown": [
+    "neighborhood-planning",
+    "parks-recreation",
+    "annexation-outward-expansion",
+    "tactical-urbanism",
+    "placemaking-public-space",
+    "third-places-public-life",
+    "small-business-permitting",
+    "climate-resilience",
+    "historic-preservation",
+    "main-street",
+    "public-art-culture",
+    "transit-oriented-development"
+   ],
+   "claude_tags": [
+    "parks-recreation"
+   ]
+  },
+  {
+   "chapter_id": "ch-c1a2cb36fe49",
+   "src": "3b7588310856",
+   "uid": "5253bd2d86085594",
+   "shown": [
+    "public-art-culture",
+    "third-places-public-life",
+    "budget-structural-balance",
+    "neighborhood-engagement",
+    "anti-displacement-equity",
+    "minimum-lot-size-setbacks",
+    "infill-redevelopment",
+    "annexation-outward-expansion",
+    "incremental-development",
+    "road-widening",
+    "traffic-calming-road-diets",
+    "neighborhood-planning"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-9535ba274fdc",
+   "src": "3b7588310856",
+   "uid": "4d6c37dc93d974d7",
+   "shown": [
+    "placemaking-public-space",
+    "public-art-culture",
+    "infrastructure-maintenance-liability",
+    "form-based-codes",
+    "street-trees-green-infrastructure",
+    "walk-bike-transit-access",
+    "main-street",
+    "climate-resilience",
+    "tactical-urbanism",
+    "street-safety-vision-zero",
+    "parks-recreation",
+    "transit-oriented-development"
+   ],
+   "claude_tags": [
+    "street-trees-green-infrastructure",
+    "parks-recreation"
+   ]
+  },
+  {
+   "chapter_id": "ch-bc38f8067e26",
+   "src": "3b7588310856",
+   "uid": "b603957a1dc188bb",
+   "shown": [
+    "infill-redevelopment",
+    "placemaking-public-space",
+    "tactical-urbanism",
+    "parks-recreation",
+    "street-trees-green-infrastructure",
+    "housing-supply",
+    "transit-oriented-development",
+    "main-street",
+    "climate-resilience",
+    "small-business-permitting",
+    "neighborhood-engagement",
+    "historic-preservation"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-48c6ac078693",
+   "src": "f9afe970563e",
+   "uid": "2118f22eb9d19842",
+   "shown": [
+    "housing-supply",
+    "rezoning",
+    "infrastructure-maintenance-liability",
+    "community-wealth-local-ownership",
+    "parks-recreation",
+    "annexation-outward-expansion",
+    "accessibility-universal-design",
+    "adaptive-reuse",
+    "form-based-codes",
+    "minimum-lot-size-setbacks",
+    "neighborhood-engagement",
+    "infill-redevelopment"
+   ],
+   "claude_tags": [
+    "rezoning",
+    "neighborhood-engagement"
+   ]
+  },
+  {
+   "chapter_id": "ch-b851cba8964f",
+   "src": "76869ed1994f",
+   "uid": "3060a171c8fc6954",
+   "shown": [
+    "housing-supply",
+    "community-wealth-local-ownership",
+    "accessory-dwelling-units",
+    "rezoning",
+    "transit-oriented-development",
+    "zoning-reform",
+    "budget-structural-balance",
+    "walk-bike-transit-access",
+    "adaptive-reuse",
+    "annexation-outward-expansion",
+    "street-trees-green-infrastructure",
+    "minimum-lot-size-setbacks"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-cedb89a7ef30",
+   "src": "6540eef2dc2e",
+   "uid": "f937865b68b09e78",
+   "shown": [
+    "placemaking-public-space",
+    "public-art-culture",
+    "debt-bonds-tif-subsidies",
+    "main-street",
+    "affordable-housing",
+    "infill-redevelopment",
+    "walk-bike-transit-access",
+    "infrastructure-maintenance-liability",
+    "accessibility-universal-design",
+    "missing-middle-housing",
+    "stormwater-utility-maintenance",
+    "parks-recreation"
+   ],
+   "claude_tags": [
+    "parks-recreation",
+    "stormwater-utility-maintenance"
+   ]
+  },
+  {
+   "chapter_id": "ch-3f0647d0604b",
+   "src": "9bf21e6e48e4",
+   "uid": "a74c8740de95f5e1",
+   "shown": [
+    "walk-bike-transit-access",
+    "minimum-lot-size-setbacks",
+    "historic-preservation",
+    "main-street",
+    "adaptive-reuse",
+    "home-based-business",
+    "form-based-codes",
+    "zoning-reform",
+    "third-places-public-life",
+    "accessibility-universal-design",
+    "infill-redevelopment",
+    "neighborhood-planning"
+   ],
+   "claude_tags": [
+    "historic-preservation"
+   ]
+  },
+  {
+   "chapter_id": "ch-2742b42fa176",
+   "src": "ecc3710ac47f",
+   "uid": "787e4e452098d5de",
+   "shown": [
+    "housing-supply",
+    "small-business-permitting",
+    "accessibility-universal-design",
+    "infill-redevelopment",
+    "anti-displacement-equity",
+    "parks-recreation",
+    "missing-middle-housing",
+    "community-wealth-local-ownership",
+    "rezoning",
+    "budget-structural-balance",
+    "home-based-business",
+    "incremental-development"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-47b6a7710198",
+   "src": "6540eef2dc2e",
+   "uid": "1f918198a245f325",
+   "shown": [
+    "housing-supply",
+    "anti-displacement-equity",
+    "accessory-dwelling-units",
+    "walk-bike-transit-access",
+    "parking-mandates",
+    "debt-bonds-tif-subsidies",
+    "minimum-lot-size-setbacks",
+    "affordable-housing",
+    "climate-resilience",
+    "rezoning",
+    "form-based-codes",
+    "neighborhood-planning"
+   ],
+   "claude_tags": [
+    "rezoning"
+   ]
+  },
+  {
+   "chapter_id": "ch-d823f626c05e",
+   "src": "aaec584a06da",
+   "uid": "3924c9a9c5a764c3",
+   "shown": [
+    "third-places-public-life",
+    "annexation-outward-expansion",
+    "zoning-reform",
+    "placemaking-public-space",
+    "accessibility-universal-design",
+    "missing-middle-housing",
+    "public-art-culture",
+    "neighborhood-engagement",
+    "stormwater-utility-maintenance",
+    "historic-preservation",
+    "traffic-calming-road-diets",
+    "tactical-urbanism"
+   ],
+   "claude_tags": [
+    "neighborhood-engagement"
+   ]
+  },
+  {
+   "chapter_id": "ch-0bf2501b3737",
+   "src": "6540eef2dc2e",
+   "uid": "a5d03c2e2f06cc63",
+   "shown": [
+    "infrastructure-maintenance-liability",
+    "neighborhood-engagement",
+    "climate-resilience",
+    "stormwater-utility-maintenance",
+    "street-safety-vision-zero",
+    "street-trees-green-infrastructure",
+    "affordable-housing",
+    "debt-bonds-tif-subsidies",
+    "budget-structural-balance",
+    "zoning-reform",
+    "adaptive-reuse",
+    "road-widening"
+   ],
+   "claude_tags": [
+    "climate-resilience"
+   ]
+  },
+  {
+   "chapter_id": "ch-33fd3e896539",
+   "src": "ecc3710ac47f",
+   "uid": "9c81f401b9f21177",
+   "shown": [
+    "third-places-public-life",
+    "parks-recreation",
+    "infill-redevelopment",
+    "traffic-calming-road-diets",
+    "walk-bike-transit-access",
+    "missing-middle-housing",
+    "housing-supply",
+    "road-widening",
+    "anti-displacement-equity",
+    "adaptive-reuse",
+    "rezoning",
+    "neighborhood-planning"
+   ],
+   "claude_tags": [
+    "rezoning",
+    "missing-middle-housing",
+    "infill-redevelopment",
+    "housing-supply"
+   ]
+  },
+  {
+   "chapter_id": "ch-f5370c2427c9",
+   "src": "fe4d235eef5a",
+   "uid": "762ea1bc970b3a4c",
+   "shown": [
+    "affordable-housing",
+    "anti-displacement-equity",
+    "housing-supply",
+    "missing-middle-housing",
+    "form-based-codes",
+    "infill-redevelopment",
+    "infrastructure-maintenance-liability",
+    "community-wealth-local-ownership",
+    "accessory-dwelling-units",
+    "zoning-reform",
+    "traffic-calming-road-diets",
+    "neighborhood-planning"
+   ],
+   "claude_tags": [
+    "affordable-housing",
+    "anti-displacement-equity"
+   ]
+  },
+  {
+   "chapter_id": "ch-40a121964c8b",
+   "src": "fe4d235eef5a",
+   "uid": "ed43044a799de0bf",
+   "shown": [
+    "housing-supply",
+    "parks-recreation",
+    "historic-preservation",
+    "rezoning",
+    "neighborhood-planning",
+    "neighborhood-engagement",
+    "traffic-calming-road-diets",
+    "annexation-outward-expansion",
+    "community-wealth-local-ownership",
+    "form-based-codes",
+    "missing-middle-housing",
+    "affordable-housing"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-48ad3d172cbb",
+   "src": "ecc3710ac47f",
+   "uid": "fb344e7b0a505152",
+   "shown": [
+    "main-street",
+    "public-art-culture",
+    "neighborhood-planning",
+    "zoning-reform",
+    "home-based-business",
+    "parks-recreation",
+    "accessory-dwelling-units",
+    "annexation-outward-expansion",
+    "rezoning",
+    "missing-middle-housing",
+    "debt-bonds-tif-subsidies",
+    "street-trees-green-infrastructure"
+   ],
+   "claude_tags": [
+    "rezoning"
+   ]
+  },
+  {
+   "chapter_id": "ch-fb97eecfbfda",
+   "src": "fe4d235eef5a",
+   "uid": "2443f99d431976b3",
+   "shown": [
+    "affordable-housing",
+    "climate-resilience",
+    "stormwater-utility-maintenance",
+    "infill-redevelopment",
+    "debt-bonds-tif-subsidies",
+    "adaptive-reuse",
+    "transit-oriented-development",
+    "historic-preservation",
+    "anti-displacement-equity",
+    "infrastructure-maintenance-liability",
+    "minimum-lot-size-setbacks",
+    "rezoning"
+   ],
+   "claude_tags": [
+    "infrastructure-maintenance-liability"
+   ]
+  },
+  {
+   "chapter_id": "ch-1db4ae3ddf07",
+   "src": "6540eef2dc2e",
+   "uid": "f09c8a728000ddfc",
+   "shown": [
+    "housing-supply",
+    "affordable-housing",
+    "parks-recreation",
+    "road-widening",
+    "infrastructure-maintenance-liability",
+    "walk-bike-transit-access",
+    "accessory-dwelling-units",
+    "transit-oriented-development",
+    "community-wealth-local-ownership",
+    "budget-structural-balance",
+    "parking-mandates",
+    "incremental-development"
+   ],
+   "claude_tags": [
+    "housing-supply"
+   ]
+  },
+  {
+   "chapter_id": "ch-efb11f48c71e",
+   "src": "f9afe970563e",
+   "uid": "3617563d577b7291",
+   "shown": [
+    "stormwater-utility-maintenance",
+    "parks-recreation",
+    "infill-redevelopment",
+    "parking-mandates",
+    "minimum-lot-size-setbacks",
+    "zoning-reform",
+    "affordable-housing",
+    "adaptive-reuse",
+    "accessibility-universal-design",
+    "road-widening",
+    "incremental-development",
+    "budget-structural-balance"
+   ],
+   "claude_tags": [
+    "budget-structural-balance"
+   ]
+  },
+  {
+   "chapter_id": "ch-091d93ca8010",
+   "src": "76869ed1994f",
+   "uid": "a1de3377362a2966",
+   "shown": [
+    "public-art-culture",
+    "housing-supply",
+    "walk-bike-transit-access",
+    "debt-bonds-tif-subsidies",
+    "adaptive-reuse",
+    "home-based-business",
+    "anti-displacement-equity",
+    "neighborhood-engagement",
+    "climate-resilience",
+    "street-safety-vision-zero",
+    "infrastructure-maintenance-liability",
+    "traffic-calming-road-diets"
+   ],
+   "claude_tags": [
+    "adaptive-reuse"
+   ]
+  },
+  {
+   "chapter_id": "ch-faef8497765d",
+   "src": "76869ed1994f",
+   "uid": "3d68e77fa1540ba7",
+   "shown": [
+    "zoning-reform",
+    "incremental-development",
+    "parks-recreation",
+    "tactical-urbanism",
+    "main-street",
+    "road-widening",
+    "placemaking-public-space",
+    "accessibility-universal-design",
+    "infrastructure-maintenance-liability",
+    "budget-structural-balance",
+    "third-places-public-life",
+    "walk-bike-transit-access"
+   ],
+   "claude_tags": [
+    "walk-bike-transit-access"
+   ]
+  },
+  {
+   "chapter_id": "ch-90d029472732",
+   "src": "3b7588310856",
+   "uid": "4a3269e0495cdfe6",
+   "shown": [
+    "walk-bike-transit-access",
+    "budget-structural-balance",
+    "neighborhood-engagement",
+    "main-street",
+    "home-based-business",
+    "tactical-urbanism",
+    "third-places-public-life",
+    "parks-recreation",
+    "small-business-permitting",
+    "transit-oriented-development",
+    "stormwater-utility-maintenance",
+    "accessibility-universal-design"
+   ],
+   "claude_tags": [
+    "parks-recreation",
+    "budget-structural-balance"
+   ]
+  },
+  {
+   "chapter_id": "ch-12325a4aef38",
+   "src": "fe4d235eef5a",
+   "uid": "acebabd6a9626b43",
+   "shown": [
+    "street-safety-vision-zero",
+    "neighborhood-planning",
+    "incremental-development",
+    "small-business-permitting",
+    "public-art-culture",
+    "community-wealth-local-ownership",
+    "accessory-dwelling-units",
+    "infill-redevelopment",
+    "missing-middle-housing",
+    "street-trees-green-infrastructure",
+    "adaptive-reuse",
+    "walk-bike-transit-access"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-10f148887dab",
+   "src": "6540eef2dc2e",
+   "uid": "fae63a2634b96ff1",
+   "shown": [
+    "zoning-reform",
+    "walk-bike-transit-access",
+    "infill-redevelopment",
+    "adaptive-reuse",
+    "main-street",
+    "debt-bonds-tif-subsidies",
+    "rezoning",
+    "stormwater-utility-maintenance",
+    "form-based-codes",
+    "community-wealth-local-ownership",
+    "parks-recreation",
+    "affordable-housing"
+   ],
+   "claude_tags": [
+    "rezoning"
+   ]
+  },
+  {
+   "chapter_id": "ch-96b11284ac46",
+   "src": "6540eef2dc2e",
+   "uid": "cd680257d3096f0e",
+   "shown": [
+    "adaptive-reuse",
+    "main-street",
+    "rezoning",
+    "infill-redevelopment",
+    "zoning-reform",
+    "minimum-lot-size-setbacks",
+    "missing-middle-housing",
+    "parking-mandates",
+    "walk-bike-transit-access",
+    "annexation-outward-expansion",
+    "historic-preservation",
+    "street-safety-vision-zero"
+   ],
+   "claude_tags": [
+    "rezoning",
+    "infill-redevelopment"
+   ]
+  },
+  {
+   "chapter_id": "ch-6d1969c85b39",
+   "src": "9bf21e6e48e4",
+   "uid": "a5b4312301b89dca",
+   "shown": [
+    "historic-preservation",
+    "transit-oriented-development",
+    "annexation-outward-expansion",
+    "third-places-public-life",
+    "main-street",
+    "budget-structural-balance",
+    "street-safety-vision-zero",
+    "neighborhood-planning",
+    "accessibility-universal-design",
+    "parks-recreation",
+    "tactical-urbanism",
+    "street-trees-green-infrastructure"
+   ],
+   "claude_tags": [
+    "historic-preservation"
+   ]
+  },
+  {
+   "chapter_id": "ch-b0e760e716b0",
+   "src": "1e4cde904833",
+   "uid": "e0e3b4b1dd037c35",
+   "shown": [
+    "climate-resilience",
+    "third-places-public-life",
+    "main-street",
+    "neighborhood-engagement",
+    "debt-bonds-tif-subsidies",
+    "infill-redevelopment",
+    "parking-mandates",
+    "accessibility-universal-design",
+    "tactical-urbanism",
+    "street-safety-vision-zero",
+    "parks-recreation",
+    "affordable-housing"
+   ],
+   "claude_tags": [
+    "climate-resilience",
+    "parks-recreation"
+   ]
+  },
+  {
+   "chapter_id": "ch-fbdc278a6d29",
+   "src": "fe4d235eef5a",
+   "uid": "59944a88bf5586c5",
+   "shown": [
+    "anti-displacement-equity",
+    "neighborhood-planning",
+    "missing-middle-housing",
+    "stormwater-utility-maintenance",
+    "adaptive-reuse",
+    "accessory-dwelling-units",
+    "affordable-housing",
+    "home-based-business",
+    "form-based-codes",
+    "climate-resilience",
+    "housing-supply",
+    "neighborhood-engagement"
+   ],
+   "claude_tags": [
+    "neighborhood-planning",
+    "neighborhood-engagement"
+   ]
+  },
+  {
+   "chapter_id": "ch-0a9effcbb192",
+   "src": "fe4d235eef5a",
+   "uid": "5ceb7090706eb812",
+   "shown": [
+    "placemaking-public-space",
+    "historic-preservation",
+    "parks-recreation",
+    "rezoning",
+    "infill-redevelopment",
+    "third-places-public-life",
+    "public-art-culture",
+    "missing-middle-housing",
+    "street-trees-green-infrastructure",
+    "stormwater-utility-maintenance",
+    "debt-bonds-tif-subsidies",
+    "small-business-permitting"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-85e8dadd9327",
+   "src": "19c2ffe87d08",
+   "uid": "0732e57350636c99",
+   "shown": [
+    "historic-preservation",
+    "incremental-development",
+    "anti-displacement-equity",
+    "tactical-urbanism",
+    "walk-bike-transit-access",
+    "rezoning",
+    "infill-redevelopment",
+    "public-art-culture",
+    "zoning-reform",
+    "debt-bonds-tif-subsidies",
+    "missing-middle-housing",
+    "main-street"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-58ad5899e452",
+   "src": "9f866f8efbf2",
+   "uid": "d921a9aa9d4386a9",
+   "shown": [
+    "minimum-lot-size-setbacks",
+    "transit-oriented-development",
+    "parks-recreation",
+    "public-art-culture",
+    "debt-bonds-tif-subsidies",
+    "walk-bike-transit-access",
+    "street-safety-vision-zero",
+    "main-street",
+    "traffic-calming-road-diets",
+    "adaptive-reuse",
+    "accessibility-universal-design",
+    "affordable-housing"
+   ],
+   "claude_tags": [
+    "walk-bike-transit-access",
+    "street-safety-vision-zero"
+   ]
+  },
+  {
+   "chapter_id": "ch-828e6145bd0e",
+   "src": "76869ed1994f",
+   "uid": "5b4c7e30fc096bcc",
+   "shown": [
+    "third-places-public-life",
+    "tactical-urbanism",
+    "public-art-culture",
+    "street-trees-green-infrastructure",
+    "parks-recreation",
+    "debt-bonds-tif-subsidies",
+    "infrastructure-maintenance-liability",
+    "accessibility-universal-design",
+    "neighborhood-engagement",
+    "main-street",
+    "stormwater-utility-maintenance",
+    "placemaking-public-space"
+   ],
+   "claude_tags": [
+    "public-art-culture"
+   ]
+  },
+  {
+   "chapter_id": "ch-3923b1220e08",
+   "src": "9bf21e6e48e4",
+   "uid": "529e1796154a920a",
+   "shown": [
+    "affordable-housing",
+    "infill-redevelopment",
+    "home-based-business",
+    "road-widening",
+    "parks-recreation",
+    "neighborhood-planning",
+    "missing-middle-housing",
+    "historic-preservation",
+    "small-business-permitting",
+    "tactical-urbanism",
+    "anti-displacement-equity",
+    "zoning-reform"
+   ],
+   "claude_tags": [
+    "anti-displacement-equity"
+   ]
+  },
+  {
+   "chapter_id": "ch-5df541afb1be",
+   "src": "f9afe970563e",
+   "uid": "11437ea57b8aca47",
+   "shown": [
+    "budget-structural-balance",
+    "climate-resilience",
+    "traffic-calming-road-diets",
+    "walk-bike-transit-access",
+    "neighborhood-planning",
+    "public-art-culture",
+    "accessory-dwelling-units",
+    "debt-bonds-tif-subsidies",
+    "affordable-housing",
+    "zoning-reform",
+    "parks-recreation",
+    "housing-supply"
+   ],
+   "claude_tags": [
+    "affordable-housing",
+    "housing-supply"
+   ]
+  },
+  {
+   "chapter_id": "ch-8d52234249dc",
+   "src": "fe4d235eef5a",
+   "uid": "1e5ea72ab77913f6",
+   "shown": [
+    "form-based-codes",
+    "public-art-culture",
+    "affordable-housing",
+    "community-wealth-local-ownership",
+    "parks-recreation",
+    "debt-bonds-tif-subsidies",
+    "street-safety-vision-zero",
+    "missing-middle-housing",
+    "placemaking-public-space",
+    "accessory-dwelling-units",
+    "walk-bike-transit-access",
+    "third-places-public-life"
+   ],
+   "claude_tags": [
+    "affordable-housing"
+   ]
+  },
+  {
+   "chapter_id": "ch-931dde609ea9",
+   "src": "ecc3710ac47f",
+   "uid": "f00de96345e0aaf3",
+   "shown": [
+    "accessory-dwelling-units",
+    "main-street",
+    "parks-recreation",
+    "rezoning",
+    "affordable-housing",
+    "annexation-outward-expansion",
+    "minimum-lot-size-setbacks",
+    "street-trees-green-infrastructure",
+    "missing-middle-housing",
+    "housing-supply",
+    "parking-mandates",
+    "neighborhood-planning"
+   ],
+   "claude_tags": [
+    "rezoning",
+    "minimum-lot-size-setbacks",
+    "missing-middle-housing"
+   ]
+  },
+  {
+   "chapter_id": "ch-c8e1f6cab644",
+   "src": "ecc3710ac47f",
+   "uid": "d6ee718bc35688f1",
+   "shown": [
+    "public-art-culture",
+    "missing-middle-housing",
+    "rezoning",
+    "budget-structural-balance",
+    "minimum-lot-size-setbacks",
+    "parks-recreation",
+    "historic-preservation",
+    "home-based-business",
+    "affordable-housing",
+    "placemaking-public-space",
+    "annexation-outward-expansion",
+    "zoning-reform"
+   ],
+   "claude_tags": [
+    "rezoning",
+    "minimum-lot-size-setbacks"
+   ]
+  },
+  {
+   "chapter_id": "ch-258f41e5c646",
+   "src": "76869ed1994f",
+   "uid": "640c79e21ffbc78b",
+   "shown": [
+    "debt-bonds-tif-subsidies",
+    "street-safety-vision-zero",
+    "adaptive-reuse",
+    "rezoning",
+    "infill-redevelopment",
+    "anti-displacement-equity",
+    "third-places-public-life",
+    "affordable-housing",
+    "small-business-permitting",
+    "stormwater-utility-maintenance",
+    "climate-resilience",
+    "tactical-urbanism"
+   ],
+   "claude_tags": [
+    "debt-bonds-tif-subsidies",
+    "infill-redevelopment",
+    "affordable-housing"
+   ]
+  },
+  {
+   "chapter_id": "ch-4a96efd7d15f",
+   "src": "ecc3710ac47f",
+   "uid": "ef4948e86d94d642",
+   "shown": [
+    "street-trees-green-infrastructure",
+    "debt-bonds-tif-subsidies",
+    "public-art-culture",
+    "form-based-codes",
+    "rezoning",
+    "infill-redevelopment",
+    "walk-bike-transit-access",
+    "third-places-public-life",
+    "parks-recreation",
+    "annexation-outward-expansion",
+    "street-safety-vision-zero",
+    "parking-mandates"
+   ],
+   "claude_tags": [
+    "rezoning",
+    "infill-redevelopment",
+    "parking-mandates",
+    "street-trees-green-infrastructure",
+    "public-art-culture"
+   ]
+  },
+  {
+   "chapter_id": "ch-829b6bc874b5",
+   "src": "19c2ffe87d08",
+   "uid": "c78b235bb1847d7e",
+   "shown": [
+    "zoning-reform",
+    "infrastructure-maintenance-liability",
+    "traffic-calming-road-diets",
+    "accessory-dwelling-units",
+    "historic-preservation",
+    "rezoning",
+    "incremental-development",
+    "community-wealth-local-ownership",
+    "adaptive-reuse",
+    "infill-redevelopment",
+    "parks-recreation",
+    "walk-bike-transit-access"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-beb49ff06a81",
+   "src": "fe4d235eef5a",
+   "uid": "56b00c6c5c6408f4",
+   "shown": [
+    "affordable-housing",
+    "accessibility-universal-design",
+    "main-street",
+    "parking-mandates",
+    "form-based-codes",
+    "neighborhood-planning",
+    "anti-displacement-equity",
+    "housing-supply",
+    "road-widening",
+    "placemaking-public-space",
+    "parks-recreation",
+    "rezoning"
+   ],
+   "claude_tags": [
+    "rezoning"
+   ]
+  },
+  {
+   "chapter_id": "ch-8c5de1e3a970",
+   "src": "3b7588310856",
+   "uid": "7021cc0c68afd9fd",
+   "shown": [
+    "street-trees-green-infrastructure",
+    "placemaking-public-space",
+    "affordable-housing",
+    "rezoning",
+    "walk-bike-transit-access",
+    "road-widening",
+    "accessory-dwelling-units",
+    "annexation-outward-expansion",
+    "anti-displacement-equity",
+    "street-safety-vision-zero",
+    "neighborhood-planning",
+    "parks-recreation"
+   ],
+   "claude_tags": [
+    "street-trees-green-infrastructure",
+    "walk-bike-transit-access"
+   ]
+  },
+  {
+   "chapter_id": "ch-fb3e0ee0c21d",
+   "src": "fe4d235eef5a",
+   "uid": "1e5d5b57367e729f",
+   "shown": [
+    "parks-recreation",
+    "neighborhood-engagement",
+    "infrastructure-maintenance-liability",
+    "rezoning",
+    "climate-resilience",
+    "stormwater-utility-maintenance",
+    "historic-preservation",
+    "missing-middle-housing",
+    "walk-bike-transit-access",
+    "budget-structural-balance",
+    "tactical-urbanism",
+    "accessibility-universal-design"
+   ],
+   "claude_tags": []
+  },
+  {
+   "chapter_id": "ch-7b916deff408",
+   "src": "9f866f8efbf2",
+   "uid": "88cc9333e7870812",
+   "shown": [
+    "anti-displacement-equity",
+    "stormwater-utility-maintenance",
+    "adaptive-reuse",
+    "street-safety-vision-zero",
+    "neighborhood-planning",
+    "parks-recreation",
+    "transit-oriented-development",
+    "accessibility-universal-design",
+    "walk-bike-transit-access",
+    "form-based-codes",
+    "affordable-housing",
+    "infill-redevelopment"
+   ],
+   "claude_tags": [
+    "walk-bike-transit-access"
+   ]
+  },
+  {
+   "chapter_id": "ch-eb0bd0d254ef",
+   "src": "76869ed1994f",
+   "uid": "3b12251eae9a85da",
+   "shown": [
+    "affordable-housing",
+    "adaptive-reuse",
+    "placemaking-public-space",
+    "community-wealth-local-ownership",
+    "public-art-culture",
+    "accessibility-universal-design",
+    "rezoning",
+    "small-business-permitting",
+    "historic-preservation",
+    "main-street",
+    "walk-bike-transit-access",
+    "third-places-public-life"
+   ],
+   "claude_tags": [
+    "rezoning",
+    "neighborhood-engagement",
+    "affordable-housing"
+   ]
+  },
+  {
+   "chapter_id": "ch-2899aab6d5fb",
+   "src": "fe4d235eef5a",
+   "uid": "a4091c30acb221a8",
+   "shown": [
+    "street-safety-vision-zero",
+    "affordable-housing",
+    "anti-displacement-equity",
+    "transit-oriented-development",
+    "budget-structural-balance",
+    "form-based-codes",
+    "adaptive-reuse",
+    "stormwater-utility-maintenance",
+    "infrastructure-maintenance-liability",
+    "historic-preservation",
+    "minimum-lot-size-setbacks",
+    "accessory-dwelling-units"
+   ],
+   "claude_tags": [
+    "affordable-housing"
+   ]
+  },
+  {
+   "chapter_id": "ch-accd917324eb",
+   "src": "3b7588310856",
+   "uid": "59017c88336b6ab8",
+   "shown": [
+    "budget-structural-balance",
+    "neighborhood-engagement",
+    "traffic-calming-road-diets",
+    "debt-bonds-tif-subsidies",
+    "walk-bike-transit-access",
+    "rezoning",
+    "historic-preservation",
+    "third-places-public-life",
+    "tactical-urbanism",
+    "street-trees-green-infrastructure",
+    "parks-recreation",
+    "transit-oriented-development"
+   ],
+   "claude_tags": [
+    "budget-structural-balance",
+    "parks-recreation",
+    "street-trees-green-infrastructure"
+   ]
+  },
+  {
+   "chapter_id": "ch-b80e790cd3e6",
+   "src": "f9afe970563e",
+   "uid": "56450832da0ac0fe",
+   "shown": [
+    "walk-bike-transit-access",
+    "rezoning",
+    "adaptive-reuse",
+    "neighborhood-planning",
+    "parks-recreation",
+    "affordable-housing",
+    "zoning-reform",
+    "form-based-codes",
+    "annexation-outward-expansion",
+    "main-street",
+    "housing-supply",
+    "stormwater-utility-maintenance"
+   ],
+   "claude_tags": [
+    "rezoning",
+    "affordable-housing",
+    "neighborhood-planning",
+    "housing-supply"
+   ]
+  },
+  {
+   "chapter_id": "ch-bb15e79071e1",
+   "src": "f9afe970563e",
+   "uid": "28d9328b02f9e6ed",
+   "shown": [
+    "transit-oriented-development",
+    "affordable-housing",
+    "placemaking-public-space",
+    "community-wealth-local-ownership",
+    "neighborhood-planning",
+    "tactical-urbanism",
+    "street-safety-vision-zero",
+    "rezoning",
+    "accessory-dwelling-units",
+    "parking-mandates",
+    "zoning-reform",
+    "housing-supply"
+   ],
+   "claude_tags": [
+    "accessory-dwelling-units",
+    "housing-supply",
+    "affordable-housing",
+    "parking-mandates",
+    "zoning-reform"
+   ]
+  },
+  {
+   "chapter_id": "ch-8353363f104f",
+   "src": "abbf5e25e078",
+   "uid": "6cb841c1b2c3eb95",
+   "shown": [
+    "walk-bike-transit-access",
+    "traffic-calming-road-diets",
+    "neighborhood-engagement",
+    "third-places-public-life",
+    "public-art-culture",
+    "parks-recreation",
+    "missing-middle-housing",
+    "tactical-urbanism",
+    "transit-oriented-development",
+    "placemaking-public-space",
+    "street-trees-green-infrastructure",
+    "anti-displacement-equity"
+   ],
+   "claude_tags": [
+    "parks-recreation",
+    "placemaking-public-space",
+    "neighborhood-engagement",
+    "transit-oriented-development"
+   ]
+  },
+  {
+   "chapter_id": "ch-e2e7502b071e",
+   "src": "c059c1a28111",
+   "uid": "d7236adc8412fff8",
+   "shown": [
+    "form-based-codes",
+    "road-widening",
+    "housing-supply",
+    "climate-resilience",
+    "walk-bike-transit-access",
+    "infill-redevelopment",
+    "parks-recreation",
+    "stormwater-utility-maintenance",
+    "neighborhood-planning",
+    "community-wealth-local-ownership",
+    "affordable-housing",
+    "street-trees-green-infrastructure"
+   ],
+   "claude_tags": [
+    "form-based-codes",
+    "street-trees-green-infrastructure"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,278 @@
+{
+ "labeler": "claude-sonnet-5-5 (not human)",
+ "rubric": "Does the quote, as spoken in this transcript, actually say what the stated reason claims? (answered from a passage rebuilt around the quote: 130 words either side)",
+ "items": [
+  {
+   "id": "subj-daccc04e3cdc9b00f7ec4752",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-2b03013ca6939863deccf3e8",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "not_supported",
+   "note": "Quote is a vote explanation for the preceding item; the Mills Road annexation item is only announced after it, so the reason misattributes it."
+  },
+  {
+   "id": "subj-50b958db727553d434f4b17a",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": "Framing about development standards is interpretive; core claim matches."
+  },
+  {
+   "id": "subj-23869bd97fc6a78ab92f9251",
+   "quote_found_in_transcript": true,
+   "coverage": 0.26,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-8fbd283ef29b06eca6457095",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-08e2bc9402bc159108eb5aea",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-add055bf611d64f8d9c4a137",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-e2820dd1998b620369ed27ac",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-5934bb4e372b3c71d03bf0c9",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-771c645cf669cb9771b328dc",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-12385a0746391a8fcbe0cce5",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-a9b707025e2ec03492d4b53f",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": "Pond name not in window; quote itself matches."
+  },
+  {
+   "id": "subj-98ca3ea5afafaf637d57bdf1",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": "Speaker role not visible in window."
+  },
+  {
+   "id": "subj-4590375ec7ccfa680509cbe5",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-86949e97d9b71df00df1afb8",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-b33ce888055d63618e5717c3",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-f132b5756b2c713bae5aa6b1",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-735b717468a71237b18b7e9b",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-779b260ceb21c77ef6fe4ffc",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": "Speaker is likely a commissioner; reason says council member. Core claim matches."
+  },
+  {
+   "id": "subj-09be6e02616ef0d730de3b99",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-aadf3017db595a399504b03c",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-cec4eb8c3d64f5b5ae395ebd",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-78ce34bbd46171af52c14535",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-eada576bd0c19061b22491bc",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-3d5dab4e25904cad2b08f022",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-ea876893906abd3e64901d6f",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-9a02c1263e311598377017b8",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-63b42dacfcaf804b63011d2a",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-abba738625796caab119d003",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-52a0b16ddf10d401b48c4a6f",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-23abfcef38ff61a315c3f034",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-2920256b9ec59b53c7812143",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "uncertain",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-46f856f3706de66a5c595d11",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  },
+  {
+   "id": "subj-477a5c71849f67ec382cbe91",
+   "quote_found_in_transcript": true,
+   "coverage": 1.0,
+   "human_label_on_truncated_passage": "not_supported",
+   "claude_label_on_rebuilt_passage": "supported",
+   "note": ""
+  }
+ ]
+}

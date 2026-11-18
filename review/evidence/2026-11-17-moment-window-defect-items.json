@@ -1,0 +1,175 @@
+{
+ "finding": "moment evidence window truncated by CONTEXT_WORD_CAP=400 on coarse provider-aligned segments; quote exists in transcript (33/34 checked) but not in shown passage",
+ "items": [
+  {
+   "id": "subj-daccc04e3cdc9b00f7ec4752",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-2b03013ca6939863deccf3e8",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-50b958db727553d434f4b17a",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-23869bd97fc6a78ab92f9251",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-8fbd283ef29b06eca6457095",
+   "human_label": "uncertain",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-08e2bc9402bc159108eb5aea",
+   "human_label": "uncertain",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-add055bf611d64f8d9c4a137",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-e2820dd1998b620369ed27ac",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-5934bb4e372b3c71d03bf0c9",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-771c645cf669cb9771b328dc",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-12385a0746391a8fcbe0cce5",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-a9b707025e2ec03492d4b53f",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-98ca3ea5afafaf637d57bdf1",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-4590375ec7ccfa680509cbe5",
+   "human_label": "uncertain",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-86949e97d9b71df00df1afb8",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-b33ce888055d63618e5717c3",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-f132b5756b2c713bae5aa6b1",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-735b717468a71237b18b7e9b",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-779b260ceb21c77ef6fe4ffc",
+   "human_label": "not_supported",
+   "stratum": "no"
+  },
+  {
+   "id": "subj-09be6e02616ef0d730de3b99",
+   "human_label": "not_supported",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-aadf3017db595a399504b03c",
+   "human_label": "not_supported",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-cec4eb8c3d64f5b5ae395ebd",
+   "human_label": "not_supported",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-78ce34bbd46171af52c14535",
+   "human_label": "uncertain",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-eada576bd0c19061b22491bc",
+   "human_label": "uncertain",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-3d5dab4e25904cad2b08f022",
+   "human_label": "uncertain",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-ea876893906abd3e64901d6f",
+   "human_label": "uncertain",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-9a02c1263e311598377017b8",
+   "human_label": "supported",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-63b42dacfcaf804b63011d2a",
+   "human_label": "not_supported",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-abba738625796caab119d003",
+   "human_label": "not_supported",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-52a0b16ddf10d401b48c4a6f",
+   "human_label": "not_supported",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-23abfcef38ff61a315c3f034",
+   "human_label": "uncertain",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-2920256b9ec59b53c7812143",
+   "human_label": "uncertain",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-46f856f3706de66a5c595d11",
+   "human_label": "supported",
+   "stratum": "split"
+  },
+  {
+   "id": "subj-477a5c71849f67ec382cbe91",
+   "human_label": "not_supported",
+   "stratum": "split"
+  }
+ ]
+}
