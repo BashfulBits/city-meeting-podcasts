@@ -8,7 +8,7 @@
 #
 # The build context is a staged directory, not the repository root. Stage it with:
 #   cp -R citypods scripts <ctx>/ && cp workers/decision-batch/karpo_stream_probe.py <ctx>/
-#   hf-12B.json hf-9B.json: Hugging Face `tree?recursive=1` listings of the two pinned revisions
+#   hf-<12B|9B|4B|31B|COP|ELE>.json: Hugging Face `tree?recursive=1` listings of the pinned revisions
 #   phase0-12b-l4-fp8.json phase0-9b-l4-bf16.json: the Phase 0 spike results, for comparison
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
@@ -20,6 +20,7 @@ RUN python -m pip install --no-cache-dir --no-deps "torchvision==0.29.0" && pyth
 ENV PYTHONPATH=/app:/opt/karpo/src PYTHONUNBUFFERED=1
 COPY citypods /app/citypods
 COPY scripts /app/scripts
-COPY karpo_stream_probe.py hf-12B.json hf-9B.json phase0-12b-l4-fp8.json phase0-9b-l4-bf16.json /app/
+COPY karpo_stream_probe.py hf-12B.json hf-9B.json hf-4B.json hf-31B.json hf-COP.json hf-ELE.json \
+    phase0-12b-l4-fp8.json phase0-9b-l4-bf16.json /app/
 RUN python -c "import citypods.judging.karpo_stream, scripts.derive_karpo_manifest"
 ENTRYPOINT ["python", "/app/karpo_stream_probe.py"]

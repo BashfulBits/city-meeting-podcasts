@@ -21,6 +21,48 @@
       "revision": "ae28efb0ae759c3494a1078c0a56eda10a9adb38",
       "weight_gib": 58.2
     },
+    "copernicus-31b-stream": {
+      "calibrations": {
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 0.7,
+          "confidence": "estimated",
+          "config_overhead_seconds": 0.7,
+          "load_seconds": 356.5,
+          "load_seconds_p90": 445.6,
+          "peak_gpu_gib": 75.66,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1): weights-only streaming load measured once (58.27 GiB on the GPU); inference rate and peak are the existing FUSE probe's. Estimated because the author's runtime (copernicus_server.py) does not use the streaming loader",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 3804.2
+        }
+      },
+      "family": "generic",
+      "max_len": 4096,
+      "notes": "Copernicus-31B (Gemma 4 merge): the streaming loader fills a Gemma4Model byte-identically to from_pretrained, but no adapter to the author's runtime exists, so the planner must not launch this row.",
+      "revision": "ae28efb0ae759c3494a1078c0a56eda10a9adb38",
+      "weight_gib": 58.3
+    },
+    "elephant-1": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 29.2,
+          "confidence": "estimated",
+          "config_overhead_seconds": 29.2,
+          "load_seconds": 66.4,
+          "load_seconds_p90": 83.0,
+          "peak_gpu_gib": 17.54,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1): weights-only streaming load measured once (17.54 GiB with lm_head); rate and overhead are assumed equal to Karpo 9B (same Qwen3.5 architecture). Estimated: elephant-1's runtime is OneJev qev plus a 41 KB patch, which was not audited or run",
+          "startup_seconds": 24.0,
+          "token_budget": 8192,
+          "tokens_per_second": 1667.0
+        }
+      },
+      "family": "qwen_fla",
+      "max_len": 4096,
+      "notes": "baselabs/elephant-1 (Qwen3.5-9B full fine-tune, MIT). Weights stream into a Qwen3_5Model byte-identically to from_pretrained; no decision adapter, so the planner must not launch this row.",
+      "revision": "b3f8a93462fb1051a9de031e94a7ff380e254072",
+      "weight_gib": 17.5
+    },
     "glide-9b": {
       "calibrations": {
         "L4": {
@@ -96,6 +138,48 @@
       "revision": "664640316919ce368750b3e16cc263e927ac6e2b",
       "weight_gib": 12.2
     },
+    "karpo-31b-bf16": {
+      "calibrations": {
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 0.6,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.6,
+          "load_seconds": 173.4,
+          "load_seconds_p90": 216.8,
+          "peak_gpu_gib": 60.1,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1): streaming BF16 direct-copy load, 1 RTX load (p90 is 1.25x); one earlier run of the same job died on the container memory limit with no logs and was not reproduced",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 5218.7
+        }
+      },
+      "family": "generic",
+      "max_len": 4096,
+      "notes": "MachinePulseAI Karpo 31B (Gemma 4) in 16-bit through the streaming loader: 58.3 GiB of weights.",
+      "revision": "b8e6fd7463cea8662c556d6257955d7ef9c10d19",
+      "weight_gib": 58.3
+    },
+    "karpo-31b-fp8": {
+      "calibrations": {
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 0.6,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.6,
+          "load_seconds": 235.8,
+          "load_seconds_p90": 294.8,
+          "peak_gpu_gib": 32.9,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1): streaming FP8 loader, 1 RTX load (p90 is 1.25x; a concurrent run shared the network); rate from 8 requests of 4.2k to 6.3k tokens, peak at those requests, budget not stretched",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 7843.9
+        }
+      },
+      "family": "generic",
+      "max_len": 4096,
+      "notes": "MachinePulseAI Karpo 31B (Gemma 4) quantized to FP8 while streaming: 31.1 GiB of weights.",
+      "revision": "b8e6fd7463cea8662c556d6257955d7ef9c10d19",
+      "weight_gib": 31.1
+    },
     "karpo-4b": {
       "calibrations": {
         "L4": {
@@ -128,6 +212,27 @@
       "notes": "MachinePulseAI Karpo 4B (Qwen3.5 backbone); backbone-only timings without the decision readout; GLiDE's fla configs transfer (cold overhead 16.5 s to 1.0 s).",
       "revision": "f7f521cfc3219ca28518c6bba91960b8757dce06",
       "weight_gib": 8.5
+    },
+    "karpo-4b-fp8": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 36.7,
+          "confidence": "measured",
+          "config_overhead_seconds": 36.7,
+          "load_seconds": 55.6,
+          "load_seconds_p90": 69.5,
+          "peak_gpu_gib": 5.8,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1): streaming FP8 loader, 1 L4 load (p90 is 1.25x); rate from four warm requests, cold overhead from the first two (fla autotune)",
+          "startup_seconds": 24.0,
+          "token_budget": 8192,
+          "tokens_per_second": 2781.2
+        }
+      },
+      "family": "qwen_fla",
+      "max_len": 4096,
+      "notes": "MachinePulseAI Karpo 4B (Qwen3.5) quantized to FP8 while streaming: 5.1 GiB of weights.",
+      "revision": "4e52f27899229934797e8e13174d9935a786836d",
+      "weight_gib": 5.1
     },
     "karpo-9b": {
       "calibrations": {
@@ -182,6 +287,27 @@
       "notes": "MachinePulseAI Karpo 9B (Qwen3.5) quantized to FP8 while streaming: 9.2 GiB of weights against 15.6 GiB in BF16. Only one load measured, so the tail is an assumption.",
       "revision": "0fb729874694e9a4928882eefb2cb1aa49b93735",
       "weight_gib": 9.2
+    },
+    "karpo-9b-stream": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 29.2,
+          "confidence": "measured",
+          "config_overhead_seconds": 29.2,
+          "load_seconds": 69.1,
+          "load_seconds_p90": 86.4,
+          "peak_gpu_gib": 18.57,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1): streaming BF16 direct-copy load (1 L4 load, p90 is 1.25x); throughput, overheads and the 18.57 GiB peak are the existing karpo-9b measurements at budget 8192",
+          "startup_seconds": 24.0,
+          "token_budget": 8192,
+          "tokens_per_second": 2576.4
+        }
+      },
+      "family": "qwen_fla",
+      "max_len": 4096,
+      "notes": "Karpo 9B in 16-bit through the streaming loader (direct copy, no quantization); the FP8 variant is karpo-9b-fp8.",
+      "revision": "0fb729874694e9a4928882eefb2cb1aa49b93735",
+      "weight_gib": 15.6
     },
     "lfm-d1-3b": {
       "calibrations": {

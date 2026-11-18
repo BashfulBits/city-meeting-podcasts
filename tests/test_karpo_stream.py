@@ -412,3 +412,89 @@ def test_load_karpo_discards_a_partial_write_and_frees_the_model_while_the_error
     assert backbones and backbones[0]() is None, "the failed model is still referenced"
     assert len(tensors) == 2 and all(t() is None for t in tensors), "weights are still referenced"
     assert held.value is not None
+
+
+# ------------------------------------------------------------------ pins and hf-layout streams
+
+
+def test_pins_cover_every_checkpoint_and_weights_must_match_the_listed_total():
+    pins = karpo_stream.MODELS
+    assert pins["b8e6fd7463cea8662c556d6257955d7ef9c10d19"].weight_bytes > 40 * 1024**3
+    assert pins["ae28efb0ae759c3494a1078c0a56eda10a9adb38"].kind == "hf"
+    assert pins["b3f8a93462fb1051a9de031e94a7ff380e254072"].collect == ("lm_head.weight",)
+    revision = "b3f8a93462fb1051a9de031e94a7ff380e254072"
+    pin = pins[revision]
+
+    def manifest(weight_size):
+        objects = {
+            "config.json": 10,
+            "model.safetensors": weight_size,
+        }
+        return {
+            "bucket": "bucket-a",
+            "revision": revision,
+            "slice_bytes": 64 * 1024**2,
+            "objects": [
+                {
+                    "name": f"{pin.prefix}/{n}",
+                    "generation": "1",
+                    "size": size,
+                    "sha256": "0" * 64,
+                    "slices": ["0" * 64] * ((size + 64 * 1024**2 - 1) // (64 * 1024**2)),
+                }
+                for n, size in objects.items()
+            ],
+        }
+
+    assert set(karpo_stream.validate_manifest(manifest(pin.weight_bytes))) == {
+        "config.json",
+        "model.safetensors",
+    }
+    with pytest.raises(ValueError, match="pinned size"):
+        karpo_stream.validate_manifest(manifest(pin.weight_bytes - 1))
+    with pytest.raises(ValueError):  # a weight larger than the pin plus slack is refused outright
+        karpo_stream.validate_manifest(manifest(pin.weight_bytes + 1024**3))
+
+
+def test_prefixed_checkpoint_streams_with_rename_and_collected_extra(tiny, ref_module):
+    """ForConditionalGeneration layout: "model." names and an lm_head outside the backbone."""
+    from safetensors.torch import load_file
+
+    path = next(tiny.glob("*.safetensors"))
+    tensors = load_file(str(path))
+    head = torch.randn(7, 5, dtype=torch.bfloat16)
+    prefixed = {f"model.{name}": value for name, value in tensors.items()}
+    prefixed["lm_head.weight"] = head
+    save_file(prefixed, str(tiny / "prefixed.safetensors"))
+    backbone, _ = karpo_stream.build_backbone(
+        tiny, "gemma4_unified", torch, fp8=False, device=torch.device("cpu")
+    )
+    direct, quantized = karpo_stream._targets(backbone, {})
+    sink = torch_sink.TorchSink(
+        direct, quantized, collect=("lm_head.weight",), rename=lambda n: n.removeprefix("model.")
+    )
+    stream_file(tiny / "prefixed.safetensors", sink)
+    sink.check_complete()
+    for name, value in tensors.items():
+        assert digest(value) == digest(backbone.state_dict()[name]), name
+    assert sink.collected()["lm_head.weight"].equal(head)
+    missing = torch_sink.TorchSink({"w": torch.empty(1)}, collect=("lm_head.weight",))
+    with pytest.raises(ValueError, match="incomplete"):
+        missing.check_complete()
+
+
+def test_hf_backbone_loader_streams_without_a_decision_config(mocked_load, monkeypatch):
+    manifest, _, calls = mocked_load
+    monkeypatch.setitem(
+        karpo_stream.MODELS,
+        manifest["revision"],
+        karpo_stream.Pin("p", 1, kind="hf"),
+    )
+    backbone, extras = karpo_stream.load_hf_backbone(manifest, "token", device="cpu")
+    assert calls == ["model-00001-of-00001.safetensors"]  # no readout, no decision config
+    assert extras == {} and len(list(backbone.parameters())) > 0
+    with pytest.raises(ValueError, match="Karpo's"):
+        monkeypatch.setitem(
+            karpo_stream.MODELS, manifest["revision"], karpo_stream.Pin("p", 1, kind="karpo")
+        )
+        karpo_stream.load_hf_backbone(manifest, "token", fp8=True, device="cpu")

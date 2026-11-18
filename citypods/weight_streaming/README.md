@@ -60,7 +60,7 @@ operation, and the tests compare bytes against that formula. `CollectSink` gathe
 incomplete tensors. `TorchSink.discard()` releases every destination after a failure;
 `CollectSink` has no `discard()`, so drop the failed collector and its results.
 
-`citypods.judging.karpo_stream.load_karpo` composes them for Karpo decision models: it builds the
+`citypods.judging.karpo_stream.load_karpo` composes them for Karpo decision models (and `load_hf_backbone` for plain checkpoints with a `model.` prefix): it builds the
 backbone on the meta device, replaces the decoder projections Karpo's `--fp8` would quantize with
 that path's own `Fp8Linear` shells, allocates on the GPU, restores non-persistent buffers with
 transformers' own initialisation, streams every shard, and returns a

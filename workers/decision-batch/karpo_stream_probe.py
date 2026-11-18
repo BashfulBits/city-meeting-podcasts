@@ -23,18 +23,39 @@ from pathlib import Path
 from citypods.judging.decision_batch_cloud import GCSObjectStore, metadata_access_token
 
 HF_ROOT = "/models/hf/"
+K = "MachinePulseAI__karpo-decision-"
 MODELS = {
     "12B": {
         "revision": "664640316919ce368750b3e16cc263e927ac6e2b",
-        "local": HF_ROOT
-        + "MachinePulseAI__karpo-decision-12B/664640316919ce368750b3e16cc263e927ac6e2b",
+        "local": HF_ROOT + K + "12B/664640316919ce368750b3e16cc263e927ac6e2b",
         "phase0": "/app/phase0-12b-l4-fp8.json",
     },
     "9B": {
         "revision": "0fb729874694e9a4928882eefb2cb1aa49b93735",
-        "local": HF_ROOT
-        + "MachinePulseAI__karpo-decision-9B/0fb729874694e9a4928882eefb2cb1aa49b93735",
+        "local": HF_ROOT + K + "9B/0fb729874694e9a4928882eefb2cb1aa49b93735",
         "phase0": "/app/phase0-9b-l4-bf16.json",
+    },
+    "4B": {  # the project's pinned 4B mirror lives under karpo/, not hf/
+        "revision": "4e52f27899229934797e8e13174d9935a786836d",
+        "local": "/models/karpo/karpo-decision-4B/4e52f27899229934797e8e13174d9935a786836d",
+    },
+    "31B": {
+        "revision": "b8e6fd7463cea8662c556d6257955d7ef9c10d19",
+        "local": HF_ROOT + K + "31B/b8e6fd7463cea8662c556d6257955d7ef9c10d19",
+    },
+    "COP": {  # Copernicus-31B: plain Gemma 4 weights; its own runtime is not run here
+        "revision": "ae28efb0ae759c3494a1078c0a56eda10a9adb38",
+        "local": HF_ROOT
+        + "Poindexter-Labs__Copernicus-31B/ae28efb0ae759c3494a1078c0a56eda10a9adb38",
+        "kind": "hf",
+        "backbone": ("transformers.models.gemma4.modeling_gemma4", "Gemma4Model"),
+    },
+    "ELE": {  # elephant-1: plain Qwen3.5 weights; its OneJev runtime is not run here
+        "revision": "b3f8a93462fb1051a9de031e94a7ff380e254072",
+        "local": HF_ROOT + "baselabs__elephant-1/b3f8a93462fb1051a9de031e94a7ff380e254072",
+        "kind": "hf",
+        "backbone": ("transformers.models.qwen3_5.modeling_qwen3_5", "Qwen3_5Model"),
+        "extra": "lm_head.weight",
     },
 }
 MODEL_BUCKET = os.environ.get(
@@ -63,14 +84,21 @@ def emit(store, label, result):
     print("PROBE_RESULT_KEY " + key, flush=True)
 
 
-def tensor_digests(decider, torch):
-    """SHA-256 of every backbone and readout tensor's bytes, for byte-identity comparison."""
-    result = {}
-    tensors = dict(decider.ckpt.backbone.state_dict())
-    tensors["readout.weight"] = decider.ckpt.readout.weight
-    for name in sorted(tensors):
-        raw = tensors[name].detach().contiguous().reshape(-1).view(torch.uint8).cpu().numpy()
-        result[name] = hashlib.sha256(raw.tobytes()).hexdigest()
+def _digest(tensor, torch):
+    raw = tensor.detach().contiguous().reshape(-1).view(torch.uint8).cpu().numpy()
+    return hashlib.sha256(raw.tobytes()).hexdigest()
+
+
+def tensor_digests(backbone, torch, extras=None):
+    """SHA-256 of every state_dict tensor's bytes (and any extra tensors), for identity checks."""
+    tensors = dict(backbone.state_dict())
+    tensors.update(extras or {})
+    return {name: _digest(tensors[name], torch) for name in sorted(tensors)}
+
+
+def decider_digests(decider, torch):
+    result = tensor_digests(decider.ckpt.backbone, torch)
+    result["readout.weight"] = _digest(decider.ckpt.readout.weight, torch)
     return result
 
 
@@ -164,19 +192,26 @@ def derive(args, store, token):
 def stream(args, store, token):
     import torch
 
-    from citypods.judging.karpo_stream import load_karpo
+    from citypods.judging.karpo_stream import load_hf_backbone, load_karpo
 
+    spec = MODELS[args.model]
     started = time.monotonic()
     manifest = json.loads(store.get(args.manifest)[0])
-    if manifest.get("revision") != MODELS[args.model]["revision"]:
+    if manifest.get("revision") != spec["revision"]:
         raise ValueError("the manifest is for a different model revision")
     stats = {}
-    decider = load_karpo(
-        manifest, token, fp8=not args.bf16, workers=args.workers, stats=stats, device="cuda"
-    )
+    hf = spec.get("kind") == "hf"
+    if hf:
+        backbone, extras = load_hf_backbone(
+            manifest, token, workers=args.workers, stats=stats, device="cuda"
+        )
+    else:
+        decider = load_karpo(
+            manifest, token, fp8=not args.bf16, workers=args.workers, stats=stats, device="cuda"
+        )
     result = {
         "model": args.model,
-        "mode": "stream-bf16" if args.bf16 else "stream-fp8",
+        "mode": "stream-bf16" if (args.bf16 or hf) else "stream-fp8",
         "gpu": torch.cuda.get_device_name(0),
         "workers": args.workers,
         "slice_mib": manifest["slice_bytes"] // 2**20,
@@ -184,24 +219,63 @@ def stream(args, store, token):
         "stream": stats,
         "after_load": memory(torch),
     }
-    result["digests"] = tensor_digests(decider, torch)
-    result["after_digest"] = memory(torch)  # host RSS here includes the digest copies
-    torch.cuda.reset_peak_memory_stats()
-    rows = run_tests(decider, torch, args.chapters)
-    # Host RSS is a process-wide peak: it still includes the digesting above.
-    result["tests"] = {"rows": rows, "after_tests": memory(torch)}
-    result["vs_phase0"] = compare_phase0(rows, MODELS[args.model]["phase0"])
+    if hf:
+        result["digests"] = tensor_digests(backbone, torch, extras)
+        result["after_digest"] = memory(torch)
+    else:
+        result["digests"] = decider_digests(decider, torch)
+        result["after_digest"] = memory(torch)  # host RSS here includes the digest copies
+        torch.cuda.reset_peak_memory_stats()
+        rows = run_tests(decider, torch, args.chapters)
+        # Host RSS is a process-wide peak: it still includes the digesting above.
+        result["tests"] = {"rows": rows, "after_tests": memory(torch)}
+        if spec.get("phase0"):
+            result["vs_phase0"] = compare_phase0(rows, spec["phase0"])
     emit(store, f"stream-{args.model}-{result['mode']}-w{args.workers}", result)
+
+
+def reference_hf(args, store, spec):
+    """Load with transformers' own ``from_pretrained`` (the path the author's runtime uses)."""
+    import importlib
+
+    import torch
+
+    started = time.monotonic()
+    module, name = spec["backbone"]
+    cls = getattr(importlib.import_module(module), name)
+    model = cls.from_pretrained(
+        spec["local"], dtype=torch.bfloat16, attn_implementation="sdpa", device_map={"": 0}
+    )
+    extras = {}
+    if spec.get("extra"):
+        from safetensors import safe_open
+
+        with safe_open(spec["local"] + "/model.safetensors", "pt", device="cpu") as handle:
+            extras[spec["extra"]] = handle.get_tensor(spec["extra"])
+    result = {
+        "model": args.model,
+        "mode": "reference-from-pretrained-bf16",
+        "gpu": torch.cuda.get_device_name(0),
+        "load_seconds_total": round(time.monotonic() - started, 1),
+        "after_load": memory(torch),
+        "digests": tensor_digests(model, torch, extras),
+    }
+    result["after_digest"] = memory(torch)
+    emit(store, f"reference-{args.model}", result)
 
 
 def reference(args, store, token):
     import torch
     from karpo_decision import checkpoint as checkpoints
+    from karpo_decision import families
     from karpo_decision.decider import Decider
     from karpo_decision.serve import fp8, qwen_fp8
 
     spec = MODELS[args.model]
+    if spec.get("kind") == "hf":
+        return reference_hf(args, store, spec)
     started = time.monotonic()
+    result = {"model": args.model, "gpu": torch.cuda.get_device_name(0)}
     if args.model == "12B":  # Phase 0 order: load on CPU, quantize one layer at a time on the GPU
         decider = Decider(checkpoints.load(spec["local"], "cpu"))
         dev = torch.device("cuda")
@@ -216,17 +290,21 @@ def reference(args, store, token):
         decider.model.to(dev)
         decider.readout.to(dev)
         decider.device = dev
-    else:  # the 9B BF16 weights fit the GPU; the author's quantize converts them layer by layer
+        result["mode"] = "reference-layerwise-fp8"
+    else:  # BF16 on the GPU (it fits), digested, then Karpo's own quantize unless --bf16
         decider = Decider.from_pretrained(spec["local"], device="cuda")
-        qwen_fp8.quantize(decider.model)
-    result = {
-        "model": args.model,
-        "mode": "reference-layerwise-fp8",
-        "gpu": torch.cuda.get_device_name(0),
-        "load_seconds_total": round(time.monotonic() - started, 1),
-        "after_load": memory(torch),
-        "digests": tensor_digests(decider, torch),
-    }
+        result["mode"] = "reference-bf16"
+        result["digests_bf16"] = decider_digests(decider, torch)
+        if not args.bf16:
+            qwen = families.model_type(spec["local"]) == "qwen3_5"
+            (qwen_fp8.quantize if qwen else fp8.quantize)(decider.model)
+            result["mode"] = "reference-bf16-then-quantize"
+    result.update(load_seconds_total=round(time.monotonic() - started, 1), after_load=memory(torch))
+    result["digests"] = (
+        result["digests_bf16"]
+        if "digests_bf16" in result and args.bf16
+        else decider_digests(decider, torch)
+    )
     result["after_digest"] = memory(torch)  # host RSS here includes the digest copies
     torch.cuda.reset_peak_memory_stats()
     rows = run_tests(decider, torch, args.chapters)

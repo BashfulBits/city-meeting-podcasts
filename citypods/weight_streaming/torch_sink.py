@@ -6,6 +6,7 @@ after building the model on the meta device). A sink validates every tensor agai
 and must be discarded after any exception, because earlier verified bytes may already be written.
 """
 
+import dataclasses
 import warnings
 from collections.abc import Mapping
 
@@ -58,6 +59,9 @@ class TorchSink:
     with ``weight`` e4m3 (out, in) and ``scale`` float32 (1, out), the layout of ``Fp8Linear``.
     A quantized tensor is staged as BF16 on ``device`` one tensor at a time, so the BF16 model is
     never resident. ``ignore_prefixes`` lists tensors the model does not use; they are recorded.
+    ``collect`` names tensors outside the model to keep: each is allocated on ``device`` when it
+    arrives and returned by ``collected()``. ``rename`` maps a file's tensor name to the
+    destination's name (for a checkpoint saved with another module prefix) before any lookup.
     """
 
     def __init__(
@@ -67,6 +71,8 @@ class TorchSink:
         *,
         device: torch.device | str | None = None,
         ignore_prefixes: tuple[str, ...] = (),
+        collect: tuple[str, ...] = (),
+        rename=None,
     ):
         quantized = dict(quantized or {})
         if set(direct) & set(quantized):
@@ -88,6 +94,9 @@ class TorchSink:
         self.quantized = quantized
         self.device = torch.device(device) if device is not None else None
         self.ignore_prefixes = tuple(ignore_prefixes)
+        self.collect_names = tuple(collect)
+        self.rename = rename
+        self.extras: dict[str, torch.Tensor] = {}
         self.progress: dict[str, int] = {}
         self.ignored: set[str] = set()
         self._staging: dict[str, torch.Tensor] = {}
@@ -101,7 +110,11 @@ class TorchSink:
         return tuple(weight.shape), torch.bfloat16, weight.numel() * 2
 
     def __call__(self, spec, offset, data):
+        if self.rename is not None:
+            spec = dataclasses.replace(spec, name=self.rename(spec.name))
         name = spec.name
+        if name in self.collect_names:
+            return self._collect(spec, offset, data)
         if name not in self.direct and name not in self.quantized:
             if any(name.startswith(prefix) for prefix in self.ignore_prefixes):
                 self.ignored.add(name)
@@ -144,11 +157,31 @@ class TorchSink:
                 target_scale.copy_(scale.t())
             self._done.add(name)
 
+    def _collect(self, spec, offset, data):
+        dtype = DTYPES.get(spec.dtype)
+        if dtype is None or offset != self.progress.get(spec.name, 0):
+            raise ValueError("invalid segment: " + spec.name)
+        if offset == 0:
+            if spec.name in self.extras:
+                raise ValueError("duplicate tensor: " + spec.name)
+            self.extras[spec.name] = torch.empty(spec.shape, dtype=dtype, device=self.device)
+        if offset + len(data) > spec.size:
+            raise ValueError("invalid segment: " + spec.name)
+        if len(data):
+            with torch.no_grad():
+                _bytes_of(self.extras[spec.name])[offset : offset + len(data)].copy_(_source(data))
+        self.progress[spec.name] = offset + len(data)
+
+    def collected(self) -> dict[str, torch.Tensor]:
+        """The ``collect`` tensors, once ``check_complete`` has passed."""
+        return self.extras
+
     def check_complete(self):
         """Every destination must be fully written exactly once; nothing may be left staged."""
         expected = {**self.direct, **self.quantized}
         if (
-            set(self.progress) != set(expected)
+            set(self.progress) != set(expected) | set(self.collect_names)
+            or any(self.progress[n] != t.numel() * t.element_size() for n, t in self.extras.items())
             or self._staging
             or any(self.progress[n] != self._expected(n)[2] for n in expected)
         ):
@@ -158,6 +191,7 @@ class TorchSink:
         """Release every reference after a failure; the destinations must not be used."""
         self.direct = {}
         self.quantized = {}
+        self.extras = {}
         self._staging.clear()
         self.progress.clear()
 

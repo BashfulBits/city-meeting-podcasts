@@ -19,7 +19,22 @@ MAX_OBJECTS = 1000
 MAX_TOTAL_BYTES = 20 * 1024**3
 
 
-def validate_manifest(manifest, *, revision=REVISION, prefix=None, max_total=MAX_TOTAL_BYTES):
+REQUIRED_FILES = ("decision_config.json", "config.json", "readout.safetensors")
+
+
+def sharded_weight(path):
+    return path.startswith("model-") and path.endswith(".safetensors")
+
+
+def validate_manifest(
+    manifest,
+    *,
+    revision=REVISION,
+    prefix=None,
+    max_total=MAX_TOTAL_BYTES,
+    required=REQUIRED_FILES,
+    is_weight=sharded_weight,
+):
     """Validate a trusted object manifest; ``prefix`` is the object-name prefix of ``revision``."""
     prefix = revision if prefix is None else prefix
     if not isinstance(manifest, dict):
@@ -81,12 +96,7 @@ def validate_manifest(manifest, *, revision=REVISION, prefix=None, max_total=MAX
         for i in range(1, path.count("/") + 1)
     ):
         raise ValueError("object size or path conflict")
-    if (
-        "decision_config.json" not in paths
-        or "config.json" not in paths
-        or "readout.safetensors" not in paths
-        or not any(p.startswith("model-") and p.endswith(".safetensors") for p in paths)
-    ):
+    if any(name not in paths for name in required) or not any(is_weight(p) for p in paths):
         raise ValueError("missing required model files")
     return paths
 

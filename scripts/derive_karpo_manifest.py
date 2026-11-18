@@ -26,6 +26,8 @@ READ = 32 * MIB
 MAX_SLICE = 64 * MIB  # the streaming loader rejects larger slices
 SKIP_PREFIXES = ("assets/", "licenses/")
 SKIP_NAMES = {"README.md", "model.safetensors.index.json"}
+# Data the loader reads. Author code in a checkpoint repository (.py, .sh, .patch) is never listed.
+INCLUDE_SUFFIXES = (".json", ".jinja", ".safetensors")
 
 
 def list_objects(bucket, prefix, token):
@@ -92,6 +94,7 @@ def derive(bucket, revision, objects, fetcher_for, slice_sizes, expected, *, wor
         if not name[len(prefix) + 1 :].startswith(SKIP_PREFIXES)
         and name[len(prefix) + 1 :] not in SKIP_NAMES
         and "/" not in name[len(prefix) + 1 :]
+        and name.endswith(INCLUDE_SUFFIXES)
     ]
     # Every weight must have an independent publisher digest, checked before any hashing.
     for name, _, _ in wanted:

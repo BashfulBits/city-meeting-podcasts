@@ -79,7 +79,7 @@ def test_validate_accepts_a_manifest_larger_than_glide_limit():
     names = ["config.json", "decision_config.json", "readout.safetensors"]
     sizes = {n: 10 for n in names} | {
         "model-00001-of-00002.safetensors": 13 * 1024**3,
-        "model-00002-of-00002.safetensors": 13 * 1024**3,
+        "model-00002-of-00002.safetensors": 23_919_544_312 - 13 * 1024**3,
     }
     chunk = 64 * 1024**2
     objects = [
