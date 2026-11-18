@@ -542,7 +542,7 @@ runs show which comparisons are close.
 
 ### Result 2026-11-18: Phase 3 runs on the frozen set (`evals/open-weight-decision/`)
 
-Code, answers and scores are in the Phase 3 PR (branch `feat/open-weight-decision-runs`, stacked on the loader):
+Code, answers and scores are in the Phase 3 PR ([#2728](https://github.com/BashfulBits/city-meeting-podcasts/pull/2728), branch `feat/open-weight-decision-runs`, stacked on the loader):
 `citypods/judging/open_weight_eval.py`, `scripts/open_weight_eval.py`, `workers/decision-batch/open_weight_eval_worker.py`,
 and `evals/open-weight-decision/results/` (every answer file, `*-summary-{dev,holdout,all}.json`, `cloud-costs.json`,
 `score_all.sh` to rescore). Models saw only `manifest.json` (the cloud image bakes in that file alone). Tag accuracy
@@ -550,7 +550,7 @@ excludes `uncertain` (dev 18 of 105 tag items, 17%; holdout 15 of 135, 11%) and 
 (29% unanimous yes, 34% unanimous no, 37% split). "Accuracy" counts an invalid answer as a miss; no model produced one
 (0 invalid on every run). Intervals are 95% paired bootstrap over episodes, resampled within stratum, 2,000 draws, the same
 draws for every model. Dev was scored first and holdout once, after the final model list was fixed (nothing was tuned: each
-model ran its published runner with the production rubric); the pooled column adds the two for power.
+model ran its published runner with the production rubric). The bootstrap was corrected after the CodeRabbit review of PR #2728 (stratum weights are now held fixed per draw); point estimates did not move and two intervals moved by 0.01; the pooled column adds the two for power.
 
 **Lane A, tags** (accuracy against the maintainer's blind labels; difference from Perplexity is pooled dev + holdout, 207 scored
 items):
@@ -564,9 +564,9 @@ items):
 | Karpo 12B FP8 (L4) | 0.687 | 0.687 | 0.687 | -0.011 [-0.06, +0.04] | 0.23 | 0.24 | 0.88 |
 | Karpo 12B BF16 (RTX) | 0.675 | 0.677 | 0.678 | -0.020 [-0.07, +0.03] | 0.22 | 0.25 | 0.88 |
 | Karpo 31B FP8 (RTX) | 0.756 | 0.752 | 0.752 | +0.054 [+0.00, +0.11] | 0.18 | 0.21 | 0.86 |
-| Karpo 31B BF16 (RTX) | 0.756 | 0.742 | 0.747 | +0.049 [-0.01, +0.10] | 0.17 | 0.20 | 0.85 |
+| Karpo 31B BF16 (RTX) | 0.756 | 0.742 | 0.747 | +0.049 [-0.00, +0.11] | 0.17 | 0.20 | 0.85 |
 | GLiDE 9B (L4) | 0.758 | 0.742 | 0.749 | +0.051 [-0.01, +0.11] | 0.10 | 0.18 | 0.82 |
-| Liquid d1-2B (local) | 0.688 | 0.734 | 0.712 | +0.014 [-0.05, +0.09] | 0.07 | 0.19 | 0.75 |
+| Liquid d1-2B (local) | 0.688 | 0.734 | 0.712 | +0.014 [-0.05, +0.08] | 0.07 | 0.19 | 0.75 |
 | Liquid d1-3B (local) | 0.676 | 0.684 | 0.681 | -0.017 [-0.08, +0.05] | 0.19 | 0.23 | 0.75 |
 | MiniCPM5-2B-Jev (local) | 0.676 | 0.655 | 0.662 | -0.037 [-0.12, +0.05] | 0.16 | 0.22 | 0.63 |
 | ArseneLupinstral (local, dev only) | 0.560 | not run | n/a | n/a (dev: -0.10 [-0.19, -0.01]) | 0.22 | 0.26 | 0.81 |
