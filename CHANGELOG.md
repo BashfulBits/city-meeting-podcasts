@@ -15,6 +15,22 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Gemma models are family `gemma`, not `google`** (review/60 section 2, maintainer decision
+  2026-11-17). `llm_families` now labels `google/gemma-4-31b-it` and `google/gemma-4-26b-a4b-it`
+  `gemma`; Gemini models stay `google`, so no Gemini model can sibling the Gemini Decision anchor.
+  Behaviour change: a Gemma-produced entry is now anchored by Gemini Decision 1 (before, by
+  Perplexity Decider), a Gemma model is no longer barred as a sibling by the anchor's family
+  (neither Gemma is in the dispatched `judge:sibling` lane, so no lane changes), and adjudication
+  and the agreement report pair a Gemini anchor reading with a recorded Gemma sibling reading.
+
+Added `review/60`, the evaluation plan for open-weight decision models on Cloud Run: candidate
+matrix for the judge lane and multi-question tagging, the Gemma-as-separate-family decision,
+phasing, a $20 spend cap, and a local screen for the small models before any cloud integration.
+
+Added `evals/open-weight-decision/`, a frozen evaluation set (240 tag items, 60 moments, 60
+chapters) with separate inputs, truth, and production reference, a dev/holdout split, and a test
+that keeps labels out of the inputs. Records the provenance of every label (human or Claude).
+
 - Add the review/60 Phase 3 evaluation harness and its first results. Request builders read only
   the frozen `manifest.json`; scoring gives accuracy against gold (tag strata re-weighted to the
   production mix), ECE, Brier, agreement with Perplexity, invalid rate and paired cluster-
