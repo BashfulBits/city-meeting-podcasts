@@ -722,6 +722,8 @@ items):
 | Karpo 12B BF16 (RTX) | 0.675 | 0.677 | 0.678 | -0.020 [-0.07, +0.03] | 0.22 | 0.25 | 0.88 |
 | Karpo 31B FP8 (RTX) | 0.756 | 0.752 | 0.752 | +0.054 [+0.00, +0.11] | 0.18 | 0.21 | 0.86 |
 | Karpo 31B BF16 (RTX) | 0.756 | 0.742 | 0.747 | +0.049 [-0.00, +0.11] | 0.17 | 0.20 | 0.85 |
+| elephant-1 (L4, lean) | 0.780 | 0.720 | 0.745 | +0.047 [-0.01, +0.11] | 0.11 | 0.19 | 0.81 |
+| Copernicus-31B (RTX) | 0.745 | 0.742 | 0.742 | +0.044 [-0.02, +0.11] | 0.10 | 0.18 | 0.81 |
 | GLiDE 9B (L4) | 0.758 | 0.742 | 0.749 | +0.051 [-0.01, +0.11] | 0.10 | 0.18 | 0.82 |
 | Liquid d1-2B (local) | 0.688 | 0.734 | 0.712 | +0.014 [-0.05, +0.08] | 0.07 | 0.19 | 0.75 |
 | Liquid d1-3B (local) | 0.676 | 0.684 | 0.681 | -0.017 [-0.08, +0.05] | 0.19 | 0.23 | 0.75 |
@@ -732,9 +734,8 @@ Always answering the commoner class scores 0.53 (re-weighted). On dev the Qwen-l
 Perplexity by 8 to 10 points; on holdout the lead shrank to 2 to 6 points and every interval spans zero, so the dev gap was
 partly luck of the draw. Pooled, only Karpo 9B (both precisions) and Karpo 31B FP8 have an interval that excludes zero, and
 by a hair. What the data supports: Karpo 9B, Karpo 31B and GLiDE 9B are about 5 points more accurate than Perplexity and Gemini,
-Karpo 12B is level with Perplexity, and the models are not separable from each other. **Calibration** separates them more
-clearly than accuracy: Perplexity and Karpo 12B are overconfident (ECE 0.20 to 0.25), GLiDE 9B is the best calibrated of the large
-models (ECE 0.10, Brier 0.18), as is d1-2B (0.07).
+Karpo 12B is level with Perplexity, and the models are not separable from each other. elephant-1 and Copernicus-31B (added after the maintainer approved their runtimes) land with the other 9B and 31B models, +0.04 to +0.05 pooled with intervals that include zero (elephant-1 +0.118 on dev, where it is the best model, but -0.006 on holdout). **Calibration** separates them more
+clearly than accuracy: Perplexity and Karpo 12B are overconfident (ECE 0.20 to 0.25); Copernicus-31B (ECE 0.10, Brier 0.18), GLiDE 9B (0.10, 0.18) and elephant-1 (0.11, 0.19) are the best calibrated of the large models, as is d1-2B (0.07).
 
 **Promotion gate (review/60 §5 Phase 3a, dev tags, invalid under 2%):** d1-2B 104% of Perplexity, d1-3B 102%, MiniCPM5-2B-Jev 102%,
 ArseneLupinstral 85% (fails, and so was not run on holdout); invalid rate 0% for all four. The three passes were run on the
@@ -747,6 +748,8 @@ shows a defect the tag gate cannot see.
 |---|---:|---:|
 | Perplexity, Gemini, Karpo 9B/31B, GLiDE 9B | 1 to 2 | 1 to 2 |
 | Karpo 12B (both precisions) | 4 to 5 | 3 |
+| elephant-1 | 1 | 0 |
+| Copernicus-31B | 0 | 0 |
 | MiniCPM5-2B-Jev | 2 | 6 |
 | Liquid d1-2B | 3 | 10 |
 | Liquid d1-3B | 5 | 15 |
@@ -765,6 +768,8 @@ are chosen, so answering "no" every time scores 0.88 accuracy and F1 is the numb
 | Karpo 12B FP8 / BF16 | 0.93 | 0.75 | 0.70 / 0.80 | 0.71 / 0.72 | 0.72 / 0.60 and 0.71 / 0.61 | 0.04 to 0.05 | 457 | 2,229 |
 | Karpo 31B FP8 / BF16 | 0.93 | 0.78 / 0.79 | 0.64 to 0.66 / 0.98 | 0.68 / 0.69 | 0.67 / 0.60 and 0.66 / 0.59 | 0.08 | 457 | 2,229 |
 | GLiDE 9B | 0.90 | 0.69 | 0.57 / 0.89 | 0.61 | same as grouped (one pass per question already) | 0.11 | 2,024 | n/a |
+| elephant-1 (L4) | 0.85 | 0.62 | 0.47 / 0.94 | 0.59 | 0.63 / 0.59 | 0.15 | 328 | 2,071 |
+| Copernicus-31B (RTX) | 0.85 | 0.64 | 0.47 / 0.98 | 0.56 | 0.61 / 0.58 | 0.15 | 2,237 (see note) | 4,142 |
 | Liquid d1-2B / d1-3B / MiniCPM (local) | 0.89 / 0.87 / 0.83 | 0.61 / 0.65 / 0.57 | | 0.61 / 0.60 / 0.51 | n/a | 0.10 to 0.15 | n/a | n/a |
 
 Perplexity's chapter lane was run grouped (all 12 shown tags in one request, the chapter as shared state). On holdout Karpo 9B equals
@@ -775,6 +780,8 @@ to +0.12 on dev and +0.03 to +0.12 on holdout) and costs 5× fewer tokens, so th
 12-tag list, so grouped requests, which also see the other candidate tags, may mirror that choice process; human chapter labels are
 needed before this is read as quality. GLiDE 9B pays 2,024 tokens per tag (7× Karpo grouped), which is the cost of having no one-pass
 multi-question mode (§3).
+
+elephant-1 and Copernicus-31B sit with GLiDE 9B and Gemini: high recall (0.94 and 0.98), low precision (0.47), F1 0.62 and 0.64 on holdout against Perplexity's 0.78. Neither is a better chapter judge than Karpo 9B. For both, grouped and single are within 0.01 to 0.03 F1 (elephant-1 grouped 0.62 against single 0.63, Copernicus 0.64 against 0.61), so the Karpo grouped advantage does not carry over. *Token note:* the counts come from each runtime's own usage and are not comparable across runtimes. elephant-1's 328 per tag is the shared prefix once plus a branch per tag; Copernicus reads each input twice for requests up to 3,000 tokens (its server default), which doubles its single-question count (4,142 against elephant's 2,071), and its grouped count (2,237) charges the state to every tag.
 
 **Cost and speed** (list rates for the Cloud Run job as created: L4 8 vCPU / 32 GiB, RTX 20 vCPU / 80 GiB; execution time from start
 to completion, unreconciled with billing; dev run, 495 decisions: 105 tags, 18 moments, 372 chapter tags grouped; inference includes
@@ -789,18 +796,21 @@ Triton/fla autotuning on new shapes, so warm rates are lower):
 | Karpo 31B FP8 (streamed) | RTX | 178 | 30 | 0.05 | 0.16 | 34.1 |
 | Karpo 31B BF16 (streamed) | RTX | 148 | 48 | 0.09 | 0.13 | 61.3 |
 | GLiDE 9B (FUSE) | L4 | 101 | 534 | 0.43 | 0.04 | 17.6 |
+| elephant-1 (streamed, lean) | L4 | 118 | 128 | 0.10 | 0.05 | 19.1 |
+| Copernicus-31B (streamed) | RTX | 171 | 261 | 0.47 | 0.15 | 68.8 |
 
 Perplexity (OpenRouter `:free`, price 0) took 1,007 s for 154 dev requests at the route's rpm limit; Gemini decision-1 (free API key)
 took 704 s. The 31B in FP8 gives the same tag accuracy as BF16 (0.752 against 0.747 pooled) at half the memory, and FP8 matches BF16 at
-9B and 12B too, so FP8 is the default. **Spend:** 15 executions, **$5.05 at list rates** (`cloud-costs.json`, includes a smoke run),
-plus three image builds under $0.2, so Phase 3 is about $5.2 and Phases 0 to 3 about $7.7 against the $20 cap (unreconciled).
+9B and 12B too, so FP8 is the default. **Spend:** 21 executions, **$7.69 at list rates** (`cloud-costs.json`, includes smoke runs, 15 for the first batch and $5.05 of it,
+the other 6 for elephant-1 and Copernicus-31B, $2.64), plus four image builds under $0.3, so Phase 3 is about $7.9, just under the
+$8 projection; with the Phase 1 follow-up's about $3 and Phases 0 to 2, the total is well past $10 of the shared $20 cap (unreconciled).
 
 **What it implies.**
 - *Perplexity fallback.* Karpo 9B FP8 on an L4 is a fallback candidate that does not lose to Perplexity on any lane here: tags +0.05
   (pooled interval just above zero), chapters F1 equal, moments equal, about $0.18 per 1,000 decisions plus $0.03 per launch at list
   rates, 10.5 GiB. GLiDE 9B is as accurate on tags and better calibrated but 7× the tokens on lane B, so it suits lane A only.
   Karpo 12B is the weakest large model on tags (level with Perplexity) and is not a better fallback than the 9B.
-- *Independent voice.* Gemma-lineage Karpo 12B (L4, FP8) is the only Gemma model that fits an L4 and is level with Perplexity on tags
+- *elephant-1 and Copernicus-31B.* elephant-1 (Qwen3.5-9B full fine-tune, MIT) on an L4 is a 9B-class model on tags (+0.05 pooled, not separable from Karpo 9B), is the cheapest of the new pair (0.10 per 1,000 decisions, 19 GiB) and is a different lineage's voice (agreement 0.81, lower than Karpo's 0.85 to 0.87, similar to GLiDE), but it is weaker on chapters than Karpo 9B (F1 0.62 against 0.80). Copernicus-31B (Gemma 4 merge, Apache-2.0) matches it on tags, has the best moment lane (0 wrongly rejected) and costs 4.7× more per decision on an RTX with a 69 GiB peak; neither is a candidate to replace Karpo 9B as the fallback. *Independent voice.* Gemma-lineage Karpo 12B (L4, FP8) is the only Gemma model that fits an L4 and is level with Perplexity on tags
   and F1 0.75 on chapters; Karpo 31B (RTX, FP8) is about 5 points better on tags and has the highest chapter recall (0.98), at the
   cost of precision (0.64). Both agree with Perplexity on 85 to 88% of tags, about the same as Gemini does (0.88), so the Gemma
   lineage is a different voice in name but not much more different in answers than another Qwen model. Gemini decision-1 is level with
@@ -815,8 +825,7 @@ biases with the models under test, and Karpo is graded against a reference that 
 negatives (58 of 60 are supported). The tag labels are 11 to 17% `uncertain`, which models were not scored on.
 
 **Not run, and why.**
-- *elephant-1 and Copernicus-31B*: no adapter. Their runtimes (the OneJev qev runtime with a patch, Copernicus's own server) are not
-  audited; the maintainer's approval is pending (Phase 1 session note).
+- *elephant-1 and Copernicus-31B* were added after the first write-up: the Phase 1 follow-up audited both runtimes and supplied adapters (PR #2727), and the maintainer approved running them. They ran on the unmodified author engines from image `r60-eval-rt-v1` (Phase 1's `r60-rt-v8` plus the Phase 3 worker). elephant-1 ran on an L4 with the lean settings (`lean_head`, `mlp_chunk=4096`, `fork_token_budget=64000`) without the later `offload_tables` option (not needed: longest request is about 3k tokens). The RTX elephant-1 run was skipped to stay inside the $8 projection.
 - *GLiDE 27B*: its weights are not staged in either bucket; running it means a download of about 55 GB plus a licence and code review,
   so it is left for the maintainer's decision.
 - *Launcher*: the runs did not go through `citypods/gpu_launch`. It drives the production fenced one-question-per-row transport, which cannot
