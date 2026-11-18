@@ -453,7 +453,7 @@ def load_copernicus_reference(model_dir, *, device=None):
     from transformers import AutoTokenizer
 
     server, layout_module = _copernicus_server()
-    tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+    tokenizer = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True)
     backend = server.HF(str(model_dir), device=device)
     return CopernicusRunner(
         _copernicus_engine(server, layout_module, tokenizer, backend), server.Unsupported
@@ -501,7 +501,7 @@ def load_copernicus(manifest, token, *, device="cuda", workers=8, stats=None):
         with tempfile.TemporaryDirectory() as temp:
             fetch_small_objects(paths, manifest["bucket"], token, temp)
             model = conditional_model_from_backbone(backbone, extras, temp, torch)
-            tokenizer = AutoTokenizer.from_pretrained(temp)
+            tokenizer = AutoTokenizer.from_pretrained(temp, local_files_only=True)
             backend = _streamed_hf(server, torch, model, tokenizer)
             runner = CopernicusRunner(
                 _copernicus_engine(server, layout_module, tokenizer, backend), server.Unsupported

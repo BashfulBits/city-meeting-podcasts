@@ -11,6 +11,7 @@ PROBE = Path(__file__).parents[1] / "workers" / "decision-batch" / "karpo_stream
 @pytest.fixture
 def probe(monkeypatch):
     monkeypatch.setenv("CITYPODS_BATCH_BUCKET", "bucket-for-tests")
+    monkeypatch.setenv("CITYPODS_MODEL_BUCKET", "model-bucket-for-tests")
     spec = importlib.util.spec_from_file_location("karpo_stream_probe_under_test", PROBE)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

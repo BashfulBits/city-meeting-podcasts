@@ -44,8 +44,8 @@
  "phase": "review/60 Phase 1",
  "phase1b": {
   "audit": {
-   "copernicus-31b": "Poindexter-Labs/Copernicus-31B @ae28efb0 (Apache-2.0, Gemma 4 merge): copernicus_layout.py clean; copernicus_server.py (62 KB) uses requests only to call an optional SGLang backend or fetch image URLs; no exec, eval, subprocess or pickle. Not run; only its weights are streamed.",
-   "elephant-1": "baselabs/elephant-1 @b3f8a934 (MIT): engine.py read in full and clean; serve.patch and setup.sh grepped (no exec, eval, subprocess, pickle or network; torch.load uses weights_only=True and importlib only resolves the model module). Not run. The runtime is OneJev qev @81ce62f (github.com/OmniJev/OneJev, Apache-2.0, about 94 MB) plus the patch, which was NOT audited, so no decision adapter exists."
+   "copernicus-31b": "Poindexter-Labs/Copernicus-31B @ae28efb0 (Apache-2.0, Gemma 4 merge): copernicus_layout.py clean; copernicus_server.py (62 KB) uses requests only to call an optional SGLang backend or fetch image URLs; no exec, eval, subprocess or pickle. Audited statically first; later driven through citypods.judging.open_weight_runtimes (see runtime_adapters).",
+   "elephant-1": "baselabs/elephant-1 @b3f8a934 (MIT): engine.py read in full and clean; serve.patch and setup.sh grepped (no exec, eval, subprocess, pickle or network; torch.load uses weights_only=True and importlib only resolves the model module). Audited statically; the runtime is OneJev qev @81ce62f (github.com/OmniJev/OneJev, Apache-2.0, about 94 MB) plus the patch, audited in review/60 before the decision adapter was built (see runtime_adapters)."
   },
   "failed_run": "One r60-karpo-stream-rtx execution (31B BF16) ended with 'configured memory limit was reached' and no logs after about 30 minutes; an identical retry succeeded (173 s) and the cause was not found.",
   "image": "glide-worker:r60-karpo-stream-v5 (v4 + 31B/4B/Copernicus/elephant-1 pins)",
