@@ -447,10 +447,14 @@ load and after Karpo's own path (12B: Phase 0 layer-wise; 9B: `qwen_fp8.quantize
 all 960 of the 9B are identical (zero mismatches). The repository tests prove the same on tiny Gemma 4 and Qwen3.5 models, including
 the non-persistent rotary and scale buffers, and check the quantizer against a verbatim copy of Karpo's formula.
 
-*Answers.* With identical weights, grouped-request probabilities still moved between container runs: the streamed 12B matched the
-Phase 0 run exactly in one run (304 of 304) and differed by a mean 0.0031 and maximum 0.062 (2 flips at 0.5) in two others, and the
-re-run of the Phase 0 path differed from the Phase 0 numbers by the same amount, so this is run-to-run kernel nondeterminism and not the
-loader. The 9B in FP8 against its BF16 Phase 0 answers: mean 0.0036, maximum 0.087, 2 flips of 304, as in Phase 0.
+*Answers.* The 12B comparisons below are between FP8 loads with identical weights. Grouped-request probabilities still moved
+between container runs: the streamed 12B (8 MiB slices) matched the Phase 0 run exactly (304 of 304), and the streamed 12B at
+32 MiB slices and a re-run of the Phase 0 path each differed from the Phase 0 numbers by a mean 0.0031 and maximum 0.062 (2 flips at
+0.5). Since the weights are identical, this is not a weight effect, and the re-run of the unchanged Phase 0 path shows the same
+spread, so the loader is not the source; run-to-run kernel nondeterminism is the likely cause but no controlled comparison isolated
+it. The 9B comparison is a different one: streamed FP8 against the Phase 0 BF16 answers (mean 0.0036, maximum 0.087, 2 flips of 304,
+as in Phase 0), which includes the quantization effect and says nothing about the loader. Host RSS in the table is the peak at load;
+the probe's later RSS figures are process-wide and include the tensor digest copies.
 
 *Calibration rows* (`config/gpu_profiles.json`, new models `karpo-12b-fp8` and `karpo-9b-fp8`, L4): load 91.4 s (p90 130 s) and
 92.1 s (p90 115 s), peak 12.95 and 10.01 GiB, warm rate 1,263 and 1,667 tokens per second. The load tails come from two and one
