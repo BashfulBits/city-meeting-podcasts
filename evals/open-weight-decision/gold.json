@@ -1,0 +1,1581 @@
+{
+ "version": 1,
+ "tags": {
+  "subj-3043105c40235518afc177ee": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-d697aa9d7df7e20ceea25f68": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-f0dc783a5d4948887dc52ed4": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-42476b7d39ede224d8e0af6c": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-20e8e00b4221816be662d910": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-dfb08c1b846054a42682b008": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-bbee35fe274c820225ad7105": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-bfeab900ce8270a55fb1ae9a": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-7805e81d1d61696fefa36e1e": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-2c51744dc5c765975950bb75": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-cfc33ade6e3b2cd9a8274024": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-cc650bf85707b63fbd94053f": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-8adeff8172b91ca3fefeaef9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-324d2e43e646228c61a37eae": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-116cee766ee56b0709b3626d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-696506f16fde62c0fe851a13": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-5e3e6d50922230153c590fdf": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-462616181f5f8e3f5a619779": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-aa9cbf856ade3da57d7f5bae": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-bf8a528ef70a4dc11cf36350": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-69aa4bbb9139c013c967d97c": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-ee01372afa9c41ceeb6ea0cc": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-ee5178ed5d446c7dcdeb80ed": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-450b4483100ac953a3408ad5": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-9e65aadcea3996434ac7834d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-82a59970d6f844f7ea19f942": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-6a3ac505452e460d9ce3db5f": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-1cf22634522df248cd7e207f": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-f6860082d94e62ccc8bf9fc9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-1253630d0db42275ee305eff": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-26b935ea27ea64e19ef7cc3c": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-0c765cbedee962c4c3f3605c": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-fc2c0bd21ade77de9198c9e0": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-3bf61595575b275206450538": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-067d06cb6926b15cd7ede211": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-b0a8fbaf75823661c6d9acce": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-1dbd1e1fdbf8dad298a4bd5d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-294b8c5b0aa648266615947d": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-0df7a435029016568d42ee4d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-8f0a90689f6e505c3106497d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-deba80334c85006b74b5eb7a": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-630ad5d6f1e26d40a5db565f": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-76ddaafe7dc124c5eeaa0ba7": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-0b815d35ab655fb41d4f353e": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-9326bce81fc59979c00870d7": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-dd1ea4a4837f9f6f52d9fb7b": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-308e6b801cd6459aa1cac216": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-53b7b272ad1372f95daa5f8e": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-781907ceeef17109975c4ac3": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-bf6397c11d084b5051bef312": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-54fa2ad6b476948e17ed0f94": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-731c4e52cda7410402d14233": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-c7eaafe61799b393e0944238": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-41f8c60f9e76ed599415b321": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-32d4e58d3b8503835e61511a": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-1bad70cfe098f7da9227bda6": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-608a2a8936c82ad8a5c3e27f": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-bc9d13b8b28889dff0eaf18b": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-4ca604298eec56b1719cc5a9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-2d43f17316a679e1c592988d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-47fc7a679c139572c6d9e744": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-536bfb2b80c0b38e7e7fa4a1": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-f4ce8d92b12ade9511c9167a": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-1dd2f83fb61bf2c3c27811da": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-5742b1ef524755a2319ad5e7": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-44ee1ce8261f72a2e6671ec1": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-6234cf6793e79b1be8500840": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-c7238d3e17f7aa496fe6bab5": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-9c2acf27ed4e7a12ec75b692": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-719a4c94012525027f741cf9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-b370dcec51c599abf4d8afb9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-2203e0259f7438b6c309d9c9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-9321fe760086bc4bd31b4a60": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-c80f46233284634cdd372697": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-9d7cd93314ece8a69a03da41": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-720208e30d90fadf34d3420b": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-5c9ea389316ac668c8d5ca4b": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-56411c2d7f1d84e7cc3e98ea": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-a5496633c52a7a6d1a770b22": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-cf84aabc3395f3651d24e822": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-814a41b1803c78accd585496": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-59f176f587489f3fc105d533": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-a8482115667cadc11448beff": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-9b736a58460a3f4a2dc86371": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-c6036796b051bbb1f0d47e69": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-8e2b6c66577fcc07fe7abb3c": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-6a1b52b1849240af1278304f": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-23b6658b445c458fbbc09d8a": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-0165fcb408df4fe7243a7c6b": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-0b32787cf7b78ac0a5b43a3a": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-5c9df78da4c82463191dbc93": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-5bc7036fe48b486444be7919": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-43369a5c681e370e2c362010": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-688bfdfb21863905156f3c8b": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-4901f9792c227f2a2b850640": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-059c794aca9939809554d1e4": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-cfb25078b132e2a3a58709bb": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-7a4882fb20d9464a2acfd6d9": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-812a2280b5f9ee8dbafa655b": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-5f2804cd02b2e180918ca5a2": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-361e72ced64cf672484a5d85": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-d882a64c41ce0c9c8d56b102": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-330d684299776467872ff380": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-1cd69aaf4d04c6d421861880": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-ca6f313fe527ad0082b2e483": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-294c23313b94526183a463fd": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-8f4cdb9b4b28bbed85003ac5": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-9201d30f6af50ceca562ce36": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-57a84b8bdf8832dd67eb15b7": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-65503cbbaa79b0a4200c56ab": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-2a7a65433cf409fd0c232742": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-ec0b30801f1f6c552b8f5dff": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-30caa0552b80ca62873d1a8e": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-ebdf310d2b2d49b500e93c08": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-4b4bdd2cc49139f4d200f630": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-39d18eb2e763a6a703397614": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-d41478002fb759fa4c29602e": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-1f1ede37154fab133951842e": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-4f09fb8ab47421040c735e86": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-cc21f879caa03e90850e77df": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-ae824f6f26bf761b12a8358f": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-a59cac19c3a700c052cf52a6": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-aed7e7c8a073c78a4cfb4563": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-3599e0efe91de353ef8cc620": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-5d0222c7863e74f0a3bdec2c": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-ddbf84763204dc7b8b7dc076": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-240a59af265dd45a00ed6067": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-df6d8cc37cbea67886a94897": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-eff9bb9f14fc17e651ce5333": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-81e482bcab9a02275e7b2278": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-a730314506be1490cd6287e9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-8a937ea741e1b056479dc12e": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-c74899e2434d5b856c867f4d": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-bc9fb2beaaf786f39269faab": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-db0d8e35dd8713cc5c46322d": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-e0ba64e5f747dcae38966a03": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-28752eccde296b2f4305dfd2": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-8682b1e714b1e3962d00d69d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-d6db4cbb9c2df0c348e104c3": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-0ac02d2a9f6e8101580de6f9": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-2aec5a20cddfd6640114da9e": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-a6a9020681d3b6dda9c3a005": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-314f89374449f464bda593ba": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-f6c1ee297dfb0fce549c484e": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-a26b7a7fc8d20e8197b4f90f": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-78bb3741973cdf410e6a2124": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-3fae54c4064eb6ee9f444aee": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-eb126332fd79ab0e9a317e48": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-2886504b57fd42bcd6a1d7de": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-e4ac58ef2cf7f8722fcacbd8": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-f5bb8ca1ba4051c0b205c8cc": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-93ef1c6c0e495260ca2e6fbe": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-59a61efd08ffda234588004a": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-b4a5eed08f0aeecbd6e2f3ef": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-2d96a90732029c6f20b5490d": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-f09b74ee5e585c23453b6056": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-bf8f692a06433d9701bf9d7b": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-334412f672c7bf6a07d67e97": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-889b5813402bcf7f7e2fb527": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-131512f93586886bf5b3b696": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-8226b5ad6de189ce29805184": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-a920aa44e45ac51603e51866": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-b3564316cb1ee56e6130750b": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-43c9c8c453a8ce93e0795b24": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-aef6c0d11bac94fdc0f3178e": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-85f5be5169e3edda99b9f08b": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-c90a49930d94f5ad15dbcc5d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-b9915ec80d482771f824f46d": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-26445c4d376c7b463c704caf": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-efee8a5800f34834975983da": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-5e03b07e87c3bcd93ebe7f8b": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-8ea9a202d680db2ef154ad7d": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-675e684b730788d222d2f584": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-a9f60e16b2fe90c46d58cf56": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-af561546b07258779eb304e3": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-f2b5769e6d2fcf786aef955a": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-f1c2b10bf95e0683fb296922": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-d8a6644d9b2db2003048d487": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-b1f93e363b18b973cb401ae2": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-066686a6cc69a66a9c2548d1": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-d3c876adcb4f10eba164a106": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-d1b5478787ce460feb39d4b7": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-fe61efc7c213eaf57d1d4d61": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-e0be08d734404eb009f0a2f8": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-37a50865be8c0dd34a2fbbfc": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-473de60d9c373fb8474ca156": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-bd77092326adef11679d754c": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-e78df20295f15627e5b09d9e": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-69bfc43b5160a332583496e0": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-1938044653de4adb73fdc1fa": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-50cfe0668153576ef9bc02d3": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-dafa0217dd8264a6a2b1539a": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-08af7105584a1595d26216b9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-c833bc0bcffa58025002ccf9": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-f62d8a39db76a1637e877230": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-12bd87ddde83ab6702a849d5": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-cb315504895d278fd1cee43f": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-6ad88bd76f58e4d04c7af47d": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-4442f1a04963ccba2b42684c": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-a2c9f34ff90766cf81b04413": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-09d1d3a540ea8725fefeb413": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-0cdd297721bb0fc9fbcb3224": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-6229df758edf63d403ae1dbb": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-063f1c01cf67bbea63adb2ee": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-b5f77bfab58743f33f0dccc1": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-58dc8c6bd30344440a84b97e": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-b31e1309dbcf645abcd0da5d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-8716245411bf353a9feee48b": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-7f5e7069676a7032e9347dd3": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-b80f892146b9c5469a2f82a2": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-5839e7f0db6d73cb521ea940": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-be1cb76264623f29163310a3": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-42a1fea197b8780fccd150a6": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-6075d6a7af7d1f2a052a876c": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-e537ca8ec8a0bd377e00d3c8": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-692a4d2e2aa253c5b66164e4": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-5b52ca2c2ccff4f25c86e597": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-1cf0cec8341bfe020e0a15f6": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-a449d5fc16aea54e86f24e8c": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-7afc189d6950696858f342de": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-129a3ceef8110da459372f31": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-3f3d18b1926ae920ac188f3b": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-98c304771510fb7f241c24ea": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-020dc766639f0a42d61616e6": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-1903d01c02372ef58ef24812": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-7e7d4e9320ab569e44081f51": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-25a57f2ebdedaca0ee8e311f": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-2f177d305e35ca91b559c7e3": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-ef5babe18eb3b918e83831ec": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-3e68e2344a167210a263f262": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-0e28c03546c9f57d2eb47edc": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-582d06b3628e1ab56fa53ac5": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-ae1b81237a55dea669c13ea6": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-caeab76e2a296a630493a1cb": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-ae6b4b8300b48a767808995f": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-4c6a910c5fcca080622f1eea": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-2fe3d5f84d351f843508485d": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-23fe4673c3e189510b135903": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-1d6a6ca3a3fb9f087f285e2b": {
+   "label": "not_supported",
+   "source": "human"
+  },
+  "subj-daac0a3410157c5d7c53c6e6": {
+   "label": "supported",
+   "source": "human"
+  }
+ },
+ "moments": {
+  "subj-9b2f9dc61522f890434f6df7": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-e367588a2e68bf9307ea9dbb": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-93ce49adfad017497878ff8d": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-e9a59a01f650a3d99a02a996": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-21253fd31d73dc35fafb4c1f": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-af913e3c866893884372916a": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-ff1736eaffef93beaf806214": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-2108983eb3609b3fd26f3013": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-730bb12ba90bf7e090f83084": {
+   "label": "uncertain",
+   "source": "human"
+  },
+  "subj-f01f57ffe5f474d86d320419": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-4da873b4c588a145613fafbf": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-9b8a3ee9523f874717f3c791": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-c4ce8ee757c725b0ad6c19bd": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-74f56d7200d8cba321f705b2": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-dcad7d362b72028d08ea40e3": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-8c0ce42f3f6d1f45257b23f7": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-70624d4ab64ba35b344c2ee6": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-ff70a568558281b2bf29a446": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-d8871779388edc6bf8b436e2": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-d44c8b4bf7a91562465f27de": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-daccc04e3cdc9b00f7ec4752": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-2b03013ca6939863deccf3e8": {
+   "label": "not_supported",
+   "source": "claude"
+  },
+  "subj-50b958db727553d434f4b17a": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-23869bd97fc6a78ab92f9251": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-8fbd283ef29b06eca6457095": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-08e2bc9402bc159108eb5aea": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-add055bf611d64f8d9c4a137": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-e2820dd1998b620369ed27ac": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-5934bb4e372b3c71d03bf0c9": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-771c645cf669cb9771b328dc": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-12385a0746391a8fcbe0cce5": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-a9b707025e2ec03492d4b53f": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-98ca3ea5afafaf637d57bdf1": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-4590375ec7ccfa680509cbe5": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-86949e97d9b71df00df1afb8": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-b33ce888055d63618e5717c3": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-894f0259dfa9a4e575517ff8": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-f132b5756b2c713bae5aa6b1": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-735b717468a71237b18b7e9b": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-779b260ceb21c77ef6fe4ffc": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-469bbfc402d54736d3781ee6": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-09be6e02616ef0d730de3b99": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-aadf3017db595a399504b03c": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-053dec9884e72beb2929161a": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-3716c131b7c04646c9d8eeb0": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-cec4eb8c3d64f5b5ae395ebd": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-78ce34bbd46171af52c14535": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-0d79722c8a5abb8384f245b1": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-eada576bd0c19061b22491bc": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-3d5dab4e25904cad2b08f022": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-ea876893906abd3e64901d6f": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-9a02c1263e311598377017b8": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-63b42dacfcaf804b63011d2a": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-abba738625796caab119d003": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-52a0b16ddf10d401b48c4a6f": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-23abfcef38ff61a315c3f034": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-2920256b9ec59b53c7812143": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-e607ce4769c9b956a157dc08": {
+   "label": "supported",
+   "source": "human"
+  },
+  "subj-46f856f3706de66a5c595d11": {
+   "label": "supported",
+   "source": "claude"
+  },
+  "subj-477a5c71849f67ec382cbe91": {
+   "label": "supported",
+   "source": "claude"
+  }
+ },
+ "chapters": {
+  "ch-2377f4871377": {
+   "tags": [
+    "annexation-outward-expansion"
+   ],
+   "source": "claude"
+  },
+  "ch-badbc5c3bdc7": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-868cbce6fc87": {
+   "tags": [
+    "budget-structural-balance"
+   ],
+   "source": "claude"
+  },
+  "ch-5d41b563bc4f": {
+   "tags": [
+    "annexation-outward-expansion"
+   ],
+   "source": "claude"
+  },
+  "ch-2bc251d577fe": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-8d6436b2c09e": {
+   "tags": [
+    "climate-resilience"
+   ],
+   "source": "claude"
+  },
+  "ch-52e50941e799": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-eb269972d760": {
+   "tags": [
+    "historic-preservation"
+   ],
+   "source": "claude"
+  },
+  "ch-b99c34d092a4": {
+   "tags": [
+    "annexation-outward-expansion",
+    "rezoning"
+   ],
+   "source": "claude"
+  },
+  "ch-6461f8243de5": {
+   "tags": [
+    "parks-recreation"
+   ],
+   "source": "claude"
+  },
+  "ch-c1a2cb36fe49": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-9535ba274fdc": {
+   "tags": [
+    "street-trees-green-infrastructure",
+    "parks-recreation"
+   ],
+   "source": "claude"
+  },
+  "ch-bc38f8067e26": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-48c6ac078693": {
+   "tags": [
+    "rezoning",
+    "neighborhood-engagement"
+   ],
+   "source": "claude"
+  },
+  "ch-b851cba8964f": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-cedb89a7ef30": {
+   "tags": [
+    "parks-recreation",
+    "stormwater-utility-maintenance"
+   ],
+   "source": "claude"
+  },
+  "ch-3f0647d0604b": {
+   "tags": [
+    "historic-preservation"
+   ],
+   "source": "claude"
+  },
+  "ch-2742b42fa176": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-47b6a7710198": {
+   "tags": [
+    "rezoning"
+   ],
+   "source": "claude"
+  },
+  "ch-d823f626c05e": {
+   "tags": [
+    "neighborhood-engagement"
+   ],
+   "source": "claude"
+  },
+  "ch-0bf2501b3737": {
+   "tags": [
+    "climate-resilience"
+   ],
+   "source": "claude"
+  },
+  "ch-33fd3e896539": {
+   "tags": [
+    "rezoning",
+    "missing-middle-housing",
+    "infill-redevelopment",
+    "housing-supply"
+   ],
+   "source": "claude"
+  },
+  "ch-f5370c2427c9": {
+   "tags": [
+    "affordable-housing",
+    "anti-displacement-equity"
+   ],
+   "source": "claude"
+  },
+  "ch-40a121964c8b": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-48ad3d172cbb": {
+   "tags": [
+    "rezoning"
+   ],
+   "source": "claude"
+  },
+  "ch-fb97eecfbfda": {
+   "tags": [
+    "infrastructure-maintenance-liability"
+   ],
+   "source": "claude"
+  },
+  "ch-1db4ae3ddf07": {
+   "tags": [
+    "housing-supply"
+   ],
+   "source": "claude"
+  },
+  "ch-efb11f48c71e": {
+   "tags": [
+    "budget-structural-balance"
+   ],
+   "source": "claude"
+  },
+  "ch-091d93ca8010": {
+   "tags": [
+    "adaptive-reuse"
+   ],
+   "source": "claude"
+  },
+  "ch-faef8497765d": {
+   "tags": [
+    "walk-bike-transit-access"
+   ],
+   "source": "claude"
+  },
+  "ch-90d029472732": {
+   "tags": [
+    "parks-recreation",
+    "budget-structural-balance"
+   ],
+   "source": "claude"
+  },
+  "ch-12325a4aef38": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-10f148887dab": {
+   "tags": [
+    "rezoning"
+   ],
+   "source": "claude"
+  },
+  "ch-96b11284ac46": {
+   "tags": [
+    "rezoning",
+    "infill-redevelopment"
+   ],
+   "source": "claude"
+  },
+  "ch-6d1969c85b39": {
+   "tags": [
+    "historic-preservation"
+   ],
+   "source": "claude"
+  },
+  "ch-b0e760e716b0": {
+   "tags": [
+    "climate-resilience",
+    "parks-recreation"
+   ],
+   "source": "claude"
+  },
+  "ch-fbdc278a6d29": {
+   "tags": [
+    "neighborhood-planning",
+    "neighborhood-engagement"
+   ],
+   "source": "claude"
+  },
+  "ch-0a9effcbb192": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-85e8dadd9327": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-58ad5899e452": {
+   "tags": [
+    "walk-bike-transit-access",
+    "street-safety-vision-zero"
+   ],
+   "source": "claude"
+  },
+  "ch-828e6145bd0e": {
+   "tags": [
+    "public-art-culture"
+   ],
+   "source": "claude"
+  },
+  "ch-3923b1220e08": {
+   "tags": [
+    "anti-displacement-equity"
+   ],
+   "source": "claude"
+  },
+  "ch-5df541afb1be": {
+   "tags": [
+    "affordable-housing",
+    "housing-supply"
+   ],
+   "source": "claude"
+  },
+  "ch-8d52234249dc": {
+   "tags": [
+    "affordable-housing"
+   ],
+   "source": "claude"
+  },
+  "ch-931dde609ea9": {
+   "tags": [
+    "rezoning",
+    "minimum-lot-size-setbacks",
+    "missing-middle-housing"
+   ],
+   "source": "claude"
+  },
+  "ch-c8e1f6cab644": {
+   "tags": [
+    "rezoning",
+    "minimum-lot-size-setbacks"
+   ],
+   "source": "claude"
+  },
+  "ch-258f41e5c646": {
+   "tags": [
+    "debt-bonds-tif-subsidies",
+    "infill-redevelopment",
+    "affordable-housing"
+   ],
+   "source": "claude"
+  },
+  "ch-4a96efd7d15f": {
+   "tags": [
+    "rezoning",
+    "infill-redevelopment",
+    "parking-mandates",
+    "street-trees-green-infrastructure",
+    "public-art-culture"
+   ],
+   "source": "claude"
+  },
+  "ch-829b6bc874b5": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-beb49ff06a81": {
+   "tags": [
+    "rezoning"
+   ],
+   "source": "claude"
+  },
+  "ch-8c5de1e3a970": {
+   "tags": [
+    "street-trees-green-infrastructure",
+    "walk-bike-transit-access"
+   ],
+   "source": "claude"
+  },
+  "ch-fb3e0ee0c21d": {
+   "tags": [],
+   "source": "claude"
+  },
+  "ch-7b916deff408": {
+   "tags": [
+    "walk-bike-transit-access"
+   ],
+   "source": "claude"
+  },
+  "ch-eb0bd0d254ef": {
+   "tags": [
+    "rezoning",
+    "affordable-housing"
+   ],
+   "source": "claude"
+  },
+  "ch-2899aab6d5fb": {
+   "tags": [
+    "affordable-housing"
+   ],
+   "source": "claude"
+  },
+  "ch-accd917324eb": {
+   "tags": [
+    "budget-structural-balance",
+    "parks-recreation",
+    "street-trees-green-infrastructure"
+   ],
+   "source": "claude"
+  },
+  "ch-b80e790cd3e6": {
+   "tags": [
+    "rezoning",
+    "affordable-housing",
+    "neighborhood-planning",
+    "housing-supply"
+   ],
+   "source": "claude"
+  },
+  "ch-bb15e79071e1": {
+   "tags": [
+    "accessory-dwelling-units",
+    "housing-supply",
+    "affordable-housing",
+    "parking-mandates",
+    "zoning-reform"
+   ],
+   "source": "claude"
+  },
+  "ch-8353363f104f": {
+   "tags": [
+    "parks-recreation",
+    "placemaking-public-space",
+    "neighborhood-engagement",
+    "transit-oriented-development"
+   ],
+   "source": "claude"
+  },
+  "ch-e2e7502b071e": {
+   "tags": [
+    "form-based-codes",
+    "street-trees-green-infrastructure"
+   ],
+   "source": "claude"
+  }
+ }
+}

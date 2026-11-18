@@ -1,0 +1,7477 @@
+{
+ "version": 1,
+ "judge_verdicts": {
+  "subj-3043105c40235518afc177ee": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.79
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8853391958387371
+   }
+  },
+  "subj-d697aa9d7df7e20ceea25f68": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.79
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7574643559960551
+   }
+  },
+  "subj-f0dc783a5d4948887dc52ed4": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.92
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9723181580257517
+   }
+  },
+  "subj-42476b7d39ede224d8e0af6c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.54
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8662462416109095
+   }
+  },
+  "subj-20e8e00b4221816be662d910": {
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7864164523834819
+   }
+  },
+  "subj-dfb08c1b846054a42682b008": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.77
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9122774825497985
+   }
+  },
+  "subj-bbee35fe274c820225ad7105": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.91
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9465730589130097
+   }
+  },
+  "subj-bfeab900ce8270a55fb1ae9a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8810085896564775
+   }
+  },
+  "subj-7805e81d1d61696fefa36e1e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.85
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9650125376969709
+   }
+  },
+  "subj-2c51744dc5c765975950bb75": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8648617589268227
+   }
+  },
+  "subj-cfc33ade6e3b2cd9a8274024": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.76
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.828930286657618
+   }
+  },
+  "subj-cc650bf85707b63fbd94053f": {
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9649719786822757
+   }
+  },
+  "subj-8adeff8172b91ca3fefeaef9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.94
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9682687718327615
+   }
+  },
+  "subj-324d2e43e646228c61a37eae": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.92
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9685086143337068
+   }
+  },
+  "subj-116cee766ee56b0709b3626d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.86
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9384392864863714
+   }
+  },
+  "subj-696506f16fde62c0fe851a13": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5657131441933215
+   }
+  },
+  "subj-5e3e6d50922230153c590fdf": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.77
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9064507926942439
+   }
+  },
+  "subj-462616181f5f8e3f5a619779": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.94
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9497116212383915
+   }
+  },
+  "subj-aa9cbf856ade3da57d7f5bae": {
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9741349686718227
+   }
+  },
+  "subj-bf8a528ef70a4dc11cf36350": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.95
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8868149209183989
+   }
+  },
+  "subj-69aa4bbb9139c013c967d97c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9402064165856173
+   }
+  },
+  "subj-ee01372afa9c41ceeb6ea0cc": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.94
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9730628724586053
+   }
+  },
+  "subj-ee5178ed5d446c7dcdeb80ed": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.76
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5434414786254941
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-450b4483100ac953a3408ad5": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.85
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8773356877860062
+   }
+  },
+  "subj-9e65aadcea3996434ac7834d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.95
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9799321520032589
+   }
+  },
+  "subj-82a59970d6f844f7ea19f942": {
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8667765660952468
+   }
+  },
+  "subj-6a3ac505452e460d9ce3db5f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.77
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8481170929878107
+   }
+  },
+  "subj-1cf22634522df248cd7e207f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.94
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9490954275649706
+   }
+  },
+  "subj-f6860082d94e62ccc8bf9fc9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.79
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9078535188930232
+   }
+  },
+  "subj-1253630d0db42275ee305eff": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.94
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8814208218726203
+   }
+  },
+  "subj-26b935ea27ea64e19ef7cc3c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7633442555347562
+   }
+  },
+  "subj-0c765cbedee962c4c3f3605c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.69
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6637049979293023
+   }
+  },
+  "subj-fc2c0bd21ade77de9198c9e0": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.88
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9639411093390475
+   }
+  },
+  "subj-3bf61595575b275206450538": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.81
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.500507409239331
+   }
+  },
+  "subj-067d06cb6926b15cd7ede211": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.68
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.802950341438023
+   }
+  },
+  "subj-b0a8fbaf75823661c6d9acce": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.82
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7087497709767442
+   }
+  },
+  "subj-1dbd1e1fdbf8dad298a4bd5d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.79
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9547823209172048
+   }
+  },
+  "subj-294b8c5b0aa648266615947d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.88
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.892291660609185
+   }
+  },
+  "subj-0df7a435029016568d42ee4d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.91
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.948100430545273
+   }
+  },
+  "subj-8f0a90689f6e505c3106497d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.86
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8760463567450892
+   }
+  },
+  "subj-deba80334c85006b74b5eb7a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.81
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7906443143033803
+   }
+  },
+  "subj-630ad5d6f1e26d40a5db565f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9172756580292895
+   }
+  },
+  "subj-76ddaafe7dc124c5eeaa0ba7": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.74
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9689582531499815
+   }
+  },
+  "subj-0b815d35ab655fb41d4f353e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.76
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.728487087090256
+   }
+  },
+  "subj-9326bce81fc59979c00870d7": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8302568270682217
+   }
+  },
+  "subj-dd1ea4a4837f9f6f52d9fb7b": {
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9518468945849825
+   }
+  },
+  "subj-308e6b801cd6459aa1cac216": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.85
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9307502842666474
+   }
+  },
+  "subj-53b7b272ad1372f95daa5f8e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.92
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9730392325664489
+   }
+  },
+  "subj-781907ceeef17109975c4ac3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.89
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8896917459736893
+   }
+  },
+  "subj-bf6397c11d084b5051bef312": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9531854253741424
+   }
+  },
+  "subj-54fa2ad6b476948e17ed0f94": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.77
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6452212100384994
+   }
+  },
+  "subj-731c4e52cda7410402d14233": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.91
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9717639979803498
+   }
+  },
+  "subj-c7eaafe61799b393e0944238": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.87
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8661729622221513
+   }
+  },
+  "subj-41f8c60f9e76ed599415b321": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.79
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7135520124488431
+   }
+  },
+  "subj-32d4e58d3b8503835e61511a": {
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8726154614174461
+   }
+  },
+  "subj-1bad70cfe098f7da9227bda6": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9725837674785552
+   }
+  },
+  "subj-608a2a8936c82ad8a5c3e27f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9784502568129042
+   }
+  },
+  "subj-bc9d13b8b28889dff0eaf18b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.96
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9735886981381097
+   }
+  },
+  "subj-4ca604298eec56b1719cc5a9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.92
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9606786694123765
+   }
+  },
+  "subj-2d43f17316a679e1c592988d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.85
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6735899226848302
+   }
+  },
+  "subj-47fc7a679c139572c6d9e744": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.87
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9587265868210005
+   }
+  },
+  "subj-536bfb2b80c0b38e7e7fa4a1": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9632146715697197
+   }
+  },
+  "subj-f4ce8d92b12ade9511c9167a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.81
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7888107984285401
+   }
+  },
+  "subj-1dd2f83fb61bf2c3c27811da": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.89
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8842861925872593
+   }
+  },
+  "subj-5742b1ef524755a2319ad5e7": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.94
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9684640941664963
+   }
+  },
+  "subj-44ee1ce8261f72a2e6671ec1": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.92
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9315607798779421
+   }
+  },
+  "subj-6234cf6793e79b1be8500840": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.77
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5483069783904876
+   }
+  },
+  "subj-c7238d3e17f7aa496fe6bab5": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.77
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6136289712153872
+   }
+  },
+  "subj-9c2acf27ed4e7a12ec75b692": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9656572877586412
+   }
+  },
+  "subj-719a4c94012525027f741cf9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.91
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9780801896923232
+   }
+  },
+  "subj-b370dcec51c599abf4d8afb9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.54
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.749728580676367
+   }
+  },
+  "subj-2203e0259f7438b6c309d9c9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7379038657297877
+   }
+  },
+  "subj-9321fe760086bc4bd31b4a60": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.79
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6785346527434931
+   }
+  },
+  "subj-c80f46233284634cdd372697": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.81
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.795802564273725
+   }
+  },
+  "subj-9d7cd93314ece8a69a03da41": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.95
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9726037849096578
+   }
+  },
+  "subj-720208e30d90fadf34d3420b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.75
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8501482071004364
+   }
+  },
+  "subj-5c9ea389316ac668c8d5ca4b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.88
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9336178579750272
+   }
+  },
+  "subj-56411c2d7f1d84e7cc3e98ea": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.85
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9388307651789398
+   }
+  },
+  "subj-a5496633c52a7a6d1a770b22": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9309209165865567
+   }
+  },
+  "subj-cf84aabc3395f3651d24e822": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.94
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9666666651897754
+   }
+  },
+  "subj-814a41b1803c78accd585496": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.01
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.010662437736051515
+   }
+  },
+  "subj-59f176f587489f3fc105d533": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.13
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.07700263359723333
+   }
+  },
+  "subj-a8482115667cadc11448beff": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06128630505633441
+   }
+  },
+  "subj-9b736a58460a3f4a2dc86371": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.03529516259251716
+   }
+  },
+  "subj-c6036796b051bbb1f0d47e69": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.44
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4572806853764794
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-8e2b6c66577fcc07fe7abb3c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.01
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.024432927286770496
+   }
+  },
+  "subj-6a1b52b1849240af1278304f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.25569411228477734
+   }
+  },
+  "subj-23b6658b445c458fbbc09d8a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.11
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.051599424592199766
+   }
+  },
+  "subj-0165fcb408df4fe7243a7c6b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09753603449945601
+   }
+  },
+  "subj-0b32787cf7b78ac0a5b43a3a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.41
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.0697516774954301
+   }
+  },
+  "subj-5c9df78da4c82463191dbc93": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.16
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2676127109005726
+   }
+  },
+  "subj-5bc7036fe48b486444be7919": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.11
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.23896753810643134
+   }
+  },
+  "subj-43369a5c681e370e2c362010": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.27
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2819927766429616
+   }
+  },
+  "subj-688bfdfb21863905156f3c8b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.040073059690609814
+   }
+  },
+  "subj-4901f9792c227f2a2b850640": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.07
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05296977788452159
+   }
+  },
+  "subj-059c794aca9939809554d1e4": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.03
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.08183793456724789
+   }
+  },
+  "subj-cfb25078b132e2a3a58709bb": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.11
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.07502976880829662
+   }
+  },
+  "subj-7a4882fb20d9464a2acfd6d9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.12
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05321833076310131
+   }
+  },
+  "subj-812a2280b5f9ee8dbafa655b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.08
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.18582861855942845
+   }
+  },
+  "subj-5f2804cd02b2e180918ca5a2": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.02
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05221764135347236
+   }
+  },
+  "subj-361e72ced64cf672484a5d85": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.17
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.0460364409520264
+   }
+  },
+  "subj-d882a64c41ce0c9c8d56b102": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.08824082760842272
+   }
+  },
+  "subj-330d684299776467872ff380": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.15
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.16492209901381719
+   }
+  },
+  "subj-1cd69aaf4d04c6d421861880": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.23
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09934840838687757
+   }
+  },
+  "subj-ca6f313fe527ad0082b2e483": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.31
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06990361128550952
+   }
+  },
+  "subj-294c23313b94526183a463fd": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.04
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.02308044309151588
+   }
+  },
+  "subj-8f4cdb9b4b28bbed85003ac5": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.043819727824585764
+   }
+  },
+  "subj-9201d30f6af50ceca562ce36": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "qwen/qwen3.8-27b": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.04296603060208657
+   }
+  },
+  "subj-57a84b8bdf8832dd67eb15b7": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.01
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.024497203905071582
+   }
+  },
+  "subj-65503cbbaa79b0a4200c56ab": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09796822966862018
+   }
+  },
+  "subj-2a7a65433cf409fd0c232742": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.36
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.39409426140311116
+   }
+  },
+  "subj-ec0b30801f1f6c552b8f5dff": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.41
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.08311160282136643
+   }
+  },
+  "subj-30caa0552b80ca62873d1a8e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.13006752821073161
+   }
+  },
+  "subj-ebdf310d2b2d49b500e93c08": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.21
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1019119542613347
+   }
+  },
+  "subj-4b4bdd2cc49139f4d200f630": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.13
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.23933549356660658
+   }
+  },
+  "subj-39d18eb2e763a6a703397614": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.12
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.041254237137884606
+   }
+  },
+  "subj-d41478002fb759fa4c29602e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.026564793978718748
+   }
+  },
+  "subj-1f1ede37154fab133951842e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.03
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "qwen/qwen3.8-27b": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.019796411315124156
+   }
+  },
+  "subj-4f09fb8ab47421040c735e86": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.07
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3630055334893523
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-cc21f879caa03e90850e77df": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.02
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.048261684337885635
+   }
+  },
+  "subj-ae824f6f26bf761b12a8358f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.21923268591321854
+   }
+  },
+  "subj-a59cac19c3a700c052cf52a6": {
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05391039135730782
+   }
+  },
+  "subj-aed7e7c8a073c78a4cfb4563": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.02
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.04143926077444922
+   }
+  },
+  "subj-3599e0efe91de353ef8cc620": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.19
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.058529196686236566
+   }
+  },
+  "subj-5d0222c7863e74f0a3bdec2c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05495709480675176
+   }
+  },
+  "subj-ddbf84763204dc7b8b7dc076": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.01
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.016523552125418298
+   }
+  },
+  "subj-240a59af265dd45a00ed6067": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.13
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05190304595265145
+   }
+  },
+  "subj-df6d8cc37cbea67886a94897": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.08656879725639344
+   }
+  },
+  "subj-eff9bb9f14fc17e651ce5333": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.24
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.20409079316526788
+   }
+  },
+  "subj-81e482bcab9a02275e7b2278": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.03
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06866147839201402
+   }
+  },
+  "subj-a730314506be1490cd6287e9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.07
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "qwen/qwen3.8-27b": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05331602030287041
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-8a937ea741e1b056479dc12e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.34
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09421523457379893
+   }
+  },
+  "subj-c74899e2434d5b856c867f4d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06262389083709154
+   }
+  },
+  "subj-bc9fb2beaaf786f39269faab": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.15
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09658304127110787
+   }
+  },
+  "subj-db0d8e35dd8713cc5c46322d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.14
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.0636627693972555
+   }
+  },
+  "subj-e0ba64e5f747dcae38966a03": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.29
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.22140326604207414
+   }
+  },
+  "subj-28752eccde296b2f4305dfd2": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.23
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09082776319370531
+   }
+  },
+  "subj-8682b1e714b1e3962d00d69d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.20158097158901267
+   }
+  },
+  "subj-d6db4cbb9c2df0c348e104c3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.12587555133863287
+   }
+  },
+  "subj-0ac02d2a9f6e8101580de6f9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.12
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4522178354815553
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-2aec5a20cddfd6640114da9e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.04
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.0582085791197725
+   }
+  },
+  "subj-a6a9020681d3b6dda9c3a005": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.03
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.025783799787544
+   }
+  },
+  "subj-314f89374449f464bda593ba": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.26
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.23117286318037614
+   }
+  },
+  "subj-f6c1ee297dfb0fce549c484e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1953036215176641
+   }
+  },
+  "subj-a26b7a7fc8d20e8197b4f90f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.02
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.03670365379864908
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-78bb3741973cdf410e6a2124": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.02
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.037520911776199505
+   }
+  },
+  "subj-3fae54c4064eb6ee9f444aee": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.19
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06803198635928766
+   }
+  },
+  "subj-eb126332fd79ab0e9a317e48": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.01
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.030366498830384253
+   }
+  },
+  "subj-2886504b57fd42bcd6a1d7de": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.16530401765541422
+   }
+  },
+  "subj-e4ac58ef2cf7f8722fcacbd8": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.07945854855980658
+   }
+  },
+  "subj-f5bb8ca1ba4051c0b205c8cc": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.16
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.18696176888988303
+   }
+  },
+  "subj-93ef1c6c0e495260ca2e6fbe": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.04368482559931544
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-59a61efd08ffda234588004a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.03
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.0262731571430005
+   }
+  },
+  "subj-b4a5eed08f0aeecbd6e2f3ef": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.04
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.04657992110607337
+   }
+  },
+  "subj-2d96a90732029c6f20b5490d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.28
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.0988126457495233
+   }
+  },
+  "subj-f09b74ee5e585c23453b6056": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1659734191273383
+   }
+  },
+  "subj-bf8f692a06433d9701bf9d7b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.03
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05537801008455545
+   }
+  },
+  "subj-334412f672c7bf6a07d67e97": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.014951812142582295
+   }
+  },
+  "subj-889b5813402bcf7f7e2fb527": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.17457765920571605
+   }
+  },
+  "subj-131512f93586886bf5b3b696": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.12
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.17741570332015066
+   }
+  },
+  "subj-8226b5ad6de189ce29805184": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.85
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3656297638565779
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-a920aa44e45ac51603e51866": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.68
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8752154636588337
+   }
+  },
+  "subj-b3564316cb1ee56e6130750b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.66
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8014812398512577
+   }
+  },
+  "subj-43c9c8c453a8ce93e0795b24": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.46
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.14455126812541075
+   }
+  },
+  "subj-aef6c0d11bac94fdc0f3178e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.34
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2581318670681567
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-85f5be5169e3edda99b9f08b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.25
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.16664006353010913
+   }
+  },
+  "subj-c90a49930d94f5ad15dbcc5d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.52
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.23915362423698802
+   }
+  },
+  "subj-b9915ec80d482771f824f46d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.18
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2598939599084332
+   }
+  },
+  "subj-26445c4d376c7b463c704caf": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.65
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3775402676332307
+   }
+  },
+  "subj-efee8a5800f34834975983da": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.54
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.41858997385317315
+   }
+  },
+  "subj-5e03b07e87c3bcd93ebe7f8b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.53
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.11040384666297867
+   }
+  },
+  "subj-8ea9a202d680db2ef154ad7d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.53
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1926320822584154
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-675e684b730788d222d2f584": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.47
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3777286454162205
+   }
+  },
+  "subj-a9f60e16b2fe90c46d58cf56": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.54
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09651440109014192
+   }
+  },
+  "subj-af561546b07258779eb304e3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.67
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.24959271650054057
+   }
+  },
+  "subj-f2b5769e6d2fcf786aef955a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.39
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5451840677275943
+   }
+  },
+  "subj-f1c2b10bf95e0683fb296922": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.530558902392605
+   }
+  },
+  "subj-d8a6644d9b2db2003048d487": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1089834062666884
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-b1f93e363b18b973cb401ae2": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.39
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8219757796793595
+   }
+  },
+  "subj-066686a6cc69a66a9c2548d1": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.43
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3483700974087636
+   }
+  },
+  "subj-d3c876adcb4f10eba164a106": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.59
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.512704584302686
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-d1b5478787ce460feb39d4b7": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.73
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2906693646074768
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-fe61efc7c213eaf57d1d4d61": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.68
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3762442375499895
+   }
+  },
+  "subj-e0be08d734404eb009f0a2f8": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.43
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7944023270568729
+   }
+  },
+  "subj-37a50865be8c0dd34a2fbbfc": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.04120179886076248
+   }
+  },
+  "subj-473de60d9c373fb8474ca156": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.25
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.24434119975161686
+   }
+  },
+  "subj-bd77092326adef11679d754c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.17
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3249054318786722
+   }
+  },
+  "subj-e78df20295f15627e5b09d9e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.61
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1154261049029156
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-69bfc43b5160a332583496e0": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.24
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.15745556495579735
+   }
+  },
+  "subj-1938044653de4adb73fdc1fa": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.88
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.23086242109087815
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-50cfe0668153576ef9bc02d3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.39
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.503318647057649
+   }
+  },
+  "subj-dafa0217dd8264a6a2b1539a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.58
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.29378693609403334
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-08af7105584a1595d26216b9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.53
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2552750696439565
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-c833bc0bcffa58025002ccf9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.59
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "qwen/qwen3.8-27b": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3976450892115873
+   }
+  },
+  "subj-f62d8a39db76a1637e877230": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.45
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.10760944540074191
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-12bd87ddde83ab6702a849d5": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.69
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7127673449267472
+   }
+  },
+  "subj-cb315504895d278fd1cee43f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6973984697841666
+   }
+  },
+  "subj-6ad88bd76f58e4d04c7af47d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.56
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.21621776488414246
+   }
+  },
+  "subj-4442f1a04963ccba2b42684c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.68
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7714212323793725
+   }
+  },
+  "subj-a2c9f34ff90766cf81b04413": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.27
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2727641156225928
+   }
+  },
+  "subj-09d1d3a540ea8725fefeb413": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.69
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.20475399001624825
+   }
+  },
+  "subj-0cdd297721bb0fc9fbcb3224": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5566916031773158
+   }
+  },
+  "subj-6229df758edf63d403ae1dbb": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7507065679627024
+   }
+  },
+  "subj-063f1c01cf67bbea63adb2ee": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.45
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4991042232336826
+   }
+  },
+  "subj-b5f77bfab58743f33f0dccc1": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.63
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09446967719246295
+   }
+  },
+  "subj-58dc8c6bd30344440a84b97e": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.29
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2948481444146782
+   }
+  },
+  "subj-b31e1309dbcf645abcd0da5d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.54
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6197179733096247
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-8716245411bf353a9feee48b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.55
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4737230635204992
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-7f5e7069676a7032e9347dd3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.29
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2641422027482922
+   }
+  },
+  "subj-b80f892146b9c5469a2f82a2": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.25
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.05264781556915454
+   }
+  },
+  "subj-5839e7f0db6d73cb521ea940": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.85
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.35094609629720847
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-be1cb76264623f29163310a3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.44
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8208473472974
+   }
+  },
+  "subj-42a1fea197b8780fccd150a6": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.44
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09636773741115717
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-6075d6a7af7d1f2a052a876c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.82
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6479008951395969
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-e537ca8ec8a0bd377e00d3c8": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.24
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5756962447684554
+   }
+  },
+  "subj-692a4d2e2aa253c5b66164e4": {
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.20185438675358383
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-5b52ca2c2ccff4f25c86e597": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.54
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.10776930726210801
+   }
+  },
+  "subj-1cf0cec8341bfe020e0a15f6": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8623146738929816
+   }
+  },
+  "subj-a449d5fc16aea54e86f24e8c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.23
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.050336569276699085
+   }
+  },
+  "subj-7afc189d6950696858f342de": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.11
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.041507999265363055
+   }
+  },
+  "subj-129a3ceef8110da459372f31": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.72
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.46556824622036014
+   }
+  },
+  "subj-3f3d18b1926ae920ac188f3b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.25
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.08476741511519835
+   }
+  },
+  "subj-98c304771510fb7f241c24ea": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.49908127893515924
+   }
+  },
+  "subj-020dc766639f0a42d61616e6": {
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.26944630108771217
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-1903d01c02372ef58ef24812": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.34
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2592089302982631
+   }
+  },
+  "subj-7e7d4e9320ab569e44081f51": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.28872163811390206
+   }
+  },
+  "subj-25a57f2ebdedaca0ee8e311f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3787233014355729
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-2f177d305e35ca91b559c7e3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.32
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.20763921347095007
+   }
+  },
+  "subj-ef5babe18eb3b918e83831ec": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.67
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.376238991122046
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-3e68e2344a167210a263f262": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.58
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.24770931835640952
+   }
+  },
+  "subj-0e28c03546c9f57d2eb47edc": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.17452966915546078
+   }
+  },
+  "subj-582d06b3628e1ab56fa53ac5": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.22
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.16404021466530486
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-ae1b81237a55dea669c13ea6": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.22
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09666981890805512
+   }
+  },
+  "subj-caeab76e2a296a630493a1cb": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.35
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5307426951244475
+   }
+  },
+  "subj-ae6b4b8300b48a767808995f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.68
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.12472390835471434
+   }
+  },
+  "subj-4c6a910c5fcca080622f1eea": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.48
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "qwen/qwen3.8-27b": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6473080535790051
+   }
+  },
+  "subj-2fe3d5f84d351f843508485d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.56
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.44815451808973483
+   }
+  },
+  "subj-23fe4673c3e189510b135903": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.45
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.211699253522012
+   }
+  },
+  "subj-1d6a6ca3a3fb9f087f285e2b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.44
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.38137609627617025
+   }
+  },
+  "subj-daac0a3410157c5d7c53c6e6": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.69
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2857803035935261
+   }
+  },
+  "subj-9b2f9dc61522f890434f6df7": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8494480009779005
+   }
+  },
+  "subj-e367588a2e68bf9307ea9dbb": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8309988162139171
+   }
+  },
+  "subj-93ce49adfad017497878ff8d": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.76
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9308822719206996
+   }
+  },
+  "subj-e9a59a01f650a3d99a02a996": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.78
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8968421253268656
+   }
+  },
+  "subj-21253fd31d73dc35fafb4c1f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.91
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9618527428053364
+   }
+  },
+  "subj-af913e3c866893884372916a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.75
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8987005233976636
+   }
+  },
+  "subj-ff1736eaffef93beaf806214": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.95
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.96768827417379
+   }
+  },
+  "subj-2108983eb3609b3fd26f3013": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.74
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8538567633129246
+   }
+  },
+  "subj-730bb12ba90bf7e090f83084": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.92
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7766012195467843
+   }
+  },
+  "subj-f01f57ffe5f474d86d320419": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.73
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "perplexity/pplx-decider-v1.3": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8901023852395181
+   }
+  },
+  "subj-4da873b4c588a145613fafbf": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.87
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8728084055880846
+   }
+  },
+  "subj-9b8a3ee9523f874717f3c791": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.78
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9427663232887975
+   }
+  },
+  "subj-c4ce8ee757c725b0ad6c19bd": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.92
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.8575165097913307
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-74f56d7200d8cba321f705b2": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.71
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9103041763670864
+   }
+  },
+  "subj-dcad7d362b72028d08ea40e3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.95
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.805452319651917
+   }
+  },
+  "subj-8c0ce42f3f6d1f45257b23f7": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.96
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9759228428418221
+   }
+  },
+  "subj-70624d4ab64ba35b344c2ee6": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.91
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9470055253682921
+   }
+  },
+  "subj-ff70a568558281b2bf29a446": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.55
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.6346548144621854
+   }
+  },
+  "subj-d8871779388edc6bf8b436e2": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.65
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9284730620631615
+   }
+  },
+  "subj-d44c8b4bf7a91562465f27de": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.93
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9353906151280899
+   }
+  },
+  "subj-daccc04e3cdc9b00f7ec4752": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.15
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.15321783957044516
+   }
+  },
+  "subj-2b03013ca6939863deccf3e8": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.15
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1353274630915912
+   }
+  },
+  "subj-50b958db727553d434f4b17a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.27
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.24365494469899618
+   }
+  },
+  "subj-23869bd97fc6a78ab92f9251": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-8fbd283ef29b06eca6457095": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.45
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2904391267168247
+   }
+  },
+  "subj-08e2bc9402bc159108eb5aea": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.16
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.099066842813933
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-add055bf611d64f8d9c4a137": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.35
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.19905773105426086
+   }
+  },
+  "subj-e2820dd1998b620369ed27ac": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.31
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.10899122176677337
+   }
+  },
+  "subj-5934bb4e372b3c71d03bf0c9": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.44
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.36705497936806863
+   }
+  },
+  "subj-771c645cf669cb9771b328dc": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.06
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.11558471017865739
+   }
+  },
+  "subj-12385a0746391a8fcbe0cce5": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.41
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1958678735152559
+   }
+  },
+  "subj-a9b707025e2ec03492d4b53f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.17
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1916480510245343
+   }
+  },
+  "subj-98ca3ea5afafaf637d57bdf1": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.26
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2547030180531416
+   }
+  },
+  "subj-4590375ec7ccfa680509cbe5": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.34
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.40634511783587485
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-86949e97d9b71df00df1afb8": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.34
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.09265276628387163
+   }
+  },
+  "subj-b33ce888055d63618e5717c3": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.27
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.17850230462825137
+   }
+  },
+  "subj-894f0259dfa9a4e575517ff8": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.11
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4835944882615479
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-f132b5756b2c713bae5aa6b1": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.38
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.31336418536157257
+   }
+  },
+  "subj-735b717468a71237b18b7e9b": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.22
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.11199717188520383
+   }
+  },
+  "subj-779b260ceb21c77ef6fe4ffc": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.31
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.1961154674201835
+   }
+  },
+  "subj-469bbfc402d54736d3781ee6": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.72
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.880530851709952
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-09be6e02616ef0d730de3b99": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.33
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.42282470838984065
+   }
+  },
+  "subj-aadf3017db595a399504b03c": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.35
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.24166146494550544
+   }
+  },
+  "subj-053dec9884e72beb2929161a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.27
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7480172009676591
+   }
+  },
+  "subj-3716c131b7c04646c9d8eeb0": {
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5234623875318372
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-cec4eb8c3d64f5b5ae395ebd": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.75
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5598675222347799
+   }
+  },
+  "subj-78ce34bbd46171af52c14535": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.82
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-0d79722c8a5abb8384f245b1": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.22
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.9415791656295787
+   }
+  },
+  "subj-eada576bd0c19061b22491bc": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.48
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7675249015790315
+   }
+  },
+  "subj-3d5dab4e25904cad2b08f022": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.64
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.46357475841716456
+   }
+  },
+  "subj-ea876893906abd3e64901d6f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.44
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3546877922881282
+   }
+  },
+  "subj-9a02c1263e311598377017b8": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.36
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.5916155376644225
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-63b42dacfcaf804b63011d2a": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.76
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.2732296344658664
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   }
+  },
+  "subj-abba738625796caab119d003": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.34
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.19052151211987126
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-52a0b16ddf10d401b48c4a6f": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.79
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.470150699063268
+   }
+  },
+  "subj-23abfcef38ff61a315c3f034": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.53
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4950732219997054
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-2920256b9ec59b53c7812143": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.83
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7783113813538989
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   }
+  },
+  "subj-e607ce4769c9b956a157dc08": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.31
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.4770120879243052
+   }
+  },
+  "subj-46f856f3706de66a5c595d11": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.59
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "deepseek/deepseek-v4.1-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": true,
+    "value": true
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.7735220360058547
+   }
+  },
+  "subj-477a5c71849f67ec382cbe91": {
+   "typesafe/jev-1.13": {
+    "tier": "T1",
+    "pass": true,
+    "value": 0.54
+   },
+   "google/gemma-4-31b-it": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "zai/glm-5.3-flash": {
+    "tier": "T2",
+    "pass": true,
+    "value": true
+   },
+   "openrouter/nvidia/nemotron-3.5-super-vl:free": {
+    "tier": "T1",
+    "pass": false,
+    "value": false
+   },
+   "gemini/gemini-decision-1": {
+    "tier": "T1",
+    "pass": false,
+    "value": 0.3247099551584536
+   }
+  }
+ },
+ "suggested_tags": {
+  "ch-2377f4871377": {
+   "annexation-outward-expansion": [
+    "rule"
+   ]
+  },
+  "ch-badbc5c3bdc7": {
+   "budget-structural-balance": [
+    "rule"
+   ]
+  },
+  "ch-868cbce6fc87": {
+   "budget-structural-balance": [
+    "rule"
+   ]
+  },
+  "ch-5d41b563bc4f": {
+   "annexation-outward-expansion": [
+    "rule"
+   ]
+  },
+  "ch-2bc251d577fe": {
+   "rezoning": [
+    "rule"
+   ]
+  },
+  "ch-8d6436b2c09e": {
+   "climate-resilience": [
+    "rule"
+   ]
+  },
+  "ch-52e50941e799": {
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-eb269972d760": {
+   "historic-preservation": [
+    "rule"
+   ]
+  },
+  "ch-b99c34d092a4": {
+   "annexation-outward-expansion": [
+    "rule"
+   ]
+  },
+  "ch-6461f8243de5": {
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-c1a2cb36fe49": {
+   "annexation-outward-expansion": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-9535ba274fdc": {
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-bc38f8067e26": {
+   "parks-recreation": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-48c6ac078693": {
+   "rezoning": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-b851cba8964f": {
+   "rezoning": [
+    "rule"
+   ],
+   "transit-oriented-development": [
+    "rule"
+   ]
+  },
+  "ch-cedb89a7ef30": {
+   "parks-recreation": [
+    "rule"
+   ],
+   "stormwater-utility-maintenance": [
+    "rule"
+   ]
+  },
+  "ch-3f0647d0604b": {
+   "minimum-lot-size-setbacks": [
+    "rule"
+   ],
+   "historic-preservation": [
+    "rule"
+   ]
+  },
+  "ch-2742b42fa176": {
+   "anti-displacement-equity": [
+    "rule"
+   ],
+   "small-business-permitting": [
+    "rule"
+   ]
+  },
+  "ch-47b6a7710198": {
+   "rezoning": [
+    "rule"
+   ],
+   "form-based-codes": [
+    "rule"
+   ]
+  },
+  "ch-d823f626c05e": {
+   "accessibility-universal-design": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-0bf2501b3737": {
+   "stormwater-utility-maintenance": [
+    "rule"
+   ],
+   "budget-structural-balance": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-33fd3e896539": {
+   "rezoning": [
+    "rule"
+   ],
+   "infill-redevelopment": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ]
+  },
+  "ch-f5370c2427c9": {
+   "accessory-dwelling-units": [
+    "rule"
+   ],
+   "affordable-housing": [
+    "rule"
+   ],
+   "anti-displacement-equity": [
+    "rule"
+   ]
+  },
+  "ch-40a121964c8b": {
+   "rezoning": [
+    "rule"
+   ],
+   "historic-preservation": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-48ad3d172cbb": {
+   "zoning-reform": [
+    "rule"
+   ],
+   "rezoning": [
+    "rule"
+   ],
+   "main-street": [
+    "rule"
+   ]
+  },
+  "ch-fb97eecfbfda": {
+   "rezoning": [
+    "rule"
+   ],
+   "stormwater-utility-maintenance": [
+    "rule"
+   ],
+   "debt-bonds-tif-subsidies": [
+    "rule"
+   ]
+  },
+  "ch-1db4ae3ddf07": {
+   "affordable-housing": [
+    "rule"
+   ],
+   "transit-oriented-development": [
+    "rule"
+   ],
+   "budget-structural-balance": [
+    "rule"
+   ]
+  },
+  "ch-efb11f48c71e": {
+   "affordable-housing": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "budget-structural-balance": [
+    "rule"
+   ]
+  },
+  "ch-091d93ca8010": {
+   "adaptive-reuse": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-faef8497765d": {
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "main-street": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-90d029472732": {
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "accessibility-universal-design": [
+    "rule"
+   ],
+   "budget-structural-balance": [
+    "rule"
+   ]
+  },
+  "ch-12325a4aef38": {
+   "neighborhood-planning": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "street-trees-green-infrastructure": [
+    "rule"
+   ],
+   "community-wealth-local-ownership": [
+    "rule"
+   ]
+  },
+  "ch-10f148887dab": {
+   "rezoning": [
+    "rule"
+   ],
+   "infill-redevelopment": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "main-street": [
+    "rule"
+   ]
+  },
+  "ch-96b11284ac46": {
+   "rezoning": [
+    "rule"
+   ],
+   "missing-middle-housing": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "historic-preservation": [
+    "rule"
+   ]
+  },
+  "ch-6d1969c85b39": {
+   "neighborhood-planning": [
+    "rule"
+   ],
+   "third-places-public-life": [
+    "rule"
+   ],
+   "historic-preservation": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-b0e760e716b0": {
+   "parks-recreation": [
+    "rule"
+   ],
+   "debt-bonds-tif-subsidies": [
+    "rule"
+   ],
+   "climate-resilience": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-fbdc278a6d29": {
+   "affordable-housing": [
+    "rule"
+   ],
+   "neighborhood-planning": [
+    "rule"
+   ],
+   "stormwater-utility-maintenance": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-0a9effcbb192": {
+   "rezoning": [
+    "rule"
+   ],
+   "historic-preservation": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "small-business-permitting": [
+    "rule"
+   ]
+  },
+  "ch-85e8dadd9327": {
+   "zoning-reform": [
+    "rule"
+   ],
+   "rezoning": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "main-street": [
+    "rule"
+   ]
+  },
+  "ch-58ad5899e452": {
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "traffic-calming-road-diets": [
+    "rule"
+   ],
+   "transit-oriented-development": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-828e6145bd0e": {
+   "third-places-public-life": [
+    "rule"
+   ],
+   "placemaking-public-space": [
+    "rule"
+   ],
+   "public-art-culture": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-3923b1220e08": {
+   "affordable-housing": [
+    "rule"
+   ],
+   "anti-displacement-equity": [
+    "rule"
+   ],
+   "historic-preservation": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "small-business-permitting": [
+    "rule"
+   ]
+  },
+  "ch-5df541afb1be": {
+   "neighborhood-planning": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "debt-bonds-tif-subsidies": [
+    "rule"
+   ],
+   "budget-structural-balance": [
+    "rule"
+   ]
+  },
+  "ch-8d52234249dc": {
+   "affordable-housing": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "third-places-public-life": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "community-wealth-local-ownership": [
+    "rule"
+   ]
+  },
+  "ch-931dde609ea9": {
+   "rezoning": [
+    "rule"
+   ],
+   "minimum-lot-size-setbacks": [
+    "rule"
+   ],
+   "missing-middle-housing": [
+    "rule"
+   ],
+   "main-street": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-c8e1f6cab644": {
+   "zoning-reform": [
+    "rule"
+   ],
+   "rezoning": [
+    "rule"
+   ],
+   "minimum-lot-size-setbacks": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "home-based-business": [
+    "rule"
+   ]
+  },
+  "ch-258f41e5c646": {
+   "rezoning": [
+    "rule"
+   ],
+   "affordable-housing": [
+    "rule"
+   ],
+   "small-business-permitting": [
+    "rule"
+   ],
+   "stormwater-utility-maintenance": [
+    "rule"
+   ],
+   "debt-bonds-tif-subsidies": [
+    "rule"
+   ]
+  },
+  "ch-4a96efd7d15f": {
+   "rezoning": [
+    "rule"
+   ],
+   "infill-redevelopment": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "street-trees-green-infrastructure": [
+    "rule"
+   ],
+   "public-art-culture": [
+    "rule"
+   ]
+  },
+  "ch-829b6bc874b5": {
+   "zoning-reform": [
+    "rule"
+   ],
+   "rezoning": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "community-wealth-local-ownership": [
+    "rule"
+   ]
+  },
+  "ch-beb49ff06a81": {
+   "rezoning": [
+    "rule"
+   ],
+   "affordable-housing": [
+    "rule"
+   ],
+   "anti-displacement-equity": [
+    "rule"
+   ],
+   "neighborhood-planning": [
+    "rule"
+   ],
+   "main-street": [
+    "rule"
+   ]
+  },
+  "ch-8c5de1e3a970": {
+   "rezoning": [
+    "rule"
+   ],
+   "annexation-outward-expansion": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "street-trees-green-infrastructure": [
+    "rule"
+   ],
+   "placemaking-public-space": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-fb3e0ee0c21d": {
+   "historic-preservation": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "accessibility-universal-design": [
+    "rule"
+   ],
+   "infrastructure-maintenance-liability": [
+    "rule"
+   ],
+   "budget-structural-balance": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-7b916deff408": {
+   "affordable-housing": [
+    "rule"
+   ],
+   "anti-displacement-equity": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "transit-oriented-development": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "accessibility-universal-design": [
+    "rule"
+   ]
+  },
+  "ch-eb0bd0d254ef": {
+   "rezoning": [
+    "rule"
+   ],
+   "affordable-housing": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "placemaking-public-space": [
+    "rule"
+   ],
+   "public-art-culture": [
+    "rule"
+   ],
+   "community-wealth-local-ownership": [
+    "rule"
+   ]
+  },
+  "ch-2899aab6d5fb": {
+   "accessory-dwelling-units": [
+    "rule"
+   ],
+   "affordable-housing": [
+    "rule"
+   ],
+   "anti-displacement-equity": [
+    "rule"
+   ],
+   "street-safety-vision-zero": [
+    "rule"
+   ],
+   "transit-oriented-development": [
+    "rule"
+   ],
+   "budget-structural-balance": [
+    "rule"
+   ]
+  },
+  "ch-accd917324eb": {
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "tactical-urbanism": [
+    "rule"
+   ],
+   "historic-preservation": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "debt-bonds-tif-subsidies": [
+    "rule"
+   ],
+   "budget-structural-balance": [
+    "rule"
+   ]
+  },
+  "ch-b80e790cd3e6": {
+   "rezoning": [
+    "rule"
+   ],
+   "affordable-housing": [
+    "rule"
+   ],
+   "form-based-codes": [
+    "rule"
+   ],
+   "neighborhood-planning": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ]
+  },
+  "ch-bb15e79071e1": {
+   "rezoning": [
+    "rule"
+   ],
+   "parking-mandates": [
+    "rule"
+   ],
+   "accessory-dwelling-units": [
+    "rule"
+   ],
+   "affordable-housing": [
+    "rule"
+   ],
+   "neighborhood-planning": [
+    "rule"
+   ],
+   "transit-oriented-development": [
+    "rule"
+   ]
+  },
+  "ch-8353363f104f": {
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "transit-oriented-development": [
+    "rule"
+   ],
+   "placemaking-public-space": [
+    "rule"
+   ],
+   "public-art-culture": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "neighborhood-engagement": [
+    "rule"
+   ]
+  },
+  "ch-e2e7502b071e": {
+   "affordable-housing": [
+    "rule"
+   ],
+   "form-based-codes": [
+    "rule"
+   ],
+   "neighborhood-planning": [
+    "rule"
+   ],
+   "walk-bike-transit-access": [
+    "rule"
+   ],
+   "parks-recreation": [
+    "rule"
+   ],
+   "stormwater-utility-maintenance": [
+    "rule"
+   ]
+  }
+ }
+}

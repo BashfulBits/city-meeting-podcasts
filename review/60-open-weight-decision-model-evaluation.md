@@ -415,3 +415,17 @@ server were not tested. Costs: about $1.5 at list rates (RTX run about $0.7 incl
 and a 24 GB cross-region copy under $0.4), recorded against the $20 cap; cloud billing not yet reconciled.
 Left in place (not deleted): jobs `r60-karpo-spike-l4` (us-east4) and `r60-karpo-spike-rtx` (us-central1), images
 `r60-karpo-spike-v1..v3`, and the 12B copy in the us-east4 model bucket.
+
+### Result 2026-11-18: Phase 2 dataset frozen (`evals/open-weight-decision/`)
+
+Coverage first: `evals/judge` holds 30 synthetic bundling items and 10 controls; its tag and moment gold files are
+empty, so there was no real labeled gold to reuse. The blind labeling sample became the set: **240 tag items** (human
+labels: 113 supported, 94 not supported, 33 uncertain), **60 moments** (26 human, 34 Claude-labeled on rebuilt passages;
+58 supported, 1 not supported, 1 uncertain) and **60 chapters** (Claude-chosen tags on the 12 shown tags, not human).
+Inputs, truth and production reference are separate files; the manifest carries no labels, verdicts or suggestions
+(enforced by a test). Split by a stable hash of the id into `dev` (about 50%) and `holdout`. A self-check found one
+chapter tag Claude had chosen outside that chapter's shown list; it was removed before freezing.
+
+Known gaps, as the plan asked to report before building more: moments cannot separate judges, chapter truth is not human,
+and 240 tag items detect only large differences. Asking the maintainer for more labels is a Phase 3 decision once the first
+runs show which comparisons are close.
