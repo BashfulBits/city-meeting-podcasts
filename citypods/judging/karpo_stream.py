@@ -1,4 +1,4 @@
-"""Karpo decision models (Gemma 4 12B/31B, Qwen3.5 4B/9B) over authenticated streaming weights.
+"""Karpo decision models (Gemma 4 12B, Qwen3.5 4B/9B) over authenticated streaming weights.
 
 The backbone is built on the meta device, its parameters are allocated on the GPU, and verified
 safetensors slices are copied into them. With ``fp8`` every decoder projection that Karpo's own
@@ -157,6 +157,7 @@ def load_karpo(
         )
 
     sink = collect = backbone = decider = None
+    direct = quantized = shells = readout = ckpt = rows = None
     try:
         with tempfile.TemporaryDirectory() as temp:
             fetch_small_objects(paths, bucket, token, temp)
@@ -187,7 +188,7 @@ def load_karpo(
                 stream_gcs_safetensors(binding(path), token, sink, workers=workers)
             sink.check_complete()
             if device.type == "cuda":
-                torch.cuda.synchronize()
+                torch.cuda.synchronize(device)
             elapsed = time.monotonic() - started
             if stats is not None:
                 size = sum(paths[p]["size"] for p in weights)
@@ -221,5 +222,8 @@ def load_karpo(
         traceback.clear_frames(exc.__traceback__)
         if sink is not None:
             sink.discard()
-        decider = backbone = sink = None
+        # The active frame's locals would keep the failed model on the GPU while a caller holds
+        # the exception, so every tensor owner is released here.
+        decider = backbone = sink = collect = None
+        direct = quantized = shells = readout = ckpt = rows = None
         raise

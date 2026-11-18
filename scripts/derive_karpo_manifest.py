@@ -21,7 +21,9 @@ from urllib.request import Request, urlopen
 from citypods.judging.karpo_stream import KARPO_PREFIXES
 from citypods.weight_streaming import gcs_range_fetcher
 
-READ = 32 * 1024**2
+MIB = 1024**2
+READ = 32 * MIB
+MAX_SLICE = 64 * MIB  # the streaming loader rejects larger slices
 SKIP_PREFIXES = ("assets/", "licenses/")
 SKIP_NAMES = {"README.md", "model.safetensors.index.json"}
 
@@ -45,11 +47,18 @@ def list_objects(bucket, prefix, token):
             return items
 
 
+def validate_slice_sizes(slice_sizes):
+    """Whole MiB from 1 to 64 (the loader's limit) that divide or are divisible by 32 MiB."""
+    if not slice_sizes:
+        raise ValueError("no slice sizes")
+    for s in slice_sizes:
+        if type(s) is not int or not MIB <= s <= MAX_SLICE or s % MIB or (READ % s and s % READ):
+            raise ValueError("slice sizes must be 1 to 64 MiB, dividing or divisible by 32 MiB")
+
+
 def hash_object(fetch, size, slice_sizes, *, workers=8):
     """Full SHA-256 and the slice hashes for each size, reading the object once, in order."""
-    for s in slice_sizes:
-        if s % 1024**2 or READ % s and s % READ:
-            raise ValueError("slice sizes must be MiB multiples dividing or divisible by 32 MiB")
+    validate_slice_sizes(slice_sizes)
     read = max(READ, *slice_sizes)
     full = hashlib.sha256()
     slices = {s: [] for s in slice_sizes}
@@ -73,13 +82,24 @@ def hash_object(fetch, size, slice_sizes, *, workers=8):
 
 def derive(bucket, revision, objects, fetcher_for, slice_sizes, expected, *, workers=8):
     """Manifests (one per slice size) for ``objects``; ``fetcher_for(name, generation, size)``."""
+    validate_slice_sizes(slice_sizes)
     prefix = KARPO_PREFIXES[revision]
     entries = {s: [] for s in slice_sizes}
     unreferenced = []
-    for name, generation, size in sorted(objects):
+    wanted = [
+        (name, generation, size)
+        for name, generation, size in sorted(objects)
+        if not name[len(prefix) + 1 :].startswith(SKIP_PREFIXES)
+        and name[len(prefix) + 1 :] not in SKIP_NAMES
+        and "/" not in name[len(prefix) + 1 :]
+    ]
+    # Every weight must have an independent publisher digest, checked before any hashing.
+    for name, _, _ in wanted:
         path = name[len(prefix) + 1 :]
-        if path.startswith(SKIP_PREFIXES) or path in SKIP_NAMES or "/" in path:
-            continue
+        if path.endswith(".safetensors") and path not in expected:
+            raise ValueError(f"no publisher SHA-256 for weight object {path}")
+    for name, generation, size in wanted:
+        path = name[len(prefix) + 1 :]
         digest, slices = hash_object(
             fetcher_for(name, generation, size), size, slice_sizes, workers=workers
         )
@@ -130,10 +150,11 @@ def main():
     parser.add_argument("--slice-mib", type=int, nargs="+", default=[8, 32])
     parser.add_argument("--token", required=True)
     args = parser.parse_args()
+    validate_slice_sizes([m * MIB for m in args.slice_mib])
     objects = list_objects(args.bucket, KARPO_PREFIXES[args.revision], args.token)
     with open(args.expect) as handle:
         expected = json.load(handle)
-    sizes = [m * 1024**2 for m in args.slice_mib]
+    sizes = [m * MIB for m in args.slice_mib]
     result = derive(
         args.bucket,
         args.revision,

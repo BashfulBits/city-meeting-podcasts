@@ -33,9 +33,14 @@
    "tensors_compared": 960
   }
  },
+ "comparisons": {
+  "answers_12B": "same weights, so differences are not a weight effect; the cause (run-to-run kernel nondeterminism is likely) was not isolated by a controlled comparison",
+  "answers_9B": "streamed FP8 against Phase 0 BF16: includes the FP8 quantization effect",
+  "weights": "byte_identity compares the streamed FP8 load with the reference FP8 load of the same model, tensor by tensor; the 9B reference loaded BF16 and ran Karpo's quantize"
+ },
  "gpu": "NVIDIA L4 (us-east4, Cloud Run job, 16 GiB host limit for streaming runs)",
  "image": "glide-worker:r60-karpo-stream-v4 (Phase 0 spike image + citypods + torchvision 0.29.0)",
- "note": "Tensor digests are SHA-256 of the raw bytes of every backbone state_dict tensor (FP8 weights and scales included) and the readout. Per-request probabilities differ between container runs at the 1e-2 level (kernel nondeterminism: the reference run differs from Phase 0 by the same amount while the weights are identical), so identity is claimed for weights, not for answers.",
+ "note": "Tensor digests are SHA-256 of the raw bytes of every backbone state_dict tensor (FP8 weights and scales included) and the readout, so identity is claimed for weights, not for answers. 12B answers moved between container runs with identical weights; the cause was not isolated.",
  "phase": "review/60 Phase 1",
  "runner_commit": "6600011eb5cf46232d056ec0717dc726146d29de",
  "runs": {
@@ -52,6 +57,7 @@
     "gpu_reserved_gib": 13.67,
     "host_rss_peak_gib": 5.05
    },
+   "after_tests_note": "host_rss_peak_gib after tests is a process-wide peak and includes the tensor digest copies made before inference",
    "load_seconds_total": 79.6,
    "request_seconds": [
     3.535,
@@ -74,6 +80,7 @@
    },
    "vs_baseline": {
     "baseline": "fp8_layerwise",
+    "comparison": "FP8 streamed answers against the Phase 0 FP8 layer-wise answers (same weights)",
     "flips_at_0.5": 2,
     "identical_pairs": 89,
     "max_abs_diff": 0.0623,
@@ -94,6 +101,7 @@
     "gpu_reserved_gib": 13.67,
     "host_rss_peak_gib": 5.35
    },
+   "after_tests_note": "host_rss_peak_gib after tests is a process-wide peak and includes the tensor digest copies made before inference",
    "load_seconds_total": 103.2,
    "request_seconds": [
     3.672,
@@ -116,6 +124,7 @@
    },
    "vs_baseline": {
     "baseline": "fp8_layerwise",
+    "comparison": "FP8 streamed answers against the Phase 0 FP8 layer-wise answers (same weights)",
     "flips_at_0.5": 0,
     "identical_pairs": 304,
     "max_abs_diff": 0.0,
@@ -136,6 +145,7 @@
     "gpu_reserved_gib": 10.71,
     "host_rss_peak_gib": 5.28
    },
+   "after_tests_note": "host_rss_peak_gib after tests is a process-wide peak and includes the tensor digest copies made before inference",
    "load_seconds_total": 92.1,
    "request_seconds": [
     20.113,
@@ -158,6 +168,7 @@
    },
    "vs_baseline": {
     "baseline": "bf16",
+    "comparison": "FP8 streamed answers against the Phase 0 BF16 answers (a quantization effect, not a loader comparison)",
     "flips_at_0.5": 2,
     "identical_pairs": 36,
     "max_abs_diff": 0.0868,

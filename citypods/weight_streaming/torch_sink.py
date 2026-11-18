@@ -182,12 +182,18 @@ class CollectSink:
         if offset == 0:
             if name in self.tensors:
                 raise ValueError("duplicate tensor: " + name)
-            self.tensors[name] = torch.empty(spec.shape, dtype=dtype)
+            self.tensors[name] = torch.empty(spec.shape, dtype=dtype, device="cpu")
         if len(data):
             _bytes_of(self.tensors[name])[offset : offset + len(data)].copy_(_source(data))
         self.progress[name] = offset + len(data)
 
     def result(self) -> dict[str, torch.Tensor]:
+        """The collected tensors; with ``expected`` every expected name must have arrived.
+
+        A collector has no ``discard()``: after a failure drop the collector and its results.
+        """
+        if self.expected is not None and set(self.tensors) != set(self.expected):
+            raise ValueError("missing or unexpected tensors")
         if any(self.progress[n] != t.numel() * t.element_size() for n, t in self.tensors.items()):
             raise ValueError("incomplete tensors")
         return self.tensors

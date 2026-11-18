@@ -18,9 +18,14 @@ safetensors_torch = Lazy("safetensors.torch")
 torch_sink = Lazy("citypods.weight_streaming.torch_sink")
 
 
-@pytest.fixture(autouse=True)
-def _need_torch_and_transformers():
-    require("torch", "transformers.models.gemma4_unified.modeling_gemma4_unified")
+@pytest.fixture
+def need_torch():
+    require("torch")
+
+
+@pytest.fixture
+def need_gemma(need_torch):
+    require("transformers.models.gemma4_unified.modeling_gemma4_unified")
 
 
 def TorchSink(*args, **kwargs):  # noqa: N802
@@ -67,7 +72,7 @@ PROJECTIONS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "
 
 
 @pytest.fixture
-def ref_module(monkeypatch):
+def ref_module(monkeypatch, need_torch):
     module = types.ModuleType("karpo_fp8_ref")
     module.PROJECTIONS, module.Fp8Linear = PROJECTIONS, refs().Fp8
     monkeypatch.setitem(sys.modules, "karpo_fp8_ref", module)
@@ -98,7 +103,7 @@ def stream_file(path, sink, chunk=16384):
 
 
 @pytest.fixture
-def tiny(tmp_path):
+def tiny(tmp_path, need_gemma):
     from transformers import AutoConfig
 
     config = AutoConfig.for_model(**json.loads(FIXTURE.read_text()))
@@ -170,7 +175,7 @@ def test_missing_tensor_is_detected(tiny, ref_module):
         sink.check_complete()
 
 
-def test_manifest_requires_a_pinned_revision(ref_module):
+def test_manifest_requires_a_pinned_revision():
     with pytest.raises(ValueError, match="revision"):
         karpo_stream.validate_manifest({"revision": "x" * 40})
     assert copy.copy(karpo_stream.KARPO_PREFIXES)
@@ -181,7 +186,7 @@ def test_manifest_requires_a_pinned_revision(ref_module):
 QWEN_FIXTURE = Path(__file__).parent / "fixtures" / "karpo_qwen3_5_tiny_config.json"
 
 
-def test_qwen_streamed_backbone_matches_layerwise_load(tmp_path, monkeypatch):
+def test_qwen_streamed_backbone_matches_layerwise_load(tmp_path, monkeypatch, need_torch):
     qwen = pytest.importorskip("transformers.models.qwen3_5.modeling_qwen3_5")
     from transformers import AutoConfig
 
@@ -359,27 +364,51 @@ def test_load_karpo_rejects_code_that_does_not_match_the_tokenizer(mocked_load, 
     assert calls == []
 
 
-def test_load_karpo_discards_on_stream_failure(mocked_load, monkeypatch):
-    manifest, _, _ = mocked_load
-    from citypods.weight_streaming import torch_sink
+def test_load_karpo_discards_a_partial_write_and_frees_the_model_while_the_error_is_held(
+    mocked_load, monkeypatch
+):
+    import gc
+    import weakref
 
-    discarded = []
+    from citypods.weight_streaming import TensorSpec, torch_sink
+
+    manifest, _, _ = mocked_load
+    staged = []
     original = torch_sink.TorchSink.discard
 
     def tracking(self):
-        discarded.append(True)
+        staged.append(len(self._staging))  # a partly written FP8 weight is staged at this point
         original(self)
+        staged.append(len(self._staging))
 
     monkeypatch.setattr(torch_sink.TorchSink, "discard", tracking)
+    backbones, tensors = [], []
+    build = karpo_stream.build_backbone
+
+    def recording_build(*args, **kwargs):
+        backbone, shells = build(*args, **kwargs)
+        backbones.append(weakref.ref(backbone))
+        return backbone, shells
+
+    monkeypatch.setattr(karpo_stream, "build_backbone", recording_build)
 
     def fake_stream(binding, token, sink, workers=8):
         if binding.name == "readout.safetensors":
             spec = types.SimpleNamespace(name="weight", dtype="F32", shape=(2, 64), size=512)
             sink(spec, 0, memoryview(bytes(512)))
-        else:
-            raise ValueError("SHA-256 mismatch")
+            return
+        name, (weight, _) = next(iter(sink.quantized.items()))
+        tensors.append(weakref.ref(weight))  # a GPU-resident FP8 weight
+        tensors.append(weakref.ref(next(iter(sink.direct.values()))))
+        size = weight.numel() * 2
+        sink(TensorSpec(name, "BF16", tuple(weight.shape), size), 0, memoryview(bytes(16)))
+        raise ValueError("SHA-256 mismatch")
 
     monkeypatch.setattr(karpo_stream, "stream_gcs_safetensors", fake_stream)
-    with pytest.raises(ValueError, match="SHA-256"):
+    with pytest.raises(ValueError, match="SHA-256") as held:  # the caller keeps the exception
         karpo_stream.load_karpo(manifest, "token", device="cpu")
-    assert discarded == [True]
+    assert staged == [1, 0]
+    gc.collect()
+    assert backbones and backbones[0]() is None, "the failed model is still referenced"
+    assert len(tensors) == 2 and all(t() is None for t in tensors), "weights are still referenced"
+    assert held.value is not None

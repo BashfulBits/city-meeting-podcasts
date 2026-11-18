@@ -1,6 +1,7 @@
 """review/60 Phase 1 cloud probe: derive manifests, stream Karpo to the GPU, or run the reference.
 
-``derive MODEL``      hash the pinned bucket copy against the publisher's SHA-256 (CPU only).
+``derive MODEL``      hash the pinned bucket copy against the publisher's SHA-256 (CPU only); the
+                      manifests go under a fresh ``attempts/r60/<run id>/`` prefix.
 ``stream MODEL``      load through ``citypods.judging.karpo_stream`` (FP8 by default) and measure.
 ``reference MODEL``   the Phase 0 layer-wise path (Karpo loader plus its quantizer), for digests.
 
@@ -16,6 +17,7 @@ import json
 import os
 import resource
 import time
+import uuid
 from pathlib import Path
 
 from citypods.judging.decision_batch_cloud import GCSObjectStore, metadata_access_token
@@ -51,9 +53,12 @@ def memory(torch):
     }
 
 
+RUN_ID = uuid.uuid4().hex[:12]  # one per process: result and manifest keys never collide
+
+
 def emit(store, label, result):
     print("PROBE_RESULT " + json.dumps(result, sort_keys=True), flush=True)
-    key = f"attempts/r60/{label}-{int(time.time())}.json"
+    key = f"attempts/r60/{label}-{RUN_ID}.json"
     store.put(key, json.dumps(result, sort_keys=True).encode(), 0)
     print("PROBE_RESULT_KEY " + key, flush=True)
 
@@ -79,6 +84,8 @@ def requests(chapter, tags, ids):
 def run_tests(decider, torch, chapters):
     data = json.load(open("/app/inputs.json"))
     tags, chaps = data["tags"], data["chapters"][:chapters]
+    if not chaps:
+        raise ValueError("the workload has no chapters")
     ids = list(tags)
     decider.decide(requests(chaps[0], tags, ids[:3]))  # warm-up, as in Phase 0
     torch.cuda.synchronize()
@@ -103,7 +110,11 @@ def compare_phase0(rows, path):
     base = json.load(open(path))
     stage = next(v for k, v in base["stages"].items() if k.startswith("tests_"))
     diffs, flips = [], 0
-    for ours, theirs in zip(rows, stage["requests"], strict=False):
+    by_chapter = {q["chapter"]: q for q in stage["requests"]}
+    for ours in rows:
+        theirs = by_chapter.get(ours["chapter"])
+        if theirs is None:
+            raise ValueError("baseline has no result for chapter " + str(ours["chapter"]))
         for tag, value in ours["p"].items():
             other = theirs["grouped"]["p"][tag]
             diffs.append(abs(value - other))
@@ -138,8 +149,9 @@ def derive(args, store, token):
         expected,
         workers=16,
     )
+    # A fresh prefix per run: a rerun after a partial publication never meets an existing key.
     for size, manifest in manifests.items():
-        key = f"attempts/r60/manifest-{args.model}-{size // 2**20}mib.json"
+        key = f"attempts/r60/{RUN_ID}/manifest-{args.model}-{size // 2**20}mib.json"
         store.put(key, json.dumps(manifest, sort_keys=True).encode(), 0)
         print("MANIFEST_KEY " + key, flush=True)
     print(
@@ -156,6 +168,8 @@ def stream(args, store, token):
 
     started = time.monotonic()
     manifest = json.loads(store.get(args.manifest)[0])
+    if manifest.get("revision") != MODELS[args.model]["revision"]:
+        raise ValueError("the manifest is for a different model revision")
     stats = {}
     decider = load_karpo(
         manifest, token, fp8=not args.bf16, workers=args.workers, stats=stats, device="cuda"
@@ -171,8 +185,10 @@ def stream(args, store, token):
         "after_load": memory(torch),
     }
     result["digests"] = tensor_digests(decider, torch)
+    result["after_digest"] = memory(torch)  # host RSS here includes the digest copies
     torch.cuda.reset_peak_memory_stats()
     rows = run_tests(decider, torch, args.chapters)
+    # Host RSS is a process-wide peak: it still includes the digesting above.
     result["tests"] = {"rows": rows, "after_tests": memory(torch)}
     result["vs_phase0"] = compare_phase0(rows, MODELS[args.model]["phase0"])
     emit(store, f"stream-{args.model}-{result['mode']}-w{args.workers}", result)
@@ -211,6 +227,7 @@ def reference(args, store, token):
         "after_load": memory(torch),
         "digests": tensor_digests(decider, torch),
     }
+    result["after_digest"] = memory(torch)  # host RSS here includes the digest copies
     torch.cuda.reset_peak_memory_stats()
     rows = run_tests(decider, torch, args.chapters)
     result["tests"] = {"rows": rows, "after_tests": memory(torch)}
@@ -226,6 +243,10 @@ def main():
     parser.add_argument("--chapters", type=int, default=8)
     parser.add_argument("--bf16", action="store_true", help="stream without FP8 (control)")
     args = parser.parse_args()
+    if args.chapters < 1:
+        parser.error("--chapters must be at least 1")
+    if args.mode == "stream" and not args.manifest:
+        parser.error("stream mode requires --manifest")
     token = metadata_access_token()
     store = GCSObjectStore(BATCH_BUCKET, metadata_access_token)
     {"derive": derive, "stream": stream, "reference": reference}[args.mode](args, store, token)

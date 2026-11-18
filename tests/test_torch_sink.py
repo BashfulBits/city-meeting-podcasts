@@ -141,3 +141,16 @@ def test_ignore_prefixes_and_collect_sink():
     strict = CollectSink({"weight": ("F32", (3, 6))})
     with pytest.raises(ValueError, match="unexpected"):
         stream(safetensors_bytes({"weight": rows}), strict)
+
+
+def test_collect_sink_requires_every_expected_tensor_and_stays_on_cpu():
+    rows = torch.randn(3, 5)
+    expected = {"weight": ("F32", (3, 5)), "bias": ("F32", (3, 5))}
+    collect = CollectSink(expected)
+    stream(safetensors_bytes({"weight": rows}), collect)
+    with pytest.raises(ValueError, match="missing"):
+        collect.result()
+    assert collect.tensors["weight"].device.type == "cpu"
+    complete = CollectSink({"weight": ("F32", (3, 5))})
+    stream(safetensors_bytes({"weight": rows}), complete)
+    assert complete.result()["weight"].equal(rows)

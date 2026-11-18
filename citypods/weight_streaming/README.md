@@ -57,7 +57,8 @@ the destination `(weight, scale)`. The BF16 model is never resident, so a model 
 exceed the GPU can still load. The quantizer reproduces Karpo's `serve.fp8` operation by
 operation, and the tests compare bytes against that formula. `CollectSink` gathers small tensors
 (such as a readout) into CPU tensors. Both reject unexpected, mismatched, duplicate and
-incomplete tensors, and `discard()` releases every destination after a failure.
+incomplete tensors. `TorchSink.discard()` releases every destination after a failure;
+`CollectSink` has no `discard()`, so drop the failed collector and its results.
 
 `citypods.judging.karpo_stream.load_karpo` composes them for Karpo decision models: it builds the
 backbone on the meta device, replaces the decoder projections Karpo's `--fp8` would quantize with

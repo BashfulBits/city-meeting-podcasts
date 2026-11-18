@@ -1,5 +1,21 @@
-# Phase 1 probe image: the Phase 0 spike image (audited Karpo source at the pinned commit) plus this repo's citypods.
-FROM <registry>/<repo>/glide-worker@sha256:7e8b80764b1a... (the Phase 0 spike image)
+# review/60 Phase 1 probe image (Cloud Run job; not the production decision worker).
+#
+# BASE_IMAGE must be the Phase 0 spike image, pinned by full digest: the decision worker image
+# plus the audited Karpo source at commit 6600011eb5cf46232d056ec0717dc726146d29de on PYTHONPATH
+# and pybase64. That image also supplies /app/inputs.json, the frozen tag and chapter workload
+# the probe answers (probes fail before publishing a result if it is missing).
+#   docker build --build-arg BASE_IMAGE=<registry>/<repo>/glide-worker@sha256:<64 hex digits> ...
+#
+# The build context is a staged directory, not the repository root. Stage it with:
+#   cp -R citypods scripts <ctx>/ && cp workers/decision-batch/karpo_stream_probe.py <ctx>/
+#   hf-12B.json hf-9B.json: Hugging Face `tree?recursive=1` listings of the two pinned revisions
+#   phase0-12b-l4-fp8.json phase0-9b-l4-bf16.json: the Phase 0 spike results, for comparison
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+# torchvision is needed only by Qwen3.5's image processor (Karpo 9B). This probe lane builds on the
+# Phase 0 image rather than the compiled decision-gpu constraints, so the exact pin that matches
+# torch 2.14 is installed here; the production Karpo worker image must declare it in
+# constraints/decision-gpu.in instead (decided in the review/60 Phase 3 PR).
 RUN python -m pip install --no-cache-dir --no-deps "torchvision==0.29.0" && python -c "import torchvision"
 ENV PYTHONPATH=/app:/opt/karpo/src PYTHONUNBUFFERED=1
 COPY citypods /app/citypods
