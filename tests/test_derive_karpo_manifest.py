@@ -4,7 +4,14 @@ import pytest
 
 from citypods.judging.glide_stream import validate_manifest
 from citypods.judging.karpo_stream import KARPO_PREFIXES
-from scripts.derive_karpo_manifest import derive, hash_object, hf_expected
+from scripts.derive_karpo_manifest import (
+    _OPENER,
+    derive,
+    hash_object,
+    hf_expected,
+    list_objects,
+    validate_bucket,
+)
 
 MIB = 1024**2
 REVISION = "664640316919ce368750b3e16cc263e927ac6e2b"
@@ -189,3 +196,29 @@ def test_a_copy_missing_a_required_file_is_caught_by_the_loader_validation():
     manifest = derive_from(files, expected)[MIB]
     with pytest.raises(ValueError):  # the derive command validates before printing, so it fails
         validate_karpo(manifest)
+
+
+@pytest.mark.parametrize(
+    "bad", ["", "a", "UPPER", "has space", "x/../y", "evil.com/path", "a" * 64, "-lead", "a..b"]
+)
+def test_bucket_names_are_validated_before_any_request(bad):
+    with pytest.raises(ValueError):
+        validate_bucket(bad)
+    with pytest.raises(ValueError):
+        list_objects(bad, "p", "tok")
+
+
+def test_a_redirect_is_never_followed_with_the_token():
+    from urllib.error import HTTPError
+    from urllib.request import Request
+
+    handler = next(h for h in _OPENER.handlers if type(h).__name__ == "_NoRedirect")
+    with pytest.raises(HTTPError):
+        handler.redirect_request(
+            Request("https://storage.googleapis.com/x", headers={"Authorization": "Bearer t"}),
+            None,
+            302,
+            "Found",
+            {},
+            "https://evil.example/steal",
+        )

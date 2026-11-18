@@ -16,8 +16,9 @@ import json
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from urllib.error import HTTPError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from citypods.judging.karpo_stream import KARPO_PREFIXES, validate_manifest
 from citypods.weight_streaming import gcs_range_fetcher
@@ -31,8 +32,31 @@ SKIP_NAMES = {"README.md", "model.safetensors.index.json"}
 INCLUDE_SUFFIXES = (".json", ".jinja", ".safetensors")
 
 
+# https://cloud.google.com/storage/docs/buckets#naming (3-63 chars; dots only in domain-style names)
+_BUCKET_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$")
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    """The bearer token must only ever go to the host this script built the URL for."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise HTTPError(
+            req.full_url, code, "refusing to follow a redirect with a credential", headers, fp
+        )
+
+
+_OPENER = build_opener(_NoRedirect)
+
+
+def validate_bucket(bucket):
+    if not _BUCKET_NAME.match(bucket) or ".." in bucket:
+        raise ValueError(f"not a valid GCS bucket name: {bucket!r}")
+    return bucket
+
+
 def list_objects(bucket, prefix, token):
     """(name, generation, size) of every object under ``prefix``, from the JSON API."""
+    validate_bucket(bucket)
     items, page = [], None
     while True:
         url = (
@@ -42,7 +66,9 @@ def list_objects(bucket, prefix, token):
             + quote(prefix + "/", safe="")
             + (("&pageToken=" + quote(page, safe="")) if page else "")
         )
-        with urlopen(Request(url, headers={"Authorization": "Bearer " + token}), timeout=60) as r:
+        with _OPENER.open(
+            Request(url, headers={"Authorization": "Bearer " + token}), timeout=60
+        ) as r:
             body = json.load(r)
         items += [(i["name"], i["generation"], int(i["size"])) for i in body.get("items", [])]
         page = body.get("nextPageToken")
@@ -156,6 +182,10 @@ def main():
     parser.add_argument("--expect", help="JSON map of object path to SHA-256", required=True)
     parser.add_argument("--slice-mib", type=int, nargs="+", default=[8, 32])
     args = parser.parse_args()
+    try:
+        validate_bucket(args.bucket)
+    except ValueError as exc:
+        parser.error(str(exc))
     validate_slice_sizes([m * MIB for m in args.slice_mib])
     token = os.environ.get("GCS_ACCESS_TOKEN")  # not an argument: arguments are visible to others
     if not token:
