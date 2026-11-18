@@ -518,6 +518,90 @@ the Phase 3 worker image.
   model buckets (`hf/MachinePulseAI__karpo-decision-31B/…` in us-central1, `hf/baselabs__elephant-1/…` in us-east4); and the manifests and
   results under `attempts/r60/`.
 
+### Result 2026-11-18: Phase 1 follow-up, static audit of the elephant-1 and Copernicus-31B runtimes
+
+Scope approved by the maintainer. **Read-only: nothing from these repositories was executed.** Sources were fetched as tarballs into an
+empty directory outside any repository and extracted without running anything (no symlinks, no absolute or `..` paths in either archive).
+
+| Source | Pin | Tarball / file SHA-256 |
+|---|---|---|
+| OneJev (`OmniJev/OneJev`), the `qev` runtime | `81ce62f1597c91e46767d4d02d6ac2e18534fe94` | tarball `01346ed50c45…974cf9` (2.1 MB, 78 files) |
+| `apolinario/decision-index` (kit that elephant-1's `engine.py` subclasses) | `f5a6e4fd85fed05e77878dfc4966d0568bfb45ec` | tarball `4e05ac199c36…fff` (1.1 MB, 106 files) |
+| elephant-1 `serve.patch` (41,045 B), `setup.sh`, `engine.py`, `readout.json`, `constraints.txt` | `baselabs/elephant-1` at `b3f8a934…` | `f234c125…fb8`, `6bf9514c…62a`, `72373353…7c7`, `96ea8a5c…ba8`, `7afb5334…fb` |
+| Copernicus `copernicus_server.py` (62,025 B), `copernicus_layout.py` (11,818 B) | `Poindexter-Labs/Copernicus-31B` at `ae28efb0…` | `1717f334…a32`, `dc641d4d…639` |
+
+**Verdict: clean for our use** (in-process, text only, local weights, no server). Nothing met the stop gate: no network egress at
+inference, no subprocess of downloaded content, no pickle of unpinned data, no credential access.
+
+Checked everywhere: `exec`, `eval`, `compile`, `subprocess`, `os.system`/`popen`, `pickle`, `marshal`, `dill`, `torch.load`, `__import__`,
+`importlib`, `trust_remote_code`, `requests`, `urllib`, `socket`, `http`, `snapshot_download`/`hf_hub_download`, `environ`, `.netrc`/credentials,
+file writes, `tempfile`, `shutil`, `ctypes`, `setattr`, install hooks.
+
+**OneJev `qev`, inference path** (what `engine.py` imports: `qev/__init__` → `client`, then `qev/engine.py`, `prompt.py`, `readout.py` from the patch,
+`calibrate.py`, `answers.py`, `schema.py`):
+
+| File:line | What | Concern? |
+|---|---|---|
+| `qev/engine.py:89-96` | `from_pretrained(..., local_files_only=Path(model_path).exists(), trust_remote_code=False)` | No. We pass a local directory, so offline; remote code is refused. |
+| `qev/client.py:82-96` | `urllib.request` to `QEV_BASE_URL`; reads `QEV_BASE_URL`, `TYPESAFE_API_KEY` | Imported by `qev/__init__` but only used by the HTTP `Client` class, which the engine never constructs. No network at import. |
+| `serve.patch` → `qev/readout.py` `ReadoutConfig.load` | reads `readout.json` and `config.json` from the model directory | No: JSON parse only. |
+| `serve.patch` → `readout.py` `Readout.attach` | `torch.load(head_path, weights_only=True)` | No: only reached when `readout == "head"`; elephant-1 is `slot_lm`, and `weights_only=True` is the safe mode. |
+| `serve.patch` → `readout.py` `install_noncausal` | `importlib.import_module(type(model).__module__)`, then replaces `create_causal_mask` in that transformers module | Not a concern: resolves the model's own transformers module, no input-controlled name. It is a monkeypatch of library state, so it must run in the container only. |
+| `serve.patch` → `readout.py` `ReadoutConfig.save` | `unlink` and `write_text` in a model directory | Training-time only; never called by the engine. |
+| `qev/mm_engine.py:41-47`, `qev/cli.py:38-92` | `snapshot_download`, `hf_hub_download` | Not imported by `engine.py`; CLI/vision only. We never call them. |
+| `qev/llamacpp.py:105` | `subprocess.Popen` of a `llama-server` binary found by `shutil.which` | Not imported by `engine.py`; GGUF serving only. Not used. |
+| `qev/media.py:102` | `urllib.request.urlopen` of image URLs | Vision requests only; not imported by `engine.py`. |
+| `qev/server.py`, `qev/cli.py` | FastAPI/uvicorn server, `os.environ` for `QEV_DEBIAS`, `HF_*` | Not imported; we do not start the server. |
+| `train/*` | training code (`from_pretrained(..., trust_remote_code=False)`, no exec, pickle or subprocess) | Not on the inference path (`qev` imports nothing from `train`). Not installed. |
+
+The patch only touches `qev/engine.py`, `qev/prompt.py`, `qev/readout.py` (new), `train/common.py`, `train/eval_mm.py` and `train/sft.py`; every added
+line was read for the patterns above, and the only hits are the ones in the table. elephant-1's own `engine.py` (2.8 KB, read in full) calls
+`DecisionEngine.decide` and, on a 32-bit indexing error, retries with `fork_mode="sequential"`; it has no I/O.
+
+**Decision-index kit** (`apolinario/decision-index`, MIT): `engine.py` needs only `decision_index.engines.Engine` and `Unsupported`. Importing
+`decision_index` runs a one-line `__init__`, and `decision_index.engines` imports only `engines/base.py` (`json`, `math`, `random`); the registry is
+lazy. The rest of the kit has `hf_hub_download`/`HfApi` (dataset downloads and HF Jobs submission in `hf_job.py` with a `subprocess` of the `hf`
+CLI), none of which is imported by the engine and none of which we install or call.
+
+**`setup.sh`** (install-time): `git clone https://github.com/OmniJev/OneJev.git` and `.../apolinario/decision-index.git` (network), `git checkout`
+of two pinned SHAs, `git apply serve.patch`, then `pip install -c constraints.txt -e ./OneJev[train] huggingface_hub hf_xet brotli
+flash-linear-attention httpx` and `pip install --no-build-isolation causal-conv1d` (network; `OneJev`'s own `pyproject.toml` ranges are pinned only by
+`constraints.txt`). Not run. It is the only install-time hook. We replace it by the two pinned tarballs, `git apply`-equivalent patching done
+at image build time, and `PYTHONPATH`, so no pip install from a URL, no `-e`, and no network at runtime. `causal-conv1d` and
+`flash-linear-attention` are kernels for the Qwen3.5 linear-attention layers; whether the image's transformers falls back to a PyTorch path
+without them is checked by the parity run, not assumed here.
+
+**Copernicus-31B** (`Poindexter-Labs/Copernicus-31B` at `ae28efb0…`, Apache-2.0): a repository of two Python files, JSON and a template.
+- `copernicus_server.py:65` `import requests`; `:385` `requests.get(url)` inside `_fetch` (`:381`); `:868-891` `requests.Session().post(url + "/generate")` (SGLang
+  backend). Not a concern for our use: `_fetch` is reachable only from `load_asset` (`:425`) when `allow_urls` is true (default `False` at `:397`, `:434` and
+  `Copernicus.__init__` `:934`; the check at `:422` raises `Unsupported` otherwise), and the SGLang class is instantiated only with `--backend sglang`. Our calls pass no assets and use the `HF` backend.
+  If a deployment ever passed `--allow-url-assets`, the server would fetch client-named URLs (the file's own docstring calls this out as SSRF).
+- `:905-915` `AutoConfig/AutoModel/AutoTokenizer.from_pretrained(model)` with a local path, no `trust_remote_code`.
+- `:1074-1099` `ThreadingHTTPServer` handler and `main()` (`:1100-1152`): the HTTP server; we do not start it.
+- No `exec`, `eval`, `compile`, `subprocess`, `os.system`, pickle, `marshal`, dynamic import (apart from `from copernicus_layout import ...` of the sibling file),
+  environment read or credential file read in either file. `copernicus_layout.py` (243 lines) is pure string building and imports only
+  `copernicus_server`, `uuid` and `dataclasses`.
+- Scoring path (`HF.score`, `Copernicus.run`): full-vocabulary `log_softmax` at the last prompt position over the answer-label token ids, softmax with a
+  temperature (1.0 by default, no per-type temperatures), and with `--read-twice` (default on) the input is written twice for text requests of at
+  most 3,000 tokens. That is its own path, not Karpo's.
+
+**Large or non-text files in the OneJev repository.** The "about 94 MB" is the git history. The tree at `81ce62f` is 2.1 MB compressed. It
+holds **no** binaries (no `.so`, `.bin`, `.pt`, `.png`, `.whl`). The only large files are 24 `assets/**/{banner,results,speed,table}[-dark].svg` (0.5-1.3 MB
+each, about 21 MB uncompressed in total, duplicated per language and theme), matplotlib output: they contain no `<script>`, event handler,
+`javascript:` URL, `foreignObject`, external `href` or embedded `data:` image (`<use>` elements are glyph references). Also
+`qev/playground/index.html` (6 KB, a client-side test page for the server; not served by us). The decision-index kit adds JSON data (`hub/manifest.json`
+4.3 MB, `hub/excluded-questions.json` 0.66 MB, benchmark tables), none loaded by the engine.
+
+**Licences.** OneJev: Apache-2.0 (`LICENSE`, `pyproject.toml`). decision-index: MIT (Apolinário Passos). elephant-1 (weights, `serve.patch`,
+`engine.py`): MIT per the model card. Copernicus-31B: Apache-2.0, with merged sources PelaAI/KnowLine-31B-Gen1 and sthanika-ai/Sieve-31B-v3, both
+Apache-2.0 and derived from `google/gemma-4-31B-it` (see its `ATTRIBUTION.md`; Gemma terms apply upstream). All permit this internal evaluation and
+use; redistribution needs the notices.
+
+**Residual risks, accepted.** (1) Both runtimes run with the author's model code and weights inside our container; the only isolation is the
+container (no credentials beyond the read-only weights mount, no egress needed). (2) The `install_noncausal` monkeypatch changes a transformers
+module in-process, so elephant-1 must run in its own process. (3) The patch targets the transformers version pinned in `constraints.txt` (5.19.0, `create_causal_mask(block_sequence_ids=...)`);
+whether our image's version behaves the same is what the parity check shows, not this audit.
+
 ### Result 2026-11-18: Phase 2 dataset frozen (`evals/open-weight-decision/`)
 
 Coverage first: `evals/judge` holds 30 synthetic bundling items and 10 controls; its tag and moment gold files are
