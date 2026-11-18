@@ -1,0 +1,581 @@
+{
+ "byte_identity": {
+  "12B": {
+   "digest_of_digests": "db21ae2943daa61fb088c0e309e85fb5362389c59f3eeb50a09dc617af5c1b3c",
+   "keys_equal": true,
+   "mismatches": 0,
+   "reference_after_load": {
+    "gpu_alloc_gib": 12.14,
+    "gpu_peak_gib": 12.14,
+    "gpu_reserved_gib": 12.58,
+    "host_rss_peak_gib": 9.62
+   },
+   "reference_host_rss_peak_gib": 9.62,
+   "reference_load_seconds": 192.3,
+   "reference_path": "Phase 0 layer-wise (12B: load on CPU, quantize per layer on GPU) / author quantize (9B)",
+   "result_object": "attempts/r60/reference-12B-1794988647.json",
+   "tensors_compared": 1006
+  },
+  "9B": {
+   "digest_of_digests": "3473cf3aa60cd7489f2d53a851632ebb413f5c24280beead408945cd440cb4ad",
+   "keys_equal": true,
+   "mismatches": 0,
+   "reference_after_load": {
+    "gpu_alloc_gib": 9.22,
+    "gpu_peak_gib": 16.18,
+    "gpu_reserved_gib": 9.29,
+    "host_rss_peak_gib": 6.08
+   },
+   "reference_host_rss_peak_gib": 6.08,
+   "reference_load_seconds": 157.5,
+   "reference_path": "Phase 0 layer-wise (12B: load on CPU, quantize per layer on GPU) / author quantize (9B)",
+   "result_object": "attempts/r60/reference-9B-1794988678.json",
+   "tensors_compared": 960
+  }
+ },
+ "comparisons": {
+  "answers_12B": "same weights, so differences are not a weight effect; the cause (run-to-run kernel nondeterminism is likely) was not isolated by a controlled comparison",
+  "answers_9B": "streamed FP8 against Phase 0 BF16: a cross-precision, cross-path comparison; it includes the quantization effect and does not isolate it",
+  "weights": "byte_identity compares the streamed FP8 load with the reference FP8 load of the same model, tensor by tensor; the 9B reference loaded BF16 and ran Karpo's quantize"
+ },
+ "gpu": "NVIDIA L4 (us-east4, Cloud Run job, 16 GiB host limit for streaming runs)",
+ "image": "glide-worker:r60-karpo-stream-v4 (Phase 0 spike image + citypods + torchvision 0.29.0)",
+ "note": "Tensor digests are SHA-256 of the raw bytes of every backbone state_dict tensor (FP8 weights and scales included) and the readout, so identity is claimed for weights, not for answers. 12B answers moved between container runs with identical weights; the cause was not isolated.",
+ "phase": "review/60 Phase 1",
+ "phase1b": {
+  "audit": {
+   "copernicus-31b": "Poindexter-Labs/Copernicus-31B @ae28efb0 (Apache-2.0, Gemma 4 merge): copernicus_layout.py clean; copernicus_server.py (62 KB) uses requests only to call an optional SGLang backend or fetch image URLs; no exec, eval, subprocess or pickle. Audited statically first; later driven through citypods.judging.open_weight_runtimes (see runtime_adapters).",
+   "elephant-1": "baselabs/elephant-1 @b3f8a934 (MIT): engine.py read in full and clean; serve.patch and setup.sh grepped (no exec, eval, subprocess, pickle or network; torch.load uses weights_only=True and importlib only resolves the model module). Audited statically; the runtime is OneJev qev @81ce62f (github.com/OmniJev/OneJev, Apache-2.0, about 94 MB) plus the patch, audited in review/60 before the decision adapter was built (see runtime_adapters)."
+  },
+  "failed_run": "One r60-karpo-stream-rtx execution (31B BF16) ended with 'configured memory limit was reached' and no logs after about 30 minutes; an identical retry succeeded (173 s) and the cause was not found.",
+  "image": "glide-worker:r60-karpo-stream-v5 (v4 + 31B/4B/Copernicus/elephant-1 pins)",
+  "note_reference_times": "reference_load_seconds for the 4B, 9B and 31B includes one full BF16 digest pass (hashing every tensor on the host) that the probe did not time separately; the probe now records load_seconds_bf16, bf16_digest_seconds and quantize_seconds. The Copernicus, elephant-1 and 12B reference times are unaffected.",
+  "runs": {
+   "31B_bf16": {
+    "after_load": {
+     "gpu_alloc_gib": 58.28,
+     "gpu_peak_gib": 58.28,
+     "gpu_reserved_gib": 58.58,
+     "host_rss_peak_gib": 1.8
+    },
+    "after_tests": {
+     "gpu_alloc_gib": 58.31,
+     "gpu_peak_gib": 60.11,
+     "gpu_reserved_gib": 61.94,
+     "host_rss_peak_gib": 6.58
+    },
+    "answers_vs_reference": {
+     "note": "the 31B BF16 stream is compared with the reference BF16 digests only; the reference run's answers are FP8, so they are not compared"
+    },
+    "gpu": "RTX_PRO_6000",
+    "identity": {
+     "digest_of_digests": "e4bcb45090c43338a45de1c0324a11a53aff331704c520e74a51924541ef8ae0",
+     "keys_equal": true,
+     "mismatches": 0,
+     "reference_gpu_peak_gib_at_load": 59.48,
+     "reference_host_rss_peak_gib": 7.03,
+     "reference_load_seconds": 671.7,
+     "reference_load_seconds_includes_bf16_digest_pass": true,
+     "reference_mode": "reference-bf16-then-quantize",
+     "tensors": 1189
+    },
+    "load_seconds_total": 173.4,
+    "request_seconds": [
+     0.89,
+     1.259,
+     0.796,
+     0.776,
+     1.076,
+     1.01,
+     0.807,
+     0.829
+    ],
+    "result_objects": [
+     "attempts/r60/stream-31B-stream-bf16-w16-45d9666fa53b.json",
+     "attempts/r60/reference-31B-444884ead090.json"
+    ],
+    "slice_mib": 32,
+    "stream": {
+     "direct_tensors": 1188,
+     "host_rss_gib": 1.8,
+     "quantized_tensors": 0,
+     "stream_bytes": 62546329272,
+     "stream_mb_per_s": 414.1,
+     "stream_seconds": 151.04
+    },
+    "workers": 16
+   },
+   "31B_fp8": {
+    "after_load": {
+     "gpu_alloc_gib": 31.11,
+     "gpu_peak_gib": 32.18,
+     "gpu_reserved_gib": 32.76,
+     "host_rss_peak_gib": 1.92
+    },
+    "after_tests": {
+     "gpu_alloc_gib": 31.14,
+     "gpu_peak_gib": 32.9,
+     "gpu_reserved_gib": 34.03,
+     "host_rss_peak_gib": 6.68
+    },
+    "answers_vs_reference": {
+     "flips_at_0.5": 0,
+     "identical": 304,
+     "max_abs_diff": 0.0,
+     "mean_abs_diff": 0.0,
+     "pairs": 304,
+     "same_weights": true
+    },
+    "gpu": "RTX_PRO_6000",
+    "identity": {
+     "digest_of_digests": "827412143b0e8a21f4b96e4dba129157b4bb87092288bed7c58d8cca89cbbef2",
+     "keys_equal": true,
+     "mismatches": 0,
+     "reference_gpu_peak_gib_at_load": 59.48,
+     "reference_host_rss_peak_gib": 7.03,
+     "reference_load_seconds": 671.7,
+     "reference_load_seconds_includes_bf16_digest_pass": true,
+     "reference_mode": "reference-bf16-then-quantize",
+     "tensors": 1599
+    },
+    "load_seconds_total": 235.8,
+    "request_seconds": [
+     0.581,
+     0.859,
+     0.522,
+     0.509,
+     0.728,
+     0.673,
+     0.532,
+     0.548
+    ],
+    "result_objects": [
+     "attempts/r60/stream-31B-stream-fp8-w16-9210bb71c3bf.json",
+     "attempts/r60/reference-31B-444884ead090.json"
+    ],
+    "slice_mib": 32,
+    "stream": {
+     "direct_tensors": 778,
+     "host_rss_gib": 1.92,
+     "quantized_tensors": 410,
+     "stream_bytes": 62546329272,
+     "stream_mb_per_s": 298.6,
+     "stream_seconds": 209.45
+    },
+    "workers": 16
+   },
+   "4B_fp8": {
+    "after_load": {
+     "gpu_alloc_gib": 5.14,
+     "gpu_peak_gib": 5.36,
+     "gpu_reserved_gib": 5.71,
+     "host_rss_peak_gib": 1.6
+    },
+    "after_tests": {
+     "gpu_alloc_gib": 5.15,
+     "gpu_peak_gib": 5.8,
+     "gpu_reserved_gib": 6.44,
+     "host_rss_peak_gib": 3.5
+    },
+    "answers_vs_reference": {
+     "flips_at_0.5": 0,
+     "identical": 201,
+     "max_abs_diff": 0.0505,
+     "mean_abs_diff": 0.00086,
+     "pairs": 304,
+     "same_weights": true
+    },
+    "gpu": "L4",
+    "identity": {
+     "digest_of_digests": "8d476a76e89236242d4c196abdb74df6857f9d82307e30095b3965e553af3002",
+     "keys_equal": true,
+     "mismatches": 0,
+     "reference_gpu_peak_gib_at_load": 8.81,
+     "reference_host_rss_peak_gib": 6.04,
+     "reference_load_seconds": 222.9,
+     "reference_load_seconds_includes_bf16_digest_pass": true,
+     "reference_mode": "reference-bf16-then-quantize",
+     "tensors": 924
+    },
+    "load_seconds_total": 55.6,
+    "request_seconds": [
+     19.487,
+     20.264,
+     1.115,
+     8.448,
+     8.992,
+     1.513,
+     1.148,
+     1.197
+    ],
+    "result_objects": [
+     "attempts/r60/stream-4B-stream-fp8-w16-9fab1c252b87.json",
+     "attempts/r60/reference-4B-276bed10f790.json"
+    ],
+    "slice_mib": 32,
+    "stream": {
+     "direct_tensors": 523,
+     "host_rss_gib": 1.6,
+     "quantized_tensors": 200,
+     "stream_bytes": 9078616112,
+     "stream_mb_per_s": 336.6,
+     "stream_seconds": 26.97
+    },
+    "workers": 16
+   },
+   "9B_bf16": {
+    "after_load": {
+     "gpu_alloc_gib": 15.65,
+     "gpu_peak_gib": 15.65,
+     "gpu_reserved_gib": 15.69,
+     "host_rss_peak_gib": 1.6
+    },
+    "after_tests": {
+     "gpu_alloc_gib": 15.66,
+     "gpu_peak_gib": 16.34,
+     "gpu_reserved_gib": 16.53,
+     "host_rss_peak_gib": 4.88
+    },
+    "answers_vs_reference": {
+     "flips_at_0.5": 0,
+     "identical": 119,
+     "max_abs_diff": 0.0126,
+     "mean_abs_diff": 0.00053,
+     "pairs": 304,
+     "same_weights": true
+    },
+    "gpu": "L4",
+    "identity": {
+     "digest_of_digests": "ffe5927abef36f36b21ad08372f98a51e67149ed21f9e7d051dba4467c50b751",
+     "keys_equal": true,
+     "mismatches": 0,
+     "reference_gpu_peak_gib_at_load": 15.65,
+     "reference_host_rss_peak_gib": 6.07,
+     "reference_load_seconds": 225.0,
+     "reference_load_seconds_includes_bf16_digest_pass": true,
+     "reference_mode": "reference-bf16",
+     "tensors": 760
+    },
+    "load_seconds_total": 69.1,
+    "request_seconds": [
+     19.313,
+     19.948,
+     0.957,
+     8.387,
+     8.794,
+     1.299,
+     1.03,
+     1.074
+    ],
+    "result_objects": [
+     "attempts/r60/stream-9B-stream-bf16-w16-b1a28af33590.json",
+     "attempts/r60/reference-9B-f45daed98197.json"
+    ],
+    "slice_mib": 32,
+    "stream": {
+     "direct_tensors": 759,
+     "host_rss_gib": 1.6,
+     "quantized_tensors": 0,
+     "stream_bytes": 16785478992,
+     "stream_mb_per_s": 394.7,
+     "stream_seconds": 42.53
+    },
+    "workers": 16
+   },
+   "COP_bf16": {
+    "after_load": {
+     "gpu_alloc_gib": 58.27,
+     "gpu_peak_gib": 58.27,
+     "gpu_reserved_gib": 58.58,
+     "host_rss_peak_gib": 1.42
+    },
+    "gpu": "RTX_PRO_6000",
+    "identity": {
+     "digest_of_digests": "fc4ff7b74584a4149fd64e299c68a73d4447934ca3e6bf71b6631694b53b000e",
+     "keys_equal": true,
+     "mismatches": 0,
+     "reference_gpu_peak_gib_at_load": 58.25,
+     "reference_host_rss_peak_gib": 59.11,
+     "reference_load_seconds": 579.3,
+     "reference_mode": "reference-from-pretrained-bf16",
+     "tensors": 1188
+    },
+    "load_seconds_total": 356.5,
+    "result_objects": [
+     "attempts/r60/stream-COP-stream-bf16-w16-d4bf9941460d.json",
+     "attempts/r60/reference-COP-e299e0d0d320.json"
+    ],
+    "slice_mib": 32,
+    "stream": {
+     "direct_tensors": 1188,
+     "host_rss_gib": 1.42,
+     "quantized_tensors": 0,
+     "stream_bytes": 62546336352,
+     "stream_mb_per_s": 184.7,
+     "stream_seconds": 338.72
+    },
+    "workers": 16
+   },
+   "ELE_bf16": {
+    "after_load": {
+     "gpu_alloc_gib": 17.54,
+     "gpu_peak_gib": 17.54,
+     "gpu_reserved_gib": 17.59,
+     "host_rss_peak_gib": 1.42
+    },
+    "gpu": "L4",
+    "identity": {
+     "digest_of_digests": "037ec7f2ae1a2a3d6acc809f9713166694ae68363f7bfbbf33bbb1c6ea558c05",
+     "keys_equal": true,
+     "mismatches": 0,
+     "reference_gpu_peak_gib_at_load": 15.63,
+     "reference_host_rss_peak_gib": 16.48,
+     "reference_load_seconds": 132.2,
+     "reference_mode": "reference-from-pretrained-bf16",
+     "tensors": 760
+    },
+    "load_seconds_total": 66.4,
+    "result_objects": [
+     "attempts/r60/stream-ELE-stream-bf16-w16-192c5c13b3b1.json",
+     "attempts/r60/reference-ELE-b978bf63ede8.json"
+    ],
+    "slice_mib": 32,
+    "stream": {
+     "direct_tensors": 759,
+     "host_rss_gib": 1.42,
+     "quantized_tensors": 0,
+     "stream_bytes": 18819722392,
+     "stream_mb_per_s": 401.6,
+     "stream_seconds": 46.86
+    },
+    "workers": 16
+   }
+  },
+  "slices": "32 MiB, 16 workers"
+ },
+ "runner_commit": "6600011eb5cf46232d056ec0717dc726146d29de",
+ "runs": {
+  "12B_32mib": {
+   "after_load": {
+    "gpu_alloc_gib": 12.22,
+    "gpu_peak_gib": 12.76,
+    "gpu_reserved_gib": 13.3,
+    "host_rss_peak_gib": 1.76
+   },
+   "after_tests": {
+    "gpu_alloc_gib": 12.22,
+    "gpu_peak_gib": 12.95,
+    "gpu_reserved_gib": 13.67,
+    "host_rss_peak_gib": 5.05
+   },
+   "after_tests_note": "host_rss_peak_gib after tests is a process-wide peak and includes the tensor digest copies made before inference",
+   "load_seconds_total": 79.6,
+   "request_seconds": [
+    3.535,
+    4.996,
+    3.276,
+    3.187,
+    4.386,
+    4.055,
+    3.323,
+    3.508
+   ],
+   "result_object": "attempts/r60/stream-12B-stream-fp8-w16-1794988502.json",
+   "stream": {
+    "direct_tensors": 349,
+    "host_rss_gib": 1.76,
+    "quantized_tensors": 328,
+    "stream_bytes": 23919544312,
+    "stream_mb_per_s": 408.1,
+    "stream_seconds": 58.62
+   },
+   "vs_baseline": {
+    "baseline": "fp8_layerwise",
+    "comparison": "FP8 streamed answers against the Phase 0 FP8 layer-wise answers (same weights)",
+    "flips_at_0.5": 2,
+    "identical_pairs": 89,
+    "max_abs_diff": 0.0623,
+    "mean_abs_diff": 0.00315,
+    "pairs": 304
+   }
+  },
+  "12B_8mib": {
+   "after_load": {
+    "gpu_alloc_gib": 12.22,
+    "gpu_peak_gib": 12.76,
+    "gpu_reserved_gib": 13.3,
+    "host_rss_peak_gib": 1.55
+   },
+   "after_tests": {
+    "gpu_alloc_gib": 12.22,
+    "gpu_peak_gib": 12.95,
+    "gpu_reserved_gib": 13.67,
+    "host_rss_peak_gib": 5.35
+   },
+   "after_tests_note": "host_rss_peak_gib after tests is a process-wide peak and includes the tensor digest copies made before inference",
+   "load_seconds_total": 103.2,
+   "request_seconds": [
+    3.672,
+    5.158,
+    3.372,
+    3.278,
+    4.5,
+    4.119,
+    3.344,
+    3.501
+   ],
+   "result_object": "attempts/r60/stream-12B-stream-fp8-w16-1794988128.json",
+   "stream": {
+    "direct_tensors": 349,
+    "host_rss_gib": 1.55,
+    "quantized_tensors": 328,
+    "stream_bytes": 23919544312,
+    "stream_mb_per_s": 313.3,
+    "stream_seconds": 76.35
+   },
+   "vs_baseline": {
+    "baseline": "fp8_layerwise",
+    "comparison": "FP8 streamed answers against the Phase 0 FP8 layer-wise answers (same weights)",
+    "flips_at_0.5": 0,
+    "identical_pairs": 304,
+    "max_abs_diff": 0.0,
+    "mean_abs_diff": 0.0,
+    "pairs": 304
+   }
+  },
+  "9B_8mib": {
+   "after_load": {
+    "gpu_alloc_gib": 9.22,
+    "gpu_peak_gib": 9.68,
+    "gpu_reserved_gib": 9.98,
+    "host_rss_peak_gib": 1.49
+   },
+   "after_tests": {
+    "gpu_alloc_gib": 9.22,
+    "gpu_peak_gib": 10.01,
+    "gpu_reserved_gib": 10.71,
+    "host_rss_peak_gib": 5.28
+   },
+   "after_tests_note": "host_rss_peak_gib after tests is a process-wide peak and includes the tensor digest copies made before inference",
+   "load_seconds_total": 92.1,
+   "request_seconds": [
+    20.113,
+    21.558,
+    1.855,
+    9.157,
+    10.066,
+    2.505,
+    1.926,
+    2.01
+   ],
+   "result_object": "attempts/r60/stream-9B-stream-fp8-w16-1794988249.json",
+   "stream": {
+    "direct_tensors": 559,
+    "host_rss_gib": 1.49,
+    "quantized_tensors": 200,
+    "stream_bytes": 16785478992,
+    "stream_mb_per_s": 251.5,
+    "stream_seconds": 66.73
+   },
+   "vs_baseline": {
+    "baseline": "bf16",
+    "comparison": "streamed FP8 against Phase 0 BF16 answers: a cross-precision and cross-path comparison that includes the quantization effect and does not isolate it",
+    "flips_at_0.5": 2,
+    "identical_pairs": 36,
+    "max_abs_diff": 0.0868,
+    "mean_abs_diff": 0.00359,
+    "pairs": 304
+   }
+  }
+ },
+ "runtime_adapters": {
+  "image": "r60-rt-v7 (sha256 of the digest is in review/60); OneJev 81ce62f + serve.patch, decision-index f5a6e4f",
+  "runs": {
+   "copernicus_rtx": {
+    "gpu": "RTX PRO 6000",
+    "gpu_peak_gib": 61.3,
+    "host_rss_peak_gib": 1.85,
+    "parity": {
+     "flips_at_0_5": 0,
+     "max_abs_diff": 0.0,
+     "mean_abs_diff": 0.0
+    },
+    "reference_host_rss_peak_gib": 60.15,
+    "reference_load_s": 551.3,
+    "result": "attempts/r60/rt/d0157cec395a-copernicus.json",
+    "status": "recorded result only; the Copernicus-31B adapter was removed (maintainer decision: Copernicus is not pursued) and its weights deleted",
+    "stream_load_s": 165.3,
+    "stream_mb_s": 411.7,
+    "tokens_per_s_reference": 4033.4,
+    "tokens_per_s_stream": 4006.5
+   },
+   "elephant_l4_as_authored": "out of memory at engine init: 16.68 GiB resident, then the float32 head copy needs 1.9 GiB (bf16 clone) plus 3.79 GiB (peak 22.4 GiB of 22.03 GiB)",
+   "elephant_l4_lean": {
+    "gpu": "L4",
+    "gpu_peak_gib_load": 17.54,
+    "long": {
+     "16000x1": "ok, 19.57 GiB",
+     "16000x40": "ok, 19.65 GiB (21,925 tokens)",
+     "24000x1": "out of memory (fla gated-delta kernel)",
+     "24000x40": "ok, 21.46 GiB (29,925 tokens)",
+     "32000": "out of memory at 5.3 GiB headroom (before offload)"
+    },
+    "parity_vs_rtx_reference": {
+     "flips_at_0_5": 0,
+     "max_abs_diff": 0.0086,
+     "mean_abs_diff": 0.0011
+    },
+    "result": "attempts/r60/rt/513d9b920f14-elephant.json",
+    "stream_load_s": [
+     130.5,
+     129.1,
+     133.3
+    ],
+    "tokens_per_s": 818.0
+   },
+   "elephant_l4_offload": {
+    "allocated_after_each_request_gib": 12.9,
+    "gpu": "L4",
+    "long": {
+     "32000x1": "ok, 20.42 GiB, 32,192 tokens, 33 s",
+     "32000x12": "ok, 20.42 GiB, 33,809 tokens, 42 s",
+     "32000x215": "ok, 20.42 GiB, 63,650 tokens, 206 s",
+     "32000x225": "ok, 20.42 GiB, 65,120 tokens, 219 s",
+     "32000x24": "ok, 20.42 GiB, 35,573 tokens, 40 s",
+     "32000x240": "refused by the engine before any compute: request is 67325 tokens, limit is 65536 (the adapter returns too_large)",
+     "32000x50": "ok, 20.42 GiB, 39,395 tokens, 61 s",
+     "32400x1": "ok, 20.58 GiB, 32,592 tokens, 22 s",
+     "32400x50": "ok, 20.58 GiB, 39,795 tokens, 61 s"
+    },
+    "options": "lean head + offloaded embedding table and head + mlp_chunk 4096 + fork_token_budget 64000 + expandable_segments",
+    "resident_gib": 12.9,
+    "result": "attempts/r60/rt/ (runs b85l9 and 8v5z2 of r60-rt-parity-l4)"
+   },
+   "elephant_rtx": {
+    "gpu": "RTX PRO 6000",
+    "gpu_peak_gib": 22.36,
+    "host_rss_peak_gib": 2.17,
+    "parity": {
+     "flips_at_0_5": 0,
+     "max_abs_diff": 0.0,
+     "mean_abs_diff": 0.0
+    },
+    "reference_host_rss_peak_gib": 18.94,
+    "reference_load_s": 254.2,
+    "result": "attempts/r60/rt/f21517045c08-elephant.json",
+    "stream_load_s": 92.7,
+    "stream_mb_s": 504.6,
+    "tokens_per_s_reference_warm": 8890.9
+   }
+  },
+  "sample": {
+   "chapters": 4,
+   "moments": 4,
+   "questions": 60,
+   "requests": 16,
+   "split": "dev",
+   "tags": 8
+  }
+ },
+ "workers": 16
+}

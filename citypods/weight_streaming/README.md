@@ -46,3 +46,32 @@ plus the current verified chunk and the parsed header. Set the worker count and
 chunk size to fit the host memory budget. The lower-level `stream_safetensors`
 accepts a custom fetcher, whose identity and immutable version must be bound by
 its caller to the authenticated manifest.
+
+## Torch destinations
+
+`citypods.weight_streaming.torch_sink` (import it only where torch is installed) provides the
+sinks model owners usually need. `TorchSink` copies verified segments into pre-allocated tensors
+(`direct`) and, for the weights in `quantized`, stages one BF16 tensor at a time, quantizes it
+to FP8 e4m3 with one float32 scale per output row when it completes, and writes the result into
+the destination `(weight, scale)`. The BF16 model is never resident, so a model whose BF16 weights
+exceed the GPU can still load. The quantizer reproduces Karpo's `serve.fp8` operation by
+operation, and the tests compare bytes against that formula. `CollectSink` gathers small tensors
+(such as a readout) into CPU tensors. `TorchSink` rejects unexpected, mismatched, duplicate and
+incomplete tensors; `CollectSink` checks names and shapes against a schema only when constructed
+with `expected` (without it any supported tensor is accepted), and rejects duplicate and incomplete
+tensors in both modes. `TorchSink.discard()` drops only the sink's references: the model that owns the preallocated
+tensors still holds them, so after a failed load drop the partial model and every other reference to
+its destinations, and never reuse them. `CollectSink` has no `discard()`; drop the failed collector
+and its results.
+
+`citypods.judging.karpo_stream.load_karpo` composes them for Karpo decision models. It builds the
+backbone on the meta device, replaces the decoder projections Karpo's `--fp8` would quantize with
+that path's own `Fp8Linear` shells, allocates on the GPU, restores non-persistent buffers with
+transformers' own initialisation, streams every shard, and **returns a
+`karpo_decision.decider.Decider`**, installing the FP8 activation hooks on it.
+
+`load_hf_backbone` is for plain Hugging Face checkpoints in the `model.`-prefixed layout (weights
+only, BF16, no readout or decision config): it **returns `(backbone, extras)`**, where `extras`
+holds tensors outside the backbone that the pin keeps, such as `lm_head.weight`. Revisions are
+pinned in `karpo_stream.MODELS` with the exact weight bytes the publisher lists; that total is an
+aggregate check, and each object is bound by the authenticated manifest.

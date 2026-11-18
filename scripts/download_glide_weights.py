@@ -21,7 +21,15 @@ import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
 
-BUCKET = "example-model-bucket"
+
+def model_bucket():
+    """The model bucket, required from the environment (no project bucket is baked in)."""
+    bucket = os.environ.get("CITYPODS_MODEL_BUCKET", "")
+    if not bucket:
+        raise SystemExit("CITYPODS_MODEL_BUCKET must be set to the model bucket name")
+    return bucket
+
+
 REVISION = "ab54df5acba0eebf7df45560ffdaacd64e32df3b"
 LOCATION = "US-EAST4"
 MODEL_PREFIXES = {
@@ -37,7 +45,8 @@ MAX_BYTES = 20 * 1024**3
 MAX_OBJECTS = 1000
 
 
-def validate_manifest(manifest, *, allowed_bucket=BUCKET, allowed_location=LOCATION):
+def validate_manifest(manifest, *, allowed_bucket=None, allowed_location=LOCATION):
+    allowed_bucket = allowed_bucket or model_bucket()
     if (
         not isinstance(manifest, dict)
         or manifest.get("bucket") != allowed_bucket
@@ -94,7 +103,7 @@ def api_get(url, token, headers=None):
 
 def object_url(name):
     return "https://storage.googleapis.com/storage/v1/b/{}/o/{}".format(
-        BUCKET, urllib.parse.quote(name, safe="")
+        model_bucket(), urllib.parse.quote(name, safe="")
     )
 
 
@@ -114,7 +123,9 @@ def download(manifest, destination, token, workers=8, slice_bytes=64 * 1024**2):
     destination = Path(destination)
     validate_destination(destination)
     started = time.monotonic()
-    with api_get(f"https://storage.googleapis.com/storage/v1/b/{BUCKET}", token) as response:
+    with api_get(
+        f"https://storage.googleapis.com/storage/v1/b/{model_bucket()}", token
+    ) as response:
         bucket = json.load(response)
     if bucket.get("location", "").upper() != LOCATION:
         raise ValueError("bucket location mismatch")
