@@ -87,6 +87,7 @@ llm = [
 # Its `glide` source is supplied separately at the pinned model revision.
 decision-gpu = [
     "torch>=2.14.0",
+    "torchvision>=0.29.0",
     "triton>=3.8.0",
     "transformers>=5.17.0",
     "tokenizers>=0.23.2",
