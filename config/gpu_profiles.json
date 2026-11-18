@@ -1,0 +1,200 @@
+{
+  "models": {
+    "copernicus-31b": {
+      "calibrations": {
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 0.7,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.7,
+          "load_seconds": 500.8,
+          "load_seconds_p90": 651.0,
+          "peak_gpu_gib": 75.66,
+          "source": "evals/gpu-profiles/hf-cop31-rtx.json: FUSE load, backbone-only; no key-match check",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 3804.2
+        }
+      },
+      "family": "generic",
+      "max_len": 4096,
+      "notes": "Poindexter-Labs Copernicus-31B (dense Gemma 4); 58.2 GiB of BF16 weights fit only the RTX PRO 6000.",
+      "revision": "ae28efb0ae759c3494a1078c0a56eda10a9adb38",
+      "weight_gib": 58.2
+    },
+    "glide-9b": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 58.0,
+          "confidence": "measured",
+          "config_overhead_seconds": 7.0,
+          "load_seconds": 90.4,
+          "load_seconds_p90": 135.0,
+          "peak_gpu_gib": 17.64,
+          "source": "review/59: 11 L4 loads (median), long-prompt run 1,787 tok/s; evals/gpu-profiles/*-l4.json",
+          "startup_seconds": 24.0,
+          "token_budget": 16384,
+          "tokens_per_second": 1780.0
+        },
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 30.0,
+          "confidence": "measured",
+          "config_overhead_seconds": 4.2,
+          "load_seconds": 75.8,
+          "load_seconds_p90": 130.0,
+          "peak_gpu_gib": 17.7,
+          "source": "review/59: 8 RTX loads (median), long-prompt run 10,389 tok/s; evals/gpu-profiles/*-rtx.json",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 10400.0
+        }
+      },
+      "family": "qwen_fla",
+      "max_len": 4096,
+      "notes": "GLiDE-9B decision readout; checkpoint runs layers 12-23 twice (about 1.375 forward passes).",
+      "revision": "ab54df5acba0eebf7df45560ffdaacd64e32df3b",
+      "weight_gib": 14.8
+    },
+    "karpo-12b": {
+      "calibrations": {
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 0.6,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.6,
+          "load_seconds": 228.2,
+          "load_seconds_p90": 296.7,
+          "peak_gpu_gib": 29.5,
+          "source": "evals/gpu-profiles/hf-k12-rtx.json: FUSE load, backbone-only; no key-match check",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 9318.4
+        }
+      },
+      "family": "generic",
+      "max_len": 4096,
+      "notes": "MachinePulseAI Karpo 12B (Gemma 4 unified); 22.3 GiB of weights leave no room on a 24 GB L4.",
+      "revision": "664640316919ce368750b3e16cc263e927ac6e2b",
+      "weight_gib": 22.3
+    },
+    "karpo-4b": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 16.5,
+          "confidence": "measured",
+          "config_overhead_seconds": 1.0,
+          "load_seconds": 109.7,
+          "load_seconds_p90": 142.6,
+          "peak_gpu_gib": 14.14,
+          "source": "evals/gpu-profiles/hf2-k4-l4.json (+hf3-k4cfg-l4 for configs overhead): FUSE load, backbone-only",
+          "startup_seconds": 24.0,
+          "token_budget": 16384,
+          "tokens_per_second": 3950.0
+        },
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 11.8,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.8,
+          "load_seconds": 148.5,
+          "load_seconds_p90": 193.1,
+          "peak_gpu_gib": 14.16,
+          "source": "evals/gpu-profiles/hf2-k4-rtx.json (+hf3-k4cfg-rtx for configs overhead): FUSE load, backbone-only",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 23816.7
+        }
+      },
+      "family": "qwen_fla",
+      "max_len": 4096,
+      "notes": "MachinePulseAI Karpo 4B (Qwen3.5 backbone); backbone-only timings without the decision readout; GLiDE's fla configs transfer (cold overhead 16.5 s to 1.0 s).",
+      "revision": "f7f521cfc3219ca28518c6bba91960b8757dce06",
+      "weight_gib": 8.5
+    },
+    "karpo-9b": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 29.2,
+          "confidence": "measured",
+          "config_overhead_seconds": 29.2,
+          "load_seconds": 322.7,
+          "load_seconds_p90": 419.5,
+          "peak_gpu_gib": 18.57,
+          "source": "evals/gpu-profiles/hf3-k9-l4.json at budget 8192 (16384 ran out of memory): FUSE load, backbone-only",
+          "startup_seconds": 24.0,
+          "token_budget": 8192,
+          "tokens_per_second": 2576.4
+        },
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 12.1,
+          "confidence": "measured",
+          "config_overhead_seconds": 12.1,
+          "load_seconds": 167.4,
+          "load_seconds_p90": 217.6,
+          "peak_gpu_gib": 21.53,
+          "source": "evals/gpu-profiles/hf2-k9-rtx.json: FUSE load, backbone-only",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 16155.2
+        }
+      },
+      "family": "qwen_fla",
+      "max_len": 4096,
+      "notes": "MachinePulseAI Karpo 9B (Qwen3.5 backbone); L4 holds only an 8192-token budget; configs overhead not measured so it equals the cache-less overhead.",
+      "revision": "0fb729874694e9a4928882eefb2cb1aa49b93735",
+      "weight_gib": 15.6
+    },
+    "lfm-d1-3b": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 0.5,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.5,
+          "load_seconds": 82.3,
+          "load_seconds_p90": 107.0,
+          "peak_gpu_gib": 7.34,
+          "source": "evals/gpu-profiles/hf-lfm-l4.json: FUSE load, backbone-only probe",
+          "startup_seconds": 24.0,
+          "token_budget": 16384,
+          "tokens_per_second": 7556.6
+        },
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 0.3,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.3,
+          "load_seconds": 91.2,
+          "load_seconds_p90": 118.6,
+          "peak_gpu_gib": 7.37,
+          "source": "evals/gpu-profiles/hf-lfm-rtx.json: FUSE load, backbone-only probe",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 49319.4
+        }
+      },
+      "family": "generic",
+      "max_len": 4096,
+      "notes": "LiquidAI d1-3B (LFM2-VL hybrid convolution backbone); timings are backbone-only with no decision readout.",
+      "revision": "05b80faf55536582ad5ffb2da7456f6a653acf71",
+      "weight_gib": 5.8
+    },
+    "s1-gemma4-26b-a4b": {
+      "calibrations": {
+        "RTX_PRO_6000": {
+          "cold_overhead_seconds": 0.8,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.8,
+          "load_seconds": 386.6,
+          "load_seconds_p90": 502.6,
+          "peak_gpu_gib": 56.26,
+          "source": "evals/gpu-profiles/hf-s1-rtx.json: FUSE load, HF mixture-of-experts runtime, backbone-only",
+          "startup_seconds": 104.0,
+          "token_budget": 16384,
+          "tokens_per_second": 12653.9
+        }
+      },
+      "family": "generic",
+      "max_len": 4096,
+      "notes": "j-raghavan S1 (Gemma 4 26B-A4B MoE) in BF16 through the transformers runtime; the 17 GB INT4 L4 path was not measured.",
+      "revision": "a220d4919b49069204db580ca0bb5a6937c6df38",
+      "weight_gib": 48.1
+    }
+  },
+  "schema_version": 1
+}

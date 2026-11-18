@@ -1,0 +1,184 @@
+{
+ "gpu": "NVIDIA L4",
+ "kernel_fallbacks": [
+  "causal_conv1d_fn"
+ ],
+ "load_errors": [
+  "AutoModelForImageTextToText: 1 missing, 0 unexpected keys",
+  "AutoModelForCausalLM: 427 missing, 759 unexpected keys"
+ ],
+ "load_seconds": 322.7,
+ "loader": "AutoModel missing=0 unexpected=0",
+ "logits_to_keep": true,
+ "model_id": "hf3-k9-l4",
+ "params_b": 8.39,
+ "records": [
+  {
+   "micro_batches": [
+    {
+     "child_cpu_seconds": 2.86,
+     "cold_seconds": 16.0574,
+     "new_cache_entries": 32,
+     "padded_tokens": 8192,
+     "rows": 32,
+     "warm_seconds": 3.1304,
+     "width": 256
+    },
+    {
+     "child_cpu_seconds": 0.08,
+     "cold_seconds": 3.8633,
+     "new_cache_entries": 5,
+     "padded_tokens": 8192,
+     "rows": 16,
+     "warm_seconds": 3.1686,
+     "width": 512
+    },
+    {
+     "child_cpu_seconds": 0.12,
+     "cold_seconds": 4.0581,
+     "new_cache_entries": 6,
+     "padded_tokens": 8192,
+     "rows": 8,
+     "warm_seconds": 3.1979,
+     "width": 1024
+    },
+    {
+     "child_cpu_seconds": 0.08,
+     "cold_seconds": 3.9261,
+     "new_cache_entries": 5,
+     "padded_tokens": 8192,
+     "rows": 4,
+     "warm_seconds": 3.1979,
+     "width": 2048
+    },
+    {
+     "child_cpu_seconds": 0.12,
+     "cold_seconds": 4.0259,
+     "new_cache_entries": 6,
+     "padded_tokens": 8100,
+     "rows": 27,
+     "warm_seconds": 3.1167,
+     "width": 300
+    },
+    {
+     "child_cpu_seconds": 0.09,
+     "cold_seconds": 3.6732,
+     "new_cache_entries": 5,
+     "padded_tokens": 7700,
+     "rows": 11,
+     "warm_seconds": 2.9787,
+     "width": 700
+    },
+    {
+     "child_cpu_seconds": 0.08,
+     "cold_seconds": 3.6775,
+     "new_cache_entries": 5,
+     "padded_tokens": 7500,
+     "rows": 5,
+     "warm_seconds": 2.9326,
+     "width": 1500
+    },
+    {
+     "child_cpu_seconds": 2.83,
+     "cold_seconds": 14.0162,
+     "new_cache_entries": 31,
+     "padded_tokens": 6000,
+     "rows": 2,
+     "warm_seconds": 2.3678,
+     "width": 3000
+    }
+   ],
+   "oom": false,
+   "peak_gpu_gib": 18.57,
+   "token_budget": 8192
+  },
+  {
+   "micro_batches": [
+    {
+     "child_cpu_seconds": 2.7,
+     "cold_seconds": 12.9363,
+     "new_cache_entries": 26,
+     "padded_tokens": 4096,
+     "rows": 16,
+     "warm_seconds": 1.5499,
+     "width": 256
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 1.5557,
+     "new_cache_entries": 0,
+     "padded_tokens": 4096,
+     "rows": 8,
+     "warm_seconds": 1.555,
+     "width": 512
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 1.5746,
+     "new_cache_entries": 0,
+     "padded_tokens": 4096,
+     "rows": 4,
+     "warm_seconds": 1.5808,
+     "width": 1024
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 1.6012,
+     "new_cache_entries": 0,
+     "padded_tokens": 4096,
+     "rows": 2,
+     "warm_seconds": 1.6096,
+     "width": 2048
+    },
+    {
+     "child_cpu_seconds": 0.09,
+     "cold_seconds": 2.2483,
+     "new_cache_entries": 5,
+     "padded_tokens": 3900,
+     "rows": 13,
+     "warm_seconds": 1.5193,
+     "width": 300
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 1.3623,
+     "new_cache_entries": 0,
+     "padded_tokens": 3500,
+     "rows": 5,
+     "warm_seconds": 1.3698,
+     "width": 700
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 1.1924,
+     "new_cache_entries": 0,
+     "padded_tokens": 3000,
+     "rows": 2,
+     "warm_seconds": 1.1911,
+     "width": 1500
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 1.1668,
+     "new_cache_entries": 0,
+     "padded_tokens": 3000,
+     "rows": 1,
+     "warm_seconds": 1.1725,
+     "width": 3000
+    }
+   ],
+   "oom": false,
+   "peak_gpu_gib": 17.11,
+   "token_budget": 4096
+  }
+ ],
+ "runtime": {
+  "causal-conv1d": null,
+  "fla-core": "0.5.2",
+  "flash-linear-attention": "0.5.2",
+  "torch": "2.14.0",
+  "transformers": "5.17.0",
+  "triton": "3.8.0"
+ },
+ "weights_gib": 15.63
+}

@@ -1,0 +1,102 @@
+{
+ "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+ "kernel_fallbacks": [
+  "causal_conv1d_fn"
+ ],
+ "load_errors": [],
+ "load_seconds": 148.5,
+ "loader": "AutoModelForImageTextToText missing=0 unexpected=0",
+ "logits_to_keep": true,
+ "model_id": "hf2-k4-rtx",
+ "params_b": 4.54,
+ "records": [
+  {
+   "micro_batches": [
+    {
+     "child_cpu_seconds": 1.54,
+     "cold_seconds": 8.4302,
+     "new_cache_entries": 32,
+     "padded_tokens": 16384,
+     "rows": 64,
+     "warm_seconds": 0.6702,
+     "width": 256
+    },
+    {
+     "child_cpu_seconds": 0.04,
+     "cold_seconds": 1.2295,
+     "new_cache_entries": 5,
+     "padded_tokens": 16384,
+     "rows": 32,
+     "warm_seconds": 0.6662,
+     "width": 512
+    },
+    {
+     "child_cpu_seconds": 0.05,
+     "cold_seconds": 1.2341,
+     "new_cache_entries": 5,
+     "padded_tokens": 16384,
+     "rows": 16,
+     "warm_seconds": 0.676,
+     "width": 1024
+    },
+    {
+     "child_cpu_seconds": 0.07,
+     "cold_seconds": 1.3323,
+     "new_cache_entries": 6,
+     "padded_tokens": 16384,
+     "rows": 8,
+     "warm_seconds": 0.6979,
+     "width": 2048
+    },
+    {
+     "child_cpu_seconds": 0.06,
+     "cold_seconds": 1.3209,
+     "new_cache_entries": 6,
+     "padded_tokens": 16200,
+     "rows": 54,
+     "warm_seconds": 0.6713,
+     "width": 300
+    },
+    {
+     "child_cpu_seconds": 0.04,
+     "cold_seconds": 1.2238,
+     "new_cache_entries": 5,
+     "padded_tokens": 16100,
+     "rows": 23,
+     "warm_seconds": 0.6679,
+     "width": 700
+    },
+    {
+     "child_cpu_seconds": 0.05,
+     "cold_seconds": 1.1931,
+     "new_cache_entries": 5,
+     "padded_tokens": 15000,
+     "rows": 10,
+     "warm_seconds": 0.6435,
+     "width": 1500
+    },
+    {
+     "child_cpu_seconds": 0.04,
+     "cold_seconds": 1.2349,
+     "new_cache_entries": 5,
+     "padded_tokens": 15000,
+     "rows": 5,
+     "warm_seconds": 0.6745,
+     "width": 3000
+    }
+   ],
+   "oom": false,
+   "peak_gpu_gib": 14.16,
+   "token_budget": 16384
+  }
+ ],
+ "runtime": {
+  "causal-conv1d": null,
+  "fla-core": "0.5.2",
+  "flash-linear-attention": "0.5.2",
+  "torch": "2.14.0",
+  "transformers": "5.17.0",
+  "triton": "3.8.0"
+ },
+ "weights_gib": 8.46
+}

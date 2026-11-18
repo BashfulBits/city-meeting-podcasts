@@ -21,7 +21,7 @@
   // pyproject.toml would read every current version from asr.txt alone.
   // gh-cli.txt is not a pip lock (custom regex manager below).
   "pip-compile": {
-    managerFilePatterns: ["/^constraints/(prod|dev|asr|chapter-research)\\.txt$/"],
+    managerFilePatterns: ["/^constraints/(prod|dev|asr|chapter-research|decision-gpu)\\.txt$/"],
   },
   // Security fixes skip the schedule and minimumReleaseAge (Renovate's vulnerabilityAlerts
   // defaults) and reach indirect locked deps too. They are labeled but never automerged
@@ -197,6 +197,13 @@
         "ctranslate2",
         "whisperx",
         "torch",
+        "triton",
+        "transformers",
+        "tokenizers",
+        "safetensors",
+        "huggingface-hub",
+        "flash-linear-attention",
+        "fla-core",
         "torchaudio",
         "torchcodec",
         "Pillow",

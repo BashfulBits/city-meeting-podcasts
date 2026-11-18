@@ -1,0 +1,655 @@
+{
+ "autotune_entries": {
+  "04afb4fe19131cbfd6995f2da219f3ae": {
+   "autotune_key": [
+    7,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "0d6535a933156c52d7d7da8f155ae852": {
+   "autotune_key": [
+    31,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "1881da41db50c9da43f6cd9c82655b97": {
+   "autotune_key": [
+    26,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 2,
+    "pre_hook": null
+   }
+  },
+  "1a308a2c30f3d6aff0f429e8c7e15221": {
+   "autotune_key": [
+    12,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 4,
+    "pre_hook": null
+   }
+  },
+  "1eea569a03db34c9e36ad5f7a241bf85": {
+   "autotune_key": [
+    1,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "1ffd72bb175eeaf8a628fdd2463de763": {
+   "autotune_key": [
+    32,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "318d0d004b3b86e5cdfdc01f95c92e05": {
+   "autotune_key": [
+    14,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 2,
+    "pre_hook": null
+   }
+  },
+  "38d8e260065a0acbc05693e854c5e392": {
+   "autotune_key": [
+    8,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "3ecba28ad5b9bb9ba62e7c71e3d6e6ef": {
+   "autotune_key": [
+    10,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "3f1a2659a5c247a5e5387b77d4df1313": {
+   "autotune_key": [
+    25,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "41a5ff5c6cc6ad92132ba687136d6291": {
+   "autotune_key": [
+    27,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "64a5360757436c6ec455a0985ff99b4a": {
+   "autotune_key": [
+    3,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 2,
+    "pre_hook": null
+   }
+  },
+  "6ea46a223f70281b9a9d439836149002": {
+   "autotune_key": [
+    11,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "71fab7e65f859d0f4e9c56dc7fbbcac9": {
+   "autotune_key": [
+    9,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "71fdc0b73f587090b4f6d5db11a12401": {
+   "autotune_key": [
+    24,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "79683782b68cc7abccfa48261347b538": {
+   "autotune_key": [
+    15,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "7fb3da8b85ebe3c454449e05cf89685d": {
+   "autotune_key": [
+    21,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "814ffa26139cfee9940f72286136193d": {
+   "autotune_key": [
+    20,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 4,
+    "pre_hook": null
+   }
+  },
+  "863b472faa2611ad247e95fe4a676261": {
+   "autotune_key": [
+    6,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "8dbd4b982cdcb8421fd7a9d70f8d3337": {
+   "autotune_key": [
+    29,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 2,
+    "pre_hook": null
+   }
+  },
+  "8e8a87d4c67763a273bfd3a2ea9c7cef": {
+   "autotune_key": [
+    17,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 2,
+    "pre_hook": null
+   }
+  },
+  "994ffbc01063394e75115107791c1d10": {
+   "autotune_key": [
+    16,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "ac682f70cdc5729dc21de6a0c6398631": {
+   "autotune_key": [
+    23,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 2,
+    "pre_hook": null
+   }
+  },
+  "c96661318650e044459c52b7c1c5200f": {
+   "autotune_key": [
+    28,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 2,
+    "pre_hook": null
+   }
+  },
+  "d607744bf8dcb3afaa814efc6fafdb7f": {
+   "autotune_key": [
+    18,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "e86ba4c3f71a4159a1caf352c514e5d5": {
+   "autotune_key": [
+    19,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "e8cf5a6f5061c757586577c934cd4999": {
+   "autotune_key": [
+    22,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 2,
+    "pre_hook": null
+   }
+  },
+  "eb07f45cd3e70e33d8de982afd89a47a": {
+   "autotune_key": [
+    13,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "eeaac82ea163d002c5fa032eb0d5eec4": {
+   "autotune_key": [
+    30,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "f055e5dda77a346b3fe60dea10079618": {
+   "autotune_key": [
+    5,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "fcb759c4ba85fcbce510a64addfde11f": {
+   "autotune_key": [
+    4,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 1,
+    "pre_hook": null
+   }
+  },
+  "fdf4d6f75fd9045d0be38492bcc82814": {
+   "autotune_key": [
+    2,
+    32,
+    64,
+    false,
+    false,
+    "torch.float32",
+    "torch.float32"
+   ],
+   "config": {
+    "ir_override": null,
+    "kwargs": {},
+    "maxnreg": null,
+    "num_ctas": 1,
+    "num_stages": 3,
+    "num_warps": 8,
+    "pre_hook": null
+   }
+  }
+ },
+ "default_config": {
+  "ir_override": null,
+  "kwargs": {},
+  "maxnreg": null,
+  "num_ctas": 1,
+  "num_stages": 3,
+  "num_warps": 1,
+  "pre_hook": null
+ },
+ "kernel_name": "chunk_local_cumsum_scalar_kernel",
+ "triton_version": "3.8.0"
+}
