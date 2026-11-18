@@ -1,4 +1,5 @@
 import copy
+import functools
 import hashlib
 import json
 import sys
@@ -6,34 +7,60 @@ import types
 from pathlib import Path
 
 import pytest
-from safetensors.torch import save_file
 
-torch = pytest.importorskip("torch")
-gemma = pytest.importorskip("transformers.models.gemma4_unified.modeling_gemma4_unified")
+from citypods.judging import karpo_stream
+from citypods.weight_streaming import SliceManifest, stream_safetensors
+from tests._lazy import Lazy, require
 
-from citypods.judging import karpo_stream  # noqa: E402
-from citypods.weight_streaming import SliceManifest, stream_safetensors  # noqa: E402
-from citypods.weight_streaming.torch_sink import TorchSink  # noqa: E402
+torch = Lazy("torch")
+gemma = Lazy("transformers.models.gemma4_unified.modeling_gemma4_unified")
+safetensors_torch = Lazy("safetensors.torch")
+torch_sink = Lazy("citypods.weight_streaming.torch_sink")
 
-E4M3 = torch.float8_e4m3fn
-E4M3_MAX = torch.finfo(E4M3).max
+
+@pytest.fixture(autouse=True)
+def _need_torch_and_transformers():
+    require("torch", "transformers.models.gemma4_unified.modeling_gemma4_unified")
+
+
+def TorchSink(*args, **kwargs):  # noqa: N802
+    return torch_sink.TorchSink(*args, **kwargs)
+
+
+def save_file(*args, **kwargs):
+    return safetensors_torch.save_file(*args, **kwargs)
+
+
 FIXTURE = Path(__file__).parent / "fixtures" / "karpo_gemma4_unified_tiny_config.json"
 
 
-def _to_e4m3(x):
-    scale = x.abs().amax(-1, keepdim=True).float().clamp(min=1e-12) / E4M3_MAX
-    return (x.float() / scale).clamp(-E4M3_MAX, E4M3_MAX).to(E4M3), scale
+@functools.cache
+def refs():
+    """Verbatim copies of Karpo's Fp8Linear classes (Apache-2.0, commit 6600011e)."""
+    e4m3 = torch.float8_e4m3fn
+    e4m3_max = torch.finfo(e4m3).max
 
+    def to_e4m3(x):
+        scale = x.abs().amax(-1, keepdim=True).float().clamp(min=1e-12) / e4m3_max
+        return (x.float() / scale).clamp(-e4m3_max, e4m3_max).to(e4m3), scale
 
-class RefFp8Linear(torch.nn.Module):
-    """Verbatim from karpo_decision.serve.fp8.Fp8Linear (Apache-2.0), commit 6600011e."""
+    class Fp8(torch.nn.Module):  # serve.fp8.Fp8Linear: scale and weight are buffers
+        def __init__(self, linear):
+            super().__init__()
+            weight, scale = to_e4m3(linear.weight.detach())
+            self.register_buffer("weight", weight)
+            self.register_buffer("scale", scale.t().contiguous())
+            self.in_features, self.out_features = linear.in_features, linear.out_features
 
-    def __init__(self, linear):
-        super().__init__()
-        weight, scale = _to_e4m3(linear.weight.detach())
-        self.register_buffer("weight", weight)
-        self.register_buffer("scale", scale.t().contiguous())
-        self.in_features, self.out_features = linear.in_features, linear.out_features
+    class Qwen(torch.nn.Module):  # serve.qwen_fp8.Fp8Linear: Parameters
+        def __init__(self, linear):
+            super().__init__()
+            weight, scale = to_e4m3(linear.weight.detach())
+            self.weight = torch.nn.Parameter(weight, requires_grad=False)
+            self.scale = torch.nn.Parameter(scale.t().contiguous(), requires_grad=False)
+            self.in_features, self.out_features = linear.in_features, linear.out_features
+
+    return types.SimpleNamespace(Fp8=Fp8, Qwen=Qwen)
 
 
 PROJECTIONS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
@@ -42,7 +69,7 @@ PROJECTIONS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "
 @pytest.fixture
 def ref_module(monkeypatch):
     module = types.ModuleType("karpo_fp8_ref")
-    module.PROJECTIONS, module.Fp8Linear = PROJECTIONS, RefFp8Linear
+    module.PROJECTIONS, module.Fp8Linear = PROJECTIONS, refs().Fp8
     monkeypatch.setitem(sys.modules, "karpo_fp8_ref", module)
     monkeypatch.setitem(karpo_stream.FP8_MODULES, "gemma4_unified", "karpo_fp8_ref")
     return module
@@ -57,7 +84,7 @@ def layerwise_reference(directory):
         for parent in list(layer.modules()):
             for name, child in list(parent.named_children()):
                 if name in PROJECTIONS and isinstance(child, torch.nn.Linear):
-                    setattr(parent, name, RefFp8Linear(child))
+                    setattr(parent, name, refs().Fp8(child))
     return model
 
 
@@ -97,9 +124,7 @@ def test_streamed_backbone_is_byte_identical_to_layerwise_quantized_load(tiny, r
     backbone, shells = karpo_stream.build_backbone(
         tiny, "gemma4_unified", torch, fp8=True, device=torch.device("cpu")
     )
-    assert len(shells) == sum(
-        1 for _, m in reference.named_modules() if isinstance(m, RefFp8Linear)
-    )
+    assert len(shells) == sum(1 for _, m in reference.named_modules() if isinstance(m, refs().Fp8))
     direct, quantized = karpo_stream._targets(backbone, shells)
     sink = TorchSink(direct, quantized)
     stream_file(next(tiny.glob("*.safetensors")), sink)
@@ -156,24 +181,13 @@ def test_manifest_requires_a_pinned_revision(ref_module):
 QWEN_FIXTURE = Path(__file__).parent / "fixtures" / "karpo_qwen3_5_tiny_config.json"
 
 
-class RefQwenFp8Linear(torch.nn.Module):
-    """Verbatim from karpo_decision.serve.qwen_fp8.Fp8Linear: scale and weight are Parameters."""
-
-    def __init__(self, linear):
-        super().__init__()
-        weight, scale = _to_e4m3(linear.weight.detach())
-        self.weight = torch.nn.Parameter(weight, requires_grad=False)
-        self.scale = torch.nn.Parameter(scale.t().contiguous(), requires_grad=False)
-        self.in_features, self.out_features = linear.in_features, linear.out_features
-
-
 def test_qwen_streamed_backbone_matches_layerwise_load(tmp_path, monkeypatch):
     qwen = pytest.importorskip("transformers.models.qwen3_5.modeling_qwen3_5")
     from transformers import AutoConfig
 
     min_features = 16  # the tiny model has no 256-wide projection; the rule is the same
     module = types.ModuleType("karpo_qwen_fp8_ref")
-    module.MIN_FEATURES, module.Fp8Linear = min_features, RefQwenFp8Linear
+    module.MIN_FEATURES, module.Fp8Linear = min_features, refs().Qwen
     monkeypatch.setitem(sys.modules, "karpo_qwen_fp8_ref", module)
     monkeypatch.setitem(karpo_stream.FP8_MODULES, "qwen3_5", "karpo_qwen_fp8_ref")
     config = AutoConfig.for_model(**json.loads(QWEN_FIXTURE.read_text()))
@@ -191,7 +205,7 @@ def test_qwen_streamed_backbone_matches_layerwise_load(tmp_path, monkeypatch):
         for parent in list(layer.modules()):
             for name, child in list(parent.named_children()):
                 if isinstance(child, torch.nn.Linear) and child.out_features >= min_features:
-                    setattr(parent, name, RefQwenFp8Linear(child))
+                    setattr(parent, name, refs().Qwen(child))
     backbone, shells = karpo_stream.build_backbone(
         tmp_path, "qwen3_5", torch, fp8=True, device=torch.device("cpu")
     )
@@ -316,7 +330,7 @@ def mocked_load(tiny, monkeypatch, ref_module):
 def test_load_karpo_streams_everything_and_installs_fp8_hooks(mocked_load, monkeypatch):
     manifest, rows, calls = mocked_load
     fp8 = types.ModuleType("karpo_fp8_ref")
-    fp8.PROJECTIONS, fp8.Fp8Linear = PROJECTIONS, RefFp8Linear
+    fp8.PROJECTIONS, fp8.Fp8Linear = PROJECTIONS, refs().Fp8
     fp8.norm, fp8.mlp = object(), object()
     monkeypatch.setitem(sys.modules, "karpo_fp8_ref", fp8)
     stats = {}
@@ -325,7 +339,7 @@ def test_load_karpo_streams_everything_and_installs_fp8_hooks(mocked_load, monke
     assert decider.model.norm_input is fp8.norm and decider.model.mlp is fp8.mlp
     assert decider.ckpt.readout.rows.equal(rows)
     assert stats["quantized_tensors"] > 0 and stats["stream_seconds"] >= 0
-    assert any(isinstance(m, RefFp8Linear) for m in decider.ckpt.backbone.modules())
+    assert any(isinstance(m, refs().Fp8) for m in decider.ckpt.backbone.modules())
 
 
 def test_load_karpo_refuses_external_backbone_path(mocked_load, monkeypatch):

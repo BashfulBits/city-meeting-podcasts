@@ -4,23 +4,35 @@ import struct
 
 import pytest
 
-torch = pytest.importorskip("torch")
+from citypods.weight_streaming import SliceManifest, TensorSpec, stream_safetensors
+from tests._lazy import Lazy, require
 
-from citypods.weight_streaming import SliceManifest, TensorSpec, stream_safetensors  # noqa: E402
-from citypods.weight_streaming.torch_sink import (  # noqa: E402
-    CollectSink,
-    TorchSink,
-    quantize_rows_e4m3,
-)
+torch = Lazy("torch")
+torch_sink = Lazy("citypods.weight_streaming.torch_sink")
 
-E4M3 = torch.float8_e4m3fn
+
+@pytest.fixture(autouse=True)
+def _need_torch():
+    require("torch")
+
+
+def TorchSink(*args, **kwargs):  # noqa: N802
+    return torch_sink.TorchSink(*args, **kwargs)
+
+
+def CollectSink(*args, **kwargs):  # noqa: N802
+    return torch_sink.CollectSink(*args, **kwargs)
+
+
+def quantize_rows_e4m3(x):
+    return torch_sink.quantize_rows_e4m3(x)
 
 
 def reference_to_e4m3(x):
     """Verbatim from karpo_decision.serve.fp8._to_e4m3 (Apache-2.0), commit 6600011e."""
-    e4m3_max = torch.finfo(E4M3).max
+    e4m3_max = torch.finfo(torch.float8_e4m3fn).max
     scale = x.abs().amax(-1, keepdim=True).float().clamp(min=1e-12) / e4m3_max
-    return (x.float() / scale).clamp(-e4m3_max, e4m3_max).to(E4M3), scale
+    return (x.float() / scale).clamp(-e4m3_max, e4m3_max).to(torch.float8_e4m3fn), scale
 
 
 def safetensors_bytes(tensors):
@@ -68,7 +80,7 @@ def test_streamed_fp8_and_direct_tensors_are_byte_identical_to_layerwise_referen
     norm = torch.randn(40, dtype=torch.bfloat16)
     gate = torch.randn(9, dtype=torch.float32)
     data = safetensors_bytes({"proj.weight": weight, "norm.weight": norm, "gate": gate})
-    dest_w, dest_s = torch.zeros(48, 40, dtype=E4M3), torch.zeros(1, 48)
+    dest_w, dest_s = torch.zeros(48, 40, dtype=torch.float8_e4m3fn), torch.zeros(1, 48)
     direct = {"norm.weight": torch.empty(40, dtype=torch.bfloat16), "gate": torch.empty(9)}
     sink = TorchSink(direct, {"proj.weight": (dest_w, dest_s)})
     stream(data, sink, chunk=311)  # header fits the first slice; later cuts split tensors
@@ -106,7 +118,7 @@ def test_sink_rejects_mismatches_and_incomplete_coverage():
 
 def test_quantized_tensor_left_staged_is_not_complete_and_destination_is_validated():
     w = torch.randn(4, 8, dtype=torch.bfloat16)
-    dest = (torch.empty(4, 8, dtype=E4M3), torch.empty(1, 4))
+    dest = (torch.empty(4, 8, dtype=torch.float8_e4m3fn), torch.empty(1, 4))
     sink = TorchSink({}, {"w": dest})
     sink(spec("w", w), 0, memoryview(bytes(32)))
     with pytest.raises(ValueError, match="incomplete"):
