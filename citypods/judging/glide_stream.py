@@ -19,7 +19,9 @@ MAX_OBJECTS = 1000
 MAX_TOTAL_BYTES = 20 * 1024**3
 
 
-def validate_manifest(manifest):
+def validate_manifest(manifest, *, revision=REVISION, prefix=None):
+    """Validate a trusted object manifest; ``prefix`` is the object-name prefix of ``revision``."""
+    prefix = revision if prefix is None else prefix
     if not isinstance(manifest, dict):
         raise ValueError("invalid model manifest")
     bucket = manifest.get("bucket")
@@ -30,7 +32,7 @@ def validate_manifest(manifest):
         or re.fullmatch(r"[0-9]+(?:\.[0-9]+){3}", bucket)
     ):
         raise ValueError("invalid model bucket")
-    if manifest.get("revision") != REVISION:
+    if manifest.get("revision") != revision:
         raise ValueError("unexpected model revision")
     chunk = manifest.get("slice_bytes")
     if type(chunk) is not int or not 8 <= chunk <= 64 * 1024**2:
@@ -44,9 +46,9 @@ def validate_manifest(manifest):
         if not isinstance(obj, dict):
             raise ValueError("invalid object")
         name = obj.get("name")
-        if not isinstance(name, str) or not name.startswith(REVISION + "/"):
+        if not isinstance(name, str) or not name.startswith(prefix + "/"):
             raise ValueError("invalid object prefix")
-        path = name[len(REVISION) + 1 :]
+        path = name[len(prefix) + 1 :]
         if (
             any(p in ("", ".", "..") for p in path.split("/"))
             or "\\" in path
@@ -132,6 +134,20 @@ class TensorSink:
             raise ValueError("missing or incomplete tensors")
 
 
+def fetch_small_objects(paths, bucket, token, directory):
+    """Download and SHA-256-verify every non-safetensors object into ``directory``."""
+    for path, obj in paths.items():
+        if path.endswith(".safetensors"):
+            continue
+        fetch = gcs_range_fetcher(bucket, obj["name"], obj["generation"], obj["size"], token)
+        data = fetch(0, obj["size"])
+        if hashlib.sha256(data).hexdigest() != obj["sha256"]:
+            raise ValueError("config hash mismatch")
+        destination = Path(directory) / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
+
+
 def load_glide(manifest, token, settings, *, workers=8):
     """Load the pinned text-only GLiDE model; discard partial model on any failure."""
     paths = validate_manifest(manifest)
@@ -142,16 +158,7 @@ def load_glide(manifest, token, settings, *, workers=8):
     chunk = manifest["slice_bytes"]
     bucket = manifest["bucket"]
     with tempfile.TemporaryDirectory() as temp:
-        for path, obj in paths.items():
-            if path.endswith(".safetensors"):
-                continue
-            fetch = gcs_range_fetcher(bucket, obj["name"], obj["generation"], obj["size"], token)
-            data = fetch(0, obj["size"])
-            if hashlib.sha256(data).hexdigest() != obj["sha256"]:
-                raise ValueError("config hash mismatch")
-            destination = Path(temp) / path
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(data)
+        fetch_small_objects(paths, bucket, token, temp)
         config = json.loads((Path(temp) / "decision_config.json").read_text())
         tokenizer = AutoTokenizer.from_pretrained(temp, local_files_only=True)
         _check_codes(tokenizer, config)
