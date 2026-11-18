@@ -701,8 +701,8 @@ runs show which comparisons are close.
 
 Code, answers and scores are in the Phase 3 PR ([#2728](https://github.com/BashfulBits/city-meeting-podcasts/pull/2728), branch `feat/open-weight-decision-runs`, stacked on the loader):
 `citypods/judging/open_weight_eval.py`, `scripts/open_weight_eval.py`, `workers/decision-batch/open_weight_eval_worker.py`,
-and `evals/open-weight-decision/results/` (every answer file, `*-summary-{dev,holdout,all}.json`, `cloud-costs.json`,
-`score_all.sh` to rescore). Models saw only `manifest.json` (the cloud image bakes in that file alone). Tag accuracy
+and `evals/open-weight-decision/results/` (every answer file, `cloud-costs.json`, `score_all.sh`, which writes the
+`*-summary-{dev,holdout,all}.json` scores in about ten seconds, byte-identical each time, so they are not committed). Models saw only `manifest.json` (the cloud image bakes in that file alone). Tag accuracy
 excludes `uncertain` (dev 18 of 105 tag items, 17%; holdout 15 of 135, 11%) and is re-weighted to the production mix
 (29% unanimous yes, 34% unanimous no, 37% split). "Accuracy" counts an invalid answer as a miss; no model produced one
 (0 invalid on every run). Intervals are 95% paired bootstrap over episodes, resampled within stratum, 2,000 draws, the same
@@ -801,9 +801,7 @@ Triton/fla autotuning on new shapes, so warm rates are lower):
 
 Perplexity (OpenRouter `:free`, price 0) took 1,007 s for 154 dev requests at the route's rpm limit; Gemini decision-1 (free API key)
 took 704 s. The 31B in FP8 gives the same tag accuracy as BF16 (0.752 against 0.747 pooled) at half the memory, and FP8 matches BF16 at
-9B and 12B too, so FP8 is the default. **Spend:** 21 executions, **$7.69 at list rates** (`cloud-costs.json`, includes smoke runs, 15 for the first batch and $5.05 of it,
-the other 6 for elephant-1 and Copernicus-31B, $2.64), plus four image builds under $0.3, so Phase 3 is about $7.9, just under the
-$8 projection; with the Phase 1 follow-up's about $3 and Phases 0 to 2, the total is well past $10 of the shared $20 cap (unreconciled).
+9B and 12B too, so FP8 is the default. **Spend:** 23 executions, **$8.51 at list rates** (`cloud-costs.json`, includes smoke runs: 15 for the first batch, $5.05 of it; 6 for elephant-1 and Copernicus-31B, $2.64; 2 for the Karpo 9B RTX break-even runs, $0.82), plus four image builds under $0.3, so Phase 3 is about $8.8, over the $8 projection (the break-even runs were requested after it was set); with the Phase 1 follow-up's about $3 and Phases 0 to 2, the total is well past $10 of the shared $20 cap (unreconciled).
 
 **What it implies.**
 - *Perplexity fallback.* Karpo 9B FP8 on an L4 is a fallback candidate that does not lose to Perplexity on any lane here: tags +0.05
@@ -865,12 +863,13 @@ number of decisions per launch where the two options cost the same (or take the 
 | Step | Measured? | Cost break-even | Time break-even | Reading |
 |---|---|---:|---:|---|
 | Karpo 9B, FP8 to BF16 (both L4) | yes | about 620 decisions (about 310k tokens) | same | BF16 is cheaper above it, by $0.02 at 1,000; costs 6 GiB more and gains +0.015 tag accuracy, within noise. Stay on FP8 unless batches reach 600 and more. |
-| Karpo 9B, L4 to RTX | **no, extrapolated** from the 12B speed-up (10.5x) | about 680 decisions | about 110 decisions | Estimate only; run 9B on the RTX before relying on it. |
+| Karpo 9B, L4 to RTX (FP8 both) | **yes, measured** (dev, 495 decisions) | about 1,130 decisions (about 560k tokens) | about 90 decisions | RTX inference took 60 s against 227 s (3.8x faster, not the 10.5x I extrapolated from the 12B), load 66 s against 81 s, same 10.5 GiB peak. Cheaper per launch above about 1,130 decisions ($0.237 against $0.227 at 1,000, $0.344 against $0.408 at 2,000), faster above about 90. |
+| Karpo 9B, BF16 on RTX | yes | never in range (about 17,000 vs L4 BF16; slower to start than FP8 on RTX by 190 s) | about 1,100 | Not worth it: the FUSE load took 338 s on the RTX and BF16 inference was no faster than FP8 (59 s against 60 s). |
 | elephant-1, L4 to RTX (lean to as authored) | partly: RTX speed from the Phase 1 sample (8,891 against about 820 tokens/s), load 93 s | about 1,150 decisions | about 90 decisions | The RTX is faster almost always, cheaper only for very large batches. |
 | Karpo 12B, L4 FP8 to RTX BF16 | yes | about 2,200 decisions (about 1.1M tokens) | about 650 decisions | Choose the RTX only for speed under 2,200; above, it is also cheaper. |
 | Karpo 31B, FP8 to BF16 (RTX only) | yes | FP8 is cheaper above about 860 decisions | same | Does not fit an L4. The two differ by under $0.03 per launch and have the same tag accuracy; stay on FP8. |
 
-Why the 31B can be faster than the 12B: it ran on the RTX PRO 6000 (30 s for the 495 dev decisions) and the 12B on an L4 (194 s);
+*Measured 9B-on-RTX caveat.* The 9B on the RTX (60 s) was slower than the 12B BF16 on the RTX (19 s), which is not plausible for a smaller model; the 9B runs probably include more first-shape Triton autotuning in a single dev run. Treat 1,130 as an upper bound on the cost break-even; a warmed kernel cache would pull it lower. At every size tested the L4 stays the cheapest place for the 9B below about 1,100 decisions. Why the 31B can be faster than the 12B: it ran on the RTX PRO 6000 (30 s for the 495 dev decisions) and the 12B on an L4 (194 s);
 the same 12B in BF16 on the RTX took 19 s. Per second the RTX costs 2.2 times an L4, so it is cheaper per decision when it is more
 than 2.2 times faster, but its fixed cost per launch is higher ($0.20 to $0.32 against $0.05 to $0.08), which is why small batches
 belong on an L4. The break-evens rest on single load measurements and one dev run per model, so treat differences under about 20%
