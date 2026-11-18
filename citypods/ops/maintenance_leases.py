@@ -9,6 +9,8 @@ lease is routed to the R2 CAS control plane rather than the B2 record store.
 from __future__ import annotations
 
 import json
+import os
+import urllib.request
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -68,6 +70,33 @@ def _active_owner(data: bytes, now: datetime) -> str | None:
     except (AttributeError, KeyError, TypeError, ValueError):
         return None
     return str(payload.get("owner") or "unknown") if expires_at > now else None
+
+
+def _owner_run_finished(owner: str) -> bool:
+    """True only when ``owner`` is a GitHub Actions run that GitHub reports as completed.
+
+    Expiry is the crash-recovery path, but a runner that dies mid-run (``The hosted runner lost
+    communication``, seen twice on 2026-11-18) never releases, and the 6 h TTL then blocks every
+    later scheduled and dispatched run for hours. A lease whose owning run is provably finished is
+    not held by anyone. Anything uncertain (no token, a non-Actions owner, an API error, a run that
+    is still running or queued) answers False, so the lease keeps failing closed.
+    """
+    parts = owner.split(":")
+    token = os.environ.get("GITHUB_TOKEN")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if len(parts) < 3 or parts[0] != "github-actions" or not parts[-1].isdigit():
+        return False
+    if not token or not repo or parts[-1] == os.environ.get("GITHUB_RUN_ID"):
+        return False
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/actions/runs/{parts[-1]}",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:  # noqa: S310 -- fixed https host
+            return json.load(response).get("status") == "completed"
+    except (OSError, ValueError):
+        return False
 
 
 def _assert_cas(storage) -> None:
@@ -218,7 +247,9 @@ def _acquire_single(
             data, etag = got
             active = _active_owner(data, now)
             if active is not None:
-                raise MaintenanceLeaseBusy(f"maintenance lease {key} is held by {active}")
+                if not _owner_run_finished(active):
+                    raise MaintenanceLeaseBusy(f"maintenance lease {key} is held by {active}")
+                print(f"[lease] {key}: taking over from finished run {active}", flush=True)
             etag_arg = {"if_match": etag}
         expires_at = now + timedelta(seconds=ttl_seconds)
         try:
