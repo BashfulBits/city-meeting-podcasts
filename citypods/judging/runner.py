@@ -11,8 +11,8 @@ subject: judgments, pending, unbuildable); candidates themselves are never writt
 or otherwise.
 
 Independence (review/49 4c) holds across all three judges: none shares a family with the entry
-or with another judge of it. A ``google`` anchor therefore judges no Google-produced entry, and
-siblings come from the non-Google slot (see ``citypods.judging.families``).
+or with another judge of it. A ``google`` anchor therefore judges no Gemini-produced entry, and
+siblings come from outside the ``google`` family (see ``citypods.judging.families``).
 """
 
 from __future__ import annotations

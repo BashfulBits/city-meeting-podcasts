@@ -25,6 +25,7 @@ from citypods.judging.backends import (
 from citypods.judging.families import (
     RULE_FAMILY,
     adjudicator_for,
+    anchor_for,
     family_of,
     sibling_candidates,
     sibling_for,
@@ -62,7 +63,16 @@ LANES["judge:sibling"] = dataclasses.replace(
         ("non_google", ("openrouter/nvidia/nemotron-3.5-super-vl:free",)),
     ),
 )
-FAMILIES = load_families()
+REPO_FAMILIES = load_families()
+# The pool and independence mechanics below are exercised with a same-family (``google``) sibling
+# slot against the Gemini anchor, which is what the two Gemma models stood in for before the
+# `gemma` family existed (config relabel, review/60 section 9.5). Mechanics only: the repository's
+# real labels are pinned by the "gemma family" tests at the end.
+FAMILIES = {
+    **REPO_FAMILIES,
+    "google/gemma-4-31b-it": "google",
+    "google/gemma-4-26b-a4b-it": "google",
+}
 GEMINI = "gemini/gemini-3.1-flash-lite"
 # The judge mechanics below were written against JEV, whose family (typesafe) no producer or
 # sibling shares; they keep that anchor so they test the mechanics alone. The repository anchor is
@@ -3000,3 +3010,60 @@ def test_the_judge_census_calls_only_episodes_with_real_work_ready():
     assert {state for (_, uid), state in states.items() if uid == "working"} == {"ready"}
     assert judge_episode_dirty(working, ctx.judging_config)
     assert not judge_episode_dirty(waiting, ctx.judging_config)
+
+
+# ---- the `gemma` family (review/60 section 9.5, maintainer decision 2026-11-17) ----------------
+
+
+def test_gemma_is_its_own_family_and_gemini_stays_google():
+    assert {m: f for m, f in REPO_FAMILIES.items() if "gemma" in m} == {
+        GEMMA_31B: "gemma",
+        GEMMA_26B: "gemma",
+    }
+    assert REPO_FAMILIES["gemini/gemini-decision-1"] == "google"
+    assert all(f == "google" for m, f in REPO_FAMILIES.items() if m.startswith("gemini/"))
+    # Only Gemini is google: nothing else in the config was moved into or out of that family.
+    assert {m for m, f in REPO_FAMILIES.items() if f == "google"} == {
+        m for m in REPO_FAMILIES if m.startswith("gemini/")
+    }
+
+
+def test_no_gemini_model_is_a_sibling_to_the_gemini_anchor():
+    sibling = LANES["judge:sibling"]
+    anchor_excluded = frozenset({"google"})
+    # The rule the config comment states: a google-family sibling is never drawn for a Gemini
+    # anchor, from any slot, for any producer.
+    for producer in (None, GEMINI, "deepseek/deepseek-v4-flash", GEMMA_31B):
+        for candidate in sibling_candidates(
+            producer, sibling, REPO_FAMILIES, allow_all_slots=True, exclude_families=anchor_excluded
+        ):
+            assert REPO_FAMILIES[candidate] != "google"
+    # Same check with a Gemini model offered as a sibling: it is refused for the Gemini anchor.
+    gemini_sibling = dataclasses.replace(
+        sibling,
+        models=("gemini/gemini-3.5-flash-lite",),
+        slots=(("a", ("gemini/gemini-3.5-flash-lite",)),),
+    )
+    assert (
+        sibling_candidates(None, gemini_sibling, REPO_FAMILIES, exclude_families=anchor_excluded)
+        == ()
+    )
+
+
+def test_a_gemma_model_may_sibling_the_gemini_anchor_and_gemini_may_anchor_gemma_entries():
+    sibling = LANES["judge:sibling"]
+    anchor_excluded = frozenset({"google"})
+    # Gemma is a different family from the Gemini anchor, so the anchor's family no longer bars it
+    # (it is still absent from the repository's dispatched sibling lane; that is a lane choice).
+    assert GEMMA_31B in sibling_candidates(
+        None, sibling, REPO_FAMILIES, exclude_families=anchor_excluded
+    )
+    # A Gemma-produced entry is now anchored by Gemini (before: Perplexity, the second anchor),
+    # while a Gemini-produced entry still is not.
+    anchors = ("gemini/gemini-decision-1", "perplexity/pplx-decider-v1.3")
+    assert anchor_for([GEMMA_31B], anchors, REPO_FAMILIES) == "gemini/gemini-decision-1"
+    assert anchor_for([GEMINI], anchors, REPO_FAMILIES) == "perplexity/pplx-decider-v1.3"
+    # A Gemma entry never gets a Gemma sibling: the producer's own family stays excluded.
+    assert GEMMA_26B not in sibling_candidates(
+        GEMMA_31B, sibling, REPO_FAMILIES, exclude_families=anchor_excluded
+    )
