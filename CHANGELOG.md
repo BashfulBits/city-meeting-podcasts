@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/60 Phase 4 decision memo (§9).** Karpo 9B FP8 on an L4 is the recommended Perplexity
+  fallback, with L4 and RTX routes, step-up points, the models not recommended and why, and the
+  firmness caveats (Claude-made chapter gold, holdout-only intervals include zero, estimated not
+  billed costs). Docs only; no production behaviour changes.
+
 - **Gemma models are family `gemma`, not `google`** (review/60 section 2, maintainer decision
   2026-11-17). `llm_families` now labels `google/gemma-4-31b-it` and `google/gemma-4-26b-a4b-it`
   `gemma`; Gemini models stay `google`, so no Gemini model can sibling the Gemini Decision anchor.
