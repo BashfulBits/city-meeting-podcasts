@@ -640,8 +640,13 @@ x 40, 29,925 tokens), with 24k x 1 and every 32k state out of memory. Two furthe
 the same chunked product, so bit-identical to the GPU-resident versions in the unit tests), plus `expandable_segments`. Resident memory falls from 16.7 to 12.9 GiB.
 Measured (state tokens x questions): 32,000 x 1 (32,192 tokens, 33 s), x 12 (33,809), x 24 (35,573), x 50 (39,395 tokens, 61 s) and 32,400 x 1 and x 50
 (39,795 tokens) all ran, at a peak of 20.4 to 20.6 GiB of 22.0 GiB, and allocated memory returned to 12.9 GiB after every request. So the L4 takes a full
-32k-token state with about 7,000 tokens of questions above it. The 32,768-token branch cap is the limit, and the 65,536 request cap is not reached by these
-runs. Requests over the caps get the engine's refusal (`too_large`). The frozen set (the longest chapter is 11,400 characters, about 3,000 tokens; tag and moment
+32k-token state with about 7,000 tokens of questions above it. The full request cap was then tested: a 32,000-token state with 215 questions (63,650 tokens, 206 s) and 225 questions (65,120 tokens, 219 s) ran, at the same
+20.4 GiB peak, and with 240 questions (67,325 tokens) the engine refused the request before computing anything ("request is 67325 tokens, limit is 65536"); the adapter
+returns `too_large` for it. Limits to document for the questions: a branch (state plus its longest question) must be at most 32,768 tokens, so a 32k state leaves
+about 700 tokens for any one question; all questions of a request together (shared state counted once) must fit in 65,536 tokens, which is about 225
+questions of about 150 tokens above a 32k state, or about 32,000 tokens of question text. Peak memory does not grow with the number of questions (the
+engine runs the branches two at a time under the 64,000-token fork budget), but time does: each branch attends to the whole 32k prefix, about 1 s per question
+at that state size, so a request near the cap takes about 3.5 minutes on an L4. Shorter states are cheaper per question. A request over either cap gets `too_large`. The frozen set (the longest chapter is 11,400 characters, about 3,000 tokens; tag and moment
 evidence is under 2,800 characters) is far below all of this.
 
 *Calibration rows* (`config/gpu_profiles.json`): `copernicus-31b-stream` (RTX) and `elephant-1` (L4 and RTX) are now **measured**. They apply to the review/60
