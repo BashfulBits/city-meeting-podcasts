@@ -1,6 +1,6 @@
 # 60 — Open-weight decision model evaluation
 
-Status: **L1 — plan approved 2026-11-17; the local screen, labeling, Phase 0 and Phase 1 (streaming loader, Karpo 12B and 9B) are done and the Phase 3 runs are in (§8, last entry); the Phase 4 memo is next.**
+Status: **L1 — plan approved 2026-11-17; the local screen, labeling, Phase 0 and Phase 1 (streaming loader, Karpo 12B and 9B) are done and the Phase 3 runs are in (§8, last entry); the Phase 4 memo is §9.**
 Depends on [`review/59`](59-deferred-decision-batches.md) (the GPU launcher in PR #2695). This
 document does not change that PR; the loader, the Karpo adapter and the evaluation each land in
 their own PR.
@@ -859,7 +859,7 @@ negatives (58 of 60 are supported). The tag labels are 11 to 17% `uncertain`, wh
 
 *How firm this is.* Holdout-only tag intervals all include zero; pooled, only Karpo 9B (both precisions) and 31B FP8 exclude zero, by
 a hair. The chapter gold is Claude's, chosen from the same 12-tag list. "Karpo is best" means "not worse than Perplexity and about 5
-points better pooled on tags", not a proven margin; about 410 more human tag labels would settle a 5-point gap.
+points better pooled on tags", not a proven margin; about 410 scored tag items in all (about 200 more than the 207 now scored) would settle a 5-point gap.
 
 **Step-up points.** A "decision" is one tag, moment or chapter tag; the dev mix is 105 tags, 18 moments and 372 chapter tags and
 averages about 500 input tokens per decision, so 100 decisions is about 50k tokens. Cost is one launch at Cloud Run list rates
@@ -880,3 +880,77 @@ the same 12B in BF16 on the RTX took 19 s. Per second the RTX costs 2.2 times an
 than 2.2 times faster, but its fixed cost per launch is higher ($0.20 to $0.32 against $0.05 to $0.08), which is why small batches
 belong on an L4. The break-evens rest on single load measurements and one dev run per model, so treat differences under about 20%
 as noise.
+
+## 9. Phase 4 decision memo (2026-11-18)
+
+Status: **recommendation for the maintainer; nothing here is deployed.** It draws only on §8 and on the committed answer files
+in PR #2728. The Phase 3 scores were re-run from those files with `results/score_all.sh` (dev, holdout and pooled) and the tag,
+chapter, moment and spend figures below match §8 to the digit shown. The step-up break-evens and per-1,000-decision costs are
+carried from §8 and were not recomputed.
+
+### 9.1 Recommendations
+
+| Role | Route | Why |
+|---|---|---|
+| **Perplexity fallback** (OpenRouter drops the route) | **Karpo 9B, FP8, Cloud Run L4** | Tags 0.748 pooled against Perplexity 0.698 (+0.050, interval [+0.001, +0.101]); chapters F1 0.80 against 0.78 on holdout; moments level (1 wrongly rejected on holdout, Perplexity 2); 10.5 GiB peak; about $0.18 per 1,000 decisions plus $0.03 load, at list rates. |
+| Cheaper tags-only fallback | elephant-1, L4 (lean) | Tags +0.047 pooled, interval [-0.011, +0.108]; 0 wrongly rejected moments on holdout; about $0.10 per 1,000 decisions. Chapter F1 0.62 (holdout), so it cannot be the chapter fallback. Same Qwen family as Perplexity: capacity, not an independent vote. |
+| **L4 route** (default for batches under about 1,100 decisions) | Karpo 9B FP8 | Cheapest place for the 9B at every size tested up to about 1,100 decisions per launch. |
+| **RTX route** | Karpo 31B FP8 (independent voice, quality first); Karpo 9B FP8 on RTX only for large or time-bound batches | 31B: tags 0.752 pooled (+0.054, [+0.004, +0.109]), chapter F1 0.78 holdout with recall 0.98 but precision 0.64; 34.1 GiB. |
+| Independent (Gemma-family) voice that must stay on an L4 | Karpo 12B FP8 | Tags 0.687 pooled (-0.011 against Perplexity, level), chapter F1 0.75 holdout; 13.2 GiB. The only Gemma-based model that fits an L4. |
+
+Perplexity itself stays the production route while it exists. Gemini decision-1 (tags 0.698, chapter F1 0.60 holdout) is level
+with Perplexity on tags and weaker on chapters, so it is not a better fallback either.
+
+**Independence caveat.** Karpo 12B and 31B agree with Perplexity on 88% and 85 to 86% of tags (Gemini: 88%). The Gemma lineage
+is a different voice in name more than in answers. Under the maintainer's 2026-11-17 decision it counts as a separate family;
+this memo does not argue with that, only notes that agreement rates do not yet show much extra independence.
+
+### 9.2 Step-up points (from §8, list rates, unreconciled)
+
+- **FP8 to BF16: do not.** Karpo 9B BF16 is cheaper only above about 620 decisions per launch, by about $0.02 at 1,000, and gains
+  +0.015 tag accuracy (0.763 against 0.748 pooled), inside the noise. At 31B the tag accuracy is the same (0.752 FP8, 0.747
+  BF16) at half the memory. FP8 is the default.
+- **L4 to RTX for the 9B:** faster above about 90 decisions per launch, cheaper above about 1,130 (an upper bound; the RTX
+  run probably carried first-shape autotuning). Below that, stay on the L4.
+- **L4 to RTX for the 12B (FP8 to BF16):** the RTX is faster above about 650 decisions per launch and cheaper only above about
+  2,200; below 650 it is both slower and dearer. Not worth it unless the 12B is chosen for the independent voice.
+- **Step up to the 31B** when the independent Gemma voice is wanted and quality matters more than the L4 price; it does not fit an L4.
+- Treat differences under about 20% as noise; the break-evens rest on single load measurements and one dev run per model.
+
+### 9.3 Not recommended
+
+- **GLiDE 9B:** as accurate on tags (0.749 pooled) and well calibrated (ECE 0.10), but 2,024 input tokens per chapter tag
+  against about 423 for Karpo 9B grouped (no one-pass multi-question mode), and chapter F1 0.69. Tags-only at best.
+- **Copernicus-31B: dropped by the maintainer (2026-11-18); no run recommended.** It is also not recommended on the results
+  (kept here as a negative result): tags 0.742 pooled (+0.044, [-0.019, +0.107]) and the best moment lane (0 wrongly rejected),
+  but chapter F1 0.64 on holdout and about 4 times the cost per decision of Karpo 31B on an RTX (69 GiB peak).
+- **Karpo 12B as the fallback:** level with Perplexity on tags (-0.011) and the most wrongly rejected moments of the large
+  models (3 holdout, 4 to 5 dev).
+- **Liquid d1-2B and d1-3B, MiniCPM5-2B-Jev:** pass the tag gate (102 to 104% of Perplexity on dev) but wrongly reject 10, 15 and 6
+  of 40 correct holdout quotes. **ArseneLupinstral:** fails the gate (dev accuracy 0.560, 85% of Perplexity; not run on holdout).
+- **GLiDE 27B:** not run (weights not staged; a 55 GB download and a licence and code review would come first). No evidence either way.
+
+### 9.4 How firm this is
+
+- **Holdout alone, every tag interval includes zero.** Dev showed 8 to 10 point leads; holdout 2 to 6. Pooled, only Karpo 9B (both
+  precisions: [+0.001, +0.101] and [+0.017, +0.115]) and Karpo 31B FP8 ([+0.004, +0.109]) exclude zero, by a hair. Read "Karpo is
+  best" as "not worse than Perplexity and about 5 points better pooled on tags", not a proven margin. The models are not separable from
+  each other. A 5-point gap needs about 410 scored tag items in all and a 3-point gap about 1,100 (this set has 207), so roughly 200 and 900 more
+  scored items, plus extra labels to cover the 11 to 17% that come back `uncertain`.
+- **Chapter gold is Claude's, not human**, chosen from the same 12-tag list the models see, so grouped requests may mirror the
+  reference's choice process. Karpo's F1 advantage (0.80 against 0.78 for Perplexity on holdout; 0.67 to 0.69 against 0.61 on
+  dev) should not be read as quality until human chapter labels exist. 34 of the 60 moment labels are also Claude-made, and 58 of
+  60 moments are supported, so the moment lane cannot separate judges.
+- **Tag gold excludes `uncertain` items** (17% of dev, 11% of holdout); models were not scored on them.
+- **Costs are estimates, not billed.** They are Cloud Run list rates applied to recorded execution times: 23 executions, $8.51 in
+  `2026-11-18-cloud-costs.json`, plus four image builds under $0.3 (Phase 3 about $8.8; the whole programme is well past $10 of the
+  $20 cap, unreconciled). Perplexity (`:free`) and the Gemini API key cost nothing, so there is no like-for-like price for the
+  fallback decision until the route is actually lost.
+- **Speed and break-evens** come from one dev run per model with warm-up effects (one implausible 9B-versus-12B RTX gap is called out in §8).
+
+### 9.5 Follow-ups
+
+1. **`gemma` family relabel** (code PR; the maintainer's 2026-11-17 decision): make Gemma-based models family `gemma` in
+   `config/site_config.yml` without weakening the rule that no Google model is a sibling of the Gemini Decision anchor.
+2. More blind human tag labels, then human labels for the 12-tag chapter lane, then moment negatives.
+3. Wire Karpo 9B FP8 into the dispatch fallback path only when Perplexity's route actually fails; this memo does not change production.
