@@ -9,6 +9,7 @@ defusedxml>=0.7
 pypdf>=5.0
 beautifulsoup4>=4.12
 torch>=2.14.0
+torchvision>=0.29.0
 triton>=3.8.0
 transformers>=5.17.0
 tokenizers>=0.23.2
