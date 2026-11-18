@@ -859,7 +859,7 @@ negatives (58 of 60 are supported). The tag labels are 11 to 17% `uncertain`, wh
 
 *How firm this is.* Holdout-only tag intervals all include zero; pooled, only Karpo 9B (both precisions) and 31B FP8 exclude zero, by
 a hair. The chapter gold is Claude's, chosen from the same 12-tag list. "Karpo is best" means "not worse than Perplexity and about 5
-points better pooled on tags", not a proven margin; about 410 more human tag labels would settle a 5-point gap.
+points better pooled on tags", not a proven margin; about 410 scored tag items in all (about 200 more than the 207 now scored) would settle a 5-point gap.
 
 **Step-up points.** A "decision" is one tag, moment or chapter tag; the dev mix is 105 tags, 18 moments and 372 chapter tags and
 averages about 500 input tokens per decision, so 100 decisions is about 50k tokens. Cost is one launch at Cloud Run list rates
@@ -912,8 +912,8 @@ this memo does not argue with that, only notes that agreement rates do not yet s
   BF16) at half the memory. FP8 is the default.
 - **L4 to RTX for the 9B:** faster above about 90 decisions per launch, cheaper above about 1,130 (an upper bound; the RTX
   run probably carried first-shape autotuning). Below that, stay on the L4.
-- **L4 to RTX for the 12B (FP8 to BF16):** speed only under about 2,200 decisions, also cheaper above. Not worth it unless
-  the 12B is chosen for the independent voice.
+- **L4 to RTX for the 12B (FP8 to BF16):** the RTX is faster above about 650 decisions per launch and cheaper only above about
+  2,200; below 650 it is both slower and dearer. Not worth it unless the 12B is chosen for the independent voice.
 - **Step up to the 31B** when the independent Gemma voice is wanted and quality matters more than the L4 price; it does not fit an L4.
 - Treat differences under about 20% as noise; the break-evens rest on single load measurements and one dev run per model.
 
@@ -934,7 +934,8 @@ this memo does not argue with that, only notes that agreement rates do not yet s
 - **Holdout alone, every tag interval includes zero.** Dev showed 8 to 10 point leads; holdout 2 to 6. Pooled, only Karpo 9B (both
   precisions: [+0.001, +0.101] and [+0.017, +0.115]) and Karpo 31B FP8 ([+0.004, +0.109]) exclude zero, by a hair. Read "Karpo is
   best" as "not worse than Perplexity and about 5 points better pooled on tags", not a proven margin. The models are not separable from
-  each other. About 410 more human tag labels would settle a 5-point gap (a 3-point gap needs about 1,100).
+  each other. A 5-point gap needs about 410 scored tag items in all and a 3-point gap about 1,100 (this set has 207), so roughly 200 and 900 more
+  scored items, plus extra labels to cover the 11 to 17% that come back `uncertain`.
 - **Chapter gold is Claude's, not human**, chosen from the same 12-tag list the models see, so grouped requests may mirror the
   reference's choice process. Karpo's F1 advantage (0.80 against 0.78 for Perplexity on holdout; 0.67 to 0.69 against 0.61 on
   dev) should not be read as quality until human chapter labels exist. 34 of the 60 moment labels are also Claude-made, and 58 of
