@@ -466,12 +466,57 @@ the Phase 0 chapters, not padded-budget probe numbers, and the token budget is s
   every weight and readout file; the small text files have no independent digest and are marked `unreferenced` in the manifest.
 - The manifest trust root must live somewhere reviewed; `scripts/derive_karpo_manifest.py` only derives it.
 - The runtime service account may create objects only under `attempts/`, so probe outputs and manifests live there.
-- Not done in this phase: the elephant-1 and Copernicus-31B adapters, and a Karpo 4B or 31B load. `load_karpo` accepts the 4B and
-  both 9B revisions by pin, but only the 12B and the `0fb7…` 9B were measured.
-- Cost: about $1 at list rates for this phase (eight L4 executions, six CPU derive runs, four image builds), not yet reconciled
-  against billing; about $2.5 in all with Phase 0, against the $20 cap.
-- Left in place, not deleted: jobs `r60-karpo-derive`, `r60-karpo-stream-l4`, `r60-karpo-ref-l4`, images `r60-karpo-stream-v1..v4`,
-  and the manifests and results under `attempts/r60/`.
+- Scope added after the first pass is in the next subsection (31B, 4B, 9B in 16-bit, Copernicus-31B and elephant-1).
+
+**Phase 1, second batch (same PR).** Pins now carry the exact weight bytes the publisher lists for each revision, which
+replaces the 40 GiB manifest cap (the 31B is 58.3 GiB); the derive script refuses any weight without a publisher SHA-256. 32 MiB
+slices, 16 workers; every row loads straight from the bucket copy of its own region.
+
+| Model, GPU | Format | Load, total | Throughput | GPU weights | GPU peak (after requests) | Host RSS at load | Tensors identical to the model's own path |
+|---|---|---:|---:|---:|---:|---:|---|
+| Karpo 4B, L4 | FP8 | 55.6 s | 337 MB/s | 5.14 GiB | 5.80 GiB | 1.60 GiB | 924 of 924 (Karpo `quantize` after a BF16 load) |
+| Karpo 9B, L4 | BF16 direct copy | 69.1 s | 395 MB/s | 15.65 GiB | 16.34 GiB | 1.60 GiB | 760 of 760 (`Decider.from_pretrained`) |
+| elephant-1, L4 | BF16, weights only | 66.4 s | 402 MB/s | 17.54 GiB | n/a | 1.42 GiB | 760 of 760 (`from_pretrained`, with `lm_head.weight` read from the file) |
+| Karpo 31B, RTX PRO 6000 | FP8 | 235.8 s | 299 MB/s | 31.11 GiB | 32.90 GiB | 1.92 GiB | 1,599 of 1,599 (Karpo `quantize` after a BF16 load) |
+| Karpo 31B, RTX PRO 6000 | BF16 direct copy | 173.4 s | 414 MB/s | 58.28 GiB | 60.11 GiB | 1.80 GiB | 1,189 of 1,189 |
+| Copernicus-31B, RTX PRO 6000 | BF16, weights only | 356.5 s | 185 MB/s | 58.27 GiB | n/a | 1.42 GiB | 1,188 of 1,188 (`from_pretrained`) |
+
+The reference paths cost far more, with one caveat: for the 4B, 9B and 31B the probe hashed the BF16 tensors inside the timed
+reference load (the probe now times load, digest and quantize separately), so those reference times (222.9 s, 225.0 s and 671.7 s) include one
+host digest pass and are upper bounds. The clean ones: Copernicus through `from_pretrained` took 579.3 s with a 59.1 GiB host RSS, against
+356.5 s and 1.4 GiB for streaming, and elephant-1 took 132.2 s with a 16.5 GiB host RSS against 66.4 s and 1.4 GiB. The 8 MiB
+9B and 12B rows in the table above are unchanged. The slower Copernicus load ran at the same time as the 31B FP8 load on the same
+network; it was not repeated alone. Answers on the same 8 chapters and 38 tags (weights identical in each pair): the 31B FP8 stream
+matched the reference exactly (304 of 304 probabilities), the 4B FP8 stream differed by a mean 0.0009 (maximum 0.051, no flip at 0.5),
+and the 9B BF16 stream by a mean 0.0005 (maximum 0.013, no flip), the same run-to-run spread as in the 12B rows.
+
+*Audits (static, before anything ran; nothing from either repository was executed).*
+- **elephant-1** (`baselabs/elephant-1` at `b3f8a93…`, MIT, Qwen3.5-9B full fine-tune): `engine.py` read in full and clean; `serve.patch`
+  and `setup.sh` grepped with no `exec`, `eval`, `subprocess`, pickle or network use (`torch.load` uses `weights_only=True`, `importlib`
+  only resolves the model module). Its runtime is OneJev `qev` at a pinned commit plus that 41 KB patch and a different readout
+  (`slot_lm`), not Karpo's: a decision adapter needs the OneJev repository (about 94 MB, Apache-2.0) audited too, which was not done.
+- **Copernicus-31B** (`Poindexter-Labs/Copernicus-31B` at `ae28efb0…`, Apache-2.0, Gemma 4 merge): `copernicus_layout.py` clean;
+  `copernicus_server.py` (62 KB) uses `requests` only to reach an optional SGLang backend or fetch image URLs, with no `exec`, `eval`,
+  `subprocess` or pickle. Only its weights are streamed; wiring its server to the loader was not done.
+
+*Calibration rows added* (`config/gpu_profiles.json`): `karpo-4b-fp8`, `karpo-9b-stream`, `karpo-31b-fp8` and `karpo-31b-bf16` are
+measured; `copernicus-31b-stream` and `elephant-1` are **estimated** (load and weights measured, no decision runtime wired), so the
+planner will not launch them. All p90 load tails are 1.25 times a single run.
+
+*Not done.* A decision adapter for elephant-1 (needs the OneJev audit) and for Copernicus-31B (its server loads with
+`from_pretrained`); Phase 3 can still run both through their authors' own runtimes at their FUSE load times, which this loader does not
+change. The probe cannot show who wrote the manifest it streams (the runtime identity may create anything under `attempts/`), so the
+results record the manifest key and SHA-256 and no provenance beyond the derive job's own check; a reviewed manifest store is still the
+trust root for a production use. The 31B BF16 stream first failed once ("configured memory limit was reached", about 30 minutes, no logs) and an identical retry
+succeeded; the cause is unknown. The production-lane `torchvision` pin (`constraints/decision-gpu.in`) is still a follow-up for
+the Phase 3 worker image.
+- Cost: about $1 for the first batch and an estimated $4 to $5 for this batch at list rates (RTX PRO 6000 runs at about $3.2 an hour:
+  six RTX executions including the failed one and two FUSE reference loads of 10 to 16 minutes each; six L4 executions; staging by Cloud
+  Build), not reconciled against billing. The programme total is therefore near $8 against the $20 cap.
+- Left in place, not deleted: jobs `r60-karpo-derive`, `r60-karpo-derive2`, `r60-karpo-derive-central`, `r60-karpo-stream-l4`,
+  `r60-karpo-ref-l4`, `r60-karpo-stream-rtx`, `r60-karpo-ref-rtx`; images `r60-karpo-stream-v1..v5`; the staged 31B and elephant-1 copies in the
+  model buckets (`hf/MachinePulseAI__karpo-decision-31B/…` in us-central1, `hf/baselabs__elephant-1/…` in us-east4); and the manifests and
+  results under `attempts/r60/`.
 
 ### Result 2026-11-18: Phase 2 dataset frozen (`evals/open-weight-decision/`)
 
