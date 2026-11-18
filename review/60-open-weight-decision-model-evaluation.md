@@ -637,7 +637,7 @@ copy of that cache; a branch (state plus question) may be 32,768 tokens and a re
 the lean configuration (state tokens x questions): 16,000 x 1, x 12 and x 40 (21,925 tokens) ran; 24,000 x 12 (25,809 tokens) and 24,000 x 40 (29,925 tokens) ran; 24,000 x 1 and every
 32,000-token state ran out of memory (the fla gated-delta kernel at 24k, the embedding at 32k with 21.2 GiB already allocated). So the L4 handles about 30k
 tokens in total, not 32k for one state and not 64k. Anything larger needs the RTX, where the unmodified engine fits. The frozen set is far below this
-(its largest chapters are a few thousand tokens), so the L4 lean configuration covers it; the adapters answer an over-length request with `too_large`.
+(the longest chapter is 11,400 characters, about 3,000 tokens; tag and moment evidence is under 2,800 characters), so the L4 lean configuration covers it; the adapters answer an over-length request with `too_large`.
 
 *Calibration rows* (`config/gpu_profiles.json`): `copernicus-31b-stream` (RTX) and `elephant-1` (L4 and RTX) are now **measured**. They apply to the review/60
 evaluation worker only; the production decision worker does not contain these runtimes.
