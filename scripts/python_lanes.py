@@ -76,6 +76,10 @@ def lanes() -> tuple[list[dict], list[str]]:
             for name in sorted(constraint_files - LANES.keys()):
                 problems.append(f"{where}: constraints/{name}.txt is not a lane in lane_inputs.py")
             constraint_files &= LANES.keys()
+            if "decision-gpu" in constraint_files and version_files != {ASR_VERSION_FILE}:
+                problems.append(
+                    f"{where}: installs constraints/decision-gpu.txt without {ASR_VERSION_FILE}"
+                )
             if "asr" in constraint_files and version_files != {ASR_VERSION_FILE}:
                 problems.append(f"{where}: installs constraints/asr.txt without {ASR_VERSION_FILE}")
             for vf in version_files:
