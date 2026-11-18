@@ -59,9 +59,7 @@ MODELS = {
         "extra": "lm_head.weight",
     },
 }
-MODEL_BUCKET = os.environ.get(
-    "CITYPODS_MODEL_BUCKET", "example-model-bucket"
-)
+MODEL_BUCKET = os.environ["CITYPODS_MODEL_BUCKET"]  # required: no default bucket is baked in
 BATCH_BUCKET = os.environ["CITYPODS_BATCH_BUCKET"]
 GIB = 2**30
 

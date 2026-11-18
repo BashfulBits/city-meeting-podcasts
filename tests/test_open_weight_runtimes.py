@@ -307,3 +307,11 @@ def test_cpu_embedding_and_offloaded_head_equal_the_gpu_resident_ones(need_torch
     offloaded = rt.lean_head_class(torch)(weight, offload=True)
     assert torch.equal(offloaded(hidden), resident(hidden))
     assert not list(offloaded.parameters())
+
+
+def test_dockerfile_has_no_default_base_image_or_project_identifier():
+    text = (
+        Path(__file__).parents[1] / "workers/decision-batch/open_weight_runtimes.Dockerfile"
+    ).read_text()
+    assert "\nARG BASE_IMAGE\n" in text
+    assert "pkg" ".dev" not in text and "ARG BASE_IMAGE=" not in text

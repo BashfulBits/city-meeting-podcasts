@@ -1,7 +1,8 @@
 # review/60 Phase 1 follow-up image: the elephant-1 (OneJev qev) and Copernicus-31B author runtimes
 # as pinned, read-only source next to this repo's adapters (citypods.judging.open_weight_runtimes).
 #
-# BASE_IMAGE is the Phase 3 evaluation base (the decision worker image plus the audited Karpo and
+# BASE_IMAGE is a required build argument, with no default (--build-arg BASE_IMAGE=<image>@sha256:<digest>).
+# It is the Phase 3 evaluation base (the decision worker image plus the audited Karpo and
 # GLiDE sources, torchvision), pinned by digest. It already has the compiled decision-gpu stack
 # (transformers, torch, pydantic, requests, fla) and HF_HUB_OFFLINE=1, so nothing is pip-installed
 # here and the author runtimes never reach the network at run time. The build downloads each
@@ -11,7 +12,7 @@
 #   cp -R citypods scripts <ctx>/ && cp workers/decision-batch/runtime_parity.py <ctx>/
 #   citypods/judging/open_weight_eval.py   from the Phase 3 branch (request building)
 #   manifest.json                          evals/open-weight-decision/manifest.json (inputs only)
-ARG BASE_IMAGE=example-registry/glide-worker@sha256:5f7ce2373bb7aeff6c2c19edb691d4162b0295f8d6a5d2173357866952ac8a90
+ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 # OneJev qev at 81ce62f, decision-index at f5a6e4f (engine.py's base class), the elephant-1 patch
