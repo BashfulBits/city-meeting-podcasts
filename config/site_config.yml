@@ -228,11 +228,13 @@ llm_lanes:
     # meetings. It replaced JEV (typesafe/jev-1.13), which BeatAPI retired from its free tier on
     # 2026-11-05; JEV's existing judgments stay as history under their own model identity. TPM
     # binds at about one 40k-token packet a minute per key, far above this lane's demand.
-    # Gemini is `google`: the judge stack gives no anchor to a Google-produced entry and draws
-    # siblings from the non-Google slot when the anchor is Google (citypods/judging/families.py).
+    # Gemini is `google`: the judge stack gives no anchor to a Gemini-produced entry and draws
+    # siblings from outside the `google` family when the anchor is Gemini (citypods/judging/
+    # families.py). Gemma is its own family (`gemma`), so a Gemma-produced entry may be anchored
+    # by Gemini and a Gemma model is not excluded as a sibling by the anchor's family.
     # Anchors are tried in lane order per entry (review/58 12.9): Gemini judges every entry it is
     # independent of; Perplexity Decider V1.3 (family qwen, OpenRouter /api/alpha/decisions)
-    # is the second anchor for the Google-produced entries. Enabled 2026-11-14 (owner decision) once
+    # is the second anchor for the Gemini-produced entries. Enabled 2026-11-14 (owner decision) once
     # the `custom-openrouter-api` AI Gateway provider (base https://openrouter.ai/api) existed.
     models: ["gemini/gemini-decision-1", "perplexity/pplx-decider-v1.3"]
     dispatch_shape: per_model
@@ -243,9 +245,10 @@ llm_lanes:
     telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
     # Slots are tried in sorted name order. Nemotron (``primary``) judges every entry it is
     # independent of; Qwen3.8 (``secondary``, family qwen) judges only what Nemotron cannot: the
-    # entries Nemotron produced (review/58 12.6). With the Gemini Decision anchor no Google model
-    # may be a sibling, so Gemma 4 31B was removed (owner decision, 2026-11-13: 4% of its sibling
-    # calls succeeded on 2026-11-12/13). Its recorded judgments stay under its own identity.
+    # entries Nemotron produced (review/58 12.6). With the Gemini Decision anchor no `google`-family
+    # model may be a sibling, so Gemma 4 31B was removed (owner decision, 2026-11-13: 4% of its
+    # sibling calls succeeded on 2026-11-12/13). Gemma is now family `gemma`, so the family rule no
+    # longer bars it; it stays out of this lane for its measured success rate, not for its family. Its recorded judgments stay under its own identity.
     models:
       - "openrouter/nvidia/nemotron-3.5-super-vl:free"
       - "qwen/qwen3.8-27b"
@@ -299,8 +302,9 @@ llm_lanes:
 # use the two lower-quota long-context Gemini routes; the stage filters this allowlist by family.
 # Model families for judge independence (review/49 section 4c, review/53): a judge or adjudicator
 # never shares a family with the entry it judges, so every model in every lane (active, backup or
-# eligible) must have a family; the lane compiler fails otherwise. Gemini and Gemma are both
-# `google`. BeatAPI's GPT ids report `usage_source: anthropic`, so their family is unverified.
+# eligible) must have a family; the lane compiler fails otherwise. Gemini models are `google`;
+# Gemma-based models are `gemma`, a separate family (maintainer decision 2026-11-17, review/60 2).
+# BeatAPI's GPT ids report `usage_source: anthropic`, so their family is unverified.
 llm_families:
   "typesafe/jev-1.13": typesafe
   "gemini/gemini-3.1-flash-lite": google
@@ -310,8 +314,8 @@ llm_families:
   "gemini/gemini-3.7-flash": google
   "gemini/gemini-3.8-flash": google
   "gemini/gemini-decision-1": google
-  "google/gemma-4-26b-a4b-it": google
-  "google/gemma-4-31b-it": google
+  "google/gemma-4-26b-a4b-it": gemma
+  "google/gemma-4-31b-it": gemma
   "deepseek/deepseek-v4-flash": deepseek
   "deepseek/deepseek-v4.1-flash": deepseek
   "deepseek/deepseek-v4-pro": deepseek
