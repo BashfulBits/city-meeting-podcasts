@@ -1224,6 +1224,28 @@ def test_structural_submission_fence_outlives_audit_ttl_until_recipe_completes()
     assert llm_deferred.prune_expired_failure_markers(storage, now=later) == 1
 
 
+def test_tag_quota_exhaustion_preserves_retry_budget_and_fences_recipe():
+    from citypods.compute.llm import LLMDispatchTerminalError
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="quota", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+    error = LLMDispatchTerminalError("quota", terminal_reason="tag_quota_recovery_exhausted")
+    assert not error.structural
+    assert (
+        discard_terminal_failure(
+            storage, snapshot_deferred_handles(storage, [handle]), handle, error, now=NOW
+        )
+        == 0
+    )
+    marker = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert marker["status"] == "quota_blocked"
+    assert marker["failure_count"] == 0
+    assert not terminal_failure_retry_allowed(storage, handle.recipe_hash)
+    later = NOW + timedelta(days=DEFAULT_FAILURE_MARKER_TTL_DAYS + 1)
+    assert llm_deferred.prune_expired_failure_markers(storage, now=later) == 0
+
+
 def test_pending_audit_rotates_without_route_or_terminal_feed_dependency():
     storage = MemStorage()
     handles = [
@@ -1421,3 +1443,48 @@ def test_missing_capsule_version_stays_legacy_across_rewrites():
     assert llm_deferred.needs_moments_replan(legacy)
     write_deferred(storage, handle.recipe_hash, legacy)
     assert look_up_deferred(storage, handle.recipe_hash).deferred_request.metadata_version == 0
+
+
+def test_repeated_terminal_observation_of_same_worker_job_counts_once():
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="same-failure", backend="llm-dispatch-v2", ref="j1")
+    for _ in range(3):
+        write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+        snapshot = snapshot_deferred_handles(storage, [handle])
+        assert (
+            discard_terminal_failure(storage, snapshot, handle, RuntimeError("failed"), now=NOW)
+            == 1
+        )
+    marker = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert marker["status"] == "retryable"
+    assert marker["last_failed_ref"] == "j1"
+
+
+def test_out_of_order_terminal_replay_does_not_count_a_failed_job_twice():
+    storage = MemStorage()
+    for ref, expected in (("j1", 1), ("j2", 2), ("j1", 2)):
+        handle = JobHandle(
+            task="tag", recipe_hash="out-of-order", backend="llm-dispatch-v2", ref=ref
+        )
+        write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+        snapshot = snapshot_deferred_handles(storage, [handle])
+        assert (
+            discard_terminal_failure(storage, snapshot, handle, RuntimeError("failed"), now=NOW)
+            == expected
+        )
+    marker = _read_json(storage, deferred_failure_key("out-of-order"))
+    assert marker["failed_refs"] == ["j1", "j2"]
+
+
+def test_terminal_failure_marker_preserves_safe_worker_failure_class():
+    from citypods.compute.llm import LLMDispatchTerminalError
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="failure-class", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+    snapshot = snapshot_deferred_handles(storage, [handle])
+    error = LLMDispatchTerminalError("failed", terminal_reason="provider_server_error")
+    discard_terminal_failure(storage, snapshot, handle, error, now=NOW)
+    marker = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert marker["failure_class"] == "server_error"
+    assert error.structural is False

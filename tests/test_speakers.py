@@ -1137,7 +1137,8 @@ def _identity_stage_case(tmp_path):
         guid="g",
         uid="uid-ep",
         title="M",
-        published=datetime(2026, 5, 20, tzinfo=UTC),
+        # This fixture represents current membership; a fixed date eventually ages it out.
+        published=datetime.now(UTC),
         video_url="https://src/x.m3u8",
         media_kind="hls",
         body="City Council",

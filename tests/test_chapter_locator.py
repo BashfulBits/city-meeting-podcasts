@@ -23,6 +23,7 @@ from citypods.chapter_locator import (
     NEMOTRON_CONTEXT_TOKENS,
     NEMOTRON_LOCATOR_MODEL,
     PRODUCTION_LOCATOR_MODEL,
+    DuplicateLocatorUnitError,
     LocatorAgendaItem,
     LocatorInputOverCapError,
     LocatorUnit,
@@ -36,6 +37,7 @@ from citypods.chapter_locator import (
     select_locator_models,
     select_production_locator_models,
     validate_locator_response,
+    validate_locator_response_partial,
 )
 from citypods.compute.llm_lanes import lane_for
 from citypods.compute.structured import response_model
@@ -487,3 +489,62 @@ def test_minimax_route_shapes_the_locator_contract_as_json_schema():
         "type": "json_schema",
         "json_schema": {"name": contract.__name__, "schema": contract.model_json_schema()},
     }
+
+
+def _anchor(index: int, unit_id: str, quote: str = "quote here") -> dict:
+    return {
+        "agenda_item_index": index,
+        "unit_id": unit_id,
+        "transition_quote": quote,
+        "confidence": 0.9,
+        "rationale": "because",
+    }
+
+
+_THREE_UNITS = (
+    b"WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nCall to order\n\n"
+    b"00:00:10.000 --> 00:00:15.000\nItem two\n\n00:00:20.000 --> 00:00:25.000\nItem three\n"
+)
+
+
+def test_strict_validation_raises_a_typed_error_naming_the_collision():
+    units = locator_units_from_vtt(_THREE_UNITS)
+    content = json.dumps({"anchors": [_anchor(0, "u00001"), _anchor(1, "u00001")]})
+
+    with pytest.raises(DuplicateLocatorUnitError, match="duplicate locator unit: u00001") as info:
+        validate_locator_response(content, agenda_item_count=3, units=units)
+
+    assert info.value.unit_id == "u00001"
+    assert info.value.agenda_item_indices == (0, 1)
+
+
+def test_partial_validation_sets_colliding_items_aside_and_keeps_the_rest():
+    units = locator_units_from_vtt(_THREE_UNITS)
+    content = json.dumps(
+        {"anchors": [_anchor(0, "u00001"), _anchor(1, "u00001"), _anchor(2, "u00003")]}
+    )
+
+    result = validate_locator_response_partial(content, agenda_item_count=3, units=units)
+
+    assert [anchor.agenda_item_index for anchor in result.anchors] == [2]
+    assert len(result.conflicts) == 1
+    assert result.conflicts[0].unit.id == "u00001"
+    assert result.conflicts[0].agenda_item_indices == (0, 1)
+
+
+def test_partial_validation_without_collisions_matches_strict():
+    units = locator_units_from_vtt(_THREE_UNITS)
+    content = json.dumps({"anchors": [_anchor(0, "u00001"), _anchor(2, "u00003")]})
+
+    partial = validate_locator_response_partial(content, agenda_item_count=3, units=units)
+
+    assert partial.conflicts == ()
+    assert partial.anchors == validate_locator_response(content, agenda_item_count=3, units=units)
+
+
+def test_partial_validation_still_rejects_other_defects():
+    units = locator_units_from_vtt(_THREE_UNITS)
+    content = json.dumps({"anchors": [_anchor(0, "u00001"), _anchor(0, "u00003")]})
+
+    with pytest.raises(ValueError, match="duplicate agenda item index"):
+        validate_locator_response_partial(content, agenda_item_count=3, units=units)

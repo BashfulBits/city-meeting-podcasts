@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "Task to clear ('tag', 'agenda-item-extract', 'agenda-chapter-locate', 'all')"
+        description: "Task ('tag', 'agenda-item-extract', 'agenda-chapter-locate', 'moment-extraction', 'all')"
         required: false
         type: string
         default: "tag"
@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: "7"
+      last_error_contains:
+        description: "Only markers whose last_error contains this text (clear by cause; blank = any)"
+        required: false
+        type: string
+        default: ""
       recipe_hash:
         description: "Clear only this exact recipe hash (optional; blank = all matching)"
         required: false
@@ -45,7 +50,7 @@ permissions:
 
 jobs:
   clear:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       PYTHONUNBUFFERED: "1"
@@ -78,6 +83,7 @@ jobs:
           STATUS_INPUT: ${{ inputs.status }}
           DAYS_INPUT: ${{ inputs.days }}
           RECIPE_HASH_INPUT: ${{ inputs.recipe_hash }}
+          CAUSE_INPUT: ${{ inputs.last_error_contains }}
           APPLY_INPUT: ${{ inputs.apply }}
           GIT_REF: ${{ github.ref }}
         run: |
@@ -86,6 +92,7 @@ jobs:
           if [ -n "$STATUS_INPUT" ]; then ARGS+=(--status "$STATUS_INPUT"); fi
           if [ -n "$DAYS_INPUT" ]; then ARGS+=(--days "$DAYS_INPUT"); fi
           if [ -n "$RECIPE_HASH_INPUT" ]; then ARGS+=(--recipe-hash "$RECIPE_HASH_INPUT"); fi
+          if [ -n "$CAUSE_INPUT" ]; then ARGS+=(--last-error-contains "$CAUSE_INPUT"); fi
           if [ "$APPLY_INPUT" = "true" ]; then
             if [ "$GIT_REF" != "refs/heads/main" ]; then
               echo "::error::apply can only mutate state from main"

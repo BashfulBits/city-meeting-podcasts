@@ -17,10 +17,11 @@ from citypods.chapter_locator import (
     LOCATOR_ROUTING_VERSION,
     PRODUCTION_LOCATOR_MODEL,
     PRODUCTION_LOCATOR_MODELS,
+    DuplicateLocatorUnitError,
     LocatorAgendaItem,
     LocatorUnit,
     build_production_locator_request,
-    validate_locator_response,
+    validate_locator_response_partial,
 )
 from citypods.chapter_titles import (
     AGENDA_BACKUP_AFTER_ATTEMPTS,
@@ -80,6 +81,41 @@ def _locator_cues(display_ref: str | None, evidence_text: str) -> tuple[str, ...
 # The share of a response's items that may be dropped as unverifiable before the whole response
 # is treated as bad output and retried (2026-09-24 eval: 2-7% per affected response).
 MAX_DROPPED_AGENDA_ITEM_SHARE = 0.10
+
+
+class AgendaCitationError(ValueError):
+    """A response whose items mostly cite text the agenda does not contain.
+
+    Carries every dropped item's reason so the one corrective retry can name what went wrong, not
+    just the first reason. ``str()`` is still that first reason, as before.
+    """
+
+    def __init__(self, reasons: Sequence[str], total_items: int) -> None:
+        self.reasons = tuple(reasons)
+        self.total_items = total_items
+        super().__init__(self.reasons[0])
+
+
+def agenda_citation_retry_hint(error: AgendaCitationError, *, line_count: int) -> str:
+    """The single corrective message for an agenda extraction whose citations failed.
+
+    Names the failure classes and the real line bounds. The replacement job carries this text in
+    its recipe, so it is a new lineage rather than another draw from the failed one.
+    """
+    counts: dict[str, int] = {}
+    for reason in error.reasons:
+        counts[reason] = counts.get(reason, 0) + 1
+    problems = "; ".join(f"{reason} (x{count})" for reason, count in sorted(counts.items()))
+    return (
+        f"Your previous answer was rejected: {len(error.reasons)} of {error.total_items} items "
+        f"failed source verification: {problems}. The source has {line_count} lines; "
+        f"line_start and line_end must lie within 1 to {line_count}. Copy each evidence_quote "
+        "exactly, character for character, from the lines you cite, and cite only the lines "
+        "that contain it. Omit any item you cannot quote verbatim from the source; fewer "
+        "verified items is correct. Return the complete corrected JSON object."
+    )
+
+
 _DUPLICATE_EVIDENCE_REASON = "duplicate agenda item source evidence"
 
 
@@ -104,6 +140,7 @@ def build_agenda_job(
     agenda_source_hash: str,
     candidate_hints: Sequence[Mapping[str, object]] = (),
     pipeline_version: str = "",
+    retry_hint: str | None = None,
 ) -> InferenceJob:
     """``pipeline_version`` should be ``stages.CHAPTER_AGENDA_PIPELINE_VERSION`` in production --
     folded into the recipe hash so a pipeline-version bump (a validation/post-processing behavior
@@ -123,13 +160,19 @@ def build_agenda_job(
     }
     if candidate_hints:
         recipe_parts["candidate_hints"] = [dict(h) for h in candidate_hints]
+    messages = list(request.messages)
+    if retry_hint:
+        # Part of the recipe: the corrected request is a new lineage, so it is neither the failed
+        # recipe's cached answer nor gated by that recipe's failure marker.
+        recipe_parts["retry_hint"] = retry_hint
+        messages.append({"role": "user", "content": retry_hint})
     recipe = recipe_hash(**recipe_parts)
     ensure_agenda_item_extractor_contract()
     return InferenceJob(
         task="agenda-item-extract",
         recipe_hash=recipe,
         inputs={
-            "messages": list(request.messages),
+            "messages": messages,
             "structured_output": AGENDA_ITEM_EXTRACTOR_CONTRACT,
             "max_tokens": AGENDA_OUTPUT_TOKEN_BUDGET,
             "max_tokens_mode": "route_max",
@@ -194,7 +237,7 @@ def finalize_agenda_job(
         - len(duplicates)
     )
     if dropped and len(dropped) > MAX_DROPPED_AGENDA_ITEM_SHARE * total_items:
-        raise ValueError(dropped[0].reason)
+        raise AgendaCitationError([item.reason for item in dropped], total_items)
     lines = agenda_text.splitlines()
     candidates: list[AgendaCandidate] = []
     for item in assessment.items:
@@ -326,7 +369,17 @@ def finalize_locator_job(
     """Validate unit references and map selected units to durable boundary records."""
 
     content = _response_content(result.output)
-    anchors = validate_locator_response(content, agenda_item_count=len(agenda.items), units=units)
+    validation = validate_locator_response_partial(
+        content, agenda_item_count=len(agenda.items), units=units
+    )
+    anchors = validation.anchors
+    accepted = {item.index for item in agenda.items if item.status == "accepted"}
+    if validation.conflicts and not any(a.agenda_item_index in accepted for a in anchors):
+        # Nothing publishable survived (typically every item parked on one unit; an anchor on a
+        # rejected item does not count, since the stage never publishes it), so completing would
+        # save an empty result for an episode the model simply failed to locate.
+        first = validation.conflicts[0]
+        raise DuplicateLocatorUnitError(first.unit.id, first.agenda_item_indices[:2])
     normalized = []
     for anchor in anchors:
         normalized.append(
@@ -355,12 +408,33 @@ def finalize_locator_job(
         prompt_version=LOCATOR_PROMPT_VERSION,
         recipe=result.recipe_hash,
         anchors=tuple(normalized),
-        diagnostics={"unit_count": len(units), "agenda_item_count": len(agenda.items)},
+        diagnostics={
+            "unit_count": len(units),
+            "agenda_item_count": len(agenda.items),
+            # Items the response put on a unit another item also claimed. They are left out of
+            # `anchors` rather than guessed between; recorded so a later pass can place them.
+            **(
+                {
+                    "unit_conflicts": [
+                        {
+                            "unit_id": conflict.unit.id,
+                            "start": conflict.unit.start,
+                            "agenda_item_indices": list(conflict.agenda_item_indices),
+                        }
+                        for conflict in validation.conflicts
+                    ]
+                }
+                if validation.conflicts
+                else {}
+            ),
+        },
     )
 
 
 __all__ = [
     "AGENDA_PROMPT_VERSION",
+    "AgendaCitationError",
+    "agenda_citation_retry_hint",
     "LOCATOR_MODEL",
     "LOCATOR_MODELS",
     "LOCATOR_PROMPT_VERSION",

@@ -719,3 +719,158 @@ def test_an_outline_reference_is_not_confirmed_across_a_peer_section():
     assert [i.display_ref for i in _finalize(agenda, [{**item, "display_ref": "4.A"}]).items] == [
         "4.A"
     ]
+
+
+def test_finalize_locator_job_keeps_unconflicted_anchors_and_records_the_conflict():
+    from citypods.chapter_artifacts import AgendaCandidate, AgendaCandidatesArtifact
+    from citypods.chapter_locator import LocatorUnit
+
+    agenda = AgendaCandidatesArtifact(
+        episode_uid="ep-1",
+        source_hash="h",
+        model="m",
+        prompt_version="p",
+        recipe="agenda-recipe-1",
+        items=tuple(
+            AgendaCandidate(
+                index=i,
+                title=f"Item {i}",
+                kind="substantive_action",
+                line_start=i + 1,
+                line_end=i + 1,
+                evidence_text=f"{i}. Item {i}",
+                display_ref=str(i),
+                status="accepted",
+            )
+            for i in range(3)
+        ),
+    )
+    units = [
+        LocatorUnit(id="u00001", start=0.0, end=5.0, text="Call to order"),
+        LocatorUnit(id="u00002", start=10.0, end=15.0, text="Item two"),
+        LocatorUnit(id="u00003", start=20.0, end=25.0, text="Item three"),
+    ]
+
+    def anchor(index, unit_id):
+        return {
+            "agenda_item_index": index,
+            "unit_id": unit_id,
+            "transition_quote": "some quote",
+            "confidence": 0.9,
+            "rationale": "because",
+        }
+
+    def result(anchors):
+        return JobResult(
+            task="agenda-chapter-locate",
+            recipe_hash="r",
+            output={"choices": [{"message": {"content": json.dumps({"anchors": anchors})}}]},
+        )
+
+    boundary = finalize_locator_job(
+        result([anchor(0, "u00001"), anchor(1, "u00001"), anchor(2, "u00003")]),
+        episode_uid="ep-1",
+        agenda=agenda,
+        transcript_hash="t",
+        units=units,
+    )
+    assert [a["agenda_item_index"] for a in boundary.anchors] == [2]
+    assert boundary.diagnostics["unit_conflicts"] == [
+        {"unit_id": "u00001", "start": 0.0, "agenda_item_indices": [0, 1]}
+    ]
+
+    clean = finalize_locator_job(
+        result([anchor(0, "u00001"), anchor(2, "u00003")]),
+        episode_uid="ep-1",
+        agenda=agenda,
+        transcript_hash="t",
+        units=units,
+    )
+    assert "unit_conflicts" not in clean.diagnostics
+
+
+def test_finalize_locator_job_repairs_when_only_a_rejected_item_survives_the_collision():
+    from citypods.chapter_artifacts import AgendaCandidate, AgendaCandidatesArtifact
+    from citypods.chapter_locator import DuplicateLocatorUnitError, LocatorUnit
+
+    agenda = AgendaCandidatesArtifact(
+        episode_uid="ep-1",
+        source_hash="h",
+        model="m",
+        prompt_version="p",
+        recipe="agenda-recipe-1",
+        items=tuple(
+            AgendaCandidate(
+                index=i,
+                title=f"Item {i}",
+                kind="substantive_action",
+                line_start=i + 1,
+                line_end=i + 1,
+                evidence_text=f"{i}. Item {i}",
+                display_ref=str(i),
+                status="rejected" if i == 1 else "accepted",
+            )
+            for i in range(3)
+        ),
+    )
+    units = [
+        LocatorUnit(id="u00001", start=0.0, end=5.0, text="Call to order"),
+        LocatorUnit(id="u00003", start=20.0, end=25.0, text="Item three"),
+    ]
+    anchors = [
+        {
+            "agenda_item_index": index,
+            "unit_id": unit,
+            "transition_quote": "q q q",
+            "confidence": 0.9,
+            "rationale": "r",
+        }
+        for index, unit in ((0, "u00001"), (2, "u00001"), (1, "u00003"))
+    ]
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="r",
+        output={"choices": [{"message": {"content": json.dumps({"anchors": anchors})}}]},
+    )
+
+    with pytest.raises(DuplicateLocatorUnitError):
+        finalize_locator_job(
+            result, episode_uid="ep-1", agenda=agenda, transcript_hash="t", units=units
+        )
+
+
+def test_mostly_ungrounded_agenda_raises_a_citation_error_naming_every_reason():
+    from citypods.chapter_jobs import AgendaCitationError, agenda_citation_retry_hint
+
+    items = [
+        _numbered_item(1, evidence_quote="words that are not in the agenda"),
+        _numbered_item(2, line_start=99, line_end=99),
+        _numbered_item(3),
+    ]
+    with pytest.raises(AgendaCitationError) as info:
+        _finalize(_numbered_agenda(3), items)
+
+    assert len(info.value.reasons) == 2
+    assert str(info.value) == info.value.reasons[0]
+    hint = agenda_citation_retry_hint(info.value, line_count=3)
+    assert "2 of 3 items" in hint
+    assert "1 to 3" in hint
+    assert "Omit any item you cannot quote verbatim" in hint
+
+
+def test_agenda_retry_hint_is_part_of_the_recipe_and_the_request():
+    from citypods.chapter_jobs import build_agenda_job
+
+    plain = build_agenda_job(
+        episode_uid="e1", agenda_text="1. Item\n2. Item two", agenda_source_hash="s"
+    )
+    hinted = build_agenda_job(
+        episode_uid="e1",
+        agenda_text="1. Item\n2. Item two",
+        agenda_source_hash="s",
+        retry_hint="Fix the quotes.",
+    )
+
+    assert plain.recipe_hash != hinted.recipe_hash
+    assert hinted.inputs["messages"][-1] == {"role": "user", "content": "Fix the quotes."}
+    assert len(hinted.inputs["messages"]) == len(plain.inputs["messages"]) + 1

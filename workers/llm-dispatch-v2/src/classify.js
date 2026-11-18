@@ -58,6 +58,44 @@ export function googleQuotaDiagnostics(rawBody) {
   };
 }
 
+// Share of a Gemini route's complete per-minute token quota allowance at or above which an
+// input_token_count / inputtokensperminute 429 is classified as route_input_limit (oversize
+// request) rather than an accumulated-pacing exhaustion (own_tpm). Require the request alone to
+// meet or exceed the full allowance (1.0) so sub-quota requests affected by prior window usage
+// remain retryable.
+export const GEMINI_OVERSIZE_FRACTION = 1.0;
+
+export function isGeminiOversizeInput({ msg, quotaText, route, inputTokens }) {
+  const isInputTokenQuota =
+    msg.includes("input_token_count") ||
+    msg.includes("inputtokensperminute") ||
+    (typeof quotaText === "string" && (
+      quotaText.includes("input_token_count") ||
+      quotaText.includes("inputtokensperminute")
+    ));
+  if (!isInputTokenQuota) return false;
+
+  const tpm = Number(route?.tpm);
+  const metricLimitMatch = msg.match(
+    /(?:input_token_count|inputtokensperminute)[,\s]*(?:exceeded)?[,\s]*limit[:\s]+['"]?(\d+)['"]?/i
+  );
+  const reportedLimit =
+    metricLimitMatch && Number(metricLimitMatch[1]) > 0
+      ? Number(metricLimitMatch[1])
+      : null;
+  // Use the provider's complete input-token allowance (reported limit or route TPM), never a
+  // smaller configured admission ceiling.
+  const quotaAllowance =
+    reportedLimit ?? (Number.isFinite(tpm) && tpm > 0 ? tpm : null);
+  if (!quotaAllowance) return false;
+
+  const scaled =
+    Number.isFinite(Number(inputTokens)) && Number(inputTokens) > 0
+      ? scaledInputTokens(Number(inputTokens), routeInputTokenRatio(route))
+      : 0;
+  return scaled > GEMINI_OVERSIZE_FRACTION * quotaAllowance;
+}
+
 /**
  * Ordered rule table for HTTP 429 responses. First match wins.
  * Each rule is data: { rule_id, provider, failure_class, match }.
@@ -74,6 +112,13 @@ export const FAILURE_SIGNATURES = [
       msg.includes("generaterequestsperdayper") ||
       quotaText.includes("generaterequestsperdayper") ||
       quotaText.includes("generate_content_free_tier_requests"),
+  },
+  {
+    rule_id: "gemini-input-quota-oversize",
+    provider: "gemini",
+    failure_class: "route_input_limit",
+    match: ({ msg, quotaText, route, inputTokens }) =>
+      isGeminiOversizeInput({ msg, quotaText, route, inputTokens }),
   },
   {
     rule_id: "gemini-tpm",
@@ -439,8 +484,23 @@ export const DECISIONS_SAFETY_CODES = Object.freeze([
 export const GOOGLE_LOCATION_RULE_ID = "google-location-unsupported";
 
 export function isGoogleLocationRefusal(status, body, route) {
-  return status === 400 && route?.provider === "gemini" &&
-    providerFailureMessage(body).includes("user location is not supported");
+  if (status !== 400 || route?.provider !== "gemini") return false;
+  const msg = providerFailureMessage(body);
+  const details = body?.error?.details;
+  if (
+    msg.includes("generative ai prohibited use policy") ||
+    msg.includes("prohibited words") ||
+    msg.includes("prohibited_content") ||
+    (Array.isArray(details) &&
+      details.some(
+        (d) =>
+          String(d?.reason || d?.metadata?.reason || "").toUpperCase() ===
+          "PROHIBITED_CONTENT"
+      ))
+  ) {
+    return false;
+  }
+  return msg.includes("user location is not supported");
 }
 
 function decisionsErrorCodes(body) {
@@ -651,6 +711,32 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
     };
   }
 
+  if (status === 400) {
+    const msg = providerFailureMessage(body);
+    const details = body?.error?.details;
+    const isProhibited =
+      msg.includes("generative ai prohibited use policy") ||
+      msg.includes("prohibited words") ||
+      msg.includes("prohibited_content") ||
+      (Array.isArray(details) &&
+        details.some(
+          (d) =>
+            String(d?.reason || d?.metadata?.reason || "").toUpperCase() ===
+            "PROHIBITED_CONTENT"
+        ));
+    if (isProhibited) {
+      return {
+        failure_class: "content_policy_violation",
+        rule_id:
+          route?.provider === "gemini"
+            ? "google-prohibited-content"
+            : "content-policy-violation",
+        retry_after_seconds: retryAfterSeconds,
+        scope: "route",
+      };
+    }
+  }
+
   // 4. Cloudflare AI Gateway rate limit or rejection
   const hasCfAigError = normHeaders.has("cf-aig-error");
   const hasProviderPayload =
@@ -688,6 +774,8 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
       headers: normHeaders,
       msg,
       quotaText: providerQuotaText(body),
+      route,
+      inputTokens,
     };
 
     for (const rule of FAILURE_SIGNATURES) {

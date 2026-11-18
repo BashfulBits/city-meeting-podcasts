@@ -233,6 +233,12 @@ _ERROR_REASON_VARIABLE_RE = re.compile(r"[0-9a-fA-F]{6,}|\d+")
 # llm_submission_telemetry.py's own module docstring says that file must never carry "prompts,
 # results, ... or credentials", and a normalized error reason is still derived from model output.
 _ERROR_SAMPLE_CAP = 10
+# Tag jobs are handed to the Worker as soon as this many have gathered, or this long after the last
+# submission, rather than only at the heavyweight state checkpoint. A bulk request carries up to
+# the client's 1,000-job limit, so this is far below the cap and only bounds how long a runner holds
+# work the Worker could already be pacing.
+_TAG_EARLY_FLUSH_JOBS = 100
+_TAG_EARLY_FLUSH_SECONDS = 30.0
 
 
 def _error_reason(message: str) -> str:
@@ -2063,6 +2069,7 @@ def _run_enrich_global_queue(
             TAG_PROMPT_VERSION,
             episode_needs_tagging,
             load_taxonomy,
+            tag_accepted_routes,
         )
 
         with ctx.tag_taxonomy_cache_lock:
@@ -2083,6 +2090,7 @@ def _run_enrich_global_queue(
                 else ""
             )
             llm_enabled = ctx.tag_backend is not None
+            accepted_routes = tag_accepted_routes(ctx.tag_backend)
             for state in prepared.values():
                 state["candidate_episodes"] = [
                     ep
@@ -2094,6 +2102,7 @@ def _run_enrich_global_queue(
                         llm_route=llm_route,
                         prompt_version=TAG_PROMPT_VERSION,
                         admission_policy=admission_policy,
+                        accepted_routes=accepted_routes,
                     )
                 ]
     elif ctx.lane == "chapter-agenda":
@@ -2284,10 +2293,14 @@ def _run_enrich_global_queue(
     # durable state push dominates (225s then 555s), not the local record persist (47s then 34s).
     _checkpoint_cost = {"persist": 0.0, "push": 0.0, "n": 0}
 
+    # When the oldest still-unsubmitted tag job was first seen; None while nothing is waiting.
+    _tag_wait_since: dict[str, float | None] = {"t": None}
+
     def _flush_tag_batch() -> None:
-        """Durably submit the tag jobs accumulated since the prior checkpoint."""
+        """Durably submit the tag jobs accumulated since the prior flush."""
         if tag_batcher is None:
             return
+        _tag_wait_since["t"] = None
         batch_outcomes = tag_batcher.flush()
         if not batch_outcomes:
             return
@@ -2314,6 +2327,32 @@ def _run_enrich_global_queue(
         )
         if failed:
             llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
+
+    def _flush_tag_batch_if_due() -> None:
+        """Submit collected tag jobs once enough have gathered or the oldest has waited too long.
+
+        Submission used to ride on the checkpoint alone. That checkpoint pushes durable state
+        (225-589 s measured) and then backs off so it costs at most a quarter of the run, so a
+        busy tag run handed the Worker its jobs once every half hour or so and sat on the
+        rest in memory, where a runner that died took them with it. Submitting is a cheap bulk
+        request and is idempotent per recipe hash (a replay of an already-admitted job is
+        reconciled, not duplicated), so it needs none of the checkpoint's persistence.
+        """
+        if tag_batcher is None:
+            return
+        queued = tag_batcher.queued_count
+        if queued <= 0:
+            return
+        now = time.monotonic()
+        if _tag_wait_since["t"] is None:
+            _tag_wait_since["t"] = now
+        if queued < _TAG_EARLY_FLUSH_JOBS and now - _tag_wait_since["t"] < _TAG_EARLY_FLUSH_SECONDS:
+            return
+        _flush_tag_batch()
+
+    def _on_tag_progress() -> None:
+        _flush_tag_batch_if_due()
+        _checkpoint_if_due()
 
     def _flush_judge_batch() -> None:
         """Durably submit the judge jobs accumulated since the prior checkpoint."""
@@ -2575,7 +2614,7 @@ def _run_enrich_global_queue(
                     _transcript_task,
                     tx,
                     max_pending=max_workers,
-                    on_progress=_checkpoint_if_due,
+                    on_progress=_on_tag_progress,
                     stop=ctx.stop,
                 )
             emit_event(
@@ -2610,7 +2649,7 @@ def _run_enrich_global_queue(
                             _tags_only_task,
                             tx_tags_only,
                             max_pending=max_workers,
-                            on_progress=_checkpoint_if_due,
+                            on_progress=_on_tag_progress,
                             stop=ctx.stop,
                         )
                     print("[enrich] tags-only pass done", flush=True)

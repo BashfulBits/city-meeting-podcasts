@@ -331,12 +331,66 @@ def ensure_locator_contract():
     return model
 
 
+@dataclass(frozen=True)
+class LocatorConflict:
+    """Agenda items a response placed on one transcript unit.
+
+    A unit can hold only one chapter start, so the response cannot be believed for all of these
+    items. The model's own confidence is deliberately not used to pick among them: it was not
+    reliable on this task, and a wrong title at a right time is worse than no chapter.
+    """
+
+    unit: LocatorUnit
+    anchors: tuple[LocatorAnchor, ...]
+
+    @property
+    def agenda_item_indices(self) -> tuple[int, ...]:
+        return tuple(anchor.agenda_item_index for anchor in self.anchors)
+
+
+@dataclass(frozen=True)
+class LocatorValidation:
+    """A response's trustworthy anchors plus the unit collisions that were set aside."""
+
+    anchors: list[LocatorAnchor]
+    conflicts: tuple[LocatorConflict, ...] = ()
+
+
 def validate_locator_response(
     content: str | bytes,
     *,
     agenda_item_count: int,
     units: Sequence[LocatorUnit],
 ) -> list[LocatorAnchor]:
+    """Strict validation: any unit collision raises :class:`DuplicateLocatorUnitError`."""
+    return _validate_locator_response(
+        content, agenda_item_count=agenda_item_count, units=units, set_aside_conflicts=False
+    ).anchors
+
+
+def validate_locator_response_partial(
+    content: str | bytes,
+    *,
+    agenda_item_count: int,
+    units: Sequence[LocatorUnit],
+) -> LocatorValidation:
+    """Like :func:`validate_locator_response`, but set aside colliding anchors instead of failing.
+
+    Every other check still raises. The anchors that remain are exactly those whose unit no other
+    item claimed, so a few collisions no longer cost an episode every chapter it did locate.
+    """
+    return _validate_locator_response(
+        content, agenda_item_count=agenda_item_count, units=units, set_aside_conflicts=True
+    )
+
+
+def _validate_locator_response(
+    content: str | bytes,
+    *,
+    agenda_item_count: int,
+    units: Sequence[LocatorUnit],
+    set_aside_conflicts: bool,
+) -> LocatorValidation:
     """Accept only model anchors that refer to supplied agenda items and units.
 
     Pydantic enforces the wire shape. The remaining checks are request-specific and cannot be
@@ -371,15 +425,14 @@ def validate_locator_response(
             raise ValueError(f"unknown locator unit: {item.unit_id}")
         if item.alternative_unit_id is not None and item.alternative_unit_id not in units_by_id:
             raise ValueError(f"unknown alternative locator unit: {item.alternative_unit_id}")
-        if item.unit_id in seen_units:
+        if item.unit_id in seen_units and not set_aside_conflicts:
             # Name both agenda items: the same title listed twice (e.g. an agenda merged from
             # overlapping feeds) is a different cause than the model mis-anchoring distinct items.
-            raise ValueError(
-                f"duplicate locator unit: {item.unit_id} "
-                f"(agenda items {seen_units[item.unit_id]} and {item.agenda_item_index})"
+            raise DuplicateLocatorUnitError(
+                item.unit_id, (seen_units[item.unit_id], item.agenda_item_index)
             )
         seen_agenda.add(item.agenda_item_index)
-        seen_units[item.unit_id] = item.agenda_item_index
+        seen_units.setdefault(item.unit_id, item.agenda_item_index)
         anchors.append(
             LocatorAnchor(
                 agenda_item_index=item.agenda_item_index,
@@ -395,6 +448,19 @@ def validate_locator_response(
                 uncertainty_reason=item.uncertainty_reason,
             )
         )
+    conflicts: list[LocatorConflict] = []
+    if set_aside_conflicts:
+        by_unit: dict[str, list[LocatorAnchor]] = {}
+        for anchor in anchors:
+            by_unit.setdefault(anchor.unit.id, []).append(anchor)
+        colliding = {unit_id for unit_id, group in by_unit.items() if len(group) > 1}
+        if colliding:
+            conflicts = [
+                LocatorConflict(unit=group[0].unit, anchors=tuple(group))
+                for group in by_unit.values()
+                if len(group) > 1
+            ]
+            anchors = [anchor for anchor in anchors if anchor.unit.id not in colliding]
     anchors.sort(key=lambda anchor: (anchor.unit.start, anchor.unit.id))
     for left, right in zip(anchors, anchors[1:], strict=False):
         if left.unit.start == right.unit.start:
@@ -403,7 +469,19 @@ def validate_locator_response(
             )
         if left.unit.start > right.unit.start:
             raise ValueError("locator anchors must resolve to strictly increasing timestamps")
-    return anchors
+    return LocatorValidation(anchors=anchors, conflicts=tuple(conflicts))
+
+
+class DuplicateLocatorUnitError(ValueError):
+    """Two distinct agenda items resolved to the same transcript unit."""
+
+    def __init__(self, unit_id: str, agenda_item_indices: tuple[int, int]) -> None:
+        self.unit_id = unit_id
+        self.agenda_item_indices = agenda_item_indices
+        super().__init__(
+            f"duplicate locator unit: {unit_id} "
+            f"(agenda items {agenda_item_indices[0]} and {agenda_item_indices[1]})"
+        )
 
 
 class DuplicateLocatorStartError(ValueError):
@@ -635,6 +713,7 @@ __all__ = [
     "DEEPSEEK_FREE_LOCATOR_MODEL",
     "DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS",
     "DuplicateLocatorStartError",
+    "DuplicateLocatorUnitError",
     "GEMINI_CONTEXT_TOKENS",
     "GEMINI_LOCATOR_MODEL",
     "LOCATOR_CONTRACT",
@@ -646,9 +725,11 @@ __all__ = [
     "KIMI_LOCATOR_MODEL",
     "LocatorAgendaItem",
     "LocatorAnchor",
+    "LocatorConflict",
     "LocatorInputOverCapError",
     "LocatorRequest",
     "LocatorUnit",
+    "LocatorValidation",
     "MISTRAL_CONTEXT_TOKENS",
     "MINIMAX_LOCATOR_MODEL",
     "MISTRAL_LOCATOR_MODEL",
@@ -667,4 +748,5 @@ __all__ = [
     "select_locator_models",
     "select_production_locator_models",
     "validate_locator_response",
+    "validate_locator_response_partial",
 ]

@@ -254,4 +254,4 @@ def test_dockerfile_has_no_default_base_image_or_project_identifier():
         Path(__file__).parents[1] / "workers/decision-batch/open_weight_runtimes.Dockerfile"
     ).read_text()
     assert "\nARG BASE_IMAGE\n" in text
-    assert "pkg" ".dev" not in text and "ARG BASE_IMAGE=" not in text
+    assert "pkg" + ".dev" not in text and "ARG BASE_IMAGE=" not in text

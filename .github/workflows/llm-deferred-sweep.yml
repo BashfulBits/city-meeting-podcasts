@@ -50,7 +50,7 @@ concurrency:
 
 jobs:
   sweep:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 45-minute wall-clock budget: sweep budget 32 < step timeout 41 < job timeout 45.
     timeout-minutes: 45
     steps:
