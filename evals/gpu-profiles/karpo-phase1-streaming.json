@@ -488,5 +488,77 @@
    }
   }
  },
+ "runtime_adapters": {
+  "image": "r60-rt-v7 (sha256 of the digest is in review/60); OneJev 81ce62f + serve.patch, decision-index f5a6e4f, Copernicus files at ae28efb",
+  "runs": {
+   "copernicus_rtx": {
+    "gpu": "RTX PRO 6000",
+    "gpu_peak_gib": 61.3,
+    "host_rss_peak_gib": 1.85,
+    "parity": {
+     "flips_at_0_5": 0,
+     "max_abs_diff": 0.0,
+     "mean_abs_diff": 0.0
+    },
+    "reference_host_rss_peak_gib": 60.15,
+    "reference_load_s": 551.3,
+    "result": "attempts/r60/rt/d0157cec395a-copernicus.json",
+    "stream_load_s": 165.3,
+    "stream_mb_s": 411.7,
+    "tokens_per_s_reference": 4033.4,
+    "tokens_per_s_stream": 4006.5
+   },
+   "elephant_l4_as_authored": "out of memory at engine init: 16.68 GiB resident, then the float32 head copy needs 1.9 GiB (bf16 clone) plus 3.79 GiB (peak 22.4 GiB of 22.03 GiB)",
+   "elephant_l4_lean": {
+    "gpu": "L4",
+    "gpu_peak_gib_load": 17.54,
+    "long": {
+     "16000x1": "ok, 19.57 GiB",
+     "16000x12": "ok, 19.65 GiB",
+     "16000x40": "ok, 19.65 GiB (21,925 tokens)",
+     "24000x1": "out of memory in the fla gated-delta kernel",
+     "24000x12": "ok, 21.46 GiB (25,809 tokens)",
+     "24000x40": "ok, 21.46 GiB (29,925 tokens)",
+     "32000": "out of memory for 1, 12 and 40 questions"
+    },
+    "parity_vs_rtx_reference": {
+     "flips_at_0_5": 0,
+     "max_abs_diff": 0.0086,
+     "mean_abs_diff": 0.0011
+    },
+    "result": "attempts/r60/rt/513d9b920f14-elephant.json",
+    "stream_load_s": [
+     130.5,
+     129.1,
+     133.3
+    ],
+    "tokens_per_s": 818.0
+   },
+   "elephant_rtx": {
+    "gpu": "RTX PRO 6000",
+    "gpu_peak_gib": 22.36,
+    "host_rss_peak_gib": 2.17,
+    "parity": {
+     "flips_at_0_5": 0,
+     "max_abs_diff": 0.0,
+     "mean_abs_diff": 0.0
+    },
+    "reference_host_rss_peak_gib": 18.94,
+    "reference_load_s": 254.2,
+    "result": "attempts/r60/rt/f21517045c08-elephant.json",
+    "stream_load_s": 92.7,
+    "stream_mb_s": 504.6,
+    "tokens_per_s_reference_warm": 8890.9
+   }
+  },
+  "sample": {
+   "chapters": 4,
+   "moments": 4,
+   "questions": 60,
+   "requests": 16,
+   "split": "dev",
+   "tags": 8
+  }
+ },
  "workers": 16
 }
