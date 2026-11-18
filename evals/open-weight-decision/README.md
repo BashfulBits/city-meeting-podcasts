@@ -7,14 +7,14 @@ scores any decision model (Perplexity, Gemini decision, Karpo, GLiDE, ...) on th
 |---|---|
 | `manifest.json` | frozen **inputs** only: no labels, verdicts or suggestions |
 | `gold.json` | the **truth**, with the source of each label |
-| `production_reference.json` | production judge verdicts and rule/LLM tag suggestions, for agreement analysis only |
+| `production_reference.json` | production judge verdicts, the production outcome stratum of each item, and rule/LLM tag suggestions, for agreement and weighting only |
 | `freeze_from_sample.py` | how the files were derived from the private labeling sample |
 
 ## Lanes
 
 - **tags** (240): is the proposed tag supported by its chapter evidence (the production T1 and T2 texts)? Labels are
-  `supported`, `not_supported`, `uncertain` and come from the maintainer, **blind** (production verdicts hidden). Strata
-  are the production outcome (`yes`, `no`, `split` across judges), 80 each.
+  `supported`, `not_supported`, `uncertain` and come from the maintainer, **blind** (production verdicts hidden). The
+  items are 80 each of production outcome `yes`, `no` and `split` (the stratum lives in `production_reference.json`).
 - **moments** (60): does the quote, as spoken, say what the stated reason claims? 26 items keep the production passage and
   the maintainer's label. 34 items had a passage that did not contain the quote (the 400-word cap defect in
   review/60); their evidence was rebuilt around the quote and labeled by **Claude**, not a human
@@ -26,8 +26,8 @@ scores any decision model (Perplexity, Gemini decision, Karpo, GLiDE, ...) on th
 
 ## Split
 
-`dev` or `holdout` by a stable SHA-256 of the item id (about 50/50). Tune on `dev`; leave `holdout` untouched until a
-final run. Exclude `uncertain` from accuracy. Weight tag strata back to the production mix when reporting a single number,
+`dev` or `holdout` by a stable SHA-256 of the episode (`src`, `uid`), so no episode's evidence is on both sides (about 50/50 by items). Tune on `dev`; leave `holdout` untouched until a
+final run. Exclude `uncertain` from accuracy. Weight tag strata (joined by id from `production_reference.json`) back to the production mix for a single number,
 and report paired bootstrap intervals; with this many items small differences are not significant.
 
 ## Coverage of existing gold

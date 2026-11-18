@@ -7,7 +7,7 @@ import time
 
 import torch
 
-snap, out_path = sys.argv[1], os.path.abspath(sys.argv[2])
+snap, out_path = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
 MAX_TOKENS_PER_CALL = int(sys.argv[3]) if len(sys.argv) > 3 else 3000
 sys.path.insert(0, snap)
 os.chdir(snap)
@@ -36,7 +36,12 @@ def chunks(questions, limit):
         yield cur
 
 
+ATTEMPTS = 0  # every predict_record call, including halved retries
+
+
 def score(state, part, answers, errors, run):
+    global ATTEMPTS
+    ATTEMPTS += 1
     try:
         internal = to_internal_record({"state": state, "questions": part})
         results = model.predict_record(internal, use_pride=False)
@@ -64,10 +69,11 @@ result = {
 }
 errors = []
 for run, body in data["runs"].items():
-    answers, calls, t1, invalid = {}, 0, time.time(), 0
+    answers, t1, invalid = {}, time.time(), 0
+    ATTEMPTS = 0
     for part in chunks(body["questions"], MAX_TOKENS_PER_CALL):
-        calls += 1
         invalid += score(body["state"], part, answers, errors, run)
+    calls = ATTEMPTS
     invalid = len(body["questions"]) - len(answers)
     result["runs"][run] = {
         "answers": answers,

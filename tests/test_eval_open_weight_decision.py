@@ -26,7 +26,7 @@ def test_manifest_and_gold_agree():
 
 def test_manifest_carries_no_truth_or_production_hints():
     text = (ROOT / "manifest.json").read_text()
-    for banned in ('"verdicts"', '"suggested"', '"kind"', '"blind"', '"label"'):
+    for banned in ('"verdicts"', '"suggested"', '"kind"', '"blind"', '"label"', '"stratum"'):
         assert banned not in text
 
 
@@ -35,7 +35,19 @@ def test_split_is_balanced_and_stable():
     for lane in ("tags", "moments", "chapters"):
         splits = [item["split"] for item in manifest[lane]]
         assert set(splits) == {"dev", "holdout"}
-        assert 0.35 < splits.count("dev") / len(splits) < 0.65
+        # split by episode, so item counts are only roughly balanced
+        assert 0.25 < splits.count("dev") / len(splits) < 0.75
     rebuilt = [m for m in manifest["moments"] if m["evidence_source"] == "rebuilt-quote-centered"]
     assert len(rebuilt) == 34
-    assert all(m["quote"].split()[0].lower() in m["evidence"].lower() for m in rebuilt)
+    for moment in rebuilt:
+        words = moment["quote"].lower().split()
+        evidence = moment["evidence"].lower().split("transcript around the quote:", 1)[1]
+        assert any(" ".join(words[i : i + 5]) in evidence for i in range(len(words) - 4))
+
+
+def test_no_episode_straddles_the_split():
+    manifest = load("manifest")
+    side = {}
+    for lane in ("tags", "moments", "chapters"):
+        for item in manifest[lane]:
+            assert side.setdefault((item["src"], item["uid"]), item["split"]) == item["split"]

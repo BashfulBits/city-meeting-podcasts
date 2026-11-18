@@ -4,8 +4,7 @@
  "tags": [
   {
    "id": "subj-3043105c40235518afc177ee",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "e9b57b9226af3970",
    "episode_title": "Zoning Commission Zoning Commission",
@@ -17,8 +16,7 @@
   },
   {
    "id": "subj-d697aa9d7df7e20ceea25f68",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "6d75515b263d6e28",
    "episode_title": "City Council Agenda Meetings – Sep 11, 2024",
@@ -30,8 +28,7 @@
   },
   {
    "id": "subj-f0dc783a5d4948887dc52ed4",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "8f1e3c541d9feaaa",
    "episode_title": "Historic and Cultural Landmark Commission Historic and Cultural Landmark Commission",
@@ -44,7 +41,6 @@
   {
    "id": "subj-42476b7d39ede224d8e0af6c",
    "split": "holdout",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "63fd1a863885d39e",
    "episode_title": "P&Z Regular Session",
@@ -56,8 +52,7 @@
   },
   {
    "id": "subj-20e8e00b4221816be662d910",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "e2b937355dc467bc",
    "episode_title": "Board of Adjustment Commercial Board of Adjustment Commercial",
@@ -69,8 +64,7 @@
   },
   {
    "id": "subj-dfb08c1b846054a42682b008",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "dbabfe0547d50dd9",
    "episode_title": "PRE-COUNCIL MEETING PRE-COUNCIL MEETING",
@@ -82,8 +76,7 @@
   },
   {
    "id": "subj-bbee35fe274c820225ad7105",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "ee966d677b450077",
    "episode_title": "Historic and Cultural Landmark Commission Historic and Cultural Landmark Commission",
@@ -96,7 +89,6 @@
   {
    "id": "subj-bfeab900ce8270a55fb1ae9a",
    "split": "holdout",
-   "stratum": "yes",
    "src": "7039dbcce556",
    "uid": "e582d6f75c625dff",
    "episode_title": "Board of Adjustment/Sign Review Board – Sep 12, 2011",
@@ -109,7 +101,6 @@
   {
    "id": "subj-7805e81d1d61696fefa36e1e",
    "split": "dev",
-   "stratum": "yes",
    "src": "76869ed1994f",
    "uid": "d8fc654ec10f7196",
    "episode_title": "City Council Agenda Meetings – Feb 12, 2014",
@@ -121,8 +112,7 @@
   },
   {
    "id": "subj-2c51744dc5c765975950bb75",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "f9afe970563e",
    "uid": "2c5e014cd9d97695",
    "episode_title": "City Council Meetings – May 19, 2016",
@@ -134,8 +124,7 @@
   },
   {
    "id": "subj-cfc33ade6e3b2cd9a8274024",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "7039dbcce556",
    "uid": "3bd66b465698b7f9",
    "episode_title": "Board of Adjustment/Sign Review Board – Sep 14, 2015",
@@ -148,7 +137,6 @@
   {
    "id": "subj-cc650bf85707b63fbd94053f",
    "split": "dev",
-   "stratum": "yes",
    "src": "19c2ffe87d08",
    "uid": "a6dc2a8ad3d16f51",
    "episode_title": "City Council Meeting 4-9-24",
@@ -160,8 +148,7 @@
   },
   {
    "id": "subj-8adeff8172b91ca3fefeaef9",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "3c10f575b7d3179c",
    "episode_title": "Historic and Cultural Landmark Commission Historic and Cultural Landmark Commission",
@@ -174,7 +161,6 @@
   {
    "id": "subj-324d2e43e646228c61a37eae",
    "split": "holdout",
-   "stratum": "yes",
    "src": "7039dbcce556",
    "uid": "4d0f7cbde4e6c0b5",
    "episode_title": "Board of Adjustment/Sign Review Board – Aug 08, 2011",
@@ -187,7 +173,6 @@
   {
    "id": "subj-116cee766ee56b0709b3626d",
    "split": "dev",
-   "stratum": "yes",
    "src": "3b7588310856",
    "uid": "89e48bef7b2754c1",
    "episode_title": "Economic Development Partnership Board on 2019-08-14 11:00 AM – Aug 14, 2019",
@@ -199,8 +184,7 @@
   },
   {
    "id": "subj-696506f16fde62c0fe851a13",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "2489eb088550",
    "uid": "0ba81c9f8adbeb54",
    "episode_title": "Planning Commission – Mar 22, 2011",
@@ -213,7 +197,6 @@
   {
    "id": "subj-5e3e6d50922230153c590fdf",
    "split": "holdout",
-   "stratum": "yes",
    "src": "f9afe970563e",
    "uid": "4b9b3639f493977a",
    "episode_title": "City Council Meetings – Mar 24, 2016",
@@ -225,8 +208,7 @@
   },
   {
    "id": "subj-462616181f5f8e3f5a619779",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "6ac33bec3c6a",
    "uid": "fe49ff49bbf94be2",
    "episode_title": "Commissioners Court",
@@ -239,7 +221,6 @@
   {
    "id": "subj-aa9cbf856ade3da57d7f5bae",
    "split": "dev",
-   "stratum": "yes",
    "src": "19c2ffe87d08",
    "uid": "4ac5b9d250186a9c",
    "episode_title": "City Council Meeting",
@@ -252,7 +233,6 @@
   {
    "id": "subj-bf8a528ef70a4dc11cf36350",
    "split": "holdout",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "c260bc96197d42d5",
    "episode_title": "Planning and Zoning Commission - Regular Session",
@@ -265,7 +245,6 @@
   {
    "id": "subj-69aa4bbb9139c013c967d97c",
    "split": "dev",
-   "stratum": "yes",
    "src": "6ac33bec3c6a",
    "uid": "5d8fc32378676b62",
    "episode_title": "Commissioners Court",
@@ -277,8 +256,7 @@
   },
   {
    "id": "subj-ee01372afa9c41ceeb6ea0cc",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "2489eb088550",
    "uid": "6cb80f5a341acdf0",
    "episode_title": "Planning Commission – Sep 27, 2016",
@@ -290,8 +268,7 @@
   },
   {
    "id": "subj-ee5178ed5d446c7dcdeb80ed",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "422e3f43767f",
    "uid": "6fcd76c72a50c182",
    "episode_title": "Zoning and Platting Commission – Mar 16, 2010",
@@ -304,7 +281,6 @@
   {
    "id": "subj-450b4483100ac953a3408ad5",
    "split": "holdout",
-   "stratum": "yes",
    "src": "fe4d235eef5a",
    "uid": "a73b51347a326775",
    "episode_title": "City Council Meetings – Nov 18, 2010",
@@ -317,7 +293,6 @@
   {
    "id": "subj-9e65aadcea3996434ac7834d",
    "split": "holdout",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "ed01521fb4cca881",
    "episode_title": "Planning and Zoning Commission - Regular Session",
@@ -329,8 +304,7 @@
   },
   {
    "id": "subj-82a59970d6f844f7ea19f942",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "19c2ffe87d08",
    "uid": "f4ab84de774d8175",
    "episode_title": "City Council 5-26-26",
@@ -343,7 +317,6 @@
   {
    "id": "subj-6a3ac505452e460d9ce3db5f",
    "split": "holdout",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "c546cd000e914d45",
    "episode_title": "Planning and Zoning Commission - Regular Session",
@@ -355,8 +328,7 @@
   },
   {
    "id": "subj-1cf22634522df248cd7e207f",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "6ac33bec3c6a",
    "uid": "09e64bf4a4fadbd9",
    "episode_title": "Commissioners Court",
@@ -368,8 +340,7 @@
   },
   {
    "id": "subj-f6860082d94e62ccc8bf9fc9",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "fe4d235eef5a",
    "uid": "983ee635bd83abd4",
    "episode_title": "City Council Budget Work Session – May 02, 2012",
@@ -382,7 +353,6 @@
   {
    "id": "subj-1253630d0db42275ee305eff",
    "split": "holdout",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "46489e5c13d4cdf7",
    "episode_title": "Evening Meeting",
@@ -394,8 +364,7 @@
   },
   {
    "id": "subj-26b935ea27ea64e19ef7cc3c",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "3a38093eb585f943",
    "episode_title": "PRE-COUNCIL MEETING PRE-COUNCIL MEETING",
@@ -407,8 +376,7 @@
   },
   {
    "id": "subj-0c765cbedee962c4c3f3605c",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "9bf21e6e48e4",
    "uid": "84734e418851f06e",
    "episode_title": "Historic Landmark Commission – May 23, 2011",
@@ -420,8 +388,7 @@
   },
   {
    "id": "subj-fc2c0bd21ade77de9198c9e0",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "9010bebd6729f430",
    "episode_title": "City Council Meetings – Jul 28, 2011",
@@ -434,7 +401,6 @@
   {
    "id": "subj-3bf61595575b275206450538",
    "split": "holdout",
-   "stratum": "yes",
    "src": "fe4d235eef5a",
    "uid": "bd8399b319f1c4fc",
    "episode_title": "Special City Council – Nov 15, 2022",
@@ -446,8 +412,7 @@
   },
   {
    "id": "subj-067d06cb6926b15cd7ede211",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "3b7588310856",
    "uid": "4c4784f5ee908092",
    "episode_title": "Quakertown Memorialization – Dec 01, 2022",
@@ -460,7 +425,6 @@
   {
    "id": "subj-b0a8fbaf75823661c6d9acce",
    "split": "holdout",
-   "stratum": "yes",
    "src": "fe4d235eef5a",
    "uid": "0eda31a863910435",
    "episode_title": "City Council Work Session – Feb 13, 2018",
@@ -473,7 +437,6 @@
   {
    "id": "subj-1dbd1e1fdbf8dad298a4bd5d",
    "split": "holdout",
-   "stratum": "yes",
    "src": "6540eef2dc2e",
    "uid": "106494a18bc85834",
    "episode_title": "Historic and Cultural Landmark Commission Historic and Cultural Landmark Commission",
@@ -485,8 +448,7 @@
   },
   {
    "id": "subj-294b8c5b0aa648266615947d",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "7d7ff2c67458b3c0",
    "episode_title": "CITY COUNCIL on 2021-02-02 7:00 PM CITY COUNCIL on 2021-02-02 7:00 PM",
@@ -498,8 +460,7 @@
   },
   {
    "id": "subj-0df7a435029016568d42ee4d",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "ecc3710ac47f",
    "uid": "f260f42f76e378dc",
    "episode_title": "Afternoon Meeting",
@@ -512,7 +473,6 @@
   {
    "id": "subj-8f0a90689f6e505c3106497d",
    "split": "holdout",
-   "stratum": "yes",
    "src": "f9afe970563e",
    "uid": "dcbf478b83ab6fce",
    "episode_title": "City Council Meetings – Aug 26, 2010",
@@ -524,8 +484,7 @@
   },
   {
    "id": "subj-deba80334c85006b74b5eb7a",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "abbf5e25e078",
    "uid": "e9994cf2d1675986",
    "episode_title": "Joint City Council and Planning & Zoning Commission Meeting – Jul 22, 2021",
@@ -537,8 +496,7 @@
   },
   {
    "id": "subj-630ad5d6f1e26d40a5db565f",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "ebf4cdc66997ed91",
    "episode_title": "Historic Landmark Commission on 2022-08-08 5:30 PM – Aug 08, 2022",
@@ -550,8 +508,7 @@
   },
   {
    "id": "subj-76ddaafe7dc124c5eeaa0ba7",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "7039dbcce556",
    "uid": "5b2f047307f67316",
    "episode_title": "Board of Adjustment/Sign Review Board – Jul 08, 2013",
@@ -564,7 +521,6 @@
   {
    "id": "subj-0b815d35ab655fb41d4f353e",
    "split": "dev",
-   "stratum": "yes",
    "src": "19104f3a246a",
    "uid": "c8ebb87e1ea1ea0b",
    "episode_title": "Urban Transportation – Aug 14, 2018",
@@ -577,7 +533,6 @@
   {
    "id": "subj-9326bce81fc59979c00870d7",
    "split": "dev",
-   "stratum": "yes",
    "src": "f9afe970563e",
    "uid": "13465feb02857b55",
    "episode_title": "City Council Meetings – May 12, 2011",
@@ -589,8 +544,7 @@
   },
   {
    "id": "subj-dd1ea4a4837f9f6f52d9fb7b",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "63cf90537caf46e5",
    "episode_title": "Board of Adjustment Commercial Board of Adjustment Commercial",
@@ -603,7 +557,6 @@
   {
    "id": "subj-308e6b801cd6459aa1cac216",
    "split": "holdout",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "3135f3b2c998d2ce",
    "episode_title": "Afternoon Meeting",
@@ -616,7 +569,6 @@
   {
    "id": "subj-53b7b272ad1372f95daa5f8e",
    "split": "holdout",
-   "stratum": "yes",
    "src": "3b7588310856",
    "uid": "3c751fcf8105d8f1",
    "episode_title": "Planning and Zoning Meeting 2 – Oct 19, 2011",
@@ -629,7 +581,6 @@
   {
    "id": "subj-781907ceeef17109975c4ac3",
    "split": "holdout",
-   "stratum": "yes",
    "src": "7039dbcce556",
    "uid": "6d0306e24fcbe242",
    "episode_title": "Board of Adjustment – Oct 08, 2018",
@@ -641,8 +592,7 @@
   },
   {
    "id": "subj-bf6397c11d084b5051bef312",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "7ae46caeb85947cb",
    "episode_title": "Planning and Zoning Commission on 2021-11-03 5:30 PM (AMENDED) – Nov 03, 2021",
@@ -655,7 +605,6 @@
   {
    "id": "subj-54fa2ad6b476948e17ed0f94",
    "split": "holdout",
-   "stratum": "yes",
    "src": "76869ed1994f",
    "uid": "15d5a98823b37e13",
    "episode_title": "Reinvestment Zone 16 Davis Garden – Jan 17, 2023",
@@ -668,7 +617,6 @@
   {
    "id": "subj-731c4e52cda7410402d14233",
    "split": "holdout",
-   "stratum": "yes",
    "src": "6540eef2dc2e",
    "uid": "37b755aa31b8bd64",
    "episode_title": "City Plan Commission City Plan Commission",
@@ -680,8 +628,7 @@
   },
   {
    "id": "subj-c7eaafe61799b393e0944238",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "b6f44ce9e366",
    "uid": "3846c43465511574",
    "episode_title": "Electric Utility Commission – Aug 12, 2019",
@@ -694,7 +641,6 @@
   {
    "id": "subj-41f8c60f9e76ed599415b321",
    "split": "dev",
-   "stratum": "yes",
    "src": "fe4d235eef5a",
    "uid": "9010bebd6729f430",
    "episode_title": "City Council Meetings – Jul 28, 2011",
@@ -707,7 +653,6 @@
   {
    "id": "subj-32d4e58d3b8503835e61511a",
    "split": "holdout",
-   "stratum": "yes",
    "src": "2489eb088550",
    "uid": "f4f9533c0f549446",
    "episode_title": "Planning Commission – May 22, 2012",
@@ -720,7 +665,6 @@
   {
    "id": "subj-1bad70cfe098f7da9227bda6",
    "split": "dev",
-   "stratum": "yes",
    "src": "6540eef2dc2e",
    "uid": "d607ba056defd4e1",
    "episode_title": "City Plan Commission City Plan Commission",
@@ -733,7 +677,6 @@
   {
    "id": "subj-608a2a8936c82ad8a5c3e27f",
    "split": "holdout",
-   "stratum": "yes",
    "src": "f9afe970563e",
    "uid": "88acaece9fc65033",
    "episode_title": "City Council Meetings – Apr 29, 2010",
@@ -746,7 +689,6 @@
   {
    "id": "subj-bc9d13b8b28889dff0eaf18b",
    "split": "dev",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "97b683a5978e8cf7",
    "episode_title": "Evening Council",
@@ -759,7 +701,6 @@
   {
    "id": "subj-4ca604298eec56b1719cc5a9",
    "split": "holdout",
-   "stratum": "yes",
    "src": "6540eef2dc2e",
    "uid": "2ecca3d84b2c0736",
    "episode_title": "Historic and Cultural Landmark Commission Historic and Cultural Landmark Commission",
@@ -772,7 +713,6 @@
   {
    "id": "subj-2d43f17316a679e1c592988d",
    "split": "holdout",
-   "stratum": "yes",
    "src": "84a8d77f204a",
    "uid": "8d57a1e4cb12d81b",
    "episode_title": "Bond Oversight Committee – Oct 16, 2013",
@@ -784,8 +724,7 @@
   },
   {
    "id": "subj-47fc7a679c139572c6d9e744",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "e1c2f9189dc3f856",
    "episode_title": "Evening Meeting",
@@ -797,8 +736,7 @@
   },
   {
    "id": "subj-536bfb2b80c0b38e7e7fa4a1",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "f6d1fe5af86eaaf7",
    "episode_title": "Bid Purchasing – Sep 06, 2024",
@@ -811,7 +749,6 @@
   {
    "id": "subj-f4ce8d92b12ade9511c9167a",
    "split": "dev",
-   "stratum": "yes",
    "src": "6540eef2dc2e",
    "uid": "8ea93147cc2a8f66",
    "episode_title": "PRE-COUNCIL MEETING PRE-COUNCIL MEETING",
@@ -824,7 +761,6 @@
   {
    "id": "subj-1dd2f83fb61bf2c3c27811da",
    "split": "dev",
-   "stratum": "yes",
    "src": "f9afe970563e",
    "uid": "b096256999659085",
    "episode_title": "City Council Meetings – Oct 05, 2023",
@@ -836,8 +772,7 @@
   },
   {
    "id": "subj-5742b1ef524755a2319ad5e7",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "d1a5647c20ed9939",
    "episode_title": "P&Z Regular Session",
@@ -850,7 +785,6 @@
   {
    "id": "subj-44ee1ce8261f72a2e6671ec1",
    "split": "holdout",
-   "stratum": "yes",
    "src": "76869ed1994f",
    "uid": "452a458eda8e4c84",
    "episode_title": "2024 Bond Program Special Called Park and Trails Subcommittee Meeting – Sep 12, 2023",
@@ -862,8 +796,7 @@
   },
   {
    "id": "subj-6234cf6793e79b1be8500840",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "149e18205b342017",
    "episode_title": "Afternoon Council",
@@ -876,7 +809,6 @@
   {
    "id": "subj-c7238d3e17f7aa496fe6bab5",
    "split": "dev",
-   "stratum": "yes",
    "src": "6540eef2dc2e",
    "uid": "aa5e1072cdd54a71",
    "episode_title": "Zoning Commission Zoning Commission",
@@ -888,8 +820,7 @@
   },
   {
    "id": "subj-9c2acf27ed4e7a12ec75b692",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "aa59eeaab546e485",
    "episode_title": "P&Z Regular Session",
@@ -901,8 +832,7 @@
   },
   {
    "id": "subj-719a4c94012525027f741cf9",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "36314df45b0e445b",
    "episode_title": "P&Z Regular Session",
@@ -914,8 +844,7 @@
   },
   {
    "id": "subj-b370dcec51c599abf4d8afb9",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "95e09cd7ea5b9f6c",
    "episode_title": "Council Briefing – Aug 15, 2018",
@@ -928,7 +857,6 @@
   {
    "id": "subj-2203e0259f7438b6c309d9c9",
    "split": "dev",
-   "stratum": "yes",
    "src": "fe4d235eef5a",
    "uid": "de46d1635ef2c98e",
    "episode_title": "Housing and Planning Committee – Aug 13, 2019",
@@ -941,7 +869,6 @@
   {
    "id": "subj-9321fe760086bc4bd31b4a60",
    "split": "holdout",
-   "stratum": "yes",
    "src": "9bf21e6e48e4",
    "uid": "272ab71f960787d4",
    "episode_title": "Special Historic Landmark – Apr 02, 2018",
@@ -954,7 +881,6 @@
   {
    "id": "subj-c80f46233284634cdd372697",
    "split": "dev",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "c1689b439242f845",
    "episode_title": "Evening Council",
@@ -967,7 +893,6 @@
   {
    "id": "subj-9d7cd93314ece8a69a03da41",
    "split": "holdout",
-   "stratum": "yes",
    "src": "76869ed1994f",
    "uid": "19196617af296e42",
    "episode_title": "City Council Agenda Meetings – May 10, 2023",
@@ -980,7 +905,6 @@
   {
    "id": "subj-720208e30d90fadf34d3420b",
    "split": "dev",
-   "stratum": "yes",
    "src": "abbf5e25e078",
    "uid": "de282deb731a7361",
    "episode_title": "Combined Meeting – Feb 11, 2014",
@@ -993,7 +917,6 @@
   {
    "id": "subj-5c9ea389316ac668c8d5ca4b",
    "split": "holdout",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "e4b143037d3bef4b",
    "episode_title": "Afternoon Meeting",
@@ -1005,8 +928,7 @@
   },
   {
    "id": "subj-56411c2d7f1d84e7cc3e98ea",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "02778a02cc4c4622",
    "episode_title": "City Council on 2017-08-22 1:00 PM – Aug 22, 2017",
@@ -1018,8 +940,7 @@
   },
   {
    "id": "subj-a5496633c52a7a6d1a770b22",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "abbf5e25e078",
    "uid": "4b0c1ed69fcbcdda",
    "episode_title": "Combined Meeting – Jun 24, 2014",
@@ -1032,7 +953,6 @@
   {
    "id": "subj-cf84aabc3395f3651d24e822",
    "split": "holdout",
-   "stratum": "yes",
    "src": "ecc3710ac47f",
    "uid": "5b30b4b1663f1482",
    "episode_title": "Evening Meeting",
@@ -1045,7 +965,6 @@
   {
    "id": "subj-814a41b1803c78accd585496",
    "split": "dev",
-   "stratum": "no",
    "src": "6ac33bec3c6a",
    "uid": "d08536f66eebbfbe",
    "episode_title": "Commissioners Court",
@@ -1058,7 +977,6 @@
   {
    "id": "subj-59f176f587489f3fc105d533",
    "split": "dev",
-   "stratum": "no",
    "src": "f9afe970563e",
    "uid": "e1c5ada2adb6db73",
    "episode_title": "City Council Budget Work Session – Aug 16, 2017",
@@ -1071,7 +989,6 @@
   {
    "id": "subj-a8482115667cadc11448beff",
    "split": "dev",
-   "stratum": "no",
    "src": "3b7588310856",
    "uid": "11e2564bc23d6d3e",
    "episode_title": "City Council on 2019-04-02 2:00 PM – Apr 02, 2019",
@@ -1084,7 +1001,6 @@
   {
    "id": "subj-9b736a58460a3f4a2dc86371",
    "split": "holdout",
-   "stratum": "no",
    "src": "ecc3710ac47f",
    "uid": "a8fc3696f8847d0e",
    "episode_title": "Planning and Zoning Commission - Regular Session",
@@ -1097,7 +1013,6 @@
   {
    "id": "subj-c6036796b051bbb1f0d47e69",
    "split": "dev",
-   "stratum": "no",
    "src": "ecc3710ac47f",
    "uid": "010d9e06510f99a5",
    "episode_title": "Afternoon Meeting",
@@ -1110,7 +1025,6 @@
   {
    "id": "subj-8e2b6c66577fcc07fe7abb3c",
    "split": "holdout",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "38a715f0ae4bf1b4",
    "episode_title": "Board of Adjustment Residential Board of Adjustment Residential",
@@ -1122,8 +1036,7 @@
   },
   {
    "id": "subj-6a1b52b1849240af1278304f",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "ea7768195230",
    "uid": "a6b96de030d47717",
    "episode_title": "Parks and Recreation Board – Feb 23, 2026",
@@ -1135,8 +1048,7 @@
   },
   {
    "id": "subj-23b6658b445c458fbbc09d8a",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "d224d220f503d981",
    "episode_title": "City Planning Commission – Feb 05, 2026",
@@ -1148,8 +1060,7 @@
   },
   {
    "id": "subj-0165fcb408df4fe7243a7c6b",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "6ac33bec3c6a",
    "uid": "f246a899a0c9cd45",
    "episode_title": "Commissioners Court",
@@ -1162,7 +1073,6 @@
   {
    "id": "subj-0b32787cf7b78ac0a5b43a3a",
    "split": "holdout",
-   "stratum": "no",
    "src": "19104f3a246a",
    "uid": "471b7b721b668b80",
    "episode_title": "Urban Transportation – Jul 05, 2022",
@@ -1174,8 +1084,7 @@
   },
   {
    "id": "subj-5c9df78da4c82463191dbc93",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "bde7d036c13a4a82",
    "episode_title": "City Council on 2020-11-10 3:00 PM – Nov 10, 2020",
@@ -1188,7 +1097,6 @@
   {
    "id": "subj-5bc7036fe48b486444be7919",
    "split": "dev",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "2f5d65019d441896",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1200,8 +1108,7 @@
   },
   {
    "id": "subj-43369a5c681e370e2c362010",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "b6f44ce9e366",
    "uid": "0743266c9fa9444d",
    "episode_title": "Electric Utility Commission – Aug 16, 2010",
@@ -1214,7 +1121,6 @@
   {
    "id": "subj-688bfdfb21863905156f3c8b",
    "split": "dev",
-   "stratum": "no",
    "src": "76869ed1994f",
    "uid": "8390936678e5171f",
    "episode_title": "City Council Agenda Meetings – Jun 14, 2023",
@@ -1226,8 +1132,7 @@
   },
   {
    "id": "subj-4901f9792c227f2a2b850640",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "3db47c7027ee6641",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1240,7 +1145,6 @@
   {
    "id": "subj-059c794aca9939809554d1e4",
    "split": "dev",
-   "stratum": "no",
    "src": "abbf5e25e078",
    "uid": "19cf9940a3475f27",
    "episode_title": "Work Session and Regular Meeting – Apr 28, 2026",
@@ -1252,8 +1156,7 @@
   },
   {
    "id": "subj-cfb25078b132e2a3a58709bb",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "d04238886faf19c2",
    "episode_title": "Planning & Zoning Commission Workshop – Oct 15, 2014",
@@ -1265,8 +1168,7 @@
   },
   {
    "id": "subj-7a4882fb20d9464a2acfd6d9",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "76869ed1994f",
    "uid": "3e1db759db886b06",
    "episode_title": "Council Briefing – Feb 03, 2021",
@@ -1279,7 +1181,6 @@
   {
    "id": "subj-812a2280b5f9ee8dbafa655b",
    "split": "dev",
-   "stratum": "no",
    "src": "b6f44ce9e366",
    "uid": "3ca97cc93296a52f",
    "episode_title": "Electric Utility Commission – Oct 20, 2025",
@@ -1291,8 +1192,7 @@
   },
   {
    "id": "subj-5f2804cd02b2e180918ca5a2",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "c059c1a28111",
    "uid": "9d8368ec770303ba",
    "episode_title": "Downtown Commission – Nov 19, 2025",
@@ -1304,8 +1204,7 @@
   },
   {
    "id": "subj-361e72ced64cf672484a5d85",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "6ac33bec3c6a",
    "uid": "83330911ca224b3f",
    "episode_title": "Commissioners Court",
@@ -1317,8 +1216,7 @@
   },
   {
    "id": "subj-d882a64c41ce0c9c8d56b102",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "315305b7ab68e1de",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1331,7 +1229,6 @@
   {
    "id": "subj-330d684299776467872ff380",
    "split": "holdout",
-   "stratum": "no",
    "src": "ecc3710ac47f",
    "uid": "e5ccd74ad64ff651",
    "episode_title": "Evening Meeting",
@@ -1344,7 +1241,6 @@
   {
    "id": "subj-1cd69aaf4d04c6d421861880",
    "split": "holdout",
-   "stratum": "no",
    "src": "f9afe970563e",
    "uid": "0ee73c9241c1532a",
    "episode_title": "City Council Meetings – Mar 02, 2017",
@@ -1356,8 +1252,7 @@
   },
   {
    "id": "subj-ca6f313fe527ad0082b2e483",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "6ac33bec3c6a",
    "uid": "616016a738e4b379",
    "episode_title": "Commissioners Court",
@@ -1370,7 +1265,6 @@
   {
    "id": "subj-294c23313b94526183a463fd",
    "split": "dev",
-   "stratum": "no",
    "src": "ecc3710ac47f",
    "uid": "bb56b844c811808e",
    "episode_title": "Planning and Zoning Commission - Regular Session",
@@ -1382,8 +1276,7 @@
   },
   {
    "id": "subj-8f4cdb9b4b28bbed85003ac5",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "7039dbcce556",
    "uid": "90156828239d6b7b",
    "episode_title": "Board of Adjustment – Dec 12, 2022",
@@ -1396,7 +1289,6 @@
   {
    "id": "subj-9201d30f6af50ceca562ce36",
    "split": "dev",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "7dd293d960592644",
    "episode_title": "Building Standards Commission Building Standards Commission",
@@ -1409,7 +1301,6 @@
   {
    "id": "subj-57a84b8bdf8832dd67eb15b7",
    "split": "holdout",
-   "stratum": "no",
    "src": "6ac33bec3c6a",
    "uid": "94064295d42dba84",
    "episode_title": "Commissioners Court",
@@ -1421,8 +1312,7 @@
   },
   {
    "id": "subj-65503cbbaa79b0a4200c56ab",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "238bfeb20a9eeda1",
    "episode_title": "Planning and Zoning Commission Meeting – May 20, 2015",
@@ -1434,8 +1324,7 @@
   },
   {
    "id": "subj-2a7a65433cf409fd0c232742",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "bf368dc5809f1ab0",
    "episode_title": "City Council Meeting City Council Meeting",
@@ -1448,7 +1337,6 @@
   {
    "id": "subj-ec0b30801f1f6c552b8f5dff",
    "split": "dev",
-   "stratum": "no",
    "src": "3b7588310856",
    "uid": "58d75b374e9d5f83",
    "episode_title": "Planning and Zoning Commission on 2026-01-14 5:30 PM – Jan 14, 2026",
@@ -1460,8 +1348,7 @@
   },
   {
    "id": "subj-30caa0552b80ca62873d1a8e",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "9f866f8efbf2",
    "uid": "27df24ead9b20db7",
    "episode_title": "Environmental Commission – Jun 17, 2026",
@@ -1474,7 +1361,6 @@
   {
    "id": "subj-ebdf310d2b2d49b500e93c08",
    "split": "dev",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "71d4be0e35b2aea9",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1487,7 +1373,6 @@
   {
    "id": "subj-4b4bdd2cc49139f4d200f630",
    "split": "holdout",
-   "stratum": "no",
    "src": "422e3f43767f",
    "uid": "fe8cb3ea31e610ec",
    "episode_title": "Zoning and Platting Commission – Mar 17, 2026",
@@ -1499,8 +1384,7 @@
   },
   {
    "id": "subj-39d18eb2e763a6a703397614",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "aaec584a06da",
    "uid": "cdad470ab1a9608b",
    "episode_title": "Arts Commission – Oct 15, 2012",
@@ -1513,7 +1397,6 @@
   {
    "id": "subj-d41478002fb759fa4c29602e",
    "split": "dev",
-   "stratum": "no",
    "src": "ecc3710ac47f",
    "uid": "5dc0a9b5dd2906c1",
    "episode_title": "Afternoon Council",
@@ -1525,8 +1408,7 @@
   },
   {
    "id": "subj-1f1ede37154fab133951842e",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "9baa8e753522881a",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1538,8 +1420,7 @@
   },
   {
    "id": "subj-4f09fb8ab47421040c735e86",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "2489eb088550",
    "uid": "6cb80f5a341acdf0",
    "episode_title": "Planning Commission – Sep 27, 2016",
@@ -1552,7 +1433,6 @@
   {
    "id": "subj-cc21f879caa03e90850e77df",
    "split": "holdout",
-   "stratum": "no",
    "src": "9ddf3dba687e",
    "uid": "d80cce2bcb6fc65b",
    "episode_title": "Building and Standards Commission – Oct 08, 2025",
@@ -1565,7 +1445,6 @@
   {
    "id": "subj-ae824f6f26bf761b12a8358f",
    "split": "dev",
-   "stratum": "no",
    "src": "9bf21e6e48e4",
    "uid": "a971d09bc205312a",
    "episode_title": "Historic Landmark – Apr 01, 2026",
@@ -1577,8 +1456,7 @@
   },
   {
    "id": "subj-a59cac19c3a700c052cf52a6",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "a9613d7920e8bc37",
    "episode_title": "Board of Adjustments: Full Board Meeting – Nov 03, 2026",
@@ -1590,8 +1468,7 @@
   },
   {
    "id": "subj-aed7e7c8a073c78a4cfb4563",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "37e8c4ceb64e1f3e",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1603,8 +1480,7 @@
   },
   {
    "id": "subj-3599e0efe91de353ef8cc620",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "76869ed1994f",
    "uid": "9d5dc040472b8b8a",
    "episode_title": "City Council Agenda Meetings – Feb 08, 2023",
@@ -1617,7 +1493,6 @@
   {
    "id": "subj-5d0222c7863e74f0a3bdec2c",
    "split": "dev",
-   "stratum": "no",
    "src": "6ac33bec3c6a",
    "uid": "477cece5f692b169",
    "episode_title": "Commissioners Court",
@@ -1629,8 +1504,7 @@
   },
   {
    "id": "subj-ddbf84763204dc7b8b7dc076",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "6ac33bec3c6a",
    "uid": "bba18a2d3bff760d",
    "episode_title": "Commissioners Court",
@@ -1643,7 +1517,6 @@
   {
    "id": "subj-240a59af265dd45a00ed6067",
    "split": "holdout",
-   "stratum": "no",
    "src": "76869ed1994f",
    "uid": "c250225389a1275c",
    "episode_title": "City Council Agenda Meetings – Jan 10, 2024",
@@ -1656,7 +1529,6 @@
   {
    "id": "subj-df6d8cc37cbea67886a94897",
    "split": "dev",
-   "stratum": "no",
    "src": "ecc3710ac47f",
    "uid": "2adb7158c13dd68b",
    "episode_title": "Evening Council",
@@ -1669,7 +1541,6 @@
   {
    "id": "subj-eff9bb9f14fc17e651ce5333",
    "split": "dev",
-   "stratum": "no",
    "src": "abbf5e25e078",
    "uid": "5d9fd44968b46774",
    "episode_title": "Planning & Zoning Commission – Nov 15, 2022",
@@ -1682,7 +1553,6 @@
   {
    "id": "subj-81e482bcab9a02275e7b2278",
    "split": "holdout",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "a57e351de9c934b5",
    "episode_title": "CITY COUNCIL on 2025-11-11 6:00 PM CITY COUNCIL on 2025-11-11 6:00 PM",
@@ -1695,7 +1565,6 @@
   {
    "id": "subj-a730314506be1490cd6287e9",
    "split": "holdout",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "2b6fde51716184d3",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1708,7 +1577,6 @@
   {
    "id": "subj-8a937ea741e1b056479dc12e",
    "split": "dev",
-   "stratum": "no",
    "src": "3b7588310856",
    "uid": "a88c8ebd6bbc5cde",
    "episode_title": "Planning and Zoning Commission on 2025-02-26 5:00 PM – Feb 26, 2025",
@@ -1720,8 +1588,7 @@
   },
   {
    "id": "subj-c74899e2434d5b856c867f4d",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "5e4e6cb9daa8a081",
    "episode_title": "Board of Adjustment Commercial Board of Adjustment Commercial",
@@ -1734,7 +1601,6 @@
   {
    "id": "subj-bc9fb2beaaf786f39269faab",
    "split": "holdout",
-   "stratum": "no",
    "src": "aac08b807995",
    "uid": "e6de830ed1dcfdac",
    "episode_title": "Design – Feb 23, 2026",
@@ -1746,8 +1612,7 @@
   },
   {
    "id": "subj-db0d8e35dd8713cc5c46322d",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "94ef97a4ceac",
    "uid": "e27d360f67f091d7",
    "episode_title": "Special Joint Sustainability Committee – Jun 24, 2020",
@@ -1759,8 +1624,7 @@
   },
   {
    "id": "subj-e0ba64e5f747dcae38966a03",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "9f866f8efbf2",
    "uid": "2c1b74d5e00cdbd7",
    "episode_title": "Environmental Commission – Jun 20, 2018",
@@ -1772,8 +1636,7 @@
   },
   {
    "id": "subj-28752eccde296b2f4305dfd2",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "44538b16dfe0eb23",
    "episode_title": "Planning and Zoning Commission on 2022-12-14 5:00 PM – Dec 14, 2022",
@@ -1785,8 +1648,7 @@
   },
   {
    "id": "subj-8682b1e714b1e3962d00d69d",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "c446615f230f0e6e",
    "episode_title": "City Council on 2023-11-07 2:00 PM – Nov 07, 2023",
@@ -1798,8 +1660,7 @@
   },
   {
    "id": "subj-d6db4cbb9c2df0c348e104c3",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "956da91f753eae51",
    "episode_title": "City Council Agenda Meetings – Aug 09, 2023",
@@ -1811,8 +1672,7 @@
   },
   {
    "id": "subj-0ac02d2a9f6e8101580de6f9",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "99c6e3086c918006",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1824,8 +1684,7 @@
   },
   {
    "id": "subj-2aec5a20cddfd6640114da9e",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "6ac33bec3c6a",
    "uid": "38a7698ee6dfb432",
    "episode_title": "Commissioners Court",
@@ -1838,7 +1697,6 @@
   {
    "id": "subj-a6a9020681d3b6dda9c3a005",
    "split": "holdout",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "1c3b67beab87e8c9",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -1851,7 +1709,6 @@
   {
    "id": "subj-314f89374449f464bda593ba",
    "split": "dev",
-   "stratum": "no",
    "src": "9f866f8efbf2",
    "uid": "290d6eb1f8d6cbe4",
    "episode_title": "Environmental Commission – Feb 07, 2018",
@@ -1864,7 +1721,6 @@
   {
    "id": "subj-f6c1ee297dfb0fce549c484e",
    "split": "dev",
-   "stratum": "no",
    "src": "abbf5e25e078",
    "uid": "f3874892e0d1ceab",
    "episode_title": "Board of Zoning Adjustment – Oct 08, 2025",
@@ -1877,7 +1733,6 @@
   {
    "id": "subj-a26b7a7fc8d20e8197b4f90f",
    "split": "dev",
-   "stratum": "no",
    "src": "fe4d235eef5a",
    "uid": "ebd3ce4088426c76",
    "episode_title": "City Council Meetings – Feb 11, 2010",
@@ -1889,8 +1744,7 @@
   },
   {
    "id": "subj-78bb3741973cdf410e6a2124",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "ac8d461ff3a3",
    "uid": "59bfb659c7bcc2a7",
    "episode_title": "Public Safety Commission – Dec 01, 2025",
@@ -1902,8 +1756,7 @@
   },
   {
    "id": "subj-3fae54c4064eb6ee9f444aee",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "3b7588310856",
    "uid": "11cc54a68afe902c",
    "episode_title": "Planning and Zoning Commission on 2018-12-12 4:30 PM – Dec 12, 2018",
@@ -1915,8 +1768,7 @@
   },
   {
    "id": "subj-eb126332fd79ab0e9a317e48",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "6ac33bec3c6a",
    "uid": "eeb02430688cf248",
    "episode_title": "Commissioners Court",
@@ -1929,7 +1781,6 @@
   {
    "id": "subj-2886504b57fd42bcd6a1d7de",
    "split": "holdout",
-   "stratum": "no",
    "src": "76869ed1994f",
    "uid": "6d75515b263d6e28",
    "episode_title": "City Council Agenda Meetings – Sep 11, 2024",
@@ -1941,8 +1792,7 @@
   },
   {
    "id": "subj-e4ac58ef2cf7f8722fcacbd8",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "fe4d235eef5a",
    "uid": "557b52da2f257067",
    "episode_title": "Regional Affordability Committee – Mar 20, 2017",
@@ -1955,7 +1805,6 @@
   {
    "id": "subj-f5bb8ca1ba4051c0b205c8cc",
    "split": "holdout",
-   "stratum": "no",
    "src": "ecc3710ac47f",
    "uid": "36314df45b0e445b",
    "episode_title": "P&Z Regular Session",
@@ -1968,7 +1817,6 @@
   {
    "id": "subj-93ef1c6c0e495260ca2e6fbe",
    "split": "dev",
-   "stratum": "no",
    "src": "9f866f8efbf2",
    "uid": "1f041640b356c514",
    "episode_title": "Environmental Commission – Sep 03, 2025",
@@ -1981,7 +1829,6 @@
   {
    "id": "subj-59a61efd08ffda234588004a",
    "split": "holdout",
-   "stratum": "no",
    "src": "6ac33bec3c6a",
    "uid": "e15c554745ebadef",
    "episode_title": "Commissioners Court",
@@ -1993,8 +1840,7 @@
   },
   {
    "id": "subj-b4a5eed08f0aeecbd6e2f3ef",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "56b8e0d9ba055953",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -2007,7 +1853,6 @@
   {
    "id": "subj-2d96a90732029c6f20b5490d",
    "split": "dev",
-   "stratum": "no",
    "src": "6ac33bec3c6a",
    "uid": "aa4c1439cafa319a",
    "episode_title": "Commissioners Court",
@@ -2019,8 +1864,7 @@
   },
   {
    "id": "subj-f09b74ee5e585c23453b6056",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "6ac33bec3c6a",
    "uid": "e164b9159d82a3a7",
    "episode_title": "Commissioners Court",
@@ -2032,8 +1876,7 @@
   },
   {
    "id": "subj-bf8f692a06433d9701bf9d7b",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "1abe04294060",
    "uid": "b84fa02e95cc7459",
    "episode_title": "Community Development Commission – Jun 09, 2026",
@@ -2046,7 +1889,6 @@
   {
    "id": "subj-334412f672c7bf6a07d67e97",
    "split": "holdout",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "efb8d8881f71f074",
    "episode_title": "Joint Fort Worth City Council/Fort Worth Employees' Retirement Fund Board Meeting Joint Fort Worth City Council/Fort Worth Employees' Retirement Fund Board Meeting",
@@ -2059,7 +1901,6 @@
   {
    "id": "subj-889b5813402bcf7f7e2fb527",
    "split": "holdout",
-   "stratum": "no",
    "src": "7039dbcce556",
    "uid": "a86a607217455c3c",
    "episode_title": "Board of Adjustment – Feb 13, 2023",
@@ -2072,7 +1913,6 @@
   {
    "id": "subj-131512f93586886bf5b3b696",
    "split": "holdout",
-   "stratum": "no",
    "src": "6540eef2dc2e",
    "uid": "b355665cedf650fc",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -2085,7 +1925,6 @@
   {
    "id": "subj-8226b5ad6de189ce29805184",
    "split": "holdout",
-   "stratum": "split",
    "src": "ecc3710ac47f",
    "uid": "f77ff1bd630746a7",
    "episode_title": "Afternoon Council",
@@ -2097,8 +1936,7 @@
   },
   {
    "id": "subj-a920aa44e45ac51603e51866",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "f2030474593fb38e",
    "episode_title": "CITY COUNCIL on 2020-06-23 7:00 PM CITY COUNCIL on 2020-06-23 7:00 PM",
@@ -2111,7 +1949,6 @@
   {
    "id": "subj-b3564316cb1ee56e6130750b",
    "split": "dev",
-   "stratum": "split",
    "src": "6ac33bec3c6a",
    "uid": "821768b9a2861e75",
    "episode_title": "Commissioners Court",
@@ -2123,8 +1960,7 @@
   },
   {
    "id": "subj-43c9c8c453a8ce93e0795b24",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "f9afe970563e",
    "uid": "56b00c6c5c6408f4",
    "episode_title": "City Council Meetings – Apr 20, 2023",
@@ -2137,7 +1973,6 @@
   {
    "id": "subj-aef6c0d11bac94fdc0f3178e",
    "split": "holdout",
-   "stratum": "split",
    "src": "6540eef2dc2e",
    "uid": "ed061630ff9f424a",
    "episode_title": "Zoning Commission Zoning Commission",
@@ -2149,8 +1984,7 @@
   },
   {
    "id": "subj-85f5be5169e3edda99b9f08b",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "a2d793a5610bd358",
    "episode_title": "City Council Meetings – Aug 09, 2018",
@@ -2162,8 +1996,7 @@
   },
   {
    "id": "subj-c90a49930d94f5ad15dbcc5d",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "c059c1a28111",
    "uid": "a0bff41274a7f707",
    "episode_title": "Downtown Commission – Mar 11, 2026",
@@ -2175,8 +2008,7 @@
   },
   {
    "id": "subj-b9915ec80d482771f824f46d",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "07f707ef3a09d227",
    "episode_title": "City Plan Commission City Plan Commission",
@@ -2189,7 +2021,6 @@
   {
    "id": "subj-26445c4d376c7b463c704caf",
    "split": "dev",
-   "stratum": "split",
    "src": "6540eef2dc2e",
    "uid": "34cb8887fa4a4eaa",
    "episode_title": "CITY COUNCIL WORKSESSION on 2020-09-15 3:15 PM CITY COUNCIL WORKSESSION on 2020-09-15 3:15 PM",
@@ -2202,7 +2033,6 @@
   {
    "id": "subj-efee8a5800f34834975983da",
    "split": "dev",
-   "stratum": "split",
    "src": "fe4d235eef5a",
    "uid": "657e0912c48af4f8",
    "episode_title": "City Council Meetings – Sep 24, 2026",
@@ -2215,7 +2045,6 @@
   {
    "id": "subj-5e03b07e87c3bcd93ebe7f8b",
    "split": "holdout",
-   "stratum": "split",
    "src": "3b7588310856",
    "uid": "16b6897fcbba04d1",
    "episode_title": "Airport Advisory Board on 2021-01-14 11:00 AM (SPECIAL CALLED MEETING) – Jan 14, 2021",
@@ -2227,8 +2056,7 @@
   },
   {
    "id": "subj-8ea9a202d680db2ef154ad7d",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "fe4d235eef5a",
    "uid": "6aa4564252b39fb3",
    "episode_title": "City Council Meetings – Jan 17, 2013",
@@ -2241,7 +2069,6 @@
   {
    "id": "subj-675e684b730788d222d2f584",
    "split": "holdout",
-   "stratum": "split",
    "src": "ecc3710ac47f",
    "uid": "7fa4c9bf56084ce7",
    "episode_title": "Evening Meeting",
@@ -2253,8 +2080,7 @@
   },
   {
    "id": "subj-a9f60e16b2fe90c46d58cf56",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "76869ed1994f",
    "uid": "370115089cb85be0",
    "episode_title": "Environmental Commission – Mar 08, 2023",
@@ -2267,7 +2093,6 @@
   {
    "id": "subj-af561546b07258779eb304e3",
    "split": "holdout",
-   "stratum": "split",
    "src": "ecc3710ac47f",
    "uid": "149e18205b342017",
    "episode_title": "Afternoon Council",
@@ -2279,8 +2104,7 @@
   },
   {
    "id": "subj-f2b5769e6d2fcf786aef955a",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "422e3f43767f",
    "uid": "c2b102a4025b3341",
    "episode_title": "Zoning and Platting Commission – Aug 20, 2013",
@@ -2293,7 +2117,6 @@
   {
    "id": "subj-f1c2b10bf95e0683fb296922",
    "split": "holdout",
-   "stratum": "split",
    "src": "f9afe970563e",
    "uid": "003379ffaf852a73",
    "episode_title": "City Council Meetings – Feb 04, 2016",
@@ -2306,7 +2129,6 @@
   {
    "id": "subj-d8a6644d9b2db2003048d487",
    "split": "holdout",
-   "stratum": "split",
    "src": "422e3f43767f",
    "uid": "dc4f7b309baad469",
    "episode_title": "Zoning and Platting Commission – Nov 01, 2016",
@@ -2318,8 +2140,7 @@
   },
   {
    "id": "subj-b1f93e363b18b973cb401ae2",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "fe4d235eef5a",
    "uid": "055722d81f451e70",
    "episode_title": "MBE/WBE and Small Business Council Committee – Aug 14, 2012",
@@ -2332,7 +2153,6 @@
   {
    "id": "subj-066686a6cc69a66a9c2548d1",
    "split": "dev",
-   "stratum": "split",
    "src": "1abe04294060",
    "uid": "461039d83c175365",
    "episode_title": "Community Development Commission – Jan 13, 2026",
@@ -2345,7 +2165,6 @@
   {
    "id": "subj-d3c876adcb4f10eba164a106",
    "split": "dev",
-   "stratum": "split",
    "src": "6ac33bec3c6a",
    "uid": "4557175d202b0cd3",
    "episode_title": "County Commissioners Court",
@@ -2358,7 +2177,6 @@
   {
    "id": "subj-d1b5478787ce460feb39d4b7",
    "split": "dev",
-   "stratum": "split",
    "src": "fe4d235eef5a",
    "uid": "d0a8a4f9bfc10a86",
    "episode_title": "Housing and Planning Committee – Jan 23, 2018",
@@ -2370,8 +2188,7 @@
   },
   {
    "id": "subj-fe61efc7c213eaf57d1d4d61",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "2489eb088550",
    "uid": "d92d22140068af18",
    "episode_title": "Planning Commission – Sep 08, 2015",
@@ -2384,7 +2201,6 @@
   {
    "id": "subj-e0be08d734404eb009f0a2f8",
    "split": "holdout",
-   "stratum": "split",
    "src": "6540eef2dc2e",
    "uid": "b3b1f2d0d3fe70b6",
    "episode_title": "Zoning Commission Zoning Commission",
@@ -2397,7 +2213,6 @@
   {
    "id": "subj-37a50865be8c0dd34a2fbbfc",
    "split": "holdout",
-   "stratum": "split",
    "src": "3b7588310856",
    "uid": "b6f070d68717b5f8",
    "episode_title": "City Council on 2020-02-18 11:30 AM – Feb 18, 2020",
@@ -2410,7 +2225,6 @@
   {
    "id": "subj-473de60d9c373fb8474ca156",
    "split": "holdout",
-   "stratum": "split",
    "src": "6540eef2dc2e",
    "uid": "3280abf701231704",
    "episode_title": "City Plan Commission City Plan Commission",
@@ -2422,8 +2236,7 @@
   },
   {
    "id": "subj-bd77092326adef11679d754c",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "3683e9ce42fac457",
    "episode_title": "City Council Meetings – Jul 23, 2026",
@@ -2436,7 +2249,6 @@
   {
    "id": "subj-e78df20295f15627e5b09d9e",
    "split": "holdout",
-   "stratum": "split",
    "src": "7039dbcce556",
    "uid": "c60e555291cf2a64",
    "episode_title": "Board of Adjustment/Sign Review Board – Dec 12, 2011",
@@ -2449,7 +2261,6 @@
   {
    "id": "subj-69bfc43b5160a332583496e0",
    "split": "dev",
-   "stratum": "split",
    "src": "f9afe970563e",
    "uid": "8cfdf7574ceef391",
    "episode_title": "City Council Meetings – Jan 26, 2017",
@@ -2461,8 +2272,7 @@
   },
   {
    "id": "subj-1938044653de4adb73fdc1fa",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "422e3f43767f",
    "uid": "cf6031e6172c8211",
    "episode_title": "Zoning and Platting Commission – Oct 01, 2019",
@@ -2475,7 +2285,6 @@
   {
    "id": "subj-50cfe0668153576ef9bc02d3",
    "split": "dev",
-   "stratum": "split",
    "src": "3b7588310856",
    "uid": "6a0b1564d260da67",
    "episode_title": "Planning and Zoning Meeting 2 – Aug 10, 2011",
@@ -2488,7 +2297,6 @@
   {
    "id": "subj-dafa0217dd8264a6a2b1539a",
    "split": "dev",
-   "stratum": "split",
    "src": "fe4d235eef5a",
    "uid": "eca9646d9b481b7c",
    "episode_title": "City Council Work Session- Austin Energy – May 17, 2012",
@@ -2501,7 +2309,6 @@
   {
    "id": "subj-08af7105584a1595d26216b9",
    "split": "dev",
-   "stratum": "split",
    "src": "6540eef2dc2e",
    "uid": "3fd0769f51ca1f05",
    "episode_title": "Zoning Commission Zoning Commission",
@@ -2513,8 +2320,7 @@
   },
   {
    "id": "subj-c833bc0bcffa58025002ccf9",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "94ef97a4ceac",
    "uid": "6b6fb2c48b2b0021",
    "episode_title": "Joint Sustainability Committee – Apr 25, 2018",
@@ -2526,8 +2332,7 @@
   },
   {
    "id": "subj-f62d8a39db76a1637e877230",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "dbabfe0547d50dd9",
    "episode_title": "PRE-COUNCIL MEETING PRE-COUNCIL MEETING",
@@ -2539,8 +2344,7 @@
   },
   {
    "id": "subj-12bd87ddde83ab6702a849d5",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "65deb5e723c08fa7",
    "episode_title": "Planning and Zoning Commission - Regular Session",
@@ -2553,7 +2357,6 @@
   {
    "id": "subj-cb315504895d278fd1cee43f",
    "split": "holdout",
-   "stratum": "split",
    "src": "ecc3710ac47f",
    "uid": "73e1d7c997e783b1",
    "episode_title": "Planning and Zoning Commission - Regular Session",
@@ -2565,8 +2368,7 @@
   },
   {
    "id": "subj-6ad88bd76f58e4d04c7af47d",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "ecc3710ac47f",
    "uid": "f1f223322a8a52fa",
    "episode_title": "Evening Meeting",
@@ -2578,8 +2380,7 @@
   },
   {
    "id": "subj-4442f1a04963ccba2b42684c",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "b6f44ce9e366",
    "uid": "c7e16161011cd55e",
    "episode_title": "Electric Utility Commission – Feb 09, 2026",
@@ -2591,8 +2392,7 @@
   },
   {
    "id": "subj-a2c9f34ff90766cf81b04413",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "56592de7b7ff6cad",
    "episode_title": "Evening Meeting",
@@ -2605,7 +2405,6 @@
   {
    "id": "subj-09d1d3a540ea8725fefeb413",
    "split": "dev",
-   "stratum": "split",
    "src": "9bf21e6e48e4",
    "uid": "193c32a44ecf33d2",
    "episode_title": "Historic Landmark – Sep 04, 2024",
@@ -2618,7 +2417,6 @@
   {
    "id": "subj-0cdd297721bb0fc9fbcb3224",
    "split": "dev",
-   "stratum": "split",
    "src": "f9afe970563e",
    "uid": "d792f59db212cda5",
    "episode_title": "City Council Work Session – Jan 29, 2019",
@@ -2630,8 +2428,7 @@
   },
   {
    "id": "subj-6229df758edf63d403ae1dbb",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "4d6f2e943537b792",
    "episode_title": "Development Code Review Committee on 2020-11-18 1:00 PM – Nov 18, 2020",
@@ -2643,8 +2440,7 @@
   },
   {
    "id": "subj-063f1c01cf67bbea63adb2ee",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "f9afe970563e",
    "uid": "58b4dc413191e260",
    "episode_title": "City Council Meetings – Jun 12, 2014",
@@ -2656,8 +2452,7 @@
   },
   {
    "id": "subj-b5f77bfab58743f33f0dccc1",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "f97985118b9b711c",
    "episode_title": "Evening Meeting",
@@ -2669,8 +2464,7 @@
   },
   {
    "id": "subj-58dc8c6bd30344440a84b97e",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "ac8d461ff3a3",
    "uid": "f167cd644d2f5276",
    "episode_title": "Public Safety Commission – Mar 04, 2019",
@@ -2683,7 +2477,6 @@
   {
    "id": "subj-b31e1309dbcf645abcd0da5d",
    "split": "dev",
-   "stratum": "split",
    "src": "fe4d235eef5a",
    "uid": "e14e193d3966f2b5",
    "episode_title": "City Council Meetings – Sep 23, 2010",
@@ -2696,7 +2489,6 @@
   {
    "id": "subj-8716245411bf353a9feee48b",
    "split": "holdout",
-   "stratum": "split",
    "src": "abbf5e25e078",
    "uid": "d550e49c13c1df03",
    "episode_title": "Town Meetings – Nov 28, 2011",
@@ -2709,7 +2501,6 @@
   {
    "id": "subj-7f5e7069676a7032e9347dd3",
    "split": "dev",
-   "stratum": "split",
    "src": "ecc3710ac47f",
    "uid": "fe9c3f39c3cedb08",
    "episode_title": "Evening Council",
@@ -2721,8 +2512,7 @@
   },
   {
    "id": "subj-b80f892146b9c5469a2f82a2",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "3b7588310856",
    "uid": "21556722cb1f5c06",
    "episode_title": "Public Utilities Board on 2024-09-23 9:00 AM – Sep 23, 2024",
@@ -2734,8 +2524,7 @@
   },
   {
    "id": "subj-5839e7f0db6d73cb521ea940",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "fe4d235eef5a",
    "uid": "1d3412d84968b853",
    "episode_title": "City Council Meetings – Jun 28, 2018",
@@ -2747,8 +2536,7 @@
   },
   {
    "id": "subj-be1cb76264623f29163310a3",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "ecc3710ac47f",
    "uid": "28b7adab529ff608",
    "episode_title": "Planning and Zoning Commission - Regular Session",
@@ -2761,7 +2549,6 @@
   {
    "id": "subj-42a1fea197b8780fccd150a6",
    "split": "holdout",
-   "stratum": "split",
    "src": "ac8d461ff3a3",
    "uid": "850035b43f53ad08",
    "episode_title": "Public Safety Commission – Dec 06, 2021",
@@ -2774,7 +2561,6 @@
   {
    "id": "subj-6075d6a7af7d1f2a052a876c",
    "split": "holdout",
-   "stratum": "split",
    "src": "422e3f43767f",
    "uid": "2cd25cf7ca8500ff",
    "episode_title": "Zoning and Platting Commission – Apr 16, 2013",
@@ -2786,8 +2572,7 @@
   },
   {
    "id": "subj-e537ca8ec8a0bd377e00d3c8",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "7039dbcce556",
    "uid": "66013883977ef90b",
    "episode_title": "Board of Adjustment/Sign Review Board – Jul 11, 2011",
@@ -2799,8 +2584,7 @@
   },
   {
    "id": "subj-692a4d2e2aa253c5b66164e4",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "fe4d235eef5a",
    "uid": "ac444eb59bd60758",
    "episode_title": "Housing and Planning Committee – May 31, 2018",
@@ -2813,7 +2597,6 @@
   {
    "id": "subj-5b52ca2c2ccff4f25c86e597",
    "split": "dev",
-   "stratum": "split",
    "src": "6540eef2dc2e",
    "uid": "8c626594e567b082",
    "episode_title": "CITY COUNCIL on 2019-10-29 7:00 PM CITY COUNCIL on 2019-10-29 7:00 PM",
@@ -2825,8 +2608,7 @@
   },
   {
    "id": "subj-1cf0cec8341bfe020e0a15f6",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "b3820e107e95b3fe",
    "episode_title": "Joint Meeting of Transportation and Economic Development Meeting – Feb 07, 2023",
@@ -2839,7 +2621,6 @@
   {
    "id": "subj-a449d5fc16aea54e86f24e8c",
    "split": "holdout",
-   "stratum": "split",
    "src": "601460bfc189",
    "uid": "4ec02b585697e786",
    "episode_title": "Resource Management – Jul 25, 2017",
@@ -2851,8 +2632,7 @@
   },
   {
    "id": "subj-7afc189d6950696858f342de",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "990ccbaf5bf0b84d",
    "episode_title": "Council Briefing – Jun 03, 2020",
@@ -2864,8 +2644,7 @@
   },
   {
    "id": "subj-129a3ceef8110da459372f31",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "fe4d235eef5a",
    "uid": "a7b0117be95300a2",
    "episode_title": "City Council Work Session – Aug 29, 2017",
@@ -2878,7 +2657,6 @@
   {
    "id": "subj-3f3d18b1926ae920ac188f3b",
    "split": "holdout",
-   "stratum": "split",
    "src": "422e3f43767f",
    "uid": "7022e2ba2a007262",
    "episode_title": "Zoning and Platting Commission – May 17, 2016",
@@ -2891,7 +2669,6 @@
   {
    "id": "subj-98c304771510fb7f241c24ea",
    "split": "dev",
-   "stratum": "split",
    "src": "f9afe970563e",
    "uid": "58b4dc413191e260",
    "episode_title": "City Council Meetings – Jun 12, 2014",
@@ -2903,8 +2680,7 @@
   },
   {
    "id": "subj-020dc766639f0a42d61616e6",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "fe4d235eef5a",
    "uid": "61cb19e5fa5f32ea",
    "episode_title": "Balcones Canyonlands Conservation Plan Coordinating Committee – Oct 27, 2023",
@@ -2916,8 +2692,7 @@
   },
   {
    "id": "subj-1903d01c02372ef58ef24812",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "0bf59a00936e2fed",
    "episode_title": "City Council Meetings – May 04, 2017",
@@ -2930,7 +2705,6 @@
   {
    "id": "subj-7e7d4e9320ab569e44081f51",
    "split": "holdout",
-   "stratum": "split",
    "src": "6ac33bec3c6a",
    "uid": "f4b67b0803b8aade",
    "episode_title": "Commissioners Court",
@@ -2942,8 +2716,7 @@
   },
   {
    "id": "subj-25a57f2ebdedaca0ee8e311f",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "ecc3710ac47f",
    "uid": "de24047d259bffc6",
    "episode_title": "P&Z Regular Session",
@@ -2955,8 +2728,7 @@
   },
   {
    "id": "subj-2f177d305e35ca91b559c7e3",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "19104f3a246a",
    "uid": "5e96b20d1131e2f4",
    "episode_title": "Urban Transportation – Aug 11, 2015",
@@ -2969,7 +2741,6 @@
   {
    "id": "subj-ef5babe18eb3b918e83831ec",
    "split": "holdout",
-   "stratum": "split",
    "src": "3b7588310856",
    "uid": "c165d8fcea4fa79a",
    "episode_title": "City Council Regular Meeting – Feb 02, 2010",
@@ -2982,7 +2753,6 @@
   {
    "id": "subj-3e68e2344a167210a263f262",
    "split": "dev",
-   "stratum": "split",
    "src": "9bf21e6e48e4",
    "uid": "193c32a44ecf33d2",
    "episode_title": "Historic Landmark – Sep 04, 2024",
@@ -2994,8 +2764,7 @@
   },
   {
    "id": "subj-0e28c03546c9f57d2eb47edc",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "422e3f43767f",
    "uid": "a3b70bfbd69beb01",
    "episode_title": "Zoning and Platting Commission – Dec 17, 2019",
@@ -3007,8 +2776,7 @@
   },
   {
    "id": "subj-582d06b3628e1ab56fa53ac5",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "240e388052e6ea2d",
    "episode_title": "Evening Council",
@@ -3020,8 +2788,7 @@
   },
   {
    "id": "subj-ae1b81237a55dea669c13ea6",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "ac8d461ff3a3",
    "uid": "f5645de4d5ddf958",
    "episode_title": "Public Safety Commission – Oct 02, 2017",
@@ -3034,7 +2801,6 @@
   {
    "id": "subj-caeab76e2a296a630493a1cb",
    "split": "holdout",
-   "stratum": "split",
    "src": "76869ed1994f",
    "uid": "3259145e239c20b2",
    "episode_title": "Arts & Cultural Advisory Commission – Nov 17, 2022",
@@ -3046,8 +2812,7 @@
   },
   {
    "id": "subj-ae6b4b8300b48a767808995f",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "fe4d235eef5a",
    "uid": "d1f2692df3e95122",
    "episode_title": "Austin Energy Utility Oversight Committee – Feb 21, 2023",
@@ -3060,7 +2825,6 @@
   {
    "id": "subj-4c6a910c5fcca080622f1eea",
    "split": "holdout",
-   "stratum": "split",
    "src": "3b7588310856",
    "uid": "7adccd67cbca9dd6",
    "episode_title": "Planning and Zoning Commission on 2018-04-18 4:00 PM - Special Called – Apr 18, 2018",
@@ -3072,8 +2836,7 @@
   },
   {
    "id": "subj-2fe3d5f84d351f843508485d",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "baf53f2569aa1108",
    "episode_title": "City Council on 2021-09-14 2:00 PM (SPECIAL CALLED MEETING) – Sep 14, 2021",
@@ -3085,8 +2848,7 @@
   },
   {
    "id": "subj-23fe4673c3e189510b135903",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "3ef2a3f3d9c7125e",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -3099,7 +2861,6 @@
   {
    "id": "subj-1d6a6ca3a3fb9f087f285e2b",
    "split": "holdout",
-   "stratum": "split",
    "src": "f9afe970563e",
    "uid": "61404f156ef50a56",
    "episode_title": "City Council Meetings – Oct 24, 2013",
@@ -3112,7 +2873,6 @@
   {
    "id": "subj-daac0a3410157c5d7c53c6e6",
    "split": "holdout",
-   "stratum": "split",
    "src": "76869ed1994f",
    "uid": "3259145e239c20b2",
    "episode_title": "Arts & Cultural Advisory Commission – Nov 17, 2022",
@@ -3127,7 +2887,6 @@
   {
    "id": "subj-9b2f9dc61522f890434f6df7",
    "split": "dev",
-   "stratum": "yes",
    "src": "f9afe970563e",
    "uid": "e14e193d3966f2b5",
    "episode_title": "City Council Meetings – Sep 23, 2010",
@@ -3138,8 +2897,7 @@
   },
   {
    "id": "subj-e367588a2e68bf9307ea9dbb",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "ecc3710ac47f",
    "uid": "6aeeaf9734fffb78",
    "episode_title": "Afternoon Council",
@@ -3150,8 +2908,7 @@
   },
   {
    "id": "subj-93ce49adfad017497878ff8d",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "76869ed1994f",
    "uid": "74e8830cfd11746e",
    "episode_title": "City Planning Commission – Mar 21, 2019",
@@ -3163,7 +2920,6 @@
   {
    "id": "subj-e9a59a01f650a3d99a02a996",
    "split": "holdout",
-   "stratum": "yes",
    "src": "3b7588310856",
    "uid": "a170829a152f14e7",
    "episode_title": "City Council on 2025-08-09 8:30 AM (BUDGET WORKSHOP) – Aug 09, 2025",
@@ -3175,7 +2931,6 @@
   {
    "id": "subj-21253fd31d73dc35fafb4c1f",
    "split": "holdout",
-   "stratum": "yes",
    "src": "19c2ffe87d08",
    "uid": "777d5a6d59e6231a",
    "episode_title": "City Council Meeting",
@@ -3186,8 +2941,7 @@
   },
   {
    "id": "subj-af913e3c866893884372916a",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "a0bd9eee1cda1b2d",
    "episode_title": "City Council Meeting City Council Meeting",
@@ -3199,7 +2953,6 @@
   {
    "id": "subj-ff1736eaffef93beaf806214",
    "split": "holdout",
-   "stratum": "yes",
    "src": "3b7588310856",
    "uid": "08610c5c4ce40027",
    "episode_title": "City Council on 2019-11-05 1:00 PM – Nov 05, 2019",
@@ -3210,8 +2963,7 @@
   },
   {
    "id": "subj-2108983eb3609b3fd26f3013",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "1a956018718a717f",
    "episode_title": "CITY COUNCIL RETREAT CITY COUNCIL RETREAT",
@@ -3223,7 +2975,6 @@
   {
    "id": "subj-730bb12ba90bf7e090f83084",
    "split": "holdout",
-   "stratum": "yes",
    "src": "fe4d235eef5a",
    "uid": "199f848811f5862e",
    "episode_title": "City Council Work Session – Aug 26, 2014",
@@ -3234,8 +2985,7 @@
   },
   {
    "id": "subj-f01f57ffe5f474d86d320419",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "abbf5e25e078",
    "uid": "e2b634b9c03a0447",
    "episode_title": "Planning and Zoning – Jun 27, 2013",
@@ -3247,7 +2997,6 @@
   {
    "id": "subj-4da873b4c588a145613fafbf",
    "split": "holdout",
-   "stratum": "yes",
    "src": "3b7588310856",
    "uid": "7d5036a41c325b2d",
    "episode_title": "City Council Regular Meeting – Sep 10, 2013",
@@ -3258,8 +3007,7 @@
   },
   {
    "id": "subj-9b8a3ee9523f874717f3c791",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "1e32bbb08092",
    "uid": "d213b600d6043d21",
    "episode_title": "Special City Council – Jun 17, 2026",
@@ -3271,7 +3019,6 @@
   {
    "id": "subj-c4ce8ee757c725b0ad6c19bd",
    "split": "holdout",
-   "stratum": "yes",
    "src": "6540eef2dc2e",
    "uid": "f212c3c527765394",
    "episode_title": "CITY COUNCIL MEETING CITY COUNCIL MEETING",
@@ -3283,7 +3030,6 @@
   {
    "id": "subj-74f56d7200d8cba321f705b2",
    "split": "dev",
-   "stratum": "yes",
    "src": "3b7588310856",
    "uid": "4b87e4556e4d077c",
    "episode_title": "Planning and Zoning Commission Meeting – Apr 09, 2014",
@@ -3295,7 +3041,6 @@
   {
    "id": "subj-dcad7d362b72028d08ea40e3",
    "split": "dev",
-   "stratum": "yes",
    "src": "6540eef2dc2e",
    "uid": "2e55ef6fc470eb8f",
    "episode_title": "CITY COUNCIL BUDGET WORKSESSION CITY COUNCIL BUDGET WORKSESSION",
@@ -3306,8 +3051,7 @@
   },
   {
    "id": "subj-8c0ce42f3f6d1f45257b23f7",
-   "split": "holdout",
-   "stratum": "yes",
+   "split": "dev",
    "src": "76869ed1994f",
    "uid": "d8e9b7981c12cc74",
    "episode_title": "City Council Agenda Meetings – Aug 10, 2022",
@@ -3318,8 +3062,7 @@
   },
   {
    "id": "subj-70624d4ab64ba35b344c2ee6",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "4076ce58fc8c50fd",
    "episode_title": "Budget Workshop City Council Meeting – Aug 10, 2021",
@@ -3331,7 +3074,6 @@
   {
    "id": "subj-ff70a568558281b2bf29a446",
    "split": "dev",
-   "stratum": "yes",
    "src": "76869ed1994f",
    "uid": "9f631fc081da8662",
    "episode_title": "City Council Agenda Meetings – Aug 24, 2022",
@@ -3342,8 +3084,7 @@
   },
   {
    "id": "subj-d8871779388edc6bf8b436e2",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "5337db8bca2f6745",
    "episode_title": "City Council Meetings – Mar 05, 2015",
@@ -3354,8 +3095,7 @@
   },
   {
    "id": "subj-d44c8b4bf7a91562465f27de",
-   "split": "dev",
-   "stratum": "yes",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "a2b4c672e90f90bc",
    "episode_title": "Special City Council – Sep 20, 2019",
@@ -3366,8 +3106,7 @@
   },
   {
    "id": "subj-daccc04e3cdc9b00f7ec4752",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "00c6438d0b4eaf66",
    "episode_title": "City Council Work Session – Feb 24, 2026",
@@ -3379,7 +3118,6 @@
   {
    "id": "subj-2b03013ca6939863deccf3e8",
    "split": "holdout",
-   "stratum": "no",
    "src": "3b7588310856",
    "uid": "e28115dcaf594bfe",
    "episode_title": "City Council on 2026-03-24 2:00 PM (SPECIAL CALLED) – Mar 24, 2026",
@@ -3390,8 +3128,7 @@
   },
   {
    "id": "subj-50b958db727553d434f4b17a",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "abbf5e25e078",
    "uid": "f6c725dd1523e422",
    "episode_title": "Joint City Council and Planning & Zoning Commission Meeting – Jun 17, 2021",
@@ -3403,7 +3140,6 @@
   {
    "id": "subj-23869bd97fc6a78ab92f9251",
    "split": "holdout",
-   "stratum": "no",
    "src": "fe4d235eef5a",
    "uid": "4fe7ea46ca7a287b",
    "episode_title": "City Council Work Session – Dec 09, 2025",
@@ -3415,7 +3151,6 @@
   {
    "id": "subj-8fbd283ef29b06eca6457095",
    "split": "holdout",
-   "stratum": "no",
    "src": "2489eb088550",
    "uid": "e664783c8f482ff4",
    "episode_title": "Planning Commission – Apr 14, 2026",
@@ -3427,7 +3162,6 @@
   {
    "id": "subj-08e2bc9402bc159108eb5aea",
    "split": "holdout",
-   "stratum": "no",
    "src": "2489eb088550",
    "uid": "15f613dc69da16fd",
    "episode_title": "Special Planning Commission – Mar 31, 2026",
@@ -3439,7 +3173,6 @@
   {
    "id": "subj-add055bf611d64f8d9c4a137",
    "split": "holdout",
-   "stratum": "no",
    "src": "2489eb088550",
    "uid": "e664783c8f482ff4",
    "episode_title": "Planning Commission – Apr 14, 2026",
@@ -3450,8 +3183,7 @@
   },
   {
    "id": "subj-e2820dd1998b620369ed27ac",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "af623f2255516f2c",
    "episode_title": "City Council on 2026-04-07 2:00 PM – Apr 07, 2026",
@@ -3462,8 +3194,7 @@
   },
   {
    "id": "subj-5934bb4e372b3c71d03bf0c9",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "8c540ce46c04b2fd",
    "episode_title": "City Council on 2025-12-16 6:30 PM – Dec 16, 2025",
@@ -3474,8 +3205,7 @@
   },
   {
    "id": "subj-771c645cf669cb9771b328dc",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "e28115dcaf594bfe",
    "episode_title": "City Council on 2026-03-24 2:00 PM (SPECIAL CALLED) – Mar 24, 2026",
@@ -3487,7 +3217,6 @@
   {
    "id": "subj-12385a0746391a8fcbe0cce5",
    "split": "holdout",
-   "stratum": "no",
    "src": "3b7588310856",
    "uid": "af623f2255516f2c",
    "episode_title": "City Council on 2026-04-07 2:00 PM – Apr 07, 2026",
@@ -3498,8 +3227,7 @@
   },
   {
    "id": "subj-a9b707025e2ec03492d4b53f",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "af623f2255516f2c",
    "episode_title": "City Council on 2026-04-07 2:00 PM – Apr 07, 2026",
@@ -3511,7 +3239,6 @@
   {
    "id": "subj-98ca3ea5afafaf637d57bdf1",
    "split": "holdout",
-   "stratum": "no",
    "src": "2489eb088550",
    "uid": "e664783c8f482ff4",
    "episode_title": "Planning Commission – Apr 14, 2026",
@@ -3522,8 +3249,7 @@
   },
   {
    "id": "subj-4590375ec7ccfa680509cbe5",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "2489eb088550",
    "uid": "15f613dc69da16fd",
    "episode_title": "Special Planning Commission – Mar 31, 2026",
@@ -3535,7 +3261,6 @@
   {
    "id": "subj-86949e97d9b71df00df1afb8",
    "split": "holdout",
-   "stratum": "no",
    "src": "f9afe970563e",
    "uid": "00c6438d0b4eaf66",
    "episode_title": "City Council Work Session – Feb 24, 2026",
@@ -3546,8 +3271,7 @@
   },
   {
    "id": "subj-b33ce888055d63618e5717c3",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "abbeb980e7f07038",
    "episode_title": "City Council Budget Work Session – Jul 29, 2025",
@@ -3558,8 +3282,7 @@
   },
   {
    "id": "subj-894f0259dfa9a4e575517ff8",
-   "split": "holdout",
-   "stratum": "no",
+   "split": "dev",
    "src": "f9afe970563e",
    "uid": "52528f3a942dcd33",
    "episode_title": "City Council Meetings – Mar 26, 2015",
@@ -3571,7 +3294,6 @@
   {
    "id": "subj-f132b5756b2c713bae5aa6b1",
    "split": "holdout",
-   "stratum": "no",
    "src": "f9afe970563e",
    "uid": "4fe7ea46ca7a287b",
    "episode_title": "City Council Work Session – Dec 09, 2025",
@@ -3582,8 +3304,7 @@
   },
   {
    "id": "subj-735b717468a71237b18b7e9b",
-   "split": "dev",
-   "stratum": "no",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "00c6438d0b4eaf66",
    "episode_title": "City Council Work Session – Feb 24, 2026",
@@ -3595,7 +3316,6 @@
   {
    "id": "subj-779b260ceb21c77ef6fe4ffc",
    "split": "dev",
-   "stratum": "no",
    "src": "abbf5e25e078",
    "uid": "3a6f9ebb506ce1a5",
    "episode_title": "Work Session and Regular Meeting – Oct 14, 2025",
@@ -3606,8 +3326,7 @@
   },
   {
    "id": "subj-469bbfc402d54736d3781ee6",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "fc81d9bf3b6af80c",
    "episode_title": "City Council Retreat of February 11, 2020 City Council Retreat of February 11, 2020",
@@ -3619,7 +3338,6 @@
   {
    "id": "subj-09be6e02616ef0d730de3b99",
    "split": "dev",
-   "stratum": "split",
    "src": "f9afe970563e",
    "uid": "421169a0421a9440",
    "episode_title": "City Council Work Session – Apr 07, 2026",
@@ -3630,8 +3348,7 @@
   },
   {
    "id": "subj-aadf3017db595a399504b03c",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "abbf5e25e078",
    "uid": "b4c7fa1b3107a6ef",
    "episode_title": "Special Meeting and Work Session – Jun 15, 2020",
@@ -3642,8 +3359,7 @@
   },
   {
    "id": "subj-053dec9884e72beb2929161a",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "d863be6e645ebec7",
    "episode_title": "City Planning Commission – Nov 07, 2019",
@@ -3655,7 +3371,6 @@
   {
    "id": "subj-3716c131b7c04646c9d8eeb0",
    "split": "dev",
-   "stratum": "split",
    "src": "2489eb088550",
    "uid": "d5a0ec58d2573961",
    "episode_title": "Planning Commission – Nov 10, 2026",
@@ -3667,7 +3382,6 @@
   {
    "id": "subj-cec4eb8c3d64f5b5ae395ebd",
    "split": "holdout",
-   "stratum": "split",
    "src": "f9afe970563e",
    "uid": "00c6438d0b4eaf66",
    "episode_title": "City Council Work Session – Feb 24, 2026",
@@ -3679,7 +3393,6 @@
   {
    "id": "subj-78ce34bbd46171af52c14535",
    "split": "holdout",
-   "stratum": "split",
    "src": "fe4d235eef5a",
    "uid": "167406632accf01d",
    "episode_title": "City Council Proclamations – May 28, 2026",
@@ -3690,8 +3403,7 @@
   },
   {
    "id": "subj-0d79722c8a5abb8384f245b1",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "19c2ffe87d08",
    "uid": "777d5a6d59e6231a",
    "episode_title": "City Council Meeting",
@@ -3703,7 +3415,6 @@
   {
    "id": "subj-eada576bd0c19061b22491bc",
    "split": "dev",
-   "stratum": "split",
    "src": "abbf5e25e078",
    "uid": "f6c725dd1523e422",
    "episode_title": "Joint City Council and Planning & Zoning Commission Meeting – Jun 17, 2021",
@@ -3715,7 +3426,6 @@
   {
    "id": "subj-3d5dab4e25904cad2b08f022",
    "split": "holdout",
-   "stratum": "split",
    "src": "abbf5e25e078",
    "uid": "a7dfb173120a37ca",
    "episode_title": "Work Session – Jan 06, 2026",
@@ -3727,7 +3437,6 @@
   {
    "id": "subj-ea876893906abd3e64901d6f",
    "split": "dev",
-   "stratum": "split",
    "src": "3b7588310856",
    "uid": "8f76e187669dc077",
    "episode_title": "City Council on 2026-06-16 4:00 PM – Jun 16, 2026",
@@ -3738,8 +3447,7 @@
   },
   {
    "id": "subj-9a02c1263e311598377017b8",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "2489eb088550",
    "uid": "15f613dc69da16fd",
    "episode_title": "Special Planning Commission – Mar 31, 2026",
@@ -3750,8 +3458,7 @@
   },
   {
    "id": "subj-63b42dacfcaf804b63011d2a",
-   "split": "holdout",
-   "stratum": "split",
+   "split": "dev",
    "src": "abbf5e25e078",
    "uid": "d0b7e4032c433a6e",
    "episode_title": "Work Session and Regular Meeting – Nov 18, 2025",
@@ -3762,8 +3469,7 @@
   },
   {
    "id": "subj-abba738625796caab119d003",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "abbf5e25e078",
    "uid": "f5ae9b522ee90296",
    "episode_title": "Work Session and Regular Meeting – Dec 09, 2025",
@@ -3775,7 +3481,6 @@
   {
    "id": "subj-52a0b16ddf10d401b48c4a6f",
    "split": "holdout",
-   "stratum": "split",
    "src": "abbf5e25e078",
    "uid": "b4c7fa1b3107a6ef",
    "episode_title": "Special Meeting and Work Session – Jun 15, 2020",
@@ -3786,8 +3491,7 @@
   },
   {
    "id": "subj-23abfcef38ff61a315c3f034",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "2489eb088550",
    "uid": "15f613dc69da16fd",
    "episode_title": "Special Planning Commission – Mar 31, 2026",
@@ -3798,8 +3502,7 @@
   },
   {
    "id": "subj-2920256b9ec59b53c7812143",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "2489eb088550",
    "uid": "15f613dc69da16fd",
    "episode_title": "Special Planning Commission – Mar 31, 2026",
@@ -3810,8 +3513,7 @@
   },
   {
    "id": "subj-e607ce4769c9b956a157dc08",
-   "split": "dev",
-   "stratum": "split",
+   "split": "holdout",
    "src": "f9afe970563e",
    "uid": "4ef64249a3c4e835",
    "episode_title": "City Council Meetings – Mar 26, 2020",
@@ -3823,7 +3525,6 @@
   {
    "id": "subj-46f856f3706de66a5c595d11",
    "split": "dev",
-   "stratum": "split",
    "src": "3b7588310856",
    "uid": "c37714f200beb99e",
    "episode_title": "City Council on 2025-11-18 3:00 PM (SPECIAL CALLED) – Nov 18, 2025",
@@ -3835,7 +3536,6 @@
   {
    "id": "subj-477a5c71849f67ec382cbe91",
    "split": "holdout",
-   "stratum": "split",
    "src": "fe4d235eef5a",
    "uid": "abbeb980e7f07038",
    "episode_title": "City Council Budget Work Session – Jul 29, 2025",
@@ -3848,7 +3548,7 @@
  "chapters": [
   {
    "chapter_id": "ch-2377f4871377",
-   "split": "dev",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "7dad50e2d5cd28b6",
    "title": "c. Council Action",
@@ -3968,7 +3668,7 @@
   },
   {
    "chapter_id": "ch-868cbce6fc87",
-   "split": "dev",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "e780cc2f74a66551",
    "title": "4.1. Adoption of the FY 2019 Operating Budget Final reading of an ordinance adopting the FY 2019 Operating Budget. An ordinance approving and adopting the operating budget for the City of Arlington, Texas, for Fiscal Year 2019, beginning October 1, 2018, and ending September 30, 2019, in accordance with Chapter 102 of the Texas Local Government Code and becoming effective from and after its passage.",
@@ -4148,7 +3848,7 @@
   },
   {
    "chapter_id": "ch-8d6436b2c09e",
-   "split": "holdout",
+   "split": "dev",
    "src": "ecc3710ac47f",
    "uid": "b48e3739aacd2bd7",
    "title": "4. Municipal Policy - Pressure Reducing Valve Rebate Program; Hazard Mitigation Action Plan (HMAP); Cell Phones in School Zones; Community Relations Commission",
@@ -4208,7 +3908,7 @@
   },
   {
    "chapter_id": "ch-52e50941e799",
-   "split": "dev",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "8edf71e5225dea5d",
    "title": "8. VA-17-028 Portion of Stella Street. Council District 8.",
@@ -4328,7 +4028,7 @@
   },
   {
    "chapter_id": "ch-b99c34d092a4",
-   "split": "holdout",
+   "split": "dev",
    "src": "6540eef2dc2e",
    "uid": "bd28b8f21ac2cfaf",
    "title": "3. Responses to Items Continued from a Previous Week",
@@ -4448,7 +4148,7 @@
   },
   {
    "chapter_id": "ch-c1a2cb36fe49",
-   "split": "holdout",
+   "split": "dev",
    "src": "3b7588310856",
    "uid": "5253bd2d86085594",
    "title": "B. Hold a public hearing and consider adoption of an ordinance of the City of Denton, Texas, approving a Specific Use Permit for a Multifamily Dwelling Use on approximately 16 acres of land, generally located between North Loop 288 and Mayhill Road, approximately 1,090 feet north of East McKinney Street, in the City of Denton, Denton County, Texas; adopting an amendment to the City’s Official Zoning Map; providing for a penalty in the maximum amount of $2,000.00 for violations thereof; providing for severability and an effective date. The Planning and Zoning Commission voted [6-1] to recommend approval of the request. Motion for approval by Commissioner Smith and second by Commissioner Anderson. (S22-0009a, Forest Crossing Phase 2, Julie Wyatt)",
@@ -4508,7 +4208,7 @@
   },
   {
    "chapter_id": "ch-9535ba274fdc",
-   "split": "dev",
+   "split": "holdout",
    "src": "3b7588310856",
    "uid": "4d6c37dc93d974d7",
    "title": "A. Hold a public hearing and consider making a recommendation to City Council concerning an Alternative Environmentally Sensitive Area Plan to allow for residential development within an existing Environmentally Sensitive Area (ESA). The approximately 12.68-acre ESA is located within a proposed 98-acre single-family residential development (Beaver Creek), on the northwest corner of North Loop 288 and Stuart Road. The subject property is within a Neighborhood Residential 4 (NR-4) zoning district. (ADP14-0009, Beaver Creek, Julie Wyatt)",
@@ -4628,7 +4328,7 @@
   },
   {
    "chapter_id": "ch-48c6ac078693",
-   "split": "holdout",
+   "split": "dev",
    "src": "f9afe970563e",
    "uid": "2118f22eb9d19842",
    "title": "Item 36",
@@ -4688,7 +4388,7 @@
   },
   {
    "chapter_id": "ch-b851cba8964f",
-   "split": "holdout",
+   "split": "dev",
    "src": "76869ed1994f",
    "uid": "3060a171c8fc6954",
    "title": "2. 23-2197 Consideration of appointments to boards and commissions and the evaluation and duties of board and commission members (List of nominees is available in the City Secretary's Office)",
@@ -4748,7 +4448,7 @@
   },
   {
    "chapter_id": "ch-cedb89a7ef30",
-   "split": "dev",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "f937865b68b09e78",
    "title": "d) Neighborhood Health and Safety",
@@ -5048,7 +4748,7 @@
   },
   {
    "chapter_id": "ch-0bf2501b3737",
-   "split": "dev",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "a5d03c2e2f06cc63",
    "title": "4. Briefing on Spring Storm Season Preparations - Chief James Davis and Maribel Martinez, Fire",
@@ -5108,7 +4808,7 @@
   },
   {
    "chapter_id": "ch-33fd3e896539",
-   "split": "dev",
+   "split": "holdout",
    "src": "ecc3710ac47f",
    "uid": "9c81f401b9f21177",
    "title": "III.C) ZA26-01 (300 W. Park Row Drive) - Application for a change in zoning from Office Commercial (OC) to Residential Medium Density (RM-12), on approximately 0.954 acres.",
@@ -5168,7 +4868,7 @@
   },
   {
    "chapter_id": "ch-f5370c2427c9",
-   "split": "holdout",
+   "split": "dev",
    "src": "fe4d235eef5a",
    "uid": "762ea1bc970b3a4c",
    "title": "Public Comment ( Part 2 of 4 )",
@@ -5228,7 +4928,7 @@
   },
   {
    "chapter_id": "ch-40a121964c8b",
-   "split": "dev",
+   "split": "holdout",
    "src": "fe4d235eef5a",
    "uid": "ed43044a799de0bf",
    "title": "Item 32",
@@ -5348,7 +5048,7 @@
   },
   {
    "chapter_id": "ch-fb97eecfbfda",
-   "split": "dev",
+   "split": "holdout",
    "src": "fe4d235eef5a",
    "uid": "2443f99d431976b3",
    "title": "Item 1 (2 of 4)",
@@ -5408,7 +5108,7 @@
   },
   {
    "chapter_id": "ch-1db4ae3ddf07",
-   "split": "dev",
+   "split": "holdout",
    "src": "6540eef2dc2e",
    "uid": "f09c8a728000ddfc",
    "title": "6. Proposal to Sell Tax Foreclosed Properties - Jay Chapa, Director, Housing and Economic Development Department",
@@ -5528,7 +5228,7 @@
   },
   {
    "chapter_id": "ch-091d93ca8010",
-   "split": "holdout",
+   "split": "dev",
    "src": "76869ed1994f",
    "uid": "a1de3377362a2966",
    "title": "Public Speakers",
@@ -5648,7 +5348,7 @@
   },
   {
    "chapter_id": "ch-90d029472732",
-   "split": "holdout",
+   "split": "dev",
    "src": "3b7588310856",
    "uid": "4a3269e0495cdfe6",
    "title": "C. ID 17-761 Receive a report; hold a discussion, and receive departmental presentations in preparation for the FY 2017-18 Proposed Budget, Capital Improvement Program, and Five Year Financial Forecast.",
@@ -5948,7 +5648,7 @@
   },
   {
    "chapter_id": "ch-b0e760e716b0",
-   "split": "holdout",
+   "split": "dev",
    "src": "1e4cde904833",
    "uid": "e0e3b4b1dd037c35",
    "title": "23. Staff briefing regarding Austin Water Environmental Resource Office and Wildland Conservation Division, which involves the management of the Balcones Canyonland Preserve and the protection of water quality and quantity in the Barton Springs segment of the Edwards Aquifer– Sherri Kuhl, Austin Water Environmental Resource Officer, and Justin Bates, Austin Water Environmental Conservation Division Manager",
@@ -6008,7 +5708,7 @@
   },
   {
    "chapter_id": "ch-fbdc278a6d29",
-   "split": "dev",
+   "split": "holdout",
    "src": "fe4d235eef5a",
    "uid": "59944a88bf5586c5",
    "title": "Item 4",
@@ -6068,7 +5768,7 @@
   },
   {
    "chapter_id": "ch-0a9effcbb192",
-   "split": "holdout",
+   "split": "dev",
    "src": "fe4d235eef5a",
    "uid": "5ceb7090706eb812",
    "title": "Consent Agenda",
@@ -6128,7 +5828,7 @@
   },
   {
    "chapter_id": "ch-85e8dadd9327",
-   "split": "holdout",
+   "split": "dev",
    "src": "19c2ffe87d08",
    "uid": "0732e57350636c99",
    "title": "7A 2025-0009 To receive public comment and consider an ordinance amending the City of Pflugerville Code of Ordinances Title XV Land Usage, Chapter 153 Planning, by amending the Future Land Use Map in the Downtown District Overlay from Suburban Residential to Mixed-Use Neighborhood for the following Travis County Property Ids: 276146, 276147, 276127, 276126, 276125, 276124, 276123, 276122, 276023, 276129, 276133, 276132, 276131, 276130, 276177, 274586, 274585, 276186 and from Suburban Residential to Institutional for Travis County Property Id: 276023; all to be known as the 2025 Downtown FLUM Amendment (CPA2024-00499)",
@@ -6368,7 +6068,7 @@
   },
   {
    "chapter_id": "ch-5df541afb1be",
-   "split": "holdout",
+   "split": "dev",
    "src": "f9afe970563e",
    "uid": "11437ea57b8aca47",
    "title": "Part 2 of 3",
@@ -6428,7 +6128,7 @@
   },
   {
    "chapter_id": "ch-8d52234249dc",
-   "split": "holdout",
+   "split": "dev",
    "src": "fe4d235eef5a",
    "uid": "1e5ea72ab77913f6",
    "title": "Item A (Part 2 of 3)",
@@ -6608,7 +6308,7 @@
   },
   {
    "chapter_id": "ch-258f41e5c646",
-   "split": "dev",
+   "split": "holdout",
    "src": "76869ed1994f",
    "uid": "640c79e21ffbc78b",
    "title": "4. Action Item: Review and consider a tax increment financing (“TIF”) development agreement with BMH Oak Cliff, LLC and/or its affiliates (“Developer”) in an amount not to exceed $29,000,000, payable from current and future Oak Cliff Gateway TIF District funds, in consideration of the North Oak Cliff Mixed-Use and Mixed-Income Development Project (\"Project\") to be located on approximately 2.9 acres at the southeast corner of Jefferson Boulevard and N. Ewing Avenue.",
@@ -6728,7 +6428,7 @@
   },
   {
    "chapter_id": "ch-829b6bc874b5",
-   "split": "holdout",
+   "split": "dev",
    "src": "19c2ffe87d08",
    "uid": "c78b235bb1847d7e",
    "title": "5A 2026-0356 FY 2026 Fee Update",
@@ -6968,7 +6668,7 @@
   },
   {
    "chapter_id": "ch-7b916deff408",
-   "split": "dev",
+   "split": "holdout",
    "src": "9f866f8efbf2",
    "uid": "88cc9333e7870812",
    "title": "2. Presentation and discussion on Austin Light Rail Update – Austin Transit Partnership staff",
@@ -7028,7 +6728,7 @@
   },
   {
    "chapter_id": "ch-eb0bd0d254ef",
-   "split": "holdout",
+   "split": "dev",
    "src": "76869ed1994f",
    "uid": "3b12251eae9a85da",
    "title": "Item 53",
@@ -7388,7 +7088,7 @@
   },
   {
    "chapter_id": "ch-e2e7502b071e",
-   "split": "holdout",
+   "split": "dev",
    "src": "c059c1a28111",
    "uid": "d7236adc8412fff8",
    "title": "Item 6",

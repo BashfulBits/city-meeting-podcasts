@@ -227,7 +227,7 @@ questions per model).
 | AUC, real items vs controls (T0, T1, T2) | 0.97, 0.90, 0.77 | 0.98, 0.97, 0.87 | 0.98, 0.97, 0.90 |
 | Real items accepted at 0.5 (T0, T1, T2) | 77%, 68%, 53% | 65%, 65%, 50% | 41%, 41%, 44% |
 | Verdict agreement with JEV on real items (T0, T1, T2) | 65%, 74%, 91% | 65%, 76%, 88% | n/a |
-| Spearman versus JEV (T0, T1, T2) | 0.83, 0.87, 0.91 | 0.59, 0.66, 0.85 | n/a |
+| Spearman versus JEV (T0, T1, T2) | 0.84, 0.87, 0.91 | 0.59, 0.67, 0.85 | n/a |
 | Wall time, 44 T2 items (9 calls) | 91 s | 501 s | n/a |
 
 Reading: neither model is broken (no invalid output, controls rejected), and d1-3B separates real
@@ -261,7 +261,7 @@ questions each).
 | AUC, real vs controls (T0, T1, T2) | 0.92, 0.84, 0.79 | 0.98, 0.96, 0.84 | 0.98, 0.97, 0.87 | 0.98, 0.97, 0.90 |
 | Real items accepted (T0, T1, T2) | 50%, 53%, 50% | 29%, 32%, 38% | 65%, 65%, 50% | 41%, 41%, 44% |
 | Verdict agreement with JEV (T0, T1, T2) | 74%, 82%, 88% | 76%, 85%, 88% | 65%, 76%, 88% | n/a |
-| Spearman versus JEV (T0, T1, T2) | 0.74, 0.81, 0.88 | 0.67, 0.75, 0.89 | 0.59, 0.66, 0.85 | n/a |
+| Spearman versus JEV (T0, T1, T2) | 0.75, 0.82, 0.88 | 0.68, 0.75, 0.89 | 0.59, 0.67, 0.85 | n/a |
 | Wall time (44 T2 items; 30-item shared-state bundling) | 112 s; 11 s | 1,758 s; 457 s | 501 s; 7 s | n/a |
 
 Reading: both ran cleanly and rejected the planted controls. ArseneLupinstral separates real items
@@ -429,3 +429,11 @@ chapter tag Claude had chosen outside that chapter's shown list; it was removed 
 Known gaps, as the plan asked to report before building more: moments cannot separate judges, chapter truth is not human,
 and 240 tag items detect only large differences. Asking the maintainer for more labels is a Phase 3 decision once the first
 runs show which comparisons are close.
+
+### Correction 2026-11-18 (CodeRabbit CLI review of the PR)
+
+- The Spearman scorer ranked tied scores by position; ties now get average ranks. The correlations in the two screen tables
+  moved by at most 0.014 and were updated; no conclusion changes. The MiniCPM runner now counts every `predict_record`
+  attempt (including halved retries) in `calls`, and resolves its snapshot path before changing directory (the run used an absolute path).
+- The frozen set no longer puts the production outcome (`stratum`) in the inputs: it moved to `production_reference.json`. The
+  dev/holdout split is now by episode (`src`, `uid`), so no episode's evidence is on both sides.

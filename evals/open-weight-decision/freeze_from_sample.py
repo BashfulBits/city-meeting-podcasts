@@ -7,7 +7,8 @@ the durable state). This documents how the committed files were derived. Run onc
         CLAUDE_MOMENTS REBUILT_MOMENTS
 
 Inputs (`manifest.json`) and truth (`gold.json`) are kept apart; production verdicts go to
-`production_reference.json` for agreement analysis only. Split: a stable hash of the id, 50/50.
+`production_reference.json` for agreement analysis only. Split: a stable hash of the episode
+(`src`, `uid`), about 50/50 by episode, so no episode is on both sides.
 """
 
 import hashlib
@@ -19,7 +20,8 @@ HERE = Path(__file__).parent
 SET_VERSION = 1
 
 
-def split_of(key: str) -> str:
+def split_of(src: str, uid: str) -> str:
+    key = f"{src}:{uid}"
     return "dev" if int(hashlib.sha256(key.encode()).hexdigest(), 16) % 2 == 0 else "holdout"
 
 
@@ -38,18 +40,18 @@ def main(sample_p, labels_p, chapters_p, moments_p, rebuilt_p):
         "chapters": [],
     }
     gold = {"version": SET_VERSION, "tags": {}, "moments": {}, "chapters": {}}
-    ref = {"version": SET_VERSION, "judge_verdicts": {}, "suggested_tags": {}}
+    ref = {"version": SET_VERSION, "judge_verdicts": {}, "strata": {}, "suggested_tags": {}}
     for item in sample["lane_a"]:
         sid = item["id"]
         base = {
             "id": sid,
-            "split": split_of(sid),
-            "stratum": item["stratum"],
+            "split": split_of(item["src"], item["uid"]),
             "src": item["src"],
             "uid": item["uid"],
             "episode_title": item["episode_title"],
         }
         ref["judge_verdicts"][sid] = item.get("verdicts")
+        ref["strata"][sid] = item["stratum"]
         if item["task"] == "tag":
             manifest["tags"].append(
                 base
@@ -91,7 +93,7 @@ def main(sample_p, labels_p, chapters_p, moments_p, rebuilt_p):
         manifest["chapters"].append(
             {
                 "chapter_id": cid,
-                "split": split_of(cid),
+                "split": split_of(ch["src"], ch["uid"]),
                 "src": ch["src"],
                 "uid": ch["uid"],
                 "title": ch["title"],

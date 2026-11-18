@@ -10,10 +10,17 @@ def auc(pos, neg):
 
 
 def rank(xs):
+    """Ranks with ties given the average of the positions they span."""
     order = sorted(range(len(xs)), key=lambda i: xs[i])
     r = [0.0] * len(xs)
-    for pos, i in enumerate(order):
-        r[i] = pos
+    start = 0
+    while start < len(order):
+        end = start
+        while end + 1 < len(order) and xs[order[end + 1]] == xs[order[start]]:
+            end += 1
+        for i in order[start : end + 1]:
+            r[i] = (start + end) / 2
+        start = end + 1
     return r
 
 
