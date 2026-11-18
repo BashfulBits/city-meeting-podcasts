@@ -20,7 +20,7 @@ import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -376,11 +376,47 @@ def fetch_document_bytes(
     response = session.get(url, timeout=timeout)
     try:
         response.raise_for_status()
-        return response.content, response.headers.get("Content-Type", "")
+        inner = _viewer_target(url, getattr(response, "url", None))
+        if inner is None:
+            return response.content, response.headers.get("Content-Type", "")
     finally:
         close = getattr(response, "close", None)
         if callable(close):
             close()
+    # The portal redirected to a Google Docs viewer page for its own document; that page is a
+    # JavaScript shell, so fetch the document it wraps (one hop, same origin as the request).
+    inner_response = session.get(inner, timeout=timeout)
+    try:
+        inner_response.raise_for_status()
+        return inner_response.content, inner_response.headers.get("Content-Type", "")
+    finally:
+        close = getattr(inner_response, "close", None)
+        if callable(close):
+            close()
+
+
+def _viewer_target(requested_url: str, final_url: str | None) -> str | None:
+    """The document URL wrapped by a ``docs.google.com/gview`` redirect, if it is same-origin.
+
+    Granicus ``AgendaViewer.php`` answers some clips with a 302 to
+    ``https://docs.google.com/gview?url=<its own DocumentViewer.php?file=...pdf>``. Only a target on
+    the requested URL's host is returned, so a redirect cannot steer the fetch to a third party.
+    """
+    if not final_url:
+        return None
+    final = urlsplit(final_url)
+    if (final.hostname or "").lower() != "docs.google.com" or final.path != "/gview":
+        return None
+    targets = parse_qs(final.query).get("url")
+    if not targets:
+        return None
+    target = urlsplit(targets[0])
+    if target.scheme != "https" or not target.hostname:
+        return None
+    requested_host = (urlsplit(requested_url).hostname or "").lower()
+    if target.hostname.lower() != requested_host:
+        return None
+    return targets[0]
 
 
 _CONTENT_RANGE_TOTAL_RE = re.compile(r"bytes\s+\d+-\d+/(\d+)")

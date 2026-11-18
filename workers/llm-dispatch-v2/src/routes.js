@@ -214,13 +214,26 @@ export function modelsForJob(job, policy, structuralCatalog = null) {
   const threshold = policy?.backup_after_attempts;
   if (!structuralCatalog || backupModels.length === 0 ||
       !Number.isInteger(threshold) || threshold <= 0) return allowedModels;
-  const primaryFits = allowedModels.some(rawModel => {
+  const sizeExcluded = sizeExcludedRoutes(job);
+  const allowedRouteIds = Array.isArray(policy?.allowed_route_ids)
+    ? new Set(policy.allowed_route_ids)
+    : null;
+  const primaryFits = allowedModels.some((rawModel) => {
     if (typeof rawModel !== "string" || !rawModel.trim()) return false;
     const canonical = canonicalModelName(rawModel.trim(), structuralCatalog);
-    return (structuralCatalog.model_routes_map?.[canonical] || []).some(routeId => {
+    return (structuralCatalog.model_routes_map?.[canonical] || []).some((routeId) => {
+      if (allowedRouteIds && !allowedRouteIds.has(routeId)) return false;
+      if (sizeExcluded.has(routeId)) return false;
       const route = structuralCatalog.routes_by_id?.[routeId];
-      return route && (policy.allow_paid || route.free) &&
-        routeFitsContext(route, job.input_token_estimate || 0, job.max_output_token_estimate || 0);
+      return (
+        route &&
+        (policy.allow_paid || route.free) &&
+        routeFitsContext(
+          route,
+          job.input_token_estimate || 0,
+          job.max_output_token_estimate || 0
+        )
+      );
     });
   });
   return primaryFits ? allowedModels : [...allowedModels, ...backupModels];

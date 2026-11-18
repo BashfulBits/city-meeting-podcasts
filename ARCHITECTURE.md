@@ -442,6 +442,12 @@ shared, with existing 65-second spacing/cooldown. Existing UTC-day failure count
 one early route check daily, without becoming capacity evidence. Context, concurrency, paid/free
 policy, lanes and completed artifacts are unchanged.
 
+The tag producer gives each ordinary terminal retry its own idempotency generation, and duplicate
+observations of one failed Worker job count once. Queue model indexes use context compatibility;
+live admission applies calibrated input ceilings. A bounded reconciliation rebuilds older indexes,
+while oversized chapters split before deferral. Existing false-exhaustion markers are repaired only
+from audited job identities; successful outputs are not invalidated.
+
 Slice 3a (implemented in PR #2191; #2190) extends the existing coordinator reconciliation pass to repair
 queued model indexes and report typed structural failures after a catalog change. Structurally
 unusable primaries unlock already-declared backups while preserving paid/free policy. Pauses and
@@ -770,6 +776,14 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   than falsely claiming proven oversize. The nullable column is added without rewriting queued
   payloads; superseding a payload clears its exclusions. Already-failed jobs are not revived.
   Ambiguous quota refusals do not update size calibration or learned input ceilings.
+
+  **Tagger TPM recovery** extends route exclusion to the tagger's declared multi-model policy.
+  If every fitting route refuses with `own_tpm`, `tag_quota_recovery_exhausted` leaves the
+  producer's failure budget unchanged and fences the original recipe. The tagger may split it
+  at most twice into new child recipes; an unsplittable or twice-replanned refusal reports
+  `tag-llm-quota-replan-limit` for operator review. A quota refusal is not proof of an input-size
+  limit. Provider ceilings, paid-route policy, completed artifacts, and pipeline versions are
+  unchanged; existing completed work is not invalidated.
 
   **Provider response deadlines** use a distinct `provider_response_timeout` failure only after
   the provider request starts and the executor's own abort timer fires. Explicit HTTP 504/524

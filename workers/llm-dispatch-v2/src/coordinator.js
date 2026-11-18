@@ -146,6 +146,7 @@ const NON_CONSUMING_FAILURE_CLASSES = new Set([
   "request_defect",
   // A 410 for a retired model: nothing was served.
   "route_unavailable",
+  "content_policy_violation",
 ]);
 
 /**
@@ -178,6 +179,38 @@ function parseJsonObject(value, fallback = {}) {
   } catch {
     return fallback;
   }
+}
+
+/** The catalog's paused-route convention: an explicit `rpd: 0` (routes.js, pacing.js agree). */
+function isStoodDownRoute(route) {
+  return route?.rpd != null && Number(route.rpd) === 0;
+}
+
+/**
+ * What this catalog can schedule: the routes not stood down and the models and providers they
+ * serve. Pass the pause-filtered catalog (`_claimDispatchLimits`) to also leave out routes under
+ * an operator pause, or the compiled catalog for the configuration alone.
+ */
+function schedulableSets(catalog) {
+  const routes = new Set();
+  const models = new Set();
+  const providers = new Set();
+  for (const [model, routeIds] of Object.entries(catalog?.model_routes_map || {})) {
+    for (const routeId of routeIds || []) {
+      const route = catalog?.routes_by_id?.[routeId];
+      if (!route || isStoodDownRoute(route)) continue;
+      routes.add(routeId);
+      models.add(model);
+      if (route.provider) providers.add(route.provider);
+    }
+  }
+  return { routes, models, providers };
+}
+
+/** The entries of a plain object whose key is in `keep`. */
+function pickKeys(object, keep) {
+  if (!object || typeof object !== "object" || Array.isArray(object)) return object;
+  return Object.fromEntries(Object.entries(object).filter(([key]) => keep.has(key)));
 }
 
 /**
@@ -3763,7 +3796,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             leases: scheduler.packed_leases_bytes, providers: scheduler.packed_providers_bytes,
           } : null,
         },
-        claim: this._claimSnapshot(scheduler),
+        claim: this._claimSnapshot(scheduler, now),
         catalog_rescue: {
           digest: scheduler.catalog_digest ?? null,
           cursor: scheduler.catalog_rescue_cursor ?? null,
@@ -3778,13 +3811,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * Unified model alias mapping derived from provider_limits.yml (dispatch_limits.json).
    * Combines model_aliases with all route upstream_model and route_id references to
    * ensure dashboard consumers and widgets normalize diverse route identifiers uniformly.
+   *
+   * Only aliases that can lead somewhere schedulable are listed: a route stood down with
+   * `rpd: 0` contributes none of its own names, and a declared alias is dropped once the model it
+   * resolves to has no route left that is not stood down. This follows the configuration, not
+   * operator pauses, so the list does not flap while a route is paused for a probe.
    */
   _canonicalModelAliases() {
     const catalog = this._dispatchLimits();
-    const aliases = { ...(catalog?.model_aliases || {}) };
+    const declared = catalog?.model_aliases || {};
+    const liveModels = schedulableSets(catalog).models;
+    const resolve = (name) => {
+      const seen = new Set();
+      let current = name;
+      while (Object.hasOwn(declared, current) && !seen.has(current)) {
+        seen.add(current);
+        current = declared[current];
+      }
+      return current;
+    };
+    const aliases = Object.fromEntries(
+      Object.entries(declared).filter(([, target]) => liveModels.has(resolve(target)))
+    );
     for (const [routeId, route] of Object.entries(catalog?.routes_by_id || {})) {
       const canonical = route.model;
-      if (!canonical) continue;
+      if (!canonical || isStoodDownRoute(route)) continue;
       if (route.upstream_model && !aliases[route.upstream_model]) {
         aliases[route.upstream_model] = canonical;
       }
@@ -4092,7 +4143,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         throttle_streak: row.throttle_streak,
         payment_required_streak: row.payment_required_streak,
         last_provider_status: row.last_provider_status,
-        rpd_count: row.rpd_count,
+        // The count belongs to the day named by rpd_day_key. Once the provider's calendar day has
+        // moved on it is yesterday's, and the pacing code already treats it as reset (pacing.js
+        // earliest-start rule), so a route that has not been called since (a stood-down one never
+        // is) reports 0 rather than its last day's total.
+        rpd_count: row.rpd_day_key === zonedDateKey(now, routeResetTimezone(merged))
+          ? row.rpd_count : 0,
         rpd_day_key: row.rpd_day_key,
         tpd_limit: catalogRoute?.tpd ?? null,
         tpd_used: catalogRoute ? dailyTokenDebt(merged, now) : row.tpd_used,
@@ -4335,7 +4391,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
       },
       row_budget: this._rowBudgetSnapshot(scheduler),
-      claim: { ...this._claimSnapshot(scheduler), last_diagnostics: lastClaimDiagnostics },
+      claim: {
+        ...this._claimSnapshot(scheduler, now),
+        last_diagnostics: this._schedulableDiagnostics(lastClaimDiagnostics, now),
+      },
       in_flight: {
         by_route: Object.fromEntries(leasedByRoute),
         by_provider: Object.fromEntries(leasedByProvider),
@@ -4958,7 +5017,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         if (quotaExcluded.has(routeId)) return false;
         if (timeoutExcluded.has(routeId)) return false;
         if (!allowPaid && !route.free) return false;
-        return routeFitsContext(route, inputTokens, outputTokens);
+        // Index by context capability only. The claim path has live calibration and accepted
+        // sizes; a static ceiling here can hide a route that has actually served this input.
+        return routeFitsContext(route, inputTokens, outputTokens, { skipSizeGate: true });
       });
       if (fitsSomeConfiguredRoute) models.add(canonical);
     }
@@ -5336,6 +5397,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const fields = ["provider", "account_id", "upstream_model", "free", "input_context_limit",
       "output_context_limit", "hard_input_ceiling", "hard_input_ceiling_tolerance", "input_token_ratio", "tpm"];
     const serialized = JSON.stringify({
+      // Force one bounded reconciliation of old queue indexes after indexing semantics change.
+      index_version: 2,
       aliases: Object.entries(catalog.model_aliases || {}).sort(([a], [b]) => a.localeCompare(b)),
       models: Object.entries(catalog.model_routes_map || {}).sort(([a], [b]) => a.localeCompare(b))
         .map(([model, ids]) => [model, [...ids].sort()]),
@@ -5426,7 +5489,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           `UPDATE jobs SET state='failed', terminal_reason=?, terminal_catalog_digest=?,
            updated_at=? WHERE id=? AND state='queued'`,
           timeoutExcludedRoutes(job).size > 0 ? "timeout_recovery_exhausted"
-            : quotaExcludedRoutes(job).size > 0 ? "quota_recovery_exhausted"
+            : quotaExcludedRoutes(job).size > 0
+              ? (job.purpose === "topic-tags:tagger"
+                ? "tag_quota_recovery_exhausted" : "quota_recovery_exhausted")
             : routes.length ? "unadmissible" : "route_retired", digest, now, job.id
         );
         for (const routeId of routes) {
@@ -6057,7 +6122,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * not-yet-persisted idle repeats (EMPTY_CLAIM_REFRESH_MS), so both responses agree. last_at is
    * the latest claim this instance saw, persisted or not.
    */
-  _claimSnapshot(scheduler) {
+  _claimSnapshot(scheduler, now) {
     const reasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
     const pending = this._pendingEmptyClaimsFor(scheduler.utc_day);
     for (const [reason, count] of Object.entries(pending?.reasons || {})) {
@@ -6071,8 +6136,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
       reason_counts_today: reasonCounts,
       // Why the last empty claim found nothing to dispatch: rejection counts, and for the routes
       // that refused on capacity, the limit that did it and how long its start was pushed out.
-      last_empty_diagnostics: parseJsonObject(scheduler.last_empty_claim_diagnostics_json),
+      last_empty_diagnostics: this._schedulableDiagnostics(
+        parseJsonObject(scheduler.last_empty_claim_diagnostics_json), now
+      ),
     };
+  }
+
+  /**
+   * A stored claim diagnostics object limited to what can be scheduled now. The persisted copy is
+   * written by the claim that last came up empty (or claimed), so it can name a route that was
+   * stood down (`rpd: 0`), deleted or paused since: a model whose only route is stood down never
+   * gets a claim that clears its scan cursor, and its stored position would otherwise be reported
+   * indefinitely. Aggregate rejection counts stay as recorded; they name no route.
+   */
+  _schedulableDiagnostics(diagnostics, now) {
+    if (!diagnostics || typeof diagnostics !== "object") return diagnostics;
+    const live = schedulableSets(this._claimDispatchLimits(now));
+    const out = { ...diagnostics };
+    if (out.candidate_frontiers) out.candidate_frontiers = pickKeys(out.candidate_frontiers, live.models);
+    if (out.routes && typeof out.routes === "object") {
+      out.routes = {
+        ...out.routes,
+        route_concurrency: pickKeys(out.routes.route_concurrency, live.routes),
+        route_capacity: pickKeys(out.routes.route_capacity, live.routes),
+        route_health: pickKeys(out.routes.route_health, live.routes),
+        provider_concurrency: pickKeys(out.routes.provider_concurrency, live.providers),
+      };
+    }
+    return out;
   }
 
   /** Empty claims not yet persisted (EMPTY_CLAIM_REFRESH_MS), for today's scheduler row only. */
@@ -6235,6 +6326,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
           structuralCatalog.model_routes_map?.[model] && key &&
           Number.isFinite(key.priority) && Number.isFinite(key.created_at) &&
           typeof key.job_id === "string"));
+      }
+      // A model with no schedulable route keeps no scan cursor: with every route stood down
+      // (`rpd: 0`), deleted or under an operator pause, nothing visits the model to clear its
+      // position, so it would be stored and reported on every claim indefinitely. Dropping it only
+      // restarts that model's scan at the head of its queue when a route returns, which is what
+      // "reached the end" already does. `dispatchLimits` omits operator-paused routes.
+      const schedulableModels = schedulableSets(dispatchLimits).models;
+      for (const model of [...this._claimFrontier.keys()]) {
+        if (!schedulableModels.has(model)) this._claimFrontier.delete(model);
       }
       const rowsToday = this._rowsWrittenToday(sched);
       const activeBundleCount = this._activeBundles().size;
@@ -6818,7 +6918,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           `UPDATE jobs SET state='failed', terminal_reason=?,
            terminal_catalog_digest=?, updated_at=? WHERE id=?`,
           timeoutExcludedRoutes(job).size > 0 ? "timeout_recovery_exhausted"
-            : quotaExcludedRoutes(job).size > 0 ? "quota_recovery_exhausted" : "unadmissible",
+            : quotaExcludedRoutes(job).size > 0
+              ? (job.purpose === "topic-tags:tagger"
+                ? "tag_quota_recovery_exhausted" : "quota_recovery_exhausted") : "unadmissible",
           structuralDigest, now, job.id
         );
         this._unindexQueuedJob(job);
@@ -7104,10 +7206,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const routeId = job.lease_route_id;
       this._recordRouteFailure(sql, now, routeId, failureClass, 429);
 
-      // A size refusal belongs to this job, not the route's rate/backoff state.
-      if (failureClass === "route_input_limit") {
-        return { authorized: false, retry_not_before: null };
-      }
       // TPM feedback must update the route even when this job has spent its retry allowance.
       if (job.attempts > this._max429Retries() && failureClass !== "own_tpm") {
         return { authorized: false, retry_not_before: null };
@@ -7249,9 +7347,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           return { authorized: false, retry_not_before: null };
         }
         case "free_prompt_cap":
-        case "request_defect": {
-          // A request defect (e.g. OrcaRouter free-tier prompt cap exceeded with no Retry-After)
-          // cannot succeed by retrying unchanged. Refuse in-batch retry immediately.
+        case "request_defect":
+        case "route_input_limit":
+        case "content_policy_violation": {
+          // A request defect, input limit, or policy violation cannot succeed by retrying
+          // unchanged on the same route. Refuse in-batch retry immediately.
           this._updateRoute(routeId, { last_provider_status: 429, last_failure_class: failureClass });
           return { authorized: false, retry_not_before: null };
         }
@@ -7587,8 +7687,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // route is unreachable rather than the job defective, so it gets the 5xx treatment: one
         // durable retry from the shared budget, and the route stood down so sibling jobs are not
         // admitted onto a model that would destroy them in turn.
+        const isContentPolicyViolation = result.failure_class === "content_policy_violation";
         const isUpstreamCapacityFailure =
-          result.outcome === "retryable_error" && result.provider_status_code === 400;
+          result.outcome === "retryable_error" &&
+          result.provider_status_code === 400 &&
+          !isContentPolicyViolation;
         const isDeadlineAbort = result.failure_class === "provider_response_timeout" &&
           result.provider_status_code == null;
         const isGatewayTimeout = result.failure_class === "server_error" &&
@@ -7614,6 +7717,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // recorded by the route-ceiling tracker, not by quarantining the route.
         const isSizeRejection = result.failure_class === "route_input_limit";
         const isRouteInputLimit = isSizeRejection || isPromptCap;
+        const isRouteExcluded = isSizeRejection || isContentPolicyViolation;
         // The route's model is retired (410 -- classify.js rule 8). Not this job's fault, so it
         // draws on the larger upstream budget and the route itself is stood down for hours.
         const isRouteUnavailable = result.failure_class === "route_unavailable";
@@ -7622,15 +7726,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
               isResponseTimeout ? nextRouteTimeoutCount : nextTransientRetryCount, now
             )
           : null;
-        const sizeExcluded = isSizeRejection
+        const sizeExcluded = isRouteExcluded
           ? new Set([...sizeExcludedRoutes(job), job.lease_route_id].filter(Boolean))
           : null;
         const nextSizeExcludedRoutes = sizeExcluded
           ? JSON.stringify([...sizeExcluded])
           : (job.size_excluded_routes ?? null);
         // A Google TPM refusal does not prove oversize. Move this packet off the refusing
-        // project without spending its 5xx allowance or teaching a global size ceiling. Restrict
-        // this recovery to a single declared Gemma model, with no cross-model backups.
+        // project without spending its 5xx allowance or teaching a global size ceiling. Allow
+        // cross-model recovery for tagging; other purposes retain the single-model Gemma rule.
         const catalog = this._dispatchLimits();
         const leasedRoute = catalog.routes_by_id?.[job.lease_route_id];
         const leasedModel = modelForRouteId(job.lease_route_id, catalog);
@@ -7642,10 +7746,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const isQuotaRejection =
           (result.outcome === "retryable_error" || result.outcome === "terminal_error") &&
           uncountedAttempt === 0 && result.provider_status_code === 429 &&
-          result.failure_class === "own_tpm" && leasedRoute?.provider === "gemini" &&
-          String(leasedModel || "").startsWith("google/gemma-4-") &&
-          declaredModels.size === 1 && declaredModels.has(leasedModel) &&
-          (!Array.isArray(backupPolicy.backup_models) || backupPolicy.backup_models.length === 0);
+          result.failure_class === "own_tpm" && leasedRoute &&
+          ((leasedRoute.provider === "gemini" &&
+            String(leasedModel || "").startsWith("google/gemma-4-") &&
+            declaredModels.size === 1 && declaredModels.has(leasedModel) &&
+            (!Array.isArray(backupPolicy.backup_models) || backupPolicy.backup_models.length === 0)) ||
+           job.purpose === "topic-tags:tagger");
         const quotaExcluded = quotaExcludedRoutes(job);
         if (isQuotaRejection) quotaExcluded.add(job.lease_route_id);
         const nextQuotaExcludedRoutes = isQuotaRejection
@@ -7653,7 +7759,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // Full catalog, not the pause-filtered claim catalog or live ledger. An exhausted daily
         // quota or busy overflow slot means waiting in queue, not a terminal recovery failure.
         const quotaRoutesLeft = isQuotaRejection ? routesEligibleFor(
-          { ...job, quota_excluded_routes: nextQuotaExcludedRoutes }, catalog
+          { ...job, quota_excluded_routes: nextQuotaExcludedRoutes }, catalog, catalog,
+          this._sizingResolver(now, route => ({
+            ...route, ...this._getOrCreateRouteLedger(route.route_id, now, route),
+          }), new Map())
         ).length : 0;
         // Providers have different execution speeds. Two deadlines exhaust only this physical
         // route for this packet; try fitting siblings without consuming their timeout allowance.
@@ -7666,8 +7775,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           }), new Map())
         ).length : 0;
         // Routes of the job's model pool that have not yet rejected it. None left: it fails to its
-        // producer (terminal_reason input_too_large), which re-packs it smaller.
-        const sizeRoutesLeft = isSizeRejection
+        // producer (terminal_reason input_too_large or content_policy_violation), which re-plans.
+        const sizeRoutesLeft = isRouteExcluded
           ? routesEligibleFor(
               { ...job, size_excluded_routes: nextSizeExcludedRoutes,
                 quota_excluded_routes: nextQuotaExcludedRoutes,
@@ -7676,7 +7785,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
               this._dispatchLimits(),
               this._sizingResolver(
                 now,
-                (route) => ({ ...route, ...this._getOrCreateRouteLedger(route.route_id, now, route) }),
+                (route) => ({
+                  ...route,
+                  ...this._getOrCreateRouteLedger(route.route_id, now, route),
+                }),
                 new Map()
               )
             ).length
@@ -7699,6 +7811,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ? sizeRoutesLeft > 0
           : isPromptCap &&
             job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
+        const shouldRetryContentPolicy = isContentPolicyViolation && sizeRoutesLeft > 0;
         const shouldRetryRouteUnavailable =
           isRouteUnavailable &&
           job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
@@ -7710,7 +7823,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const allowedModels = Array.isArray(backupPolicy?.allowed_models)
           ? new Set(backupPolicy.allowed_models)
           : null;
-        const isSingleModelJob = allowedModels !== null && allowedModels.size === 1 && backupAfterAttempts === 0;
+        const isSingleModelJob =
+          allowedModels !== null && allowedModels.size === 1 && backupAfterAttempts === 0;
         const shouldRetryOutputBudget =
           isOutputBudgetExhausted &&
           job.transient_retry_count < (isSingleModelJob
@@ -7721,15 +7835,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // job with no route left (or spend their budget on one that has).
         const shouldRequeue = isSizeRejection
           ? shouldRetryRouteInputLimit
-          : isQuotaRejection ? quotaRoutesLeft > 0
-          : isResponseTimeout ? timeoutRoutesLeft > 0
-          : shouldRetryOutputBudget ||
-            shouldRetryRouteUnavailable ||
-            shouldRetry5xx ||
-            shouldRetryRouteInputLimit ||
-            isPaymentRequired ||
-            isRateLimitTerminal ||
-            isUpstreamRetryable;
+          : isContentPolicyViolation
+            ? shouldRetryContentPolicy
+            : isQuotaRejection ? quotaRoutesLeft > 0
+            : isResponseTimeout ? timeoutRoutesLeft > 0
+            : shouldRetryOutputBudget ||
+              shouldRetryRouteUnavailable ||
+              shouldRetry5xx ||
+              shouldRetryRouteInputLimit ||
+              isPaymentRequired ||
+              isRateLimitTerminal ||
+              isUpstreamRetryable;
 
         // Route health ladder class (review/58 WP3b, route_health.js): only a call that reached
         // the provider counts. A 4xx with no class is the request_defect the failure cells below
@@ -7845,7 +7961,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
                              attempts = MAX(0, attempts - ?), updated_at=?
              WHERE id=?`,
             // Job-local exclusions have a finite route bound; preserve the transient budget.
-            isSizeRejection || isQuotaRejection || isResponseTimeout
+            isRouteExcluded || isQuotaRejection || isResponseTimeout
               ? (job.transient_retry_count || 0) : nextTransientRetryCount,
             JSON.stringify(queueModels),
             nextSizeExcludedRoutes,
@@ -7875,13 +7991,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
             newState,
             uncountedAttempt,
             now,
-            newState === "failed" && (isResponseTimeout ||
-              isSizeRejection && [...timeoutCounts.values()].some(count => count >= 2))
-              ? "timeout_recovery_exhausted"
-              : newState === "failed" &&
-                (isQuotaRejection || isSizeRejection && quotaExcluded.size > 0)
-              ? "quota_recovery_exhausted"
-              : isSizeRejection && newState === "failed" ? "input_too_large" : null,
+            isContentPolicyViolation && newState === "failed"
+              ? "content_policy_violation"
+              : newState === "failed" && (isResponseTimeout ||
+                isSizeRejection && [...timeoutCounts.values()].some(count => count >= 2))
+                ? "timeout_recovery_exhausted"
+                : newState === "failed" &&
+                  (isQuotaRejection || isSizeRejection && quotaExcluded.size > 0)
+                ? (job.purpose === "topic-tags:tagger"
+                    ? "tag_quota_recovery_exhausted" : "quota_recovery_exhausted")
+                : isSizeRejection && newState === "failed" ? "input_too_large"
+                : newState === "failed" && /^[a-z0-9_]{1,60}$/.test(result.failure_class || "")
+                  ? `provider_${result.failure_class}` : null,
             nextQuotaExcludedRoutes,
             nextResponseTimeoutRoutes,
             result.job_id

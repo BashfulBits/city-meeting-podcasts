@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -322,6 +323,30 @@ def tag_input_fingerprint(
     admission_policy: str = "",
     chapter_pipeline_version: str = CHAPTER_PIPELINE_VERSION,
 ) -> str:
+    """Fingerprint for one route; see :func:`tag_input_fingerprint_variants` for the contract."""
+    return tag_input_fingerprint_variants(
+        ep,
+        taxonomy,
+        (llm_route,),
+        llm_enabled=llm_enabled,
+        prompt_version=prompt_version,
+        llm_schema_version=llm_schema_version,
+        admission_policy=admission_policy,
+        chapter_pipeline_version=chapter_pipeline_version,
+    )[0]
+
+
+def tag_input_fingerprint_variants(
+    ep: Any,
+    taxonomy: Taxonomy,
+    llm_routes: Sequence[str],
+    *,
+    llm_enabled: bool,
+    prompt_version: str = TAG_PROMPT_VERSION,
+    llm_schema_version: str = TAG_LLM_SCHEMA_VERSION,
+    admission_policy: str = "",
+    chapter_pipeline_version: str = CHAPTER_PIPELINE_VERSION,
+) -> list[str]:
     """Cheap, storage-I/O-free stand-in for what :func:`tag_recipe_hash` would eventually hash.
 
     ``agenda_text``/``transcript_text`` (episode- and chapter-scoped) are pure functions of the
@@ -357,7 +382,7 @@ def tag_input_fingerprint(
         "tagger": TAGGER_VERSION,
         "chapter_pipeline_version": chapter_pipeline_version,
         "llm": llm_enabled,
-        "llm_route": llm_route if llm_enabled else "",
+        "llm_route": "",
         "prompt_version": prompt_version if llm_enabled else "",
         "llm_schema_version": llm_schema_version if llm_enabled else "",
         "admission_policy": admission_policy if llm_enabled else "",
@@ -374,9 +399,15 @@ def tag_input_fingerprint(
         "transcript_format": ep.transcript_format,
         "chapters": chapter_fingerprint,
     }
-    return hashlib.sha1(
-        json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str).encode()
-    ).hexdigest()[:16]
+    fingerprints = []
+    for llm_route in llm_routes:
+        payload["llm_route"] = llm_route if llm_enabled else ""
+        fingerprints.append(
+            hashlib.sha1(
+                json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str).encode()
+            ).hexdigest()[:16]
+        )
+    return fingerprints
 
 
 # Share of the primary route's tested capacity one tag batch may fill. ``input_token_ratio`` is a
@@ -398,7 +429,12 @@ def _tag_route_fits(route: Any, input_tokens: int) -> bool:
     return (
         scaled <= limit
         and TAG_OUTPUT_TOKEN_BUDGET <= route.output_context_limit
-        and (route.quota.tpm is None or scaled + TAG_OUTPUT_TOKEN_BUDGET <= int(route.quota.tpm))
+        # Gemini's measured TPM is input-only; other providers may count the full request.
+        and (
+            route.quota.tpm is None
+            or scaled + (0 if route.provider == "gemini" else TAG_OUTPUT_TOKEN_BUDGET)
+            <= int(route.quota.tpm)
+        )
     )
 
 
@@ -447,6 +483,19 @@ def _tag_recipe_unadmissible(storage: Any, recipe_hash: str) -> bool:
     try:
         return structurally_unadmissible(storage, recipe_hash)
     except Exception:  # noqa: BLE001 -- the caller re-raises the backend's own error
+        return False
+
+
+def _tag_recipe_quota_blocked(storage: Any, recipe_hash: str) -> bool:
+    """A quota refusal exhausted the job's candidate routes, not its retry budget."""
+    if storage is None:
+        return False
+    from citypods.compute.llm_deferred import _read_json, deferred_failure_key
+
+    try:
+        marker = _read_json(storage, deferred_failure_key(recipe_hash))
+        return isinstance(marker, dict) and marker.get("status") == "quota_blocked"
+    except Exception:  # noqa: BLE001 -- preserve the backend's original refusal
         return False
 
 
@@ -521,6 +570,67 @@ def _merge_split_chapter_tags(
     return result
 
 
+# Routes whose completed tag results stay current when the lane's primary model changes. The
+# primary is part of the recipe, but a primary switch is a capacity change, not a quality change
+# (owner decision on GH#2686, 2026-11-14: do not re-tag episodes tagged under the previous
+# primary). Without this, ~10,800 episodes tagged under Gemini 3.1 Flash Lite counted as `ready`
+# in the census and the lane prefilter while the stage's completion marker called them clean, so
+# nothing ever visited them and the backlog figure never moved.
+TAG_RETIRED_PRIMARY_ROUTES = ("litellm:gemini/gemini-3.1-flash-lite",)
+
+
+def tag_accepted_routes(backend: Any) -> tuple[str, ...]:
+    """Routes under which an episode's stored tag inputs still count as current.
+
+    Every model the lane may dispatch to (they are pooled capacity, not distinct recipes) plus the
+    retired primaries above. The backend's own primary is excluded; callers compare it separately.
+    """
+    if backend is None:
+        return ()
+    name = getattr(backend, "name", "litellm")
+    config = getattr(backend, "config", None)
+    models = [getattr(config, "model", ""), *(getattr(config, "additional_models", None) or ())]
+    routes = [f"{name}:{model}" for model in models if model]
+    primary = routes[0] if routes else None
+    return tuple(
+        dict.fromkeys(route for route in [*routes, *TAG_RETIRED_PRIMARY_ROUTES] if route != primary)
+    )
+
+
+def tag_inputs_current(
+    ep: Any,
+    taxonomy: Taxonomy,
+    *,
+    llm_enabled: bool,
+    llm_route: str = "",
+    accepted_routes: Sequence[str] = (),
+    prompt_version: str = TAG_PROMPT_VERSION,
+    admission_policy: str = "",
+) -> bool:
+    """Whether the stored tag-input fingerprint matches the current inputs.
+
+    The census, the lane prefilter and the stage's own triage all ask this one question, so a
+    stored fingerprint can never be stale to one and current to another. A fingerprint computed
+    under any of ``accepted_routes`` counts as current.
+    """
+    stored = ep.tags_input_fingerprint
+    if stored is None:
+        return False
+    routes = (
+        (llm_route, *(r for r in accepted_routes if r != llm_route))
+        if llm_enabled
+        else (llm_route,)
+    )
+    return stored in tag_input_fingerprint_variants(
+        ep,
+        taxonomy,
+        routes,
+        llm_enabled=llm_enabled,
+        prompt_version=prompt_version,
+        admission_policy=admission_policy,
+    )
+
+
 def episode_needs_tagging(
     ep: Any,
     taxonomy: Taxonomy,
@@ -529,6 +639,7 @@ def episode_needs_tagging(
     llm_route: str = "",
     prompt_version: str = TAG_PROMPT_VERSION,
     admission_policy: str = "",
+    accepted_routes: Sequence[str] = (),
 ) -> bool:
     """Return whether this episode requires rule-tag derivation, LLM suggestion dispatch,
     or chapter tagging.
@@ -538,17 +649,16 @@ def episode_needs_tagging(
     and (if LLM is enabled) its tags_llm_recipe_hash is populated.
     """
     has_chapters = bool(episode_served_chapters(ep))
-    cheap_fingerprint = tag_input_fingerprint(
-        ep,
-        taxonomy,
-        llm_enabled=llm_enabled,
-        llm_route=llm_route,
-        prompt_version=prompt_version,
-        admission_policy=admission_policy,
-    )
     inputs_unchanged = (
-        ep.tags_input_fingerprint is not None
-        and ep.tags_input_fingerprint == cheap_fingerprint
+        tag_inputs_current(
+            ep,
+            taxonomy,
+            llm_enabled=llm_enabled,
+            llm_route=llm_route,
+            accepted_routes=accepted_routes,
+            prompt_version=prompt_version,
+            admission_policy=admission_policy,
+        )
         and ep.tags_spec_hash is not None
         and (not has_chapters or ep.chapter_tags)
     )
@@ -1146,6 +1256,74 @@ def llm_tag_suggestions(
         for route in ROUTE_CANDIDATES.get(candidate, (ROUTES.get(candidate),))
         if route is not None
     ]
+
+    def replan_oversized(*, quota: bool = False):
+        # Quota is ambiguous; limit speculative splitting to two generations.
+        if quota and recipe_hash.count("-quota-replan-") >= 2:
+            return [], {}, True, "quota-replan-limit"
+        pieces = split_unadmissible_tag_request(compact_chapters)
+        if pieces is None:
+            # One transcript segment cannot be split further: an oversized deferral, not an error.
+            return [], {}, True, "quota-replan-limit" if quota else "payload-too-large"
+        merged: dict[str, list[dict[str, Any]]] = {}
+        pending = False
+        blocked_reason = None
+        piece_metadata: list[dict[str, Any]] = []
+        resolved_models: list[str] = []
+        for index, piece in enumerate(pieces):
+            metadata: dict[str, Any] = {}
+            piece_digest = hashlib.sha1(
+                json.dumps(piece, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()[:16]
+            _, chapter_tags, piece_pending, resolved_model = llm_tag_suggestions(
+                backend,
+                taxonomy=taxonomy,
+                agenda_item_titles="",
+                agenda_text="",
+                transcript_text="",
+                recipe_hash=(
+                    f"{recipe_hash}-{'quota-replan' if quota else 'replan'}-{index}-{piece_digest}"
+                ),
+                chapter_inputs=piece,
+                agenda_documents=agenda_documents,
+                allow_paid=allow_paid,
+                purpose=purpose,
+                call_metadata_out=metadata,
+                _batched=True,
+            )
+            piece_metadata.append(metadata)
+            pending = pending or piece_pending
+            if resolved_model in {"payload-too-large", "quota-replan-limit"}:
+                blocked_reason = resolved_model
+            if resolved_model and resolved_model not in {"payload-too-large", "quota-replan-limit"}:
+                resolved_models.append(resolved_model)
+            for chapter_id_value, tags in chapter_tags.items():
+                merged.setdefault(chapter_id_value, []).extend(tags)
+        call_metadata.update(
+            {
+                "job_recipe_hashes": [
+                    recipe
+                    for item in piece_metadata
+                    for recipe in item.get("job_recipe_hashes", [])
+                ],
+                "input_tokens_estimate": sum(
+                    int(item.get("input_tokens_estimate") or 0) for item in piece_metadata
+                ),
+                "tagger_replanned_from": recipe_hash,
+                "tagger_batches": len(pieces),
+                "tagger_batches_metadata": piece_metadata,
+            }
+        )
+        publish_call_metadata()
+        if pending:
+            return [], {}, True, blocked_reason
+        return (
+            [],
+            _merge_split_chapter_tags(merged),
+            False,
+            resolved_models[-1] if resolved_models else backend_model,
+        )
+
     if candidate_routes:
         call_metadata["route_input_context_limit"] = max(
             route.input_context_limit for route in candidate_routes
@@ -1215,13 +1393,13 @@ def llm_tag_suggestions(
                     ).encode()
                 )
                 if not fits_any_allowed_route(single_messages, single_bytes):
-                    return [], {}, True, "payload-too-large"
+                    return replan_oversized()
             if current:
                 batches.append(current)
             if len(batches) > 1:
                 merged: dict[str, list[dict[str, Any]]] = {}
                 pending = False
-                payload_too_large = False
+                blocked_reason = None
                 batch_metadata: list[dict[str, Any]] = []
                 resolved_models: list[str] = []
                 for index, batch in enumerate(batches):
@@ -1245,8 +1423,12 @@ def llm_tag_suggestions(
                     )
                     batch_metadata.append(metadata)
                     pending = pending or batch_pending
-                    payload_too_large = payload_too_large or resolved_model == "payload-too-large"
-                    if resolved_model and resolved_model != "payload-too-large":
+                    if resolved_model in {"payload-too-large", "quota-replan-limit"}:
+                        blocked_reason = resolved_model
+                    if resolved_model and resolved_model not in {
+                        "payload-too-large",
+                        "quota-replan-limit",
+                    }:
                         resolved_models.append(resolved_model)
                     for chapter_id_value, tags in chapter_tags.items():
                         merged.setdefault(chapter_id_value, []).extend(tags)
@@ -1267,16 +1449,16 @@ def llm_tag_suggestions(
                 )
                 publish_call_metadata()
                 if pending:
-                    return [], {}, True, "payload-too-large" if payload_too_large else None
+                    return [], {}, True, blocked_reason
                 return [], merged, False, resolved_models[-1] if resolved_models else backend_model
         if request_bytes > TAGGER_MAX_REQUEST_BYTES:
-            return [], {}, True, "payload-too-large"
+            return replan_oversized() if chapter_mode else ([], {}, True, "payload-too-large")
         if candidate_routes and all(
             input_tokens_estimate > route.input_context_limit
             or TAG_OUTPUT_TOKEN_BUDGET > route.output_context_limit
             for route in candidate_routes
         ):
-            return [], {}, True, "payload-too-large"
+            return replan_oversized() if chapter_mode else ([], {}, True, "payload-too-large")
     if backend_model and getattr(backend_storage, "cas_capable", False):
         # Allow the scheduler exactly the calibrated tag route(s): the primary ``model`` plus any
         # ``additional_models`` (config's ``tagging.llm_models``). Production tags one call per
@@ -1319,7 +1501,7 @@ def llm_tag_suggestions(
             # the docstring above. TagsStage must be able to tell this apart from a genuine
             # capacity-exhausted defer, or one oversized episode would stop the rest of the run's
             # episodes from even attempting a dispatch.
-            return [], {}, True, "payload-too-large"
+            return replan_oversized() if chapter_mode else ([], {}, True, "payload-too-large")
         inputs["llm_policy"] = LLMRequestPolicy(
             allowed_models=allowed_models,
             allow_paid=allow_paid,
@@ -1341,67 +1523,13 @@ def llm_tag_suggestions(
         # expects the producer to re-plan it smaller (review/58 §12.13, #2671). The batches above
         # are deterministic, so resubmitting would rebuild the same recipe that the structural
         # recovery gate now refuses on every run. Split it into new, smaller recipes instead.
-        if not chapter_mode or not _tag_recipe_unadmissible(backend_storage, recipe_hash):
+        if not chapter_mode:
             raise
-        pieces = split_unadmissible_tag_request(compact_chapters)
-        if pieces is None:
-            # One transcript segment cannot be split further: an oversized deferral, not an error.
-            return [], {}, True, "payload-too-large"
-        merged: dict[str, list[dict[str, Any]]] = {}
-        pending = False
-        payload_too_large = False
-        piece_metadata: list[dict[str, Any]] = []
-        resolved_models: list[str] = []
-        for index, piece in enumerate(pieces):
-            metadata: dict[str, Any] = {}
-            piece_digest = hashlib.sha1(
-                json.dumps(piece, sort_keys=True, separators=(",", ":")).encode()
-            ).hexdigest()[:16]
-            _, chapter_tags, piece_pending, resolved_model = llm_tag_suggestions(
-                backend,
-                taxonomy=taxonomy,
-                agenda_item_titles="",
-                agenda_text="",
-                transcript_text="",
-                recipe_hash=f"{recipe_hash}-replan-{index}-{piece_digest}",
-                chapter_inputs=piece,
-                agenda_documents=agenda_documents,
-                allow_paid=allow_paid,
-                purpose=purpose,
-                call_metadata_out=metadata,
-                _batched=True,
-            )
-            piece_metadata.append(metadata)
-            pending = pending or piece_pending
-            payload_too_large = payload_too_large or resolved_model == "payload-too-large"
-            if resolved_model and resolved_model != "payload-too-large":
-                resolved_models.append(resolved_model)
-            for chapter_id_value, tags in chapter_tags.items():
-                merged.setdefault(chapter_id_value, []).extend(tags)
-        call_metadata.update(
-            {
-                "job_recipe_hashes": [
-                    recipe
-                    for item in piece_metadata
-                    for recipe in item.get("job_recipe_hashes", [])
-                ],
-                "input_tokens_estimate": sum(
-                    int(item.get("input_tokens_estimate") or 0) for item in piece_metadata
-                ),
-                "tagger_replanned_from": recipe_hash,
-                "tagger_batches": len(pieces),
-                "tagger_batches_metadata": piece_metadata,
-            }
-        )
-        publish_call_metadata()
-        if pending:
-            return [], {}, True, "payload-too-large" if payload_too_large else None
-        return (
-            [],
-            _merge_split_chapter_tags(merged),
-            False,
-            resolved_models[-1] if resolved_models else backend_model,
-        )
+        if _tag_recipe_unadmissible(backend_storage, recipe_hash):
+            return replan_oversized()
+        if _tag_recipe_quota_blocked(backend_storage, recipe_hash):
+            return replan_oversized(quota=True)
+        raise
     if isinstance(outcome, JobHandle):
         return [], {}, True, None
     if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):

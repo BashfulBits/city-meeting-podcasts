@@ -7,6 +7,8 @@ and direct transport.
 from __future__ import annotations
 
 import json
+import math
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -42,6 +44,68 @@ def _quota_failure_text(body: Any) -> str:
     return " ".join(values).lower()
 
 
+GEMINI_OVERSIZE_FRACTION: float = 1.0
+
+
+def _is_gemini_oversize_input(ctx: dict[str, Any]) -> bool:
+    msg = ctx.get("msg", "")
+    quota = ctx.get("quota", "")
+    is_input_token_quota = (
+        "input_token_count" in msg
+        or "inputtokensperminute" in msg
+        or "input_token_count" in quota
+        or "inputtokensperminute" in quota
+    )
+    if not is_input_token_quota:
+        return False
+
+    route = ctx.get("route")
+    tpm = None
+    if isinstance(route, dict):
+        tpm = route.get("tpm")
+    elif hasattr(route, "tpm"):
+        tpm = route.tpm
+    try:
+        tpm_val = float(tpm) if tpm is not None else None
+    except (TypeError, ValueError):
+        tpm_val = None
+
+    metric_limit_match = re.search(
+        r"(?:input_token_count|inputtokensperminute)[,\s]*(?:exceeded)?"
+        r"[,\s]*limit[:\s]+['\"]?(\d+)['\"]?",
+        msg,
+        re.IGNORECASE,
+    )
+    reported_limit = (
+        int(metric_limit_match.group(1))
+        if metric_limit_match and int(metric_limit_match.group(1)) > 0
+        else None
+    )
+
+    quota_allowance = (
+        reported_limit
+        if reported_limit is not None
+        else (tpm_val if tpm_val and tpm_val > 0 else None)
+    )
+    if not quota_allowance:
+        return False
+
+    input_tokens = ctx.get("input_tokens")
+    try:
+        tokens_val = float(input_tokens) if input_tokens is not None else 0.0
+    except (TypeError, ValueError):
+        tokens_val = 0.0
+
+    ratio = 1.0
+    if isinstance(route, dict):
+        ratio = float(route.get("input_token_ratio") or 1.0)
+    elif hasattr(route, "input_token_ratio"):
+        ratio = float(route.input_token_ratio or 1.0)
+
+    scaled = math.ceil(max(0.0, tokens_val) * ratio) if tokens_val > 0 else 0
+    return scaled > GEMINI_OVERSIZE_FRACTION * quota_allowance
+
+
 # Ordered rule table for HTTP 429 responses. First match wins.
 # Each rule is a dict: rule_id, provider, failure_class, match.
 # provider: None applies to all providers.
@@ -57,6 +121,12 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
             or "generaterequestsperdayper" in ctx["quota"]
             or "generate_content_free_tier_requests" in ctx["quota"]
         ),
+    },
+    {
+        "rule_id": "gemini-input-quota-oversize",
+        "provider": "gemini",
+        "failure_class": "route_input_limit",
+        "match": _is_gemini_oversize_input,
     },
     {
         "rule_id": "gemini-tpm",
@@ -356,6 +426,7 @@ def classify_provider_failure(
     headers: Mapping[str, str] | None = None,
     route: Any = None,
     retry_after_seconds: int | None = None,
+    input_tokens: int | None = None,
 ) -> FailureClassification:
     """Classify an HTTP response into the provider failure taxonomy."""
     # Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY -- `[{"error":
@@ -392,6 +463,52 @@ def classify_provider_failure(
             retry_after_seconds=retry_after_seconds,
             scope="route",
         )
+
+    if status == 400:
+        msg = str(
+            _error_dict(body).get("message")
+            or (body.get("message") if isinstance(body, dict) else "")
+            or (body if isinstance(body, str) else "")
+        ).lower()
+        details = _error_dict(body).get("details")
+        is_prohibited = (
+            "generative ai prohibited use policy" in msg
+            or "prohibited words" in msg
+            or "prohibited_content" in msg
+            or (
+                isinstance(details, list)
+                and any(
+                    str(
+                        d.get("reason")
+                        or (
+                            d.get("metadata", {}).get("reason")
+                            if isinstance(d.get("metadata"), dict)
+                            else ""
+                        )
+                        or ""
+                    ).upper()
+                    == "PROHIBITED_CONTENT"
+                    for d in details
+                    if isinstance(d, dict)
+                )
+            )
+        )
+        if is_prohibited:
+            provider = ""
+            if isinstance(route, dict):
+                provider = route.get("provider", "")
+            elif hasattr(route, "provider"):
+                provider = getattr(route, "provider", "")
+            return FailureClassification(
+                failure_class="content_policy_violation",
+                rule_id=(
+                    "google-prohibited-content"
+                    if provider == "gemini"
+                    else "content-policy-violation"
+                ),
+                retry_after_seconds=retry_after_seconds,
+                scope="route",
+            )
 
     if status == 400 and _is_upstream_400(body):
         return FailureClassification(
@@ -456,6 +573,8 @@ def classify_provider_failure(
             "headers": norm_headers,
             "msg": msg,
             "quota": _quota_failure_text(body),
+            "route": route,
+            "input_tokens": input_tokens,
         }
 
         for rule in FAILURE_SIGNATURES:
