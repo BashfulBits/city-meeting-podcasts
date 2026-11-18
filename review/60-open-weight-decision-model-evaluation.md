@@ -604,6 +604,12 @@ whether our image's version behaves the same is what the parity check shows, not
 
 ### Result 2026-11-18: Phase 1 follow-up, decision adapters for elephant-1 and Copernicus-31B
 
+> **Copernicus-31B was dropped (maintainer decision: not pursued).** Its adapter and runner code were removed from PR #2727, its cloud
+> weights are deleted, and `copernicus-31b-stream` is gone from `config/gpu_profiles.json`. The Copernicus results below stay as a recorded
+> negative-result/feasibility record only: the adapter matched the author's own loading path exactly (0.0 max difference, no flips, RTX
+> PRO 6000) and ran at about 4,000 tokens/s, but no Copernicus decision run is planned. The `copernicus --long` long-state probe was never
+> run and is no longer an open question.
+
 Both runtimes were audited clean (previous section), so adapters were built in `citypods/judging/open_weight_runtimes.py` (PR #2727). They expose
 the Karpo adapter's call: `runner.run(requests)` returns one reply per request, `{"answers": {qid: {"type": "noul", "noul": p}}, "usage": ...}` or
 `"too_large"` / `"invalid_input"`. Each runs the author's own code: elephant-1 through the checkpoint's `engine.py` (OneJev `qev` @81ce62f plus
@@ -660,12 +666,12 @@ size (questions scored together) is `fork_token_budget // state tokens`, so long
 budget is the value that fits an L4 with the host-memory tables (the engine's default 200,000 was not tried on the L4; the engine halves a batch on out-of-memory).
 (5) One elephant-1 runner per process on one GPU; requests run one after another.
 
-*Calibration rows* (`config/gpu_profiles.json`): `copernicus-31b-stream` (RTX) and `elephant-1` (L4 and RTX) are now **measured**. They apply to the review/60
+*Calibration rows* (`config/gpu_profiles.json`): `elephant-1` (L4 and RTX) is now **measured** (the `copernicus-31b-stream` row was removed with the adapter). They apply to the review/60
 evaluation worker only; the production decision worker does not contain these runtimes.
 
 *How a runner is used* (see the Phase 3 hand-over): `load_elephant(manifest, token, device="cuda", workers=16, stats=stats, lean_head=True, offload_tables=True,
-mlp_chunk=4096, fork_token_budget=64000)` on an L4 (drop the three options on an RTX), `load_copernicus(manifest, token, device="cuda", workers=16, stats=stats)` on an RTX;
-manifests `attempts/r60/4e076b32d824/manifest-ELE-32mib.json` and `attempts/r60/5df8605d9576/manifest-COP-32mib.json`.
+mlp_chunk=4096, fork_token_budget=64000)` on an L4 (drop the three options on an RTX);
+manifest `attempts/r60/4e076b32d824/manifest-ELE-32mib.json`.
 
 *Cost.* Cloud runs and builds for this follow-up were about $3 (Copernicus RTX about 35 minutes, elephant-1 RTX about 9 minutes, thirteen short L4 runs, nine
 builds). Left in place, not deleted: jobs `r60-rt-parity-l4`, `r60-rt-parity-rtx`, `r60-rt-parity-rtx-ele`, images `r60-rt-v1` to `v9`, and the
