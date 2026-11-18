@@ -1,0 +1,166 @@
+{
+ "total_usd": 8.507,
+ "executions": [
+  {
+   "execution": "r60-eval-l4-ppx5g",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T08:42:53.737740Z",
+   "seconds": 196.3,
+   "usd": 0.0775
+  },
+  {
+   "execution": "r60-eval-l4-lcjns",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T08:50:53.647482Z",
+   "seconds": 904.7,
+   "usd": 0.3571
+  },
+  {
+   "execution": "r60-eval-rtx-h6dxp",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T08:51:05.258432Z",
+   "seconds": 508.5,
+   "usd": 0.4502
+  },
+  {
+   "execution": "r60-eval-l4-6j999",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T09:06:07.737484Z",
+   "seconds": 977.0,
+   "usd": 0.3856
+  },
+  {
+   "execution": "r60-eval-l4-vpfrj",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T09:22:39.448491Z",
+   "seconds": 713.5,
+   "usd": 0.2816
+  },
+  {
+   "execution": "r60-eval-l4-mkbdl",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T09:34:39.894176Z",
+   "seconds": 670.4,
+   "usd": 0.2646
+  },
+  {
+   "execution": "r60-eval-rtx-mwxz8",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T09:35:07.882627Z",
+   "seconds": 458.4,
+   "usd": 0.4058
+  },
+  {
+   "execution": "r60-eval-l4-4hfc2",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T09:46:04.347519Z",
+   "seconds": 962.2,
+   "usd": 0.3798
+  },
+  {
+   "execution": "r60-eval-l4-4wckw",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T10:02:14.611256Z",
+   "seconds": 943.6,
+   "usd": 0.3724
+  },
+  {
+   "execution": "r60-eval-l4-xdbsx",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T10:18:03.716670Z",
+   "seconds": 728.7,
+   "usd": 0.2876
+  },
+  {
+   "execution": "r60-eval-l4-v2m49",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T10:30:18.000841Z",
+   "seconds": 668.5,
+   "usd": 0.2638
+  },
+  {
+   "execution": "r60-eval-rtx-rmzdl",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T10:31:39.554567Z",
+   "seconds": 500.0,
+   "usd": 0.4426
+  },
+  {
+   "execution": "r60-eval-rtx-nk6lf",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T10:40:11.183504Z",
+   "seconds": 383.5,
+   "usd": 0.3395
+  },
+  {
+   "execution": "r60-eval-rtx-snx85",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T10:52:31.525334Z",
+   "seconds": 511.0,
+   "usd": 0.4524
+  },
+  {
+   "execution": "r60-eval-rtx-tt5qq",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T11:01:21.163474Z",
+   "seconds": 330.7,
+   "usd": 0.2928
+  },
+  {
+   "execution": "r60-eval-l4-zs5sl",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T14:04:19.854428Z",
+   "seconds": 193.8,
+   "usd": 0.0765
+  },
+  {
+   "execution": "r60-eval-rtx-g6t4l",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T14:04:32.672105Z",
+   "seconds": 252.3,
+   "usd": 0.2233
+  },
+  {
+   "execution": "r60-eval-l4-zbgwd",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T14:09:37.199495Z",
+   "seconds": 623.1,
+   "usd": 0.2459
+  },
+  {
+   "execution": "r60-eval-l4-htlmx",
+   "job": "r60-eval-l4",
+   "start": "2026-11-18T14:21:09.524569Z",
+   "seconds": 659.5,
+   "usd": 0.2603
+  },
+  {
+   "execution": "r60-eval-rtx-bc8rp",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T14:32:32.682987Z",
+   "seconds": 1069.0,
+   "usd": 0.9463
+  },
+  {
+   "execution": "r60-eval-rtx-h2ggn",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T14:50:32.727836Z",
+   "seconds": 995.5,
+   "usd": 0.8813
+  },
+  {
+   "execution": "r60-eval-rtx-r7v8z",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T18:16:30.304887Z",
+   "seconds": 342.9,
+   "usd": 0.3036
+  },
+  {
+   "execution": "r60-eval-rtx-22pnb",
+   "job": "r60-eval-rtx",
+   "start": "2026-11-18T18:22:32.529935Z",
+   "seconds": 582.7,
+   "usd": 0.5159
+  }
+ ]
+}
