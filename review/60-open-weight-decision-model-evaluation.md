@@ -620,7 +620,7 @@ same checkpoint, `noul` compared):
 |---|---|---|---|---|---|
 | Copernicus-31B, RTX PRO 6000 | 165 s, 412 MB/s, 1.9 GiB host | 551 s, 60 GiB host | 0.0 / 0.0 | 0 | 61.3 GiB |
 | elephant-1 as authored, RTX PRO 6000 | 93 s, 505 MB/s, 2.2 GiB host | 254 s, 19 GiB host | 0.0 / 0.0 | 0 | 22.4 GiB |
-| elephant-1 lean, L4 (against the RTX reference) | 129-133 s (3 runs) | not loadable on an L4 | 0.0086 / 0.0011 | 0 | 17.5 GiB at load, 21.5 GiB at 24k tokens |
+| elephant-1 lean, L4 (against the RTX reference) | 129-149 s (5 runs) | not loadable on an L4 | 0.0086 / 0.0011 | 0 | 17.5 GiB at load, 20.6 GiB at 32.4k-token states |
 
 Throughput on the sample: Copernicus 4,007 tok/s streamed, 4,033 tok/s with the author's load; elephant-1 8,891 tok/s warm on the RTX and about 820 tok/s on
 the L4 (a short sample, so partly cold kernels; 16k to 22k-token requests ran at 810 to 1,490 tok/s).
@@ -633,25 +633,31 @@ copy's up to summation order), runs each MLP over 4,096 tokens at a time (a per-
 fork budget limit the cache copies. No weight or activation is quantized. On the L4 the answers match the RTX reference to a mean 0.001.
 
 *Context on the L4.* The engine takes many questions in one request: it prefills the shared state once and scores every question's suffix as its own branch on a
-copy of that cache; a branch (state plus question) may be 32,768 tokens and a request (state once plus every suffix) 65,536. Measured on the L4 with
-the lean configuration (state tokens x questions): 16,000 x 1, x 12 and x 40 (21,925 tokens) ran; 24,000 x 12 (25,809 tokens) and 24,000 x 40 (29,925 tokens) ran; 24,000 x 1 and every
-32,000-token state ran out of memory (the fla gated-delta kernel at 24k, the embedding at 32k with 21.2 GiB already allocated). So the L4 handles about 30k
-tokens in total, not 32k for one state and not 64k. Anything larger needs the RTX, where the unmodified engine fits. The frozen set is far below this
-(the longest chapter is 11,400 characters, about 3,000 tokens; tag and moment evidence is under 2,800 characters), so the L4 lean configuration covers it; the adapters answer an over-length request with `too_large`.
+copy of that cache; a branch (state plus question) may be 32,768 tokens and a request (state once plus every suffix) 65,536. With only the first memory options (bf16
+head computed in float32, chunked MLPs) the L4 had 5.3 GiB of headroom and handled up to about 30,000 tokens in total (16k x 1, 12 and 40 questions; 24k x 12 and
+x 40, 29,925 tokens), with 24k x 1 and every 32k state out of memory. Two further exact reductions removed that limit: the embedding table (2.0 GiB) and the head
+(2.0 GiB) stay in pinned host memory, the lookup copying only the needed rows and the head streaming 16,384-row chunks to the GPU for the float32 logits (a row copy and
+the same chunked product, so bit-identical to the GPU-resident versions in the unit tests), plus `expandable_segments`. Resident memory falls from 16.7 to 12.9 GiB.
+Measured (state tokens x questions): 32,000 x 1 (32,192 tokens, 33 s), x 12 (33,809), x 24 (35,573), x 50 (39,395 tokens, 61 s) and 32,400 x 1 and x 50
+(39,795 tokens) all ran, at a peak of 20.4 to 20.6 GiB of 22.0 GiB, and allocated memory returned to 12.9 GiB after every request. So the L4 takes a full
+32k-token state with about 7,000 tokens of questions above it. The 32,768-token branch cap is the limit, and the 65,536 request cap is not reached by these
+runs. Requests over the caps get the engine's refusal (`too_large`). The frozen set (the longest chapter is 11,400 characters, about 3,000 tokens; tag and moment
+evidence is under 2,800 characters) is far below all of this.
 
 *Calibration rows* (`config/gpu_profiles.json`): `copernicus-31b-stream` (RTX) and `elephant-1` (L4 and RTX) are now **measured**. They apply to the review/60
 evaluation worker only; the production decision worker does not contain these runtimes.
 
-*How a runner is used* (see the Phase 3 hand-over): `load_elephant(manifest, token, device="cuda", workers=16, stats=stats, lean_head=True, mlp_chunk=4096,
-fork_token_budget=64000)` on an L4 (drop the three options on an RTX), `load_copernicus(manifest, token, device="cuda", workers=16, stats=stats)` on an RTX;
+*How a runner is used* (see the Phase 3 hand-over): `load_elephant(manifest, token, device="cuda", workers=16, stats=stats, lean_head=True, offload_tables=True,
+mlp_chunk=4096, fork_token_budget=64000)` on an L4 (drop the three options on an RTX), `load_copernicus(manifest, token, device="cuda", workers=16, stats=stats)` on an RTX;
 manifests `attempts/r60/4e076b32d824/manifest-ELE-32mib.json` and `attempts/r60/5df8605d9576/manifest-COP-32mib.json`.
 
-*Cost.* Cloud runs and builds for this follow-up were about $2.5 (Copernicus RTX about 35 minutes, elephant-1 RTX about 9 minutes, eight short L4 runs, seven
-builds). Left in place, not deleted: jobs `r60-rt-parity-l4`, `r60-rt-parity-rtx`, `r60-rt-parity-rtx-ele`, images `r60-rt-v1` to `v7`, and the
+*Cost.* Cloud runs and builds for this follow-up were about $3 (Copernicus RTX about 35 minutes, elephant-1 RTX about 9 minutes, thirteen short L4 runs, nine
+builds). Left in place, not deleted: jobs `r60-rt-parity-l4`, `r60-rt-parity-rtx`, `r60-rt-parity-rtx-ele`, images `r60-rt-v1` to `v9`, and the
 `attempts/r60/rt/` results.
 
 *Residual risks.* The reference and streamed answers are one run each on a 16-request sample: run-to-run kernel nondeterminism is not characterized (Phase 1
-saw it on the 12B). The L4 versus RTX difference of 0.009 maximum could be GPU arithmetic rather than the lean head; it was not separated. The sample is dev only.
+saw it on the 12B). The L4 parity run was made without the host-memory tables; they are bit-identical in the unit tests, but no end-to-end L4 answer
+comparison was repeated with them. The L4 versus RTX difference of 0.009 maximum could be GPU arithmetic rather than the lean head; it was not separated. The sample is dev only.
 
 ### Result 2026-11-18: Phase 2 dataset frozen (`evals/open-weight-decision/`)
 
