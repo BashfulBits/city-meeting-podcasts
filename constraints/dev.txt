@@ -61,7 +61,7 @@ docstring-parser==0.18.0
     # via instructor
 fastuuid==0.14.0
     # via litellm
-filelock==3.29.7
+filelock==4.2.1
     # via
     #   huggingface-hub
     #   litellm
