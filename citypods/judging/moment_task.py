@@ -93,17 +93,29 @@ def _window_around_quote(words: list[str], quote: str, cap: int) -> list[str]:
     if len(words) <= cap:
         return words
     needle = [n for n in (_norm(w) for w in quote.split()) if n]
-    normed = [_norm(w) for w in words]
-    at = -1
-    if needle:
-        probe = needle[: min(len(needle), 6)]
-        for i in range(len(normed) - len(probe) + 1):
-            if normed[i : i + len(probe)] == probe:
-                at = i
-                break
-    if at < 0 or at + len(needle) <= cap:
+    # Normalized words keep their original positions: punctuation-only tokens ("—") drop out of
+    # both sides, so a match maps back to the right span of `words`.
+    kept = [(i, n) for i, n in ((i, _norm(w)) for i, w in enumerate(words)) if n]
+    normed = [n for _, n in kept]
+
+    def find(pattern: list[str]) -> tuple[int, int] | None:
+        for j in range(len(normed) - len(pattern) + 1):
+            if normed[j : j + len(pattern)] == pattern:
+                return kept[j][0], kept[j + len(pattern) - 1][0] + 1
+        return None
+
+    # The whole quote first (an earlier passage can share its opening words); only if it never
+    # appears verbatim (an edited or re-punctuated quote) fall back to its opening words.
+    span = find(needle) if needle else None
+    if span is None and len(needle) > 6:
+        span = find(needle[:6])
+        if span is not None:
+            span = (span[0], span[0] + len(needle))
+    if span is None or span[1] <= cap:
         return words[:cap]
-    pad = max(0, (cap - len(needle)) // 2)
+    at, stop = span
+    width = stop - at
+    pad = max(0, (cap - width) // 2)
     begin = min(max(0, at - pad), len(words) - cap)
     return words[begin : begin + cap]
 

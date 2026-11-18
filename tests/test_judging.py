@@ -286,6 +286,30 @@ def test_moment_evidence_falls_back_to_the_head_when_the_quote_is_not_found():
     assert window.split() == body.split()[:400]
 
 
+def test_moment_window_uses_the_full_quote_not_a_shared_opening():
+    spec = task("moment")
+    quote = "we will repave the whole bridge deck by october"
+    early = "we will repave the whole bridge after the next budget vote"
+    filler = " ".join(f"w{i}" for i in range(500))
+    body = f"{early} {filler} {quote} {filler}"
+    texts = EpisodeTexts(segments=[{"start": 0.0, "end": 700.0, "text": body}], chapters=[])
+    [subject] = spec.subjects(_episode(moments=[_moment(quote, 600)]))
+    window = spec.evidence(subject, "T1", texts).text.split("Transcript around the quote: ", 1)[1]
+    assert quote in window
+
+
+def test_moment_window_counts_punctuation_only_tokens_consistently():
+    spec = task("moment")
+    quote = "we will repave the whole bridge \u2014 deck by october"
+    filler = " ".join(f"w{i}" for i in range(391))
+    texts = EpisodeTexts(
+        segments=[{"start": 0.0, "end": 700.0, "text": f"{filler} {quote} {filler}"}], chapters=[]
+    )
+    [subject] = spec.subjects(_episode(moments=[_moment(quote, 600)]))
+    window = spec.evidence(subject, "T1", texts).text.split("Transcript around the quote: ", 1)[1]
+    assert window.rstrip().split()[-1] != "w390" and "october" in window
+
+
 GEMMA_31B = "google/gemma-4-31b-it"
 GEMMA_26B = "google/gemma-4-26b-a4b-it"
 
