@@ -1,6 +1,6 @@
 # 60 — Open-weight decision model evaluation
 
-Status: **L1 — plan approved 2026-11-17; the local screen, labeling, Phase 0 and Phase 1 (streaming loader, Karpo 12B and 9B) are done (§8); Phase 3 runs are next.**
+Status: **L1 — plan approved 2026-11-17; the local screen, labeling, Phase 0 and Phase 1 (streaming loader, Karpo 12B and 9B) are done and the Phase 3 runs are in (§8, last entry); the Phase 4 memo is next.**
 Depends on [`review/59`](59-deferred-decision-batches.md) (the GPU launcher in PR #2695). This
 document does not change that PR; the loader, the Karpo adapter and the evaluation each land in
 their own PR.
@@ -539,3 +539,133 @@ runs show which comparisons are close.
   attempt (including halved retries) in `calls`, and resolves its snapshot path before changing directory (the run used an absolute path).
 - The frozen set no longer puts the production outcome (`stratum`) in the inputs: it moved to `production_reference.json`. The
   dev/holdout split is now by episode (`src`, `uid`), so no episode's evidence is on both sides.
+
+### Result 2026-11-18: Phase 3 runs on the frozen set (`evals/open-weight-decision/`)
+
+Code, answers and scores are in the Phase 3 PR (branch `feat/open-weight-decision-runs`, stacked on the loader):
+`citypods/judging/open_weight_eval.py`, `scripts/open_weight_eval.py`, `workers/decision-batch/open_weight_eval_worker.py`,
+and `evals/open-weight-decision/results/` (every answer file, `*-summary-{dev,holdout,all}.json`, `cloud-costs.json`,
+`score_all.sh` to rescore). Models saw only `manifest.json` (the cloud image bakes in that file alone). Tag accuracy
+excludes `uncertain` (dev 18 of 105 tag items, 17%; holdout 15 of 135, 11%) and is re-weighted to the production mix
+(29% unanimous yes, 34% unanimous no, 37% split). "Accuracy" counts an invalid answer as a miss; no model produced one
+(0 invalid on every run). Intervals are 95% paired bootstrap over episodes, resampled within stratum, 2,000 draws, the same
+draws for every model. Dev was scored first and holdout once, after the final model list was fixed (nothing was tuned: each
+model ran its published runner with the production rubric); the pooled column adds the two for power.
+
+**Lane A, tags** (accuracy against the maintainer's blind labels; difference from Perplexity is pooled dev + holdout, 207 scored
+items):
+
+| Model | dev | holdout | pooled | pooled minus Perplexity [95%] | ECE | Brier | agrees with Perplexity |
+|---|---:|---:|---:|---|---:|---:|---:|
+| Perplexity v1.3 (OpenRouter `:free`) | 0.662 | 0.725 | 0.698 | n/a | 0.20 | 0.22 | n/a |
+| Gemini decision-1 (API) | 0.685 | 0.713 | 0.698 | +0.000 [-0.05, +0.05] | 0.17 | 0.21 | 0.88 |
+| Karpo 9B FP8 (L4) | 0.744 | 0.756 | 0.748 | +0.050 [+0.00, +0.10] | 0.20 | 0.20 | 0.87 |
+| Karpo 9B BF16 (L4) | 0.744 | 0.782 | 0.763 | +0.065 [+0.02, +0.11] | 0.20 | 0.20 | 0.86 |
+| Karpo 12B FP8 (L4) | 0.687 | 0.687 | 0.687 | -0.011 [-0.06, +0.04] | 0.23 | 0.24 | 0.88 |
+| Karpo 12B BF16 (RTX) | 0.675 | 0.677 | 0.678 | -0.020 [-0.07, +0.03] | 0.22 | 0.25 | 0.88 |
+| Karpo 31B FP8 (RTX) | 0.756 | 0.752 | 0.752 | +0.054 [+0.00, +0.11] | 0.18 | 0.21 | 0.86 |
+| Karpo 31B BF16 (RTX) | 0.756 | 0.742 | 0.747 | +0.049 [-0.01, +0.10] | 0.17 | 0.20 | 0.85 |
+| GLiDE 9B (L4) | 0.758 | 0.742 | 0.749 | +0.051 [-0.01, +0.11] | 0.10 | 0.18 | 0.82 |
+| Liquid d1-2B (local) | 0.688 | 0.734 | 0.712 | +0.014 [-0.05, +0.09] | 0.07 | 0.19 | 0.75 |
+| Liquid d1-3B (local) | 0.676 | 0.684 | 0.681 | -0.017 [-0.08, +0.05] | 0.19 | 0.23 | 0.75 |
+| MiniCPM5-2B-Jev (local) | 0.676 | 0.655 | 0.662 | -0.037 [-0.12, +0.05] | 0.16 | 0.22 | 0.63 |
+| ArseneLupinstral (local, dev only) | 0.560 | not run | n/a | n/a (dev: -0.10 [-0.19, -0.01]) | 0.22 | 0.26 | 0.81 |
+
+Always answering the commoner class scores 0.53 (re-weighted). On dev the Qwen-lineage 9B models, GLiDE 9B and Karpo 31B led
+Perplexity by 8 to 10 points; on holdout the lead shrank to 2 to 6 points and every interval spans zero, so the dev gap was
+partly luck of the draw. Pooled, only Karpo 9B (both precisions) and Karpo 31B FP8 have an interval that excludes zero, and
+by a hair. What the data supports: Karpo 9B, Karpo 31B and GLiDE 9B are about 5 points more accurate than Perplexity and Gemini,
+Karpo 12B is level with Perplexity, and the models are not separable from each other. **Calibration** separates them more
+clearly than accuracy: Perplexity and Karpo 12B are overconfident (ECE 0.20 to 0.25), GLiDE 9B is the best calibrated of the large
+models (ECE 0.10, Brier 0.18), as is d1-2B (0.07).
+
+**Promotion gate (review/60 §5 Phase 3a, dev tags, invalid under 2%):** d1-2B 104% of Perplexity, d1-3B 102%, MiniCPM5-2B-Jev 102%,
+ArseneLupinstral 85% (fails, and so was not run on holdout); invalid rate 0% for all four. The three passes were run on the
+holdout too, because it is cheap, but **none was promoted to the cloud**: they need new adapters, and the moment lane below
+shows a defect the tag gate cannot see.
+
+**Lane A, moments** (correct quotes wrongly rejected, of the supported ones; the lane cannot separate judges, 58 of 60 supported):
+
+| Model | dev (of 18) | holdout (of 40) |
+|---|---:|---:|
+| Perplexity, Gemini, Karpo 9B/31B, GLiDE 9B | 1 to 2 | 1 to 2 |
+| Karpo 12B (both precisions) | 4 to 5 | 3 |
+| MiniCPM5-2B-Jev | 2 | 6 |
+| Liquid d1-2B | 3 | 10 |
+| Liquid d1-3B | 5 | 15 |
+
+The small Liquid models reject a quarter to over a third of correct quotes on holdout while passing the tag gate, so the tag gate
+alone is not enough to promote a small model.
+
+**Lane B, chapters** (372 dev and 348 holdout shown tags; gold is Claude-made and not spot-checked; only about 10% of shown tags
+are chosen, so answering "no" every time scores 0.88 accuracy and F1 is the number to read). Holdout:
+
+| Model | accuracy | F1 | precision / recall | F1 dev | F1 one question per request (holdout / dev) | ECE | input tokens per tag, grouped | per tag, single |
+|---|---:|---:|---|---:|---|---:|---:|---:|
+| Perplexity v1.3 | 0.95 | 0.78 | 0.83 / 0.74 | 0.61 | n/a | 0.03 | 296 | n/a |
+| Gemini decision-1 | 0.84 | 0.60 | 0.45 / 0.91 | 0.48 | n/a | 0.16 | 318 | n/a |
+| Karpo 9B FP8 / BF16 | 0.94 / 0.95 | 0.80 / 0.80 | 0.75 / 0.85 | 0.67 / 0.69 | 0.68 / 0.61 and 0.69 / 0.61 | 0.05 | 423 | 2,198 |
+| Karpo 12B FP8 / BF16 | 0.93 | 0.75 | 0.70 / 0.80 | 0.71 / 0.72 | 0.72 / 0.60 and 0.71 / 0.61 | 0.04 to 0.05 | 457 | 2,229 |
+| Karpo 31B FP8 / BF16 | 0.93 | 0.78 / 0.79 | 0.64 to 0.66 / 0.98 | 0.68 / 0.69 | 0.67 / 0.60 and 0.66 / 0.59 | 0.08 | 457 | 2,229 |
+| GLiDE 9B | 0.90 | 0.69 | 0.57 / 0.89 | 0.61 | same as grouped (one pass per question already) | 0.11 | 2,024 | n/a |
+| Liquid d1-2B / d1-3B / MiniCPM (local) | 0.89 / 0.87 / 0.83 | 0.61 / 0.65 / 0.57 | | 0.61 / 0.60 / 0.51 | n/a | 0.10 to 0.15 | n/a | n/a |
+
+Perplexity's chapter lane was run grouped (all 12 shown tags in one request, the chapter as shared state). On holdout Karpo 9B equals
+Perplexity (F1 0.80 against 0.78, accuracy 0.945 both), and with dev's weaker 0.67 to 0.69 against Perplexity's 0.61 no Karpo is
+clearly below it. **Grouped against single (the Phase 0 question):** grouped is better on every Karpo model and both splits (F1 +0.07
+to +0.12 on dev, +0.03 to +0.12 on holdout, largest for the 31B) and costs 5× fewer tokens, so the Phase 0 grouped/single difference
+(mean 0.05 in probability) is not noise that hurts the grouped answers. **Caution:** the Claude reference chose its tags from the same
+12-tag list, so grouped requests, which also see the other candidate tags, may mirror that choice process; human chapter labels are
+needed before this is read as quality. GLiDE 9B pays 2,024 tokens per tag (7× Karpo grouped), which is the cost of having no one-pass
+multi-question mode (§3).
+
+**Cost and speed** (list rates for the Cloud Run job as created: L4 8 vCPU / 32 GiB, RTX 20 vCPU / 80 GiB; execution time from start
+to completion, unreconciled with billing; dev run, 495 decisions: 105 tags, 18 moments, 372 chapter tags grouped; inference includes
+Triton/fla autotuning on new shapes, so warm rates are lower):
+
+| Model | GPU | load (s) | inference (s) | inference $ per 1,000 decisions | load $ | GPU peak (GiB) |
+|---|---|---:|---:|---:|---:|---:|
+| Karpo 9B FP8 (streamed) | L4 | 81 | 227 | 0.18 | 0.03 | 10.5 |
+| Karpo 9B BF16 (FUSE) | L4 | 175 | 153 | 0.12 | 0.07 | 16.8 |
+| Karpo 12B FP8 (streamed) | L4 | 98 | 194 | 0.15 | 0.04 | 13.2 |
+| Karpo 12B BF16 (FUSE) | RTX | 285 | 19 | 0.03 | 0.25 | 23.4 |
+| Karpo 31B FP8 (streamed) | RTX | 178 | 30 | 0.05 | 0.16 | 34.1 |
+| Karpo 31B BF16 (streamed) | RTX | 148 | 48 | 0.09 | 0.13 | 61.3 |
+| GLiDE 9B (FUSE) | L4 | 101 | 534 | 0.43 | 0.04 | 17.6 |
+
+Perplexity (OpenRouter `:free`, price 0) took 1,007 s for 154 dev requests at the route's rpm limit; Gemini decision-1 (free API key)
+took 704 s. The 31B in FP8 gives the same tag answers as BF16 (0.752 against 0.747 pooled) at half the memory, and FP8 matches BF16 at
+9B and 12B too, so FP8 is the default. **Spend:** 15 executions, **$5.05 at list rates** (`cloud-costs.json`, includes a smoke run),
+plus three image builds under $0.2, so Phase 3 is about $5.2 and Phases 0 to 3 about $7.7 against the $20 cap (unreconciled).
+
+**What it implies.**
+- *Perplexity fallback.* Karpo 9B FP8 on an L4 is a fallback candidate that does not lose to Perplexity on any lane here: tags +0.05
+  (pooled interval just above zero), chapters F1 equal, moments equal, about $0.18 per 1,000 decisions plus $0.03 per launch at list
+  rates, 10.5 GiB. GLiDE 9B is as accurate on tags and better calibrated but 7× the tokens on lane B, so it suits lane A only.
+  Karpo 12B is the weakest large model on tags (level with Perplexity) and is not a better fallback than the 9B.
+- *Independent voice.* Gemma-lineage Karpo 12B (L4, FP8) is the only Gemma model that fits an L4 and is level with Perplexity on tags
+  and F1 0.75 on chapters; Karpo 31B (RTX, FP8) is about 5 points better on tags and has the highest chapter recall (0.98), at the
+  cost of precision (0.64). Both agree with Perplexity on 85 to 88% of tags, about the same as Gemini does (0.88), so the Gemma
+  lineage is a different voice in name but not much more different in answers than another Qwen model. Gemini decision-1 is level with
+  Perplexity on tags and lower on chapters (F1 0.60 holdout).
+- *Small models.* None earned promotion (see the moment lane), and ArseneLupinstral failed the gate.
+
+**What these data cannot say, and what would settle it.** The 207 scored tag items give a paired interval of about ±0.05, so a
+5-point gap is at the edge of detection; with 13% disagreement between two models, telling a 3-point difference apart at 80% power
+needs about 1,100 labeled tag items and a 5-point difference about 410 (this set has 207 scored). More human tag labels, drawn the same
+blind way, are the single most useful addition, then human labels for the 12-tag chapter lane (the Claude reference may share
+biases with the models under test, and Karpo is graded against a reference that was built from the same candidate list), and moment
+negatives (58 of 60 are supported). The tag labels are 11 to 17% `uncertain`, which models were not scored on.
+
+**Not run, and why.**
+- *elephant-1 and Copernicus-31B*: no adapter. Their runtimes (the OneJev qev runtime with a patch, Copernicus's own server) are not
+  audited; the maintainer's approval is pending (Phase 1 session note).
+- *GLiDE 27B*: its weights are not staged in either bucket; running it means a download of about 55 GB plus a licence and code review,
+  so it is left for the maintainer's decision.
+- *Launcher*: the runs did not go through `citypods/gpu_launch`. It drives the production fenced one-question-per-row transport, which cannot
+  express grouped chapter requests or the FP8 streaming load, so the Phase 3 worker is a separate job pair (`r60-eval-l4`,
+  `r60-eval-rtx`) and costs were recorded by hand from execution times.
+- *Cloud runs of the small local models*: not promoted, see above.
+- Left in place, not deleted: jobs `r60-eval-l4`, `r60-eval-rtx` (new), images `glide-worker:r60-eval-v1` to `v3`, and every
+  `attempts/r60/eval/` result in the batch bucket.
+
