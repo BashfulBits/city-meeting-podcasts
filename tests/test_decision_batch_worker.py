@@ -368,6 +368,7 @@ def test_glide_rejects_bad_model_manifest_before_cloud_claim(tmp_path, monkeypat
         "CITYPODS_IMAGE_DIGEST",
     ):
         monkeypatch.setenv(key, "unused")
+    monkeypatch.setenv("CITYPODS_MODEL_BUCKET", "example-model-bucket")
     monkeypatch.setenv("CITYPODS_MODEL_DIR", str(tmp_path / "model"))
     monkeypatch.setenv("CITYPODS_MODEL_MANIFEST", str(manifest_path))
     monkeypatch.setattr(cloud, "run_cloud", lambda *args: pytest.fail("claimed batch"))

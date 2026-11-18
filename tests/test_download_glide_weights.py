@@ -9,10 +9,17 @@ import pytest
 
 from scripts import download_glide_weights as downloader
 
+BUCKET = "example-model-bucket"
+
+
+@pytest.fixture(autouse=True)
+def _model_bucket(monkeypatch):
+    monkeypatch.setenv("CITYPODS_MODEL_BUCKET", BUCKET)
+
 
 def manifest(data):
     return {
-        "bucket": downloader.BUCKET,
+        "bucket": BUCKET,
         "location": downloader.LOCATION,
         "revision": downloader.REVISION,
         "objects": [
@@ -150,3 +157,9 @@ def test_range_retry_is_bounded_and_integrity_errors_are_not_retried(tmp_path, m
         downloader.download(manifest(b"x"), tmp_path / "model", "token")
     assert calls == 1
     assert not list(tmp_path.iterdir())
+
+
+def test_model_bucket_is_required(monkeypatch):
+    monkeypatch.delenv("CITYPODS_MODEL_BUCKET")
+    with pytest.raises(SystemExit, match="CITYPODS_MODEL_BUCKET"):
+        downloader.model_bucket()
