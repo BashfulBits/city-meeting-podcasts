@@ -46,16 +46,32 @@ SOURCE_SHA256 = {
         "engine.py": "72373353379c53b7cabfb5d05b6fef3c898d48c87cc386e03fc3de9c07e67ca7",
     },
     "onejev": {
+        "qev/__init__.py": "6446cd0006940630b28180d275efe39972b871c2fb2ae502c848607c940e8376",
+        "qev/answers.py": "09b06dba258c80a6a9afdaa5aacfd0f7523f9d2a087a7b6402ca03553ea6fba6",
+        "qev/calibrate.py": "3fa6013a81c7e79a702afcdcc0ebd089bee7047590c18cc44708850f5aeda1ee",
+        "qev/client.py": "560ca00f7ecffee72e6490afdd69a34cf4f55a6e1765a0493d4beebf8b6b4278",
+        "qev/schema.py": "bce4b7d353ac115a9e50aef284975ddeed9a3bb452e3fd928a556668705bc2f3",
         "qev/engine.py": "dc3eb95e0118cb056357bd3e68c0ed9f18b4656492b02087e9ca53773af8d3f0",
         "qev/prompt.py": "f0763b5f747039c2919bc2a6d51e4ed88308fe3497e53498e6f298286b6169b2",
         "qev/readout.py": "e084edead750ddeb39384b9f659182df52720d96294d9a95c9259a8001e3c20d",
+    },
+    "decision_index": {
+        "decision_index/__init__.py": "802fef8d0a617d28cd906facf8582b707ca7baa35475ce834ef8af41ab9aa54f",  # noqa: E501
+        "decision_index/engines/__init__.py": "808a0971ad2ce9f9a1afc3c071691001375aa73b26f3ba891beb8364dcabba77",  # noqa: E501
+        "decision_index/engines/base.py": "ae548636cfbd583fe774b67e4d3d2cdc6db10f580f47d9559d5de44373b79ca5",  # noqa: E501
     },
     "copernicus": {
         "copernicus_server.py": "1717f334094b44926a4a46e7860d3e67135cc91158125f8cccf4a637ef757a32",
         "copernicus_layout.py": "dc641d4dbac05cd088de59c20c06cfc44e1dcc18d4102470fc8feba943359639",
     },
 }
-ROOTS = {"elephant": ELEPHANT_ROOT, "onejev": ONEJEV_ROOT, "copernicus": COPERNICUS_ROOT}
+DECISION_INDEX_ROOT = "/opt/decision-index"
+ROOTS = {
+    "elephant": ELEPHANT_ROOT,
+    "onejev": ONEJEV_ROOT,
+    "decision_index": DECISION_INDEX_ROOT,
+    "copernicus": COPERNICUS_ROOT,
+}
 
 
 def verify_sources(which, roots=None):
@@ -66,6 +82,14 @@ def verify_sources(which, roots=None):
         digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
         if digest != expected:
             raise ValueError(f"{which} source differs from the audited file: {relative}")
+
+
+def check_origin(module, which, roots=None):
+    """Raise unless ``module`` was imported from the verified root of ``which``."""
+    root = Path((roots or ROOTS)[which]).resolve()
+    origin = Path(getattr(module, "__file__", None) or "/nonexistent").resolve()
+    if root not in origin.parents:
+        raise ValueError(f"{module.__name__} was not imported from the verified {which} source")
 
 
 def _load_file(name, path):
@@ -149,6 +173,12 @@ def _elephant_modules():
     verify_sources("onejev")
     import pydantic
 
+    verify_sources("decision_index")
+    import decision_index.engines
+    import qev.engine
+
+    check_origin(qev.engine, "onejev")
+    check_origin(decision_index.engines, "decision_index")
     engine = _load_file("elephant_engine", Path(ELEPHANT_ROOT) / "engine.py")
     from decision_index.engines import Unsupported
 
@@ -286,7 +316,7 @@ def load_elephant(
         raise ValueError("not the pinned elephant-1 revision")
     paths = validate_manifest(manifest)
     engine_module, unsupported, validation_error = _elephant_modules()
-    backbone = extras = causal = engine = None
+    backbone = extras = causal = engine = runner = None
     try:
         backbone, extras = load_hf_backbone(
             manifest, token, fp8=False, device=device, workers=workers, stats=stats
@@ -325,7 +355,7 @@ def load_elephant(
         return runner
     except BaseException as exc:
         traceback.clear_frames(exc.__traceback__)
-        backbone = extras = causal = engine = None  # noqa: F841  (release GPU tensors)
+        backbone = extras = causal = engine = runner = None  # noqa: F841  (release GPU tensors)
         raise
 
 
@@ -353,6 +383,8 @@ def _copernicus_server():
     import copernicus_layout
     import copernicus_server
 
+    check_origin(copernicus_server, "copernicus")
+    check_origin(copernicus_layout, "copernicus")
     return copernicus_server, copernicus_layout
 
 
@@ -415,7 +447,7 @@ def load_copernicus(manifest, token, *, device="cuda", workers=8, stats=None):
     server, layout_module = _copernicus_server()
     from transformers import AutoTokenizer
 
-    backbone = extras = model = backend = None
+    backbone = extras = model = backend = runner = None
     try:
         backbone, extras = load_hf_backbone(
             manifest, token, fp8=False, device=device, workers=workers, stats=stats
@@ -433,7 +465,7 @@ def load_copernicus(manifest, token, *, device="cuda", workers=8, stats=None):
         return runner
     except BaseException as exc:
         traceback.clear_frames(exc.__traceback__)
-        backbone = extras = model = backend = None  # noqa: F841  (release GPU tensors)
+        backbone = extras = model = backend = runner = None  # noqa: F841  (release GPU tensors)
         raise
 
 
@@ -455,10 +487,11 @@ def compare_answers(reference, streamed):
 
     ``reference`` and ``streamed`` are lists of replies as returned by ``run``.
     """
-    diffs, flips, statuses = [], 0, 0
+    diffs, flips, statuses, unanswered = [], 0, 0, 0
     for a, b in zip(reference, streamed, strict=True):
         if not isinstance(a, dict) or not isinstance(b, dict):
             statuses += a != b
+            unanswered += 1  # equal statuses are agreement about a failure, not about an answer
             continue
         if set(a["answers"]) != set(b["answers"]):
             raise ValueError("different question sets")
@@ -472,4 +505,5 @@ def compare_answers(reference, streamed):
         "mean_abs_diff": sum(diffs) / len(diffs) if diffs else 0.0,
         "flips_at_0_5": flips,
         "status_mismatches": statuses,
+        "unanswered_requests": unanswered,
     }

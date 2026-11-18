@@ -43,7 +43,10 @@ COPY manifest.json /app/evals/open-weight-decision/manifest.json
 COPY runtime_parity.py /app/runtime_parity.py
 RUN python -c "\
 from citypods.judging import open_weight_runtimes as r, open_weight_eval; \
-[r.verify_sources(k) for k in ('onejev', 'elephant', 'copernicus')]; \
+[r.verify_sources(k) for k in ('onejev', 'decision_index', 'elephant', 'copernicus')]; \
+import json; \
+m = json.load(open('/app/evals/open-weight-decision/manifest.json')); \
+assert open_weight_eval.build_requests(m, 'dev'), 'no dev requests'; \
 import qev.engine, decision_index.engines" \
     && ! test -e /app/evals/open-weight-decision/gold.json
 ENTRYPOINT ["python", "/app/runtime_parity.py"]

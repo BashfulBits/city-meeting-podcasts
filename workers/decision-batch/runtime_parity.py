@@ -14,6 +14,7 @@ of the frozen set is in the image, so no label is visible. The author code is re
 """
 
 import argparse
+import hashlib
 import json
 import os
 import resource
@@ -157,6 +158,8 @@ def main():
         or args.chapters + args.tags + args.moments < 1
     ):
         parser.error("sample sizes must be non-negative with at least one request")
+    if any(size <= 0 for size in args.long):
+        parser.error("--long sizes must be positive")
     spec = MODELS[args.model]
     import torch
     import transformers
@@ -166,6 +169,17 @@ def main():
     store = GCSObjectStore(os.environ["CITYPODS_BATCH_BUCKET"], metadata_access_token)
     manifest = json.loads(Path("/app/evals/open-weight-decision/manifest.json").read_text())
     requests = sample(manifest, args.chapters, args.tags, args.moments)
+    requests_sha = hashlib.sha256(json.dumps(requests, sort_keys=True).encode()).hexdigest()
+    stored = None
+    if args.reference_from:  # validate the earlier result before spending a model load on it
+        stored = json.loads(store.get(args.reference_from)[0])
+        if (
+            stored.get("revision") != spec["revision"]
+            or stored.get("requests_sha256") != requests_sha
+        ):
+            raise ValueError("the stored reference is for another revision or another sample")
+        if not all(key in stored.get("answers", {}) for key in requests):
+            raise ValueError("the stored result has no reference answers for this sample")
     slice_manifest_bytes = store.get(spec["manifest"])[0]
     slice_manifest = json.loads(slice_manifest_bytes)
     if slice_manifest.get("revision") != spec["revision"]:
@@ -179,6 +193,7 @@ def main():
         "torch": torch.__version__,
         "transformers": transformers.__version__,
         "sample": {"chapters": args.chapters, "tags": args.tags, "moments": args.moments},
+        "requests_sha256": requests_sha,
     }
     print(
         "RT_ENV", json.dumps({k: result[k] for k in ("gpu", "torch", "transformers")}), flush=True
@@ -204,7 +219,10 @@ def main():
     print("RT_LOADED stream", json.dumps(result["stream"]), flush=True)
     streamed, seconds = timed(runner, torch, requests)
     result["stream"]["run"] = summarize(requests, streamed, seconds)
-    result["stream"].update(peak(torch))
+    result["stream"]["load_gpu_peak_gib"] = result["stream"]["gpu_peak_gib"]
+    result["stream"]["run_gpu_peak_gib"] = peak(torch)["gpu_peak_gib"]
+    if any(not isinstance(reply, dict) for reply in streamed):
+        raise ValueError("a valid sample request was not answered: " + str(result["stream"]["run"]))
     print("RT_RUN stream", json.dumps(result["stream"]["run"]), flush=True)
     if args.long:
         result["long"] = long_probe(runner, torch, manifest, args.long)
@@ -212,9 +230,6 @@ def main():
     release(torch)
 
     if args.reference_from:
-        stored = json.loads(store.get(args.reference_from)[0])
-        if stored["revision"] != spec["revision"]:
-            raise ValueError("the stored reference is for another revision")
         reference = [stored["answers"][key]["reference"] for key in requests]
         result["reference"] = {"from": args.reference_from, "gpu": stored["gpu"]}
         result["parity"] = rt.compare_answers(reference, streamed)
@@ -227,7 +242,10 @@ def main():
         print("RT_LOADED reference", json.dumps(result["reference"]), flush=True)
         reference, seconds = timed(runner, torch, requests)
         result["reference"]["run"] = summarize(requests, reference, seconds)
-        result["reference"].update(peak(torch))
+        result["reference"]["load_gpu_peak_gib"] = result["reference"]["gpu_peak_gib"]
+        result["reference"]["run_gpu_peak_gib"] = peak(torch)["gpu_peak_gib"]
+        if any(not isinstance(reply, dict) for reply in reference):
+            raise ValueError("a valid sample request was not answered by the reference")
         print("RT_RUN reference", json.dumps(result["reference"]["run"]), flush=True)
         result["parity"] = rt.compare_answers(reference, streamed)
         result["answers"] = {

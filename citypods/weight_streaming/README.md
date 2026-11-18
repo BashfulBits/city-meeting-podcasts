@@ -56,8 +56,10 @@ to FP8 e4m3 with one float32 scale per output row when it completes, and writes 
 the destination `(weight, scale)`. The BF16 model is never resident, so a model whose BF16 weights
 exceed the GPU can still load. The quantizer reproduces Karpo's `serve.fp8` operation by
 operation, and the tests compare bytes against that formula. `CollectSink` gathers small tensors
-(such as a readout) into CPU tensors. Both reject unexpected, mismatched, duplicate and
-incomplete tensors. `TorchSink.discard()` drops only the sink's references: the model that owns the preallocated
+(such as a readout) into CPU tensors. `TorchSink` rejects unexpected, mismatched, duplicate and
+incomplete tensors; `CollectSink` checks names and shapes against a schema only when constructed
+with `expected` (without it any supported tensor is accepted), and rejects duplicate and incomplete
+tensors in both modes. `TorchSink.discard()` drops only the sink's references: the model that owns the preallocated
 tensors still holds them, so after a failed load drop the partial model and every other reference to
 its destinations, and never reuse them. `CollectSink` has no `discard()`; drop the failed collector
 and its results.

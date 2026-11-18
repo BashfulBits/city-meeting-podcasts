@@ -20,5 +20,5 @@
   pinned author sources by SHA-256 before importing them, and answer with the Karpo adapter's call.
   Answers equal the authors' own loading path on 60 sample questions (RTX; on an L4 elephant-1
   uses a lean float32 head and chunked MLPs, mean difference 0.001). elephant-1 does not fit an L4
-  as authored (22.4 GiB peak); the L4 adapter runs requests up to about 30,000 tokens. Adds the
+  as authored (22.4 GiB peak); on the L4 requests of about 30,000 tokens in total ran, and a 32,000-token state did not. Adds the
   image recipe and parity job, and measured calibration rows for both models.

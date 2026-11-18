@@ -36,19 +36,34 @@ def test_pinned_source_tables_match_the_dockerfile():
     docker = (
         Path(__file__).parents[1] / "workers/decision-batch/open_weight_runtimes.Dockerfile"
     ).read_text()
+    import re
+
+    downloaded = dict(re.findall(r"get \S+/(\S+) \S+ ([0-9a-f]{64})", docker))
+    downloaded.update(
+        {Path(m[0]).name: m[1] for m in re.findall(r"get \S+ (\S+) ([0-9a-f]{64})", docker)}
+    )
+    assert rt.SOURCE_SHA256["elephant"]["engine.py"] == downloaded["engine.py"]
+    for name, digest in rt.SOURCE_SHA256["copernicus"].items():
+        assert downloaded[name] == digest
     for files in rt.SOURCE_SHA256.values():
-        for digest in files.values():
-            # patched OneJev files are checked by the build's own import step, not downloaded
-            assert len(digest) == 64
-    for digest in (
-        "72373353379c53b7cabfb5d05b6fef3c898d48c87cc386e03fc3de9c07e67ca7",
-        "1717f334094b44926a4a46e7860d3e67135cc91158125f8cccf4a637ef757a32",
-        "dc641d4dbac05cd088de59c20c06cfc44e1dcc18d4102470fc8feba943359639",
-    ):
-        assert digest in docker
+        assert all(len(digest) == 64 for digest in files.values())
     assert rt.ELEPHANT_REVISION in docker and rt.COPERNICUS_REVISION in docker
     assert "81ce62f1597c91e46767d4d02d6ac2e18534fe94" in docker
     assert "pip install" not in docker  # nothing is installed from the network
+
+
+def test_check_origin_refuses_a_module_from_another_directory(tmp_path):
+    inside = tmp_path / "root"
+    inside.mkdir()
+    module = types.SimpleNamespace(__name__="m", __file__=str(inside / "m.py"))
+    rt.check_origin(module, "copernicus", {"copernicus": str(inside)})
+    elsewhere = types.SimpleNamespace(__name__="m", __file__=str(tmp_path / "m.py"))
+    with pytest.raises(ValueError, match="not imported from the verified"):
+        rt.check_origin(elsewhere, "copernicus", {"copernicus": str(inside)})
+    with pytest.raises(ValueError, match="not imported"):
+        rt.check_origin(
+            types.SimpleNamespace(__name__="m"), "copernicus", {"copernicus": str(inside)}
+        )
 
 
 def test_compare_answers_reports_differences_flips_and_status_mismatches():
@@ -59,6 +74,9 @@ def test_compare_answers_reports_differences_flips_and_status_mismatches():
         [reply(0.2, 0.9), "too_large", reply(0.49)], [reply(0.25, 0.9), reply(0.5), reply(0.51)]
     )
     assert got["questions"] == 3 and got["flips_at_0_5"] == 1 and got["status_mismatches"] == 1
+    assert got["unanswered_requests"] == 1
+    same = rt.compare_answers(["too_large"], ["too_large"])
+    assert same["status_mismatches"] == 0 and same["unanswered_requests"] == 1  # not an answer
     assert got["max_abs_diff"] == pytest.approx(0.05)
     with pytest.raises(ValueError, match="different question sets"):
         rt.compare_answers([reply(0.1)], [reply(0.1, 0.2)])
@@ -227,10 +245,12 @@ def test_elephant_causal_wrapper_rejects_a_bad_head_and_a_tied_checkpoint(tmp_pa
     model = qwen.Qwen3_5ForConditionalGeneration(config).to(torch.bfloat16)
     with pytest.raises(ValueError, match="invalid lm_head"):
         rt.causal_lm_from_backbone(model.model, {}, tmp_path, torch)
+    config.tie_word_embeddings = True
+    config.get_text_config().tie_word_embeddings = True
+    config.save_pretrained(tmp_path)
     head = {"lm_head.weight": model.lm_head.weight.detach()}
-    if config.get_text_config().tie_word_embeddings:
-        with pytest.raises(ValueError, match="untied"):
-            rt.causal_lm_from_backbone(model.model, head, tmp_path, torch)
+    with pytest.raises(ValueError, match="untied"):
+        rt.causal_lm_from_backbone(model.model, head, tmp_path, torch)
 
 
 def test_lean_head_logits_equal_the_float32_copy_the_engine_would_make(need_torch):
