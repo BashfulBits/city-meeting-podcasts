@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Add the review/60 Phase 3 evaluation harness and its first results. Request builders read only
+  the frozen `manifest.json`; scoring gives accuracy against gold (tag strata re-weighted to the
+  production mix), ECE, Brier, agreement with Perplexity, invalid rate and paired cluster-
+  bootstrap intervals. Includes an OpenRouter and Gemini decision runner, a cloud worker for Karpo
+  (9B, 12B, 31B; FP8 and BF16, chapters grouped and one question per request) and GLiDE 9B,
+  elephant-1 (through the Phase 1 adapters), a list-rate cost script, and dated
+  results for dev and holdout under `evals/open-weight-decision/results/`.
+
 - Add a model-neutral torch sink for the authenticated streaming loader (`TorchSink`,
   `CollectSink`) with FP8 quantize-on-complete, and `load_karpo`, a streaming loader for Karpo
   decision models (Gemma 4 12B and 31B, Qwen3.5 4B and 9B), plus `load_hf_backbone` for the
