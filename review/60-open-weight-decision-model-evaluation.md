@@ -921,8 +921,9 @@ this memo does not argue with that, only notes that agreement rates do not yet s
 
 - **GLiDE 9B:** as accurate on tags (0.749 pooled) and well calibrated (ECE 0.10), but 2,024 input tokens per chapter tag
   against about 423 for Karpo 9B grouped (no one-pass multi-question mode), and chapter F1 0.69. Tags-only at best.
-- **Copernicus-31B:** tags 0.742 pooled (+0.044, [-0.019, +0.107]) and the best moment lane (0 wrongly rejected), but chapter F1 0.64
-  on holdout, and about 4 times the cost per decision of Karpo 31B on an RTX (69 GiB peak).
+- **Copernicus-31B: dropped by the maintainer (2026-11-18); no run recommended.** It is also not recommended on the results
+  (kept here as a negative result): tags 0.742 pooled (+0.044, [-0.019, +0.107]) and the best moment lane (0 wrongly rejected),
+  but chapter F1 0.64 on holdout and about 4 times the cost per decision of Karpo 31B on an RTX (69 GiB peak).
 - **Karpo 12B as the fallback:** level with Perplexity on tags (-0.011) and the most wrongly rejected moments of the large
   models (3 holdout, 4 to 5 dev).
 - **Liquid d1-2B and d1-3B, MiniCPM5-2B-Jev:** pass the tag gate (102 to 104% of Perplexity on dev) but wrongly reject 10, 15 and 6
