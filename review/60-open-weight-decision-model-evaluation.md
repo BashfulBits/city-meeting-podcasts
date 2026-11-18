@@ -1,6 +1,6 @@
 # 60 — Open-weight decision model evaluation
 
-Status: **L1 — plan approved 2026-11-17; the local screen, labeling and Phase 0 are done (§8); Phase 1 (streaming loader) is next.**
+Status: **L1 — plan approved 2026-11-17; the local screen, labeling, Phase 0 and Phase 1 (streaming loader, Karpo 12B and 9B) are done (§8); Phase 3 runs are next.**
 Depends on [`review/59`](59-deferred-decision-batches.md) (the GPU launcher in PR #2695). This
 document does not change that PR; the loader, the Karpo adapter and the evaluation each land in
 their own PR.
@@ -415,6 +415,59 @@ server were not tested. Costs: about $1.5 at list rates (RTX run about $0.7 incl
 and a 24 GB cross-region copy under $0.4), recorded against the $20 cap; cloud billing not yet reconciled.
 Left in place (not deleted): jobs `r60-karpo-spike-l4` (us-east4) and `r60-karpo-spike-rtx` (us-central1), images
 `r60-karpo-spike-v1..v3`, and the 12B copy in the us-east4 model bucket.
+
+### Result 2026-11-18: Phase 1 (streaming loader for Karpo; PR stacked on #2695)
+
+**Gate: passed for Karpo 12B and 9B on an L4.** `citypods/weight_streaming/torch_sink.py` (`TorchSink`, `CollectSink`)
+and `citypods/judging/karpo_stream.py` (`load_karpo`) stream verified safetensors slices straight to the GPU. The backbone
+is built on the meta device, the decoder projections Karpo's `--fp8` would quantize are created as that path's own
+`Fp8Linear` (e4m3, one scale per output row), and each BF16 weight is staged alone on the GPU and quantized when its
+last slice arrives. The BF16 model is never resident and the host holds only the in-flight slices. The result is a
+`karpo_decision.decider.Decider`. Evidence: `evals/gpu-profiles/karpo-phase1-streaming.json`, probe
+`workers/decision-batch/karpo_stream_probe.py`; raw results sit in the batch bucket under `attempts/r60/`.
+
+*Measured on an L4 (16 workers, one L4 per run):*
+
+| Run | Slices | Load, total | Streaming | Throughput | Weights on GPU | GPU peak after load | Host RSS peak at load |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 12B FP8, streaming | 8 MiB | 103.2 s | 76.4 s | 313 MB/s | 12.22 GiB | 12.76 GiB | 1.55 GiB |
+| 12B FP8, streaming | 32 MiB | 79.6 s | 58.6 s | 408 MB/s | 12.22 GiB | 12.76 GiB | 1.76 GiB |
+| 9B FP8, streaming | 8 MiB | 92.1 s | 66.7 s | 252 MB/s | 9.22 GiB | 9.68 GiB | 1.49 GiB |
+| 12B FP8, Phase 0 layer-wise (FUSE) | n/a | 192.3 s | n/a | about 125 MB/s | 12.14 GiB | 12.14 GiB | 9.62 GiB |
+| 9B FP8, author quantize after BF16 load (FUSE) | n/a | 157.5 s | n/a | n/a | 9.22 GiB | 16.18 GiB | 6.08 GiB |
+
+The gate (at least 150 MB/s) is met by every streaming run. The 12B went from about 250 s (Phase 0 estimate) to 80 to 103 s, and
+from a 24 GB host copy to 1.6 GiB of host RAM; the streaming jobs ran in a 16 GiB container. The 9B in FP8 needs 9.2 GiB of weights
+instead of 15.65 GiB, which also lifts the 8,192-token budget limit that the BF16 9B had on an L4. The 12B reference row is the Phase 0 path run again in this phase (192.3 s,
+which includes the per-layer quantize). Streaming holds 0.07 GiB more weights than that path (12.22 against 12.14 GiB); the cause was
+not isolated, and the peak while answering is 12.95 GiB.
+
+*Byte identity.* Every backbone tensor and the readout, FP8 weights and scales included, was hashed on the GPU after the streaming
+load and after Karpo's own path (12B: Phase 0 layer-wise; 9B: `qwen_fp8.quantize` on a BF16 load). All 1,006 tensors of the 12B and
+all 960 of the 9B are identical (zero mismatches). The repository tests prove the same on tiny Gemma 4 and Qwen3.5 models, including
+the non-persistent rotary and scale buffers, and check the quantizer against a verbatim copy of Karpo's formula.
+
+*Answers.* With identical weights, grouped-request probabilities still moved between container runs: the streamed 12B matched the
+Phase 0 run exactly in one run (304 of 304) and differed by a mean 0.0031 and maximum 0.062 (2 flips at 0.5) in two others, and the
+re-run of the Phase 0 path differed from the Phase 0 numbers by the same amount, so this is run-to-run kernel nondeterminism and not the
+loader. The 9B in FP8 against its BF16 Phase 0 answers: mean 0.0036, maximum 0.087, 2 flips of 304, as in Phase 0.
+
+*Calibration rows* (`config/gpu_profiles.json`, new models `karpo-12b-fp8` and `karpo-9b-fp8`, L4): load 91.4 s (p90 130 s) and
+92.1 s (p90 115 s), peak 12.95 and 10.01 GiB, warm rate 1,263 and 1,667 tokens per second. The load tails come from two and one
+runs, so p90 is set to 1.25 times the slowest and should be replaced once more runs exist. The rates are per-request rates over
+the Phase 0 chapters, not padded-budget probe numbers, and the token budget is set to 8,192 until a larger one is measured.
+
+*Notes and limits.*
+- The manifest was derived inside the project's cloud from the pinned bucket copy and checked against the Hugging Face LFS SHA-256 of
+  every weight and readout file; the small text files have no independent digest and are marked `unreferenced` in the manifest.
+- The manifest trust root must live somewhere reviewed; `scripts/derive_karpo_manifest.py` only derives it.
+- The runtime service account may create objects only under `attempts/`, so probe outputs and manifests live there.
+- Not done in this phase: the elephant-1 and Copernicus-31B adapters, and a Karpo 4B or 31B load. `load_karpo` accepts the 4B and
+  both 9B revisions by pin, but only the 12B and the `0fb7…` 9B were measured.
+- Cost: about $1 at list rates for this phase (eight L4 executions, six CPU derive runs, four image builds), not yet reconciled
+  against billing; about $2.5 in all with Phase 0, against the $20 cap.
+- Left in place, not deleted: jobs `r60-karpo-derive`, `r60-karpo-stream-l4`, `r60-karpo-ref-l4`, images `r60-karpo-stream-v1..v4`,
+  and the manifests and results under `attempts/r60/`.
 
 ### Result 2026-11-18: Phase 2 dataset frozen (`evals/open-weight-decision/`)
 
