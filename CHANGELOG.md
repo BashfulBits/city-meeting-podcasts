@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Added `torchvision` to the `decision-gpu` lane (locked at 0.29.2) so Qwen3.5-based Karpo models,
+  whose image processor imports it, load in the production decision worker image.
+
 - `scripts/derive_karpo_manifest.py` now validates the bucket name before building the request and
   refuses redirects, so its bearer token can only go to `storage.googleapis.com`.
 
