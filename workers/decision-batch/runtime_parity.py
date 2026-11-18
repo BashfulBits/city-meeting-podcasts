@@ -111,6 +111,8 @@ def long_probe(runner, torch, manifest, targets, counts=(1, 12, 40)):
 
                 print("RT_OOM", traceback.format_exc()[-1800:], flush=True)
                 reply = "too_large"
+            except ValueError as exc:  # the engine's own refusal of an over-limit request
+                reply = "refused: " + str(exc)[:200]
             torch.cuda.synchronize()
             out[f"{target}x{count}"] = {
                 "status": reply if isinstance(reply, str) else "ok",

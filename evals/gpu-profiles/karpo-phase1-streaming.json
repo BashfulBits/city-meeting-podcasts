@@ -538,7 +538,10 @@
     "long": {
      "32000x1": "ok, 20.42 GiB, 32,192 tokens, 33 s",
      "32000x12": "ok, 20.42 GiB, 33,809 tokens, 42 s",
+     "32000x215": "ok, 20.42 GiB, 63,650 tokens, 206 s",
+     "32000x225": "ok, 20.42 GiB, 65,120 tokens, 219 s",
      "32000x24": "ok, 20.42 GiB, 35,573 tokens, 40 s",
+     "32000x240": "refused by the engine before any compute: request is 67325 tokens, limit is 65536 (the adapter returns too_large)",
      "32000x50": "ok, 20.42 GiB, 39,395 tokens, 61 s",
      "32400x1": "ok, 20.58 GiB, 32,592 tokens, 22 s",
      "32400x50": "ok, 20.58 GiB, 39,795 tokens, 61 s"
