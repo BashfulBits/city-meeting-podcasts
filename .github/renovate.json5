@@ -197,6 +197,7 @@
         "ctranslate2",
         "whisperx",
         "torch",
+        "torchvision",
         "triton",
         "transformers",
         "tokenizers",
