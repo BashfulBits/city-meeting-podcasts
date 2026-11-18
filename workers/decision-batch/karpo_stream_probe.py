@@ -1,12 +1,13 @@
 """review/60 Phase 1 cloud probe: derive manifests, stream Karpo to the GPU, or run the reference.
 
-``derive MODEL``      hash the pinned bucket copy against the publisher's SHA-256 (CPU only); the
-                      manifests go under a fresh ``attempts/r60/<run id>/`` prefix.
+``derive MODEL``      hash the pinned bucket copy against the publisher's SHA-256 (CPU only). It
+                      prints ``MANIFEST_KEY <key>`` for each manifest, written under a fresh
+                      ``attempts/r60/<run id>/`` prefix, then ``DERIVE_DONE`` (no PROBE_RESULT).
 ``stream MODEL``      load through ``citypods.judging.karpo_stream`` (FP8 by default) and measure.
 ``reference MODEL``   the Phase 0 layer-wise path (Karpo loader plus its quantizer), for digests.
 
-Each run writes one JSON result to the batch bucket under ``attempts/r60/`` (the only prefix the
-runtime identity may create) and prints it as
+A ``stream`` or ``reference`` run writes one JSON result to the batch bucket under
+``attempts/r60/`` (the only prefix the runtime identity may create) and prints it as
 ``PROBE_RESULT``. The probe never runs untrusted code: the model and tokenizer come from the
 audited Karpo source baked into the image, and weight bytes are used only after SHA-256 checks.
 """
@@ -86,7 +87,7 @@ def emit(store, label, result):
 
 def _digest(tensor, torch):
     raw = tensor.detach().contiguous().reshape(-1).view(torch.uint8).cpu().numpy()
-    return hashlib.sha256(raw.tobytes()).hexdigest()
+    return hashlib.sha256(memoryview(raw)).hexdigest()
 
 
 def tensor_digests(backbone, torch, extras=None):
@@ -178,6 +179,10 @@ def derive(args, store, token):
         workers=16,
     )
     # A fresh prefix per run: a rerun after a partial publication never meets an existing key.
+    from citypods.judging.karpo_stream import validate_manifest
+
+    for manifest in manifests.values():
+        validate_manifest(manifest)  # exactly what the loader will accept, before any write
     for size, manifest in manifests.items():
         key = f"attempts/r60/{RUN_ID}/manifest-{args.model}-{size // 2**20}mib.json"
         store.put(key, json.dumps(manifest, sort_keys=True).encode(), 0)
@@ -196,7 +201,8 @@ def stream(args, store, token):
 
     spec = MODELS[args.model]
     started = time.monotonic()
-    manifest = json.loads(store.get(args.manifest)[0])
+    manifest_bytes = store.get(args.manifest)[0]
+    manifest = json.loads(manifest_bytes)
     if manifest.get("revision") != spec["revision"]:
         raise ValueError("the manifest is for a different model revision")
     stats = {}
@@ -214,6 +220,10 @@ def stream(args, store, token):
         "mode": "stream-bf16" if (args.bf16 or hf) else "stream-fp8",
         "gpu": torch.cuda.get_device_name(0),
         "workers": args.workers,
+        # The probe cannot show who wrote the manifest (the runtime identity may create anything
+        # under attempts/); the result records which manifest bytes it trusted.
+        "manifest_key": args.manifest,
+        "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
         "slice_mib": manifest["slice_bytes"] // 2**20,
         "load_seconds_total": round(time.monotonic() - started, 1),
         "stream": stats,
@@ -293,12 +303,19 @@ def reference(args, store, token):
         result["mode"] = "reference-layerwise-fp8"
     else:  # BF16 on the GPU (it fits), digested, then Karpo's own quantize unless --bf16
         decider = Decider.from_pretrained(spec["local"], device="cuda")
+        result["load_seconds_bf16"] = round(time.monotonic() - started, 1)
+        result["after_load_bf16"] = memory(torch)  # before any digest pass
         result["mode"] = "reference-bf16"
+        digest_started = time.monotonic()
         result["digests_bf16"] = decider_digests(decider, torch)
+        result["bf16_digest_seconds"] = round(time.monotonic() - digest_started, 1)
         if not args.bf16:
+            quantize_started = time.monotonic()
             qwen = families.model_type(spec["local"]) == "qwen3_5"
             (qwen_fp8.quantize if qwen else fp8.quantize)(decider.model)
+            result["quantize_seconds"] = round(time.monotonic() - quantize_started, 1)
             result["mode"] = "reference-bf16-then-quantize"
+    # The BF16 digest pass sits inside this span; subtract bf16_digest_seconds for a pure load.
     result.update(load_seconds_total=round(time.monotonic() - started, 1), after_load=memory(torch))
     result["digests"] = (
         result["digests_bf16"]

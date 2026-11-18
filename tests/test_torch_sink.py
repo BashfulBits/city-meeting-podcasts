@@ -154,3 +154,27 @@ def test_collect_sink_requires_every_expected_tensor_and_stays_on_cpu():
     complete = CollectSink({"weight": ("F32", (3, 5))})
     stream(safetensors_bytes({"weight": rows}), complete)
     assert complete.result()["weight"].equal(rows)
+
+
+def test_collect_and_model_destinations_must_not_overlap():
+    with pytest.raises(ValueError, match="collected"):
+        TorchSink({"x": torch.empty(2)}, collect=("x",))
+    TorchSink({"x": torch.empty(2)}, collect=("y",))
+
+
+def test_only_one_quantized_tensor_is_staged_at_a_time_across_chunk_boundaries():
+    torch.manual_seed(3)
+    tensors = {name: torch.randn(8, 16, dtype=torch.bfloat16) for name in "abcd"}
+    dests = {n: (torch.zeros(8, 16, dtype=torch.float8_e4m3fn), torch.zeros(1, 8)) for n in tensors}
+    sink = TorchSink({}, dests)
+    seen = []
+    original = sink.__call__
+
+    class Probe:
+        def __call__(self, spec, offset, data):
+            original(spec, offset, data)
+            seen.append(len(sink._staging))
+
+    stream(safetensors_bytes(tensors), Probe(), chunk=300)  # 256-byte tensors cut mid-tensor
+    sink.check_complete()
+    assert max(seen) == 1 and seen[-1] == 0

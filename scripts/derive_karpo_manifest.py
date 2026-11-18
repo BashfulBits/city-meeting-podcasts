@@ -13,12 +13,13 @@ manifest records under ``unreferenced``.
 import argparse
 import hashlib
 import json
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from citypods.judging.karpo_stream import KARPO_PREFIXES
+from citypods.judging.karpo_stream import KARPO_PREFIXES, validate_manifest
 from citypods.weight_streaming import gcs_range_fetcher
 
 MIB = 1024**2
@@ -51,8 +52,8 @@ def list_objects(bucket, prefix, token):
 
 def validate_slice_sizes(slice_sizes):
     """Whole MiB from 1 to 64 (the loader's limit) that divide or are divisible by 32 MiB."""
-    if not slice_sizes:
-        raise ValueError("no slice sizes")
+    if not slice_sizes or len(set(slice_sizes)) != len(slice_sizes):
+        raise ValueError("no slice sizes, or a size is repeated")
     for s in slice_sizes:
         if type(s) is not int or not MIB <= s <= MAX_SLICE or s % MIB or (READ % s and s % READ):
             raise ValueError("slice sizes must be 1 to 64 MiB, dividing or divisible by 32 MiB")
@@ -99,7 +100,10 @@ def derive(bucket, revision, objects, fetcher_for, slice_sizes, expected, *, wor
     # Every weight must have an independent publisher digest, checked before any hashing.
     for name, _, _ in wanted:
         path = name[len(prefix) + 1 :]
-        if path.endswith(".safetensors") and path not in expected:
+        digest = expected.get(path)
+        if digest is not None and not re.fullmatch(r"[0-9a-f]{64}", str(digest)):
+            raise ValueError(f"invalid publisher SHA-256 for {path}")
+        if path.endswith(".safetensors") and digest is None:
             raise ValueError(f"no publisher SHA-256 for weight object {path}")
     for name, generation, size in wanted:
         path = name[len(prefix) + 1 :]
@@ -151,10 +155,12 @@ def main():
     parser.add_argument("revision", choices=sorted(KARPO_PREFIXES))
     parser.add_argument("--expect", help="JSON map of object path to SHA-256", required=True)
     parser.add_argument("--slice-mib", type=int, nargs="+", default=[8, 32])
-    parser.add_argument("--token", required=True)
     args = parser.parse_args()
     validate_slice_sizes([m * MIB for m in args.slice_mib])
-    objects = list_objects(args.bucket, KARPO_PREFIXES[args.revision], args.token)
+    token = os.environ.get("GCS_ACCESS_TOKEN")  # not an argument: arguments are visible to others
+    if not token:
+        parser.error("set GCS_ACCESS_TOKEN to a read-only access token for the bucket")
+    objects = list_objects(args.bucket, KARPO_PREFIXES[args.revision], token)
     with open(args.expect) as handle:
         expected = json.load(handle)
     sizes = [m * MIB for m in args.slice_mib]
@@ -162,10 +168,12 @@ def main():
         args.bucket,
         args.revision,
         objects,
-        lambda n, g, s: gcs_range_fetcher(args.bucket, n, g, s, args.token),
+        lambda n, g, s: gcs_range_fetcher(args.bucket, n, g, s, token),
         sizes,
         expected,
     )
+    for manifest in result.values():
+        validate_manifest(manifest)  # what the loader will accept, before anything is printed
     print(json.dumps({str(k): v for k, v in result.items()}, sort_keys=True))
 
 

@@ -10,5 +10,7 @@
   408 MB/s with 1.76 GiB (32 MiB slices), with a 12.8 GiB GPU peak (Phase 0: about 250 s and
   24 GB of host RAM). The 9B loads in 92 s (FP8) or 69 s (BF16), the 4B in 56 s, and on an RTX
   PRO 6000 the 31B loads in 236 s as FP8 (31 GiB) and 173 s as BF16 (58 GiB), each with under
-  2 GiB of host RAM. Every tensor of every model is byte-identical to its own load path. Adds
-  a manifest derivation script, a cloud probe and calibration profiles.
+  2 GiB of host RAM. In each tested configuration every streamed tensor matched, byte for byte,
+  the same model loaded through its own path at the same precision (for FP8 that is Karpo's
+  quantizer applied after a BF16 load; for 12B the Phase 0 layer-wise path); answer parity is
+  reported separately. Adds a manifest derivation script, a cloud probe and calibration profiles.

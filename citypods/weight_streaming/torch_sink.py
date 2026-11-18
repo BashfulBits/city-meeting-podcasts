@@ -90,6 +90,8 @@ class TorchSink:
                 or not scale.is_contiguous()
             ):
                 raise ValueError("invalid FP8 destination: " + name)
+        if set(collect) & (set(direct) | set(quantized)):
+            raise ValueError("tensor is both collected and a model destination")
         self.direct = dict(direct)
         self.quantized = quantized
         self.device = torch.device(device) if device is not None else None

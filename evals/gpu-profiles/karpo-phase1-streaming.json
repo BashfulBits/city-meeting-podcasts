@@ -35,7 +35,7 @@
  },
  "comparisons": {
   "answers_12B": "same weights, so differences are not a weight effect; the cause (run-to-run kernel nondeterminism is likely) was not isolated by a controlled comparison",
-  "answers_9B": "streamed FP8 against Phase 0 BF16: includes the FP8 quantization effect",
+  "answers_9B": "streamed FP8 against Phase 0 BF16: a cross-precision, cross-path comparison; it includes the quantization effect and does not isolate it",
   "weights": "byte_identity compares the streamed FP8 load with the reference FP8 load of the same model, tensor by tensor; the 9B reference loaded BF16 and ran Karpo's quantize"
  },
  "gpu": "NVIDIA L4 (us-east4, Cloud Run job, 16 GiB host limit for streaming runs)",
@@ -49,6 +49,7 @@
   },
   "failed_run": "One r60-karpo-stream-rtx execution (31B BF16) ended with 'configured memory limit was reached' and no logs after about 30 minutes; an identical retry succeeded (173 s) and the cause was not found.",
   "image": "glide-worker:r60-karpo-stream-v5 (v4 + 31B/4B/Copernicus/elephant-1 pins)",
+  "note_reference_times": "reference_load_seconds for the 4B, 9B and 31B includes one full BF16 digest pass (hashing every tensor on the host) that the probe did not time separately; the probe now records load_seconds_bf16, bf16_digest_seconds and quantize_seconds. The Copernicus, elephant-1 and 12B reference times are unaffected.",
   "runs": {
    "31B_bf16": {
     "after_load": {
@@ -74,6 +75,7 @@
      "reference_gpu_peak_gib_at_load": 59.48,
      "reference_host_rss_peak_gib": 7.03,
      "reference_load_seconds": 671.7,
+     "reference_load_seconds_includes_bf16_digest_pass": true,
      "reference_mode": "reference-bf16-then-quantize",
      "tensors": 1189
     },
@@ -132,6 +134,7 @@
      "reference_gpu_peak_gib_at_load": 59.48,
      "reference_host_rss_peak_gib": 7.03,
      "reference_load_seconds": 671.7,
+     "reference_load_seconds_includes_bf16_digest_pass": true,
      "reference_mode": "reference-bf16-then-quantize",
      "tensors": 1599
     },
@@ -190,6 +193,7 @@
      "reference_gpu_peak_gib_at_load": 8.81,
      "reference_host_rss_peak_gib": 6.04,
      "reference_load_seconds": 222.9,
+     "reference_load_seconds_includes_bf16_digest_pass": true,
      "reference_mode": "reference-bf16-then-quantize",
      "tensors": 924
     },
@@ -248,6 +252,7 @@
      "reference_gpu_peak_gib_at_load": 15.65,
      "reference_host_rss_peak_gib": 6.07,
      "reference_load_seconds": 225.0,
+     "reference_load_seconds_includes_bf16_digest_pass": true,
      "reference_mode": "reference-bf16",
      "tensors": 760
     },
@@ -474,7 +479,7 @@
    },
    "vs_baseline": {
     "baseline": "bf16",
-    "comparison": "FP8 streamed answers against the Phase 0 BF16 answers (a quantization effect, not a loader comparison)",
+    "comparison": "streamed FP8 against Phase 0 BF16 answers: a cross-precision and cross-path comparison that includes the quantization effect and does not isolate it",
     "flips_at_0.5": 2,
     "identical_pairs": 36,
     "max_abs_diff": 0.0868,

@@ -110,9 +110,23 @@ def test_slice_sizes_are_validated_before_any_work():
     for bad in ([], [0], [-8 * MIB], [128 * MIB], [3 * MIB], [MIB // 2], [True]):
         with pytest.raises(ValueError):
             validate_slice_sizes(bad)
+    for bad in ([8 * MIB, 8 * MIB],):
+        with pytest.raises(ValueError):
+            validate_slice_sizes(bad)  # a repeated size would append every hash twice
     files = blobs()
-    with pytest.raises(ValueError, match="slice sizes"):
-        derive_from(files, {}, sizes=(0,))
+    reads = []
+    objects = [(f"{PREFIX}/{n}", "7", len(d)) for n, d in files.items()]
+    for sizes in ((0,), (8 * MIB, 8 * MIB), (128 * MIB,)):
+        with pytest.raises(ValueError, match="slice sizes"):
+            derive(
+                "bucket-a",
+                REVISION,
+                objects,
+                lambda *a: reads.append(a) or (lambda x, y: b""),
+                sizes,
+                {},
+            )
+    assert reads == []  # no fetcher was even created
 
 
 def test_every_weight_needs_a_publisher_digest_before_hashing():
@@ -150,3 +164,28 @@ def test_hash_object_fetches_each_range_once_and_digests_match_both_sizes():
             hashlib.sha256(data[i : i + size]).hexdigest() for i in range(0, len(data), size)
         ]
     assert full == hashlib.sha256(data).hexdigest()
+
+
+def test_publisher_digest_must_be_a_real_digest_not_null_or_malformed():
+    files = blobs()
+    good = {
+        name: hashlib.sha256(files[name]).hexdigest()
+        for name in ("model-00001-of-00001.safetensors", "readout.safetensors")
+    }
+    for bad in (None, "", "A" * 64, "abc", 5):
+        with pytest.raises(ValueError, match="publisher SHA-256"):
+            derive_from(files, {**good, "model-00001-of-00001.safetensors": bad})
+
+
+def test_a_copy_missing_a_required_file_is_caught_by_the_loader_validation():
+    from citypods.judging.karpo_stream import validate_manifest as validate_karpo
+
+    files = blobs()
+    del files["config.json"]
+    expected = {
+        name: hashlib.sha256(files[name]).hexdigest()
+        for name in ("model-00001-of-00001.safetensors", "readout.safetensors")
+    }
+    manifest = derive_from(files, expected)[MIB]
+    with pytest.raises(ValueError):  # the derive command validates before printing, so it fails
+        validate_karpo(manifest)

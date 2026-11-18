@@ -118,6 +118,13 @@ def tiny(tmp_path, need_gemma):
     return tmp_path
 
 
+def assert_same(expected, actual, name):
+    """Same dtype, shape and bytes (a reshape or a dtype change can leave the bytes unchanged)."""
+    assert expected.dtype == actual.dtype, name
+    assert tuple(expected.shape) == tuple(actual.shape), name
+    assert digest(expected) == digest(actual), name
+
+
 def digest(tensor):
     return hashlib.sha256(
         tensor.detach().contiguous().reshape(-1).view(torch.uint8).numpy().tobytes()
@@ -138,12 +145,12 @@ def test_streamed_backbone_is_byte_identical_to_layerwise_quantized_load(tiny, r
     assert expected.keys() == actual.keys()
     for name in expected:
         assert expected[name].dtype == actual[name].dtype, name
-        assert digest(expected[name]) == digest(actual[name]), name
+        assert_same(expected[name], actual[name], name)
     ref_buffers = dict(reference.named_buffers())
     new_buffers = dict(backbone.named_buffers())
     assert ref_buffers.keys() == new_buffers.keys()
     for name, value in ref_buffers.items():  # includes the non-persistent rotary tables
-        assert digest(value) == digest(new_buffers[name]), name
+        assert_same(value, new_buffers[name], name)
 
 
 def test_without_fp8_every_weight_is_copied_unchanged(tiny, ref_module):
@@ -160,7 +167,7 @@ def test_without_fp8_every_weight_is_copied_unchanged(tiny, ref_module):
     stream_file(next(tiny.glob("*.safetensors")), sink)
     sink.check_complete()
     for name, value in reference.state_dict().items():
-        assert digest(value) == digest(backbone.state_dict()[name]), name
+        assert_same(value, backbone.state_dict()[name], name)
 
 
 def test_missing_tensor_is_detected(tiny, ref_module):
@@ -222,9 +229,11 @@ def test_qwen_streamed_backbone_matches_layerwise_load(tmp_path, monkeypatch, ne
     expected = reference.state_dict()
     assert expected.keys() == backbone.state_dict().keys()
     for name, value in expected.items():
-        assert digest(value) == digest(backbone.state_dict()[name]), name
+        assert_same(value, backbone.state_dict()[name], name)
+    buffers = dict(backbone.named_buffers())
+    assert "visual.rotary_pos_emb.inv_freq" in buffers  # the vision rotary table is covered too
     for name, value in reference.named_buffers():
-        assert digest(value) == digest(dict(backbone.named_buffers())[name]), name
+        assert_same(value, buffers[name], name)
 
 
 # ------------------------------------------------------------ load_karpo orchestration (mocked)
@@ -476,7 +485,7 @@ def test_prefixed_checkpoint_streams_with_rename_and_collected_extra(tiny, ref_m
     stream_file(tiny / "prefixed.safetensors", sink)
     sink.check_complete()
     for name, value in tensors.items():
-        assert digest(value) == digest(backbone.state_dict()[name]), name
+        assert_same(value, backbone.state_dict()[name], name)
     assert sink.collected()["lm_head.weight"].equal(head)
     missing = torch_sink.TorchSink({"w": torch.empty(1)}, collect=("lm_head.weight",))
     with pytest.raises(ValueError, match="incomplete"):
@@ -485,6 +494,11 @@ def test_prefixed_checkpoint_streams_with_rename_and_collected_extra(tiny, ref_m
 
 def test_hf_backbone_loader_streams_without_a_decision_config(mocked_load, monkeypatch):
     manifest, _, calls = mocked_load
+
+    def fail(*args, **kwargs):
+        raise AssertionError("a plain checkpoint must not read a Karpo decision config")
+
+    monkeypatch.setattr(sys.modules["karpo_decision.config"].DecisionConfig, "load", fail)
     monkeypatch.setitem(
         karpo_stream.MODELS,
         manifest["revision"],
@@ -493,8 +507,10 @@ def test_hf_backbone_loader_streams_without_a_decision_config(mocked_load, monke
     backbone, extras = karpo_stream.load_hf_backbone(manifest, "token", device="cpu")
     assert calls == ["model-00001-of-00001.safetensors"]  # no readout, no decision config
     assert extras == {} and len(list(backbone.parameters())) > 0
-    with pytest.raises(ValueError, match="Karpo's"):
-        monkeypatch.setitem(
-            karpo_stream.MODELS, manifest["revision"], karpo_stream.Pin("p", 1, kind="karpo")
-        )
+    with pytest.raises(ValueError, match="BF16 only"):  # rejected before any download
         karpo_stream.load_hf_backbone(manifest, "token", fp8=True, device="cpu")
+    monkeypatch.setitem(
+        karpo_stream.MODELS, manifest["revision"], karpo_stream.Pin("p", 1, kind="karpo")
+    )
+    with pytest.raises(ValueError, match="needs load_karpo"):
+        karpo_stream.load_hf_backbone(manifest, "token", device="cpu")

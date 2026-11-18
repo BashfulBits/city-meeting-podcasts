@@ -38,8 +38,10 @@ class Pin:
 
 
 # Pinned checkpoints. The weight totals are those of the publishers' file listings at each
-# revision, so a manifest cannot add, drop or swap a shard; the total also replaces a blanket
-# size cap (the 31B is 58 GiB, which no 40 GiB cap would admit).
+# revision. The size pin is an aggregate byte count: it stops a manifest from adding or dropping
+# weight bytes and replaces a blanket size cap (the 31B is 58 GiB, which no 40 GiB cap would
+# admit), but it cannot tell shards apart. Each object is bound by the independently
+# authenticated manifest (generation, size and slice hashes), never by this table.
 MODELS = {
     "664640316919ce368750b3e16cc263e927ac6e2b": Pin(
         "hf/MachinePulseAI__karpo-decision-12B/664640316919ce368750b3e16cc263e927ac6e2b",
@@ -246,21 +248,23 @@ def load_hf_backbone(manifest, token, *, fp8=False, device="cuda", workers=8, st
     run here). ``extras`` holds the tensors outside the backbone the pin asks to keep (such as
     ``lm_head.weight``). The model is discarded on any failure.
     """
+    if fp8:
+        raise ValueError("plain checkpoints load in BF16 only; FP8 projections are Karpo's")
     paths = validate_manifest(manifest)
     pin = MODELS[manifest["revision"]]
-    if pin.kind != "hf" and fp8:
-        raise ValueError("FP8 projections are Karpo's; use load_karpo for a Karpo checkpoint")
+    if pin.kind != "hf":
+        raise ValueError("a Karpo decision checkpoint needs load_karpo (readout and hooks)")
     import torch
 
     device = torch.device(device)
-    backbone = extras = None
+    backbone = extras = result = None
     try:
         with tempfile.TemporaryDirectory() as temp:
             fetch_small_objects(paths, manifest["bucket"], token, temp)
             model_type = json.loads((Path(temp) / "config.json").read_text()).get("model_type")
             if model_type not in BACKBONES:
                 raise ValueError("unsupported model type: " + model_type)
-            backbone, _, extras = _stream_backbone(
+            backbone, shells, extras = _stream_backbone(
                 manifest,
                 paths,
                 token,
@@ -272,13 +276,14 @@ def load_hf_backbone(manifest, token, *, fp8=False, device="cuda", workers=8, st
                 workers=workers,
                 stats=stats,
             )
+            del shells  # empty: plain checkpoints are never quantized
             backbone.eval()
             result = backbone, extras
             backbone = extras = None
-            return result
+        return result
     except BaseException as exc:
         traceback.clear_frames(exc.__traceback__)
-        backbone = extras = None
+        backbone = extras = result = None
         raise
 
 
@@ -313,7 +318,7 @@ def load_karpo(
         raise ValueError("not a Karpo decision checkpoint")
     bucket = manifest["bucket"]
 
-    collect = backbone = decider = None
+    collect = backbone = decider = result = None
     shells = readout = ckpt = rows = None
     try:
         with tempfile.TemporaryDirectory() as temp:
@@ -362,12 +367,12 @@ def load_karpo(
                 # The same hooks Karpo's quantize() installs: each activation quantised once.
                 decider.model.norm_input, decider.model.mlp = fp8_module.norm, fp8_module.mlp
             result, decider = decider, None
-            return result
+        return result
     except BaseException as exc:
         # Inner frames can retain GPU tensors through the traceback; release them explicitly.
         traceback.clear_frames(exc.__traceback__)
         # The active frame's locals would keep the failed model on the GPU while a caller holds
         # the exception, so every tensor owner is released here.
-        decider = backbone = collect = None
+        decider = backbone = collect = result = None
         shells = readout = ckpt = rows = None
         raise
