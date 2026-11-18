@@ -86,7 +86,7 @@ def summarize(requests, replies, seconds):
     }
 
 
-def long_probe(runner, torch, manifest, targets):
+def long_probe(runner, torch, manifest, targets, counts=(1, 12, 40)):
     """One request per size: a state of about that many tokens, with 1, 12 and 40 questions."""
     from citypods.judging import open_weight_eval as ev
 
@@ -99,7 +99,7 @@ def long_probe(runner, torch, manifest, targets):
     out = {}
     for target in targets:
         state = tokenizer.decode(ids[:target])
-        for count in (1, 12, 40):
+        for count in counts:
             request = {"state": state, "questions": {f"q{i}": question for i in range(count)}}
             torch.cuda.reset_peak_memory_stats()
             torch.cuda.synchronize()
@@ -117,7 +117,13 @@ def long_probe(runner, torch, manifest, targets):
                 "input_tokens": reply["usage"]["input_tokens"] if isinstance(reply, dict) else None,
                 "seconds": round(time.monotonic() - t0, 2),
                 "gpu_peak_gib": round(torch.cuda.max_memory_allocated() / GIB, 2),
+                "gpu_allocated_after_gib": round(torch.cuda.memory_allocated() / GIB, 2),
             }
+            reply = None
+            release(torch)  # a failed request must not leave memory behind for the next one
+            out[f"{target}x{count}"]["gpu_allocated_after_release_gib"] = round(
+                torch.cuda.memory_allocated() / GIB, 2
+            )
             print("RT_LONG", f"{target}x{count}", json.dumps(out[f"{target}x{count}"]), flush=True)
     return out
 
@@ -146,6 +152,8 @@ def main():
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--skip-reference", action="store_true")
     parser.add_argument("--lean", action="store_true", help="elephant: bf16-stored float32 head")
+    parser.add_argument("--offload-tables", action="store_true")
+    parser.add_argument("--long-counts", type=int, nargs="*", default=[1, 12, 40])
     parser.add_argument("--mlp-chunk", type=int, default=0)
     parser.add_argument("--fork-budget", type=int, default=0)
     parser.add_argument(
@@ -202,6 +210,8 @@ def main():
     stats = {}
     t0 = time.monotonic()
     kwargs = {"lean_head": True} if args.lean else {}
+    if args.offload_tables:
+        kwargs["offload_tables"] = True
     if args.mlp_chunk:
         kwargs["mlp_chunk"] = args.mlp_chunk
     if args.fork_budget:
@@ -225,7 +235,7 @@ def main():
         raise ValueError("a valid sample request was not answered: " + str(result["stream"]["run"]))
     print("RT_RUN stream", json.dumps(result["stream"]["run"]), flush=True)
     if args.long:
-        result["long"] = long_probe(runner, torch, manifest, args.long)
+        result["long"] = long_probe(runner, torch, manifest, args.long, args.long_counts)
     del runner
     release(torch)
 

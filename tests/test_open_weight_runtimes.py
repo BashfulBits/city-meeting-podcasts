@@ -292,3 +292,18 @@ def test_chunked_mlp_matches_the_unchunked_one(need_torch):
         assert got.shape == want.shape and torch.allclose(got, want, atol=1e-6)
     short = torch.randn(1, 3, 8)
     assert layers[0].mlp(short).shape == (1, 3, 8)
+
+
+def test_cpu_embedding_and_offloaded_head_equal_the_gpu_resident_ones(need_torch):
+    torch.manual_seed(2)
+    table = torch.nn.Embedding(40, 8, padding_idx=0).to(torch.bfloat16)
+    ids = torch.randint(0, 40, (2, 9))
+    cpu = rt.cpu_embedding_class(torch)(table)
+    assert torch.equal(cpu(ids), table(ids))
+    assert not list(cpu.parameters()) and cpu.weight.shape == (40, 8)
+    weight = torch.randn(50, 8, dtype=torch.bfloat16)
+    hidden = torch.randn(2, 3, 8, dtype=torch.bfloat16)
+    resident = rt.lean_head_class(torch)(weight)
+    offloaded = rt.lean_head_class(torch)(weight, offload=True)
+    assert torch.equal(offloaded(hidden), resident(hidden))
+    assert not list(offloaded.parameters())

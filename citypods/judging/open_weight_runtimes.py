@@ -119,19 +119,21 @@ class _Runner:
     invalid = ()
 
     def run(self, requests):
-        import torch
-
         out = []
         for request in requests:
             try:
                 answers, tokens = self._decide(request["state"], request["questions"])
-            except torch.OutOfMemoryError:
-                _release(torch)
-                out.append("too_large")
             except self.too_large:
                 out.append("too_large")
             except self.invalid:
                 out.append("invalid_input")
+            except Exception as exc:
+                if type(exc).__name__ != "OutOfMemoryError":  # torch's, without importing torch
+                    raise
+                import torch
+
+                _release(torch)
+                out.append("too_large")
             else:
                 reply = {"answers": answers}
                 if isinstance(tokens, int) and not isinstance(tokens, bool):
@@ -205,6 +207,11 @@ def load_elephant_reference(model_dir, *, device="cuda:0"):
 HEAD_CHUNK = 16384
 
 
+def _pinned(tensor, torch):
+    """Page-locked host memory when a CUDA device exists (faster, asynchronous copies)."""
+    return tensor.pin_memory() if torch.cuda.is_available() else tensor
+
+
 def lean_head_class(torch):
     """A bf16-stored LM head whose logits are computed in float32, a vocabulary chunk at a time.
 
@@ -216,15 +223,19 @@ def lean_head_class(torch):
     """
 
     class LeanHead(torch.nn.Module):
-        def __init__(self, weight):
+        def __init__(self, weight, offload=False):
             super().__init__()
-            self.weight = torch.nn.Parameter(weight, requires_grad=False)
+            self.offload = offload
+            if offload:  # pinned host memory, not a parameter: model.device stays the GPU
+                self._cpu_weight = _pinned(weight.detach().cpu(), torch)
+            else:
+                self.weight = torch.nn.Parameter(weight, requires_grad=False)
 
         def forward(self, hidden):
             h = hidden.float()
-            weight = self.weight
+            weight = self._cpu_weight if self.offload else self.weight
             parts = [
-                h @ weight[i : i + HEAD_CHUNK].float().t()
+                h @ weight[i : i + HEAD_CHUNK].to(h.device, non_blocking=True).float().t()
                 for i in range(0, weight.shape[0], HEAD_CHUNK)
             ]
             return torch.cat(parts, dim=-1)
@@ -261,7 +272,35 @@ def torch_cat(parts):
     return torch.cat(parts, dim=1)
 
 
-def causal_lm_from_backbone(backbone, extras, directory, torch, stats=None, lean_head=False):
+def cpu_embedding_class(torch):
+    """An embedding whose table stays in pinned host memory; only the looked-up rows reach the GPU.
+
+    The lookup is an exact row copy, so the activations are bit-identical to the GPU table's.
+    """
+
+    class CpuEmbedding(torch.nn.Module):
+        def __init__(self, embedding):
+            super().__init__()
+            self._table = _pinned(embedding.weight.detach().cpu(), torch)
+            self.num_embeddings = embedding.num_embeddings
+            self.embedding_dim = embedding.embedding_dim
+            self.padding_idx = embedding.padding_idx
+            self._device = embedding.weight.device
+
+        @property
+        def weight(self):
+            return self._table
+
+        def forward(self, ids):
+            rows = torch.nn.functional.embedding(ids.to("cpu"), self._table, self.padding_idx)
+            return rows.to(self._device, non_blocking=True)
+
+    return CpuEmbedding
+
+
+def causal_lm_from_backbone(
+    backbone, extras, directory, torch, stats=None, lean_head=False, offload_tables=False
+):
     """A ``Qwen3_5ForCausalLM`` over the streamed backbone's text model and ``lm_head.weight``.
 
     Equivalent to ``Qwen3_5ForCausalLM.from_pretrained`` on the checkpoint: the same text decoder
@@ -283,7 +322,11 @@ def causal_lm_from_backbone(backbone, extras, directory, torch, stats=None, lean
         raise ValueError("elephant-1 has an untied head")
     causal.model = text
     if lean_head:
-        causal.lm_head = lean_head_class(torch)(head)
+        causal.lm_head = lean_head_class(torch)(head, offload=offload_tables)
+        if offload_tables:
+            extras["lm_head.weight"] = None  # the only GPU reference besides the dropped Parameter
+            del head
+            text.embed_tokens = cpu_embedding_class(torch)(text.embed_tokens)
     else:
         causal.lm_head.weight = torch.nn.Parameter(head, requires_grad=False)
     backbone.visual = None
@@ -302,6 +345,7 @@ def load_elephant(
     workers=8,
     stats=None,
     lean_head=False,
+    offload_tables=False,
     mlp_chunk=0,
     fork_token_budget=None,
 ):
@@ -310,10 +354,10 @@ def load_elephant(
     ``lean_head``, ``mlp_chunk`` and ``fork_token_budget`` are the memory options for a 22 GiB
     GPU (see ``lean_head_class`` and ``chunk_mlps``); the defaults are the author's.
     """
-    import torch
-
     if manifest.get("revision") != ELEPHANT_REVISION:
         raise ValueError("not the pinned elephant-1 revision")
+    import torch
+
     paths = validate_manifest(manifest)
     engine_module, unsupported, validation_error = _elephant_modules()
     backbone = extras = causal = engine = runner = None
@@ -323,7 +367,9 @@ def load_elephant(
         )
         with tempfile.TemporaryDirectory() as temp:
             fetch_small_objects(paths, manifest["bucket"], token, temp)
-            causal = causal_lm_from_backbone(backbone, extras, temp, torch, stats, lean_head)
+            causal = causal_lm_from_backbone(
+                backbone, extras, temp, torch, stats, lean_head, offload_tables
+            )
             if mlp_chunk:
                 chunk_mlps(causal, mlp_chunk)
             import transformers
@@ -439,10 +485,10 @@ def conditional_model_from_backbone(backbone, extras, directory, torch):
 
 def load_copernicus(manifest, token, *, device="cuda", workers=8, stats=None):
     """Stream Copernicus-31B and score it with the author's backend class and engine."""
-    import torch
-
     if manifest.get("revision") != COPERNICUS_REVISION:
         raise ValueError("not the pinned Copernicus-31B revision")
+    import torch
+
     paths = validate_manifest(manifest)
     server, layout_module = _copernicus_server()
     from transformers import AutoTokenizer
