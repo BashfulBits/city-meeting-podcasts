@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from citypods.judging.subjects import moment_subject_id
@@ -73,6 +74,52 @@ def _subjects(ep: Any) -> list[Subject]:
     return subjects
 
 
+_WORD_CHARS = re.compile(r"[^a-z0-9]+")
+
+
+def _norm(word: str) -> str:
+    return _WORD_CHARS.sub("", word.lower())
+
+
+def _window_around_quote(words: list[str], quote: str, cap: int) -> list[str]:
+    """At most ``cap`` words that keep the whole quote in view.
+
+    Provider-aligned transcripts carry whole minutes in one segment, so the segments overlapping
+    the quote can start far before it and a head-truncation cuts the quote off (review/60: 34 of
+    60 sampled moments). When the quote is already inside the first ``cap`` words nothing changes
+    (same evidence, same digest); otherwise the window is centred on the quote. If the quote
+    cannot be found the head is kept, as before.
+    """
+    if len(words) <= cap:
+        return words
+    needle = [n for n in (_norm(w) for w in quote.split()) if n]
+    # Normalized words keep their original positions: punctuation-only tokens ("—") drop out of
+    # both sides, so a match maps back to the right span of `words`.
+    kept = [(i, n) for i, n in ((i, _norm(w)) for i, w in enumerate(words)) if n]
+    normed = [n for _, n in kept]
+
+    def find(pattern: list[str]) -> tuple[int, int] | None:
+        for j in range(len(normed) - len(pattern) + 1):
+            if normed[j : j + len(pattern)] == pattern:
+                return kept[j][0], kept[j + len(pattern) - 1][0] + 1
+        return None
+
+    # The whole quote first (an earlier passage can share its opening words); only if it never
+    # appears verbatim (an edited or re-punctuated quote) fall back to its opening words.
+    span = find(needle) if needle else None
+    if span is None and len(needle) > 6:
+        span = find(needle[:6])
+        if span is not None:
+            span = (span[0], span[0] + len(needle))
+    if span is None or span[1] <= cap:
+        return words[:cap]
+    at, stop = span
+    width = stop - at
+    pad = max(0, (cap - width) // 2)
+    begin = min(max(0, at - pad), len(words) - cap)
+    return words[begin : begin + cap]
+
+
 def _evidence(subject: Subject, tier: ContextTier, texts: EpisodeTexts) -> Evidence | None:
     candidate = subject.payload
     if tier not in ("T1", "T2") or not texts.segments:
@@ -85,7 +132,9 @@ def _evidence(subject: Subject, tier: ContextTier, texts: EpisodeTexts) -> Evide
         if float(row.get("end") or 0) > start - QUOTE_CONTEXT_SECONDS
         and float(row.get("start") or 0) < end + QUOTE_CONTEXT_SECONDS
     )
-    context = " ".join(context.split()[:CONTEXT_WORD_CAP])
+    context = " ".join(
+        _window_around_quote(context.split(), str(candidate.get("quote") or ""), CONTEXT_WORD_CAP)
+    )
     lines = [
         f"Quote: {candidate.get('quote')}",
         f"Stated reason: {candidate.get('why') or ''}",
