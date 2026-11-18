@@ -15,6 +15,113 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Add a manual deferred decision pilot for frozen tag and moment questions. The offline rehearsal
+  exercises the GLiDE worker and collection contract. Cloud launch starts disabled and supports
+  a three-attempt canary comparing regular and delayed Cloud Run Jobs. The worker uses a separate
+  pinned Linux GPU dependency lane with the GLiDE-9B CUDA 13.0 runtime.
+- Add an experimental, opt-in authenticated streaming loader for GLiDE with a reusable
+  model-neutral safetensors package, bounded range reads and trusted generation-pinned manifests.
+  The existing local model path remains the default; one L4 canary passed structural validation,
+  and an RTX PRO 6000 canary also passed structural validation; quality qualification remains
+  pending.
+- Add inference diagnostics to the decision-batch worker: a prompt-length distribution, per-forward
+  timings, kernel-version and Triton-cache counters in the completion telemetry, an abort when
+  the gated-delta-rule kernels fall back to PyTorch, and an opt-in warm-repeat probe.
+- Add a reusable GPU launcher (`citypods/gpu_launch`). A planner picks the cheapest GPU class
+  that fits a model and token volume from measured calibrations, and sizes the timeout and the
+  ledger reservation from the p90 load time. `plan_and_launch` seals the choice into the manifest
+  and starts the fixed Cloud Run job with a per-execution timeout. Committed fla autotune configs
+  applied by the worker cut inference from 88 to 37 s on an L4 and from 38 to 10 s on an RTX PRO
+  6000. An optional hash-pinned kernel cache archive and `scripts/gpu_launch.py` (plan, launch,
+  collect, calibrate) complete it. Calibrations for eight models are recorded with their evidence
+  in `evals/gpu-profiles/`.
+
+Agenda text fetching now unwraps Granicus `AgendaViewer.php` redirects to the Google Docs viewer
+(fetching the same-origin document it wraps) and recognises a PDF by its `%PDF-` signature when the
+content type and URL do not say so, so those agendas are no longer rejected as
+placeholder-or-low-quality-html.
+
+Chapter-agenda run logs now print the blocked-episode reasons (no agenda link, document rejected
+for a reason, fetch failed, not yet fetched, extraction retries exhausted) in the stage `quality:`
+line, instead of only in the run event's `llm_work` snapshot.
+
+Make the manual terminal-failure clearing workflow safe to use on every LLM lane (tag, agenda,
+locator, moments). Every run now prints the matching markers grouped by cause;
+`--last-error-contains` (workflow input `last_error_contains`) clears only a cause a shipped fix
+addresses; each cleared marker is archived under `state/llm_failure_marker_audits/<date>/` first,
+under the record lock; and `--apply` refuses more than `--max-clear` (default 300) markers. The
+workflow runs on `ubuntu-24.04`.
+
+Chapter locator: when a response puts two agenda items on one transcript unit, keep the anchors
+that did not collide instead of failing the whole episode. The colliding items are left out (the
+model's confidence is not used to choose between them) and recorded in the boundary artifact's
+`diagnostics.unit_conflicts`. If every anchor collides, the episode gets one repair retry with a
+hint naming the unit. Previously only same-start collisions were repaired, so duplicate-unit
+failures were retried blind until the terminal retry gate refused the recipe.
+
+Chapter agenda: when most items in an extraction fail source verification (quote not in the cited
+lines, line range outside the agenda), retry once with a message that names the failure classes
+and the real line bounds, then stop (`retry_exhausted`) instead of re-rolling the same request
+every run. The retry carries its hint in the recipe, so it is a new lineage and is not blocked by
+the failed recipe's terminal-failure marker. The census now counts episodes blocked on agenda text
+by reason (`no-agenda-link`, `agenda-rejected-<reason>`, `agenda-fetch-failed`,
+`agenda-not-yet-fetched`) so the ~6,100 blocked episodes can be sized. No recipe changes for
+episodes that do not fail.
+
+Make the LLM work census agree with the stages it counts. Tags: an episode tagged under a
+previous or pooled lane model (including the retired Gemini 3.1 Flash Lite primary) is current, so
+~10,800 episodes stop reading `ready` while the stage never visits them (owner decision, GH#2686).
+Judge: `ready` now means `judge_episode_dirty`, not "has candidates", and an episode without a
+transcript is `blocked`. No jobs are submitted or re-queued by this change.
+
+- **Dispatch v2 Gemini oversize 429 and prohibited content 400 routing.** Classified Gemini 429
+  responses with `input_token_count` or `inputtokensperminute` whose scaled input estimate meets
+  or exceeds the route ceiling or TPM as `route_input_limit` (`gemini-input-quota-oversize`).
+  This populates `routes.input_rejected_min` and excludes the route for that job so sibling routes
+  serve it rather than repeatedly retrying.
+- **Content policy violation handling.** Classified HTTP 400 responses reporting Generative AI
+  Prohibited Use policy violations (`PROHIBITED_CONTENT`) as `content_policy_violation`, excluding
+  the failing route for that job and requeuing it without modifying route ceilings or standing
+  down the route. When all primary routes are excluded, declared backup models are activated.
+
+Submit collected tag jobs to the dispatch Worker as soon as 100 have gathered or the oldest has
+waited 30 seconds, instead of only at the state checkpoint (minutes apart) and the end of the run.
+Pin the LLM producer and sweep workflows to `ubuntu-24.04`: long tag and moments runs on runner
+image `ubuntu26/20261111.82` repeatedly lost runner communication and their unsent jobs.
+
+Add a guarded manual repair for 123 audited tagger retry markers that counted the same failed
+Worker job repeatedly. Originals are archived, and each corrected marker retains the failed job ID.
+
+Add a manual, audited repair for twelve tagger recipes exhausted by input TPM refusals before
+quota recovery was deployed. Original markers are archived before being converted to quota fences.
+
+Tagger jobs now rotate among their eligible routes after an input TPM refusal without spending
+their normal retry budget. When all routes refuse, the tagger tries at most two smaller
+generations and reports a distinct quota block if they cannot proceed. Existing completed work
+is not invalidated.
+
+- **`/v2/stats` no longer reports stood-down, deleted or paused routes as live** (review/58
+  §12.14).
+  `claim.last_empty_diagnostics` (and `claim.last_diagnostics` under `?detail=1`) keeps only the
+  scan cursors and per-route diagnostics of models and routes that can be scheduled; a cursor for
+  `typesafe/jev-1.13` from 2026-11-11 was stored and reported on every claim because its only
+  route is `rpd: 0` and nothing ever clears it. The claim also drops such a cursor from its own
+  state, so it is not persisted again. `model_aliases` omits a stood-down route's own names and
+  any declared alias whose model has no route left. `routes.all[].rpd_count` is 0 when the
+  ledger's day key is not the route's current day, as the pacing code already treats it.
+
+- **Recover tagger work after failed dispatches.** Give each permitted terminal retry a stable new
+  idempotency generation, and count a failed Worker job only once. Queue indexes now retain models
+  whose context fits even when their static input ceiling does not; live admission remains the
+  authority, and a bounded catalog reconciliation revisits existing queued indexes. Oversized
+  chapter inputs split before deferral, and new terminal failures retain a safe failure class.
+  Existing exhausted markers require a separately verified repair; no completed artifacts are
+  invalidated. Tag batch sizing now treats Gemini TPM as input-only instead of charging the output
+  reservation against that input limit. A 2026-11-15 Gemini 3.5 Flash Lite probe returned input-TPM
+  429s at 400,011 and 230,011 provider-counted tokens, capacity 503s at 200,011 and 150,011, and
+  success at 100,011. It did not
+  establish an exact usable limit and leaves the configured ceiling unchanged.
+
 - GLM 5.3 Flash on OrcaRouter now runs `judge:adjudicator` at `reasoning_effort: low`. On a
   10-request sample it cut reasoning from a median 27.6k to 1.7k tokens and the call from 411 s
   to 37 s, with 87.5% verdict agreement against the default (production against the default:

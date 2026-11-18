@@ -870,11 +870,10 @@ def test_tag_route_fits_scales_by_the_measured_ratio_and_ceiling():
     from citypods.tags import _tag_route_capacity, _tag_route_fits
 
     lite = ROUTES["gemini/gemini-3.5-flash-lite"]
-    # Ceiling 218,875 provider tokens / ratio 2.15 = ~101.8k raw units, but the 225k per-minute
-    # cap binds first once the output budget is added: (225,000 - 12,288) / 2.15 = ~98.9k.
-    assert _tag_route_fits(lite, 95_000) is True
-    assert _tag_route_fits(lite, 100_000) is False
-    assert 98_500 <= _tag_route_capacity(lite) <= 99_500
+    # Google bills input TPM separately from output; the hard input ceiling binds here.
+    assert _tag_route_fits(lite, 100_000) is True
+    assert _tag_route_fits(lite, 102_000) is False
+    assert 101_000 <= _tag_route_capacity(lite) <= 102_000
 
 
 def test_tag_batch_target_is_a_fraction_of_the_primary_routes_measured_capacity():
@@ -887,7 +886,7 @@ def test_tag_batch_target_is_a_fraction_of_the_primary_routes_measured_capacity(
     target = tag_batch_target(primary)
     capacity = min(_tag_route_capacity(route) for route in primary)
     assert target == int(capacity * TAG_BATCH_CAPACITY_FRACTION)
-    assert 91_500 <= target <= 92_500  # ~98.9k capacity x 0.93
+    assert 94_000 <= target <= 95_000  # ~101.8k capacity x 0.93
     # No measured primary route: no target, so the splitter falls back to the provable routes.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]  # KeyError if the route is renamed
     assert deepseek and all(route.hard_input_ceiling is None for route in deepseek)
@@ -1567,3 +1566,117 @@ def test_other_gate_refusals_still_raise():
     with pytest.raises(LLMBackendError):
         _tag(backend, _one_long_chapter())
     assert [job.recipe_hash for job in backend.jobs] == ["episode-recipe"]
+
+
+def test_quota_blocked_tag_recipe_replans_without_calling_it_oversized():
+    backend = _refusing_backend(
+        lambda recipe: recipe == "episode-recipe", marker='{"status":"quota_blocked"}'
+    )
+    _, chapter_tags, pending, model = _tag(backend, _one_long_chapter())
+    assert chapter_tags and not pending
+    assert model == "gemini/gemini-3.5-flash-lite"
+    assert len(backend.jobs) == 3
+    assert all("-quota-replan-" in job.recipe_hash for job in backend.jobs[1:])
+
+
+def test_quota_replanning_stops_after_two_generations():
+    backend = _refusing_backend(lambda _recipe: True, marker='{"status":"quota_blocked"}')
+    _, chapter_tags, pending, model = _tag(backend, _one_long_chapter())
+    assert (chapter_tags, pending, model) == ({}, True, "quota-replan-limit")
+    assert len(backend.jobs) == 7
+
+
+def test_oversized_chapter_is_split_before_static_route_deferral(monkeypatch):
+    import citypods.tags as tags_module
+
+    backend = _refusing_backend(lambda _recipe: False)
+    chapter = _one_long_chapter()
+    for segment in chapter[0]["transcript_segments"]:
+        segment["text"] *= 1000
+    chapter[0]["transcript_text"] = "\n".join(
+        segment["text"] for segment in chapter[0]["transcript_segments"]
+    )
+    monkeypatch.setattr(tags_module, "_tag_route_fits", lambda _route, tokens: tokens < 9000)
+    _, _, pending, model = _tag(backend, chapter)
+    assert not pending
+    assert model == "gemini/gemini-3.5-flash-lite"
+    assert len(backend.jobs) > 1
+    assert all("-replan-" in job.recipe_hash for job in backend.jobs)
+
+
+def test_tag_input_fingerprint_variants_match_the_single_route_fingerprint():
+    from citypods.tags import tag_input_fingerprint_variants
+
+    ep, taxonomy = _fp_episode(), _fp_taxonomy()
+    routes = ("litellm:a", "litellm:b")
+
+    variants = tag_input_fingerprint_variants(ep, taxonomy, routes, llm_enabled=True)
+
+    assert variants == [
+        tag_input_fingerprint(ep, taxonomy, llm_enabled=True, llm_route=route) for route in routes
+    ]
+    assert variants[0] != variants[1]
+
+
+def test_inputs_tagged_under_a_previous_primary_still_count_as_current():
+    """A primary-model change is throughput, not a new recipe (owner decision, GH#2686): episodes
+    tagged under the previous primary must not read as stale, to the prefilter or the census."""
+    from citypods.tags import episode_needs_tagging, tag_inputs_current
+
+    ep, taxonomy = _fp_episode(), _fp_taxonomy()
+    ep.chapters = [{"start": 0, "title": "Item"}]
+    ep.source_chapters = [dict(chapter) for chapter in ep.chapters]
+    ep.tags_input_fingerprint = tag_input_fingerprint(
+        ep, taxonomy, llm_enabled=True, llm_route="litellm:old-primary"
+    )
+    ep.tags_spec_hash = "spec"
+    ep.chapter_tags = [{"chapter_id": "c"}]
+    ep.tags_llm_recipe_hash = "recipe"
+    new = "litellm:new-primary"
+
+    assert not tag_inputs_current(ep, taxonomy, llm_enabled=True, llm_route=new)
+    assert tag_inputs_current(
+        ep, taxonomy, llm_enabled=True, llm_route=new, accepted_routes=("litellm:old-primary",)
+    )
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route=new)
+    assert not episode_needs_tagging(
+        ep,
+        taxonomy,
+        llm_enabled=True,
+        llm_route=new,
+        accepted_routes=("litellm:old-primary",),
+    )
+
+
+def test_a_changed_chapter_still_invalidates_an_accepted_route_fingerprint():
+    from citypods.tags import tag_inputs_current
+
+    ep, taxonomy = _fp_episode(), _fp_taxonomy()
+    ep.chapters = [{"start": 0, "title": "Item"}]
+    ep.source_chapters = [dict(chapter) for chapter in ep.chapters]
+    ep.tags_input_fingerprint = tag_input_fingerprint(
+        ep, taxonomy, llm_enabled=True, llm_route="litellm:old"
+    )
+    ep.chapters = [{"start": 0, "title": "Renamed item"}]
+    ep.source_chapters = [dict(chapter) for chapter in ep.chapters]
+
+    assert not tag_inputs_current(
+        ep, taxonomy, llm_enabled=True, llm_route="litellm:new", accepted_routes=("litellm:old",)
+    )
+
+
+def test_accepted_routes_cover_the_lane_models_and_retired_primaries():
+    from types import SimpleNamespace
+
+    from citypods.tags import TAG_RETIRED_PRIMARY_ROUTES, tag_accepted_routes
+
+    backend = SimpleNamespace(
+        name="litellm", config=SimpleNamespace(model="p/primary", additional_models=("p/second",))
+    )
+
+    routes = tag_accepted_routes(backend)
+
+    assert "litellm:p/primary" not in routes
+    assert "litellm:p/second" in routes
+    assert set(TAG_RETIRED_PRIMARY_ROUTES) <= set(routes)
+    assert tag_accepted_routes(None) == ()

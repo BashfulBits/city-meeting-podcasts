@@ -1096,6 +1096,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
       body: response.body,
       headers: response.headers,
       route,
+      inputTokens: job.input_token_estimate,
     });
     return {
       retry429: true,
@@ -1238,6 +1239,7 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
         // A 410 (model retired) or 404 (upstream fault) is the route's problem, not this job's;
         // the coordinator requeues it (classify.js rule 8).
         cls.failure_class === "route_unavailable" ||
+        cls.failure_class === "content_policy_violation" ||
         (response.status === 404 && cls.failure_class === "upstream_capacity") ||
         // Google refused this request for where it arrived from (issue #2672): not the job's
         // fault, and a later invocation from another location is served.

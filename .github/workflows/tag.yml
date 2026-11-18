@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   tag:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The producer is count-bounded and reads the restored records index without provider scrapes.
     # Retain a generous backstop for state transfer and an unusually large candidate traversal.
     timeout-minutes: 180

@@ -4611,3 +4611,90 @@ def test_moments_results_count_feed_view_episodes(tmp_path):
         pipeline, [city], source_cache=None, max_workers=1, policy=None
     )
     assert results[0].episode_count == 1
+
+
+def test_tag_jobs_are_submitted_before_the_state_checkpoint(monkeypatch):
+    """Collected tag jobs reach the Worker on their own cadence, not only at the checkpoint.
+
+    The checkpoint pushes durable state (minutes) and backs off, so tying submission to it left a
+    busy run holding jobs the Worker could already have been pacing. The threshold is lowered to
+    two so three one-job episodes flush once mid-pass and once at the end.
+    """
+    import citypods.compute.llm as llm_module
+
+    flushes: list[int] = []
+
+    class _Config:
+        dispatch_v2_url = "https://dispatch.example"
+
+    class _Backend:
+        config = _Config()
+
+    class _Batcher:
+        def __init__(self, _backend):
+            self.queued_count = 0
+
+        def flush(self):
+            flushes.append(self.queued_count)
+            self.queued_count = 0
+            return []
+
+    monkeypatch.setattr(llm_module, "LiteLLMBackend", _Backend)
+    monkeypatch.setattr(llm_module, "BatchingDispatchBackend", _Batcher)
+    monkeypatch.setattr(run, "_TAG_EARLY_FLUSH_JOBS", 2)
+
+    city = City(
+        slug="c",
+        provider="granicus",
+        source={"feed_url": "https://x.granicus.com/f"},
+        podcast_title="C",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    episodes = [_ep("e1"), _ep("e2"), _ep("e3")]
+    for episode in episodes:
+        episode.hosted_audio_url = f"https://cdn/{episode.uid}.m4a"
+
+    class _Stage:
+        name = "tags"
+
+        def census(self, _city, _episodes, _ctx):
+            pass
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
+            )
+            self.ctx.tag_backend = _Backend()
+            self.stages = [_Stage()]
+
+        def fetch_merge(self, _city, _key):
+            return object(), episodes, {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            pass
+
+    pipeline = _Pipeline()
+
+    def _run_stages(_provider, _city, _batch, stages, ctx, *, quiet):
+        ctx.tag_backend.queued_count += 1
+        return [StageStats(stage.name, ran=1) for stage in stages]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+    checkpoints: list[str] = []
+    run._run_enrich_global_queue(
+        pipeline,
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+        mid_run_checkpoint=lambda: checkpoints.append("checkpoint"),
+    )
+    assert flushes == [2, 1]
+    assert checkpoints == []

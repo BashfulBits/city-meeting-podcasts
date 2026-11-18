@@ -921,3 +921,275 @@ test("Google Gemma INTERNAL uses durable capacity recovery without changing othe
   assert.equal(classify({ body: { error: { message: "input token limit exceeded" } } })
     .failure_class, "route_input_limit");
 });
+
+test("gemini 429 with input_token_count exceeding limit is route_input_limit", () => {
+  const route = {
+    provider: "gemini",
+    hard_input_ceiling: 218875,
+    tpm: 225000,
+    input_token_ratio: 2.15,
+  };
+  // input_token_estimate = 120000, scaled = 120000 * 2.15 = 258000 >= quotaLimit (250000)
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message:
+          "Resource exhausted: quota exceeded for " +
+          "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
+          "limit: 250000, model: gemini-3.5-flash-lite",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 120000,
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+  assert.equal(result.rule_id, "gemini-input-quota-oversize");
+});
+
+test("gemini 429 parses exceeded-limit form when input exceeds reported limit", () => {
+  const route = {
+    provider: "gemini",
+    tpm: 16000,
+    input_token_ratio: 1.0,
+  };
+  // input_token_estimate = 12000 > 10000 reported limit (even though < 16000 route TPM)
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message: "Resource exhausted: InputTokensPerMinute exceeded, limit: 10000",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 12000,
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+  assert.equal(result.rule_id, "gemini-input-quota-oversize");
+});
+
+test("gemini 429 for sub-quota input with prior window usage stays own_tpm", () => {
+  const route = {
+    provider: "gemini",
+    tpm: 10000,
+    input_token_ratio: 1,
+  };
+  // input_token_estimate = 8000 < 10000 quota allowance
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message: "Resource exhausted: InputTokensPerMinute exceeded, limit: 10000",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 8000,
+  });
+  assert.equal(result.failure_class, "own_tpm");
+  assert.equal(result.rule_id, "gemini-tpm");
+});
+
+test("gemini 429 exactly equal to quota allowance stays own_tpm", () => {
+  const route = {
+    provider: "gemini",
+    tpm: 16000,
+    input_token_ratio: 2.0,
+  };
+  // input_token_estimate = 8000, scaled = 8000 * 2.0 = 16000 == quota allowance (16000)
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message:
+          "Resource exhausted: quota exceeded for " +
+          "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
+          "limit: 16000, model: gemma-4-26b",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 8000,
+  });
+  assert.equal(result.failure_class, "own_tpm");
+  assert.equal(result.rule_id, "gemini-tpm");
+});
+
+test("gemini 429 does not confuse RPM limit with input token quota in either order", () => {
+  const route = {
+    provider: "gemini",
+    tpm: 16000,
+    input_token_ratio: 2.0,
+  };
+  // Scaled = 4000 * 2.0 = 8000 (> 15 RPM limit, but < 16000 TPM limit) -> must stay own_tpm
+
+  // Order 1: InputTokensPerMinute first
+  const res1 = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message: "InputTokensPerMinute exceeded, requests per minute limit: 15",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 4000,
+  });
+  assert.equal(res1.failure_class, "own_tpm");
+  assert.equal(res1.rule_id, "gemini-tpm");
+
+  // Order 2: requests per minute limit first
+  const res2 = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message: "requests per minute limit: 15, InputTokensPerMinute exceeded",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 4000,
+  });
+  assert.equal(res2.failure_class, "own_tpm");
+  assert.equal(res2.rule_id, "gemini-tpm");
+});
+
+test("gemini 429 uses reported limit across comma when larger than configured tpm", () => {
+  const route = {
+    provider: "gemini",
+    tpm: 225000,
+    input_token_ratio: 1.0,
+  };
+  // Scaled 240000 exceeds route TPM (225000), but fits reported limit (250000) -> own_tpm
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message:
+          "Resource exhausted: quota exceeded for " +
+          "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
+          "limit: 250000, model: gemini-3.5-flash-lite",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 240000,
+  });
+  assert.equal(result.failure_class, "own_tpm");
+  assert.equal(result.rule_id, "gemini-tpm");
+});
+
+test("gemini 429 uses reported limit across comma when smaller than configured tpm", () => {
+  const route = {
+    provider: "gemini",
+    tpm: 30000,
+    input_token_ratio: 1.0,
+  };
+  // Scaled 20000 fits route TPM (30000), but exceeds reported limit (16000) -> route_input_limit
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message:
+          "Resource exhausted: quota exceeded for " +
+          "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
+          "limit: 16000, model: gemma-4-26b",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 20000,
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+  assert.equal(result.rule_id, "gemini-input-quota-oversize");
+});
+
+test("gemini 429 with input_token_count below limit stays own_tpm", () => {
+  const route = {
+    provider: "gemini",
+    hard_input_ceiling: 218875,
+    tpm: 225000,
+    input_token_ratio: 2.15,
+  };
+  // input_token_estimate = 10000, scaled = 21500 < effectiveLimit (225000)
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: 429,
+        message:
+          "Resource exhausted: quota exceeded for " +
+          "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
+          "limit: 250000, model: gemini-3.5-flash-lite",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: null,
+    route,
+    inputTokens: 10000,
+  });
+  assert.equal(result.failure_class, "own_tpm");
+  assert.equal(result.rule_id, "gemini-tpm");
+});
+
+test("HTTP 400 with Generative AI Prohibited Use policy is content_policy_violation", () => {
+  const result = classifyProviderFailure({
+    status: 400,
+    body: {
+      error: {
+        code: 400,
+        message:
+          "User location is not supported for the API use or request contains prohibited words " +
+          "under Generative AI Prohibited Use policy.",
+        status: "INVALID_ARGUMENT",
+      },
+    },
+    headers: null,
+    route: { provider: "gemini" },
+  });
+  assert.equal(result.failure_class, "content_policy_violation");
+  assert.equal(result.rule_id, "google-prohibited-content");
+});
+
+test("HTTP 400 with PROHIBITED_CONTENT details is content_policy_violation", () => {
+  const result = classifyProviderFailure({
+    status: 400,
+    body: {
+      error: {
+        code: 400,
+        message: "Invalid argument",
+        status: "INVALID_ARGUMENT",
+        details: [
+          {
+            "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+            reason: "PROHIBITED_CONTENT",
+            domain: "googleapis.com",
+          },
+        ],
+      },
+    },
+    headers: null,
+    route: { provider: "gemini" },
+  });
+  assert.equal(result.failure_class, "content_policy_violation");
+  assert.equal(result.rule_id, "google-prohibited-content");
+});
+
