@@ -1,0 +1,156 @@
+{
+ "marks": {
+  "done": 238.703,
+  "load_end": 129.908,
+  "load_start": 12.896,
+  "start": 0.0,
+  "warmup_end": 227.839,
+  "warmup_start": 129.908
+ },
+ "probe": {
+  "archive": {
+   "bytes": 11636560,
+   "entries": 400,
+   "fla_kernels": 6,
+   "key": "attempts/probe-a1-rtx/kernel-cache.tar.gz",
+   "sha256": "2f6e85d4f4c63819f3885c77f808f86ef0c722bb163a50ef946d93785a089e2c"
+  },
+  "env": {
+   "PROBE_CHUNK_KEY": "pending/2da874fb7d7c04a589c0534eb398cb298a4eec7fc2da8ac7446f98a69402c23a.jsonl.gz",
+   "PROBE_LABEL": "a1-rtx",
+   "PROBE_PUBLISH": "1",
+   "PROBE_TOKEN_BUDGET": "16384",
+   "PROBE_TORCH_PROFILE": "0",
+   "PROBE_WARMUP_GRID": "1"
+  },
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "gpu_utilization": {
+   "mean_percent": 42.3
+  },
+  "label": "a1-rtx",
+  "linear_num_key_heads": 16,
+  "real_batch_kernel_trace": [
+   {
+    "new_kernels": {
+     "_bmm_outer_product_kernel": 1,
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     74,
+     219
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     44,
+     355
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     31,
+     519
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     9,
+     605
+    ]
+   }
+  ],
+  "rows": 158,
+  "warmup": {
+   "entries_after": 399,
+   "entries_before": 1,
+   "seconds": 97.93,
+   "shapes": 40,
+   "tokens": 86400
+  }
+ },
+ "telemetry": {
+  "gpu_peak_bytes": 18960286720,
+  "host_peak_bytes": 2122985472,
+  "inference_seconds": 5.740876972999985,
+  "input_count": 158,
+  "load_seconds": 232.70023391200002,
+  "local_processing_started_at": "2026-11-17T16:19:01.025606+00:00",
+  "profile": {
+   "forward": {
+    "calls": [
+     {
+      "child_cpu_seconds": 0.1,
+      "cpu_seconds": 1.94,
+      "padded_tokens": 16206,
+      "rows": 74,
+      "seconds": 2.0151,
+      "width": 219
+     },
+     {
+      "child_cpu_seconds": 0.08,
+      "cpu_seconds": 1.85,
+      "padded_tokens": 15620,
+      "rows": 44,
+      "seconds": 1.8894,
+      "width": 355
+     },
+     {
+      "child_cpu_seconds": 0.02,
+      "cpu_seconds": 1.36,
+      "padded_tokens": 16089,
+      "rows": 31,
+      "seconds": 1.369,
+      "width": 519
+     },
+     {
+      "child_cpu_seconds": 0.01,
+      "cpu_seconds": 0.44,
+      "padded_tokens": 5445,
+      "rows": 9,
+      "seconds": 0.4374,
+      "width": 605
+     }
+    ],
+    "forward_calls": 4,
+    "forward_seconds": 5.7109,
+    "padded_tokens": 53360,
+    "padded_tokens_per_second": 9343.5
+   },
+   "kernel_fallbacks": [
+    "causal_conv1d_fn"
+   ],
+   "runtime": {
+    "causal-conv1d": null,
+    "fla-core": "0.5.2",
+    "flash-linear-attention": "0.5.2",
+    "torch": "2.14.0",
+    "transformers": "5.17.0",
+    "triton": "3.8.0"
+   },
+   "tokens": {
+    "count": 158,
+    "expected_microbatches": 4,
+    "expected_padded_tokens": 53360,
+    "max": 605,
+    "median": 231,
+    "min": 136,
+    "p90": 479,
+    "padding_overhead": 0.205,
+    "sum": 44282,
+    "token_budget": 16384
+   },
+   "triton_cache_entries_after": 411,
+   "triton_cache_entries_before": 400
+  },
+  "total_seconds": 238.456589923,
+  "valid_count": 158,
+  "validation_seconds": 0.0046546580000002
+ }
+}

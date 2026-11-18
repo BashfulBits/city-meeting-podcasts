@@ -37,15 +37,20 @@ if [[ "${IN_CONTAINER:-0}" != "1" ]]; then
   elif command -v gtimeout >/dev/null 2>&1; then
     pull_timeout=(gtimeout 180)
   fi
-  if ! ${pull_timeout[@]+"${pull_timeout[@]}"} docker pull --quiet "${BASE_IMAGE}" >/dev/null; then
+  if ! ${pull_timeout[@]+"${pull_timeout[@]}"} docker pull --platform linux/amd64 --quiet "${BASE_IMAGE}" >/dev/null; then
     echo "::warning::docker pull timed out or failed; retrying once"
-    ${pull_timeout[@]+"${pull_timeout[@]}"} docker pull --quiet "${BASE_IMAGE}" >/dev/null
+    ${pull_timeout[@]+"${pull_timeout[@]}"} docker pull --platform linux/amd64 --quiet "${BASE_IMAGE}" >/dev/null
   fi
-  exec docker run --rm ${dns_args[@]+"${dns_args[@]}"} -v "${REPO_ROOT}:/src" -w /src -e IN_CONTAINER=1 \
+  exec docker run --platform linux/amd64 --rm ${dns_args[@]+"${dns_args[@]}"} -v "${REPO_ROOT}:/src" -w /src -e IN_CONTAINER=1 \
     "${BASE_IMAGE}" bash scripts/compile_constraints.sh "$@"
 fi
 
 # --- inside the pinned target environment ---
+# Architecture markers affect Torch's CUDA dependency closure and wheel selection.
+if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
+  echo "error: compile constraints only on Linux amd64 (x86_64)." >&2
+  exit 1
+fi
 # pip itself is pinned by the base-image digest (above); pin the compiler exactly so
 # the resolved constraints only change when repo inputs change, not the toolchain.
 # >=7.5.1 is required: older pip-tools with click>=8.3 writes bogus options
@@ -118,6 +123,7 @@ python scripts/lane_inputs.py
 compile prod
 compile asr
 compile chapter-research
+compile decision-gpu
 compile dev
 
 echo "Constraints recompiled. Review the diff before committing."

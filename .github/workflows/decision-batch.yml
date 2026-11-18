@@ -1,0 +1,110 @@
+name: Deferred Decision API batch rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Decision pilot action
+        type: choice
+        required: true
+        default: rehearsal
+        options: [rehearsal, prepare, launch, status, collect, settle-failed]
+      mode:
+        description: Cloud Run mode for prepare or launch
+        type: choice
+        default: regular
+        options: [regular, delayed]
+      manifest:
+        description: Manifest ID for launch or reconciliation
+        type: string
+      attempt:
+        description: Attempt ID for reconciliation
+        type: string
+      execution:
+        description: Fully qualified execution name for reconciliation
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rehearsal:
+    if: inputs.action == 'rehearsal'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install test dependencies
+        run: pip install -e ".[dev,llm]" -c constraints/dev.txt
+      - name: Export frozen tag and moment decisions
+        env:
+          BATCH_FILE: ${{ runner.temp }}/decision-requests.jsonl.gz
+        run: python -m scripts.eval_decision_batch --output "$BATCH_FILE"
+      - name: Preview regular and delayed launch commands
+        run: |
+          python -m scripts.eval_decision_batch --preview-launch regular
+          python -m scripts.eval_decision_batch --preview-launch delayed
+      - name: Exercise the Cloud Run worker with a fake model
+        env:
+          CITYPODS_TEST_DECISION_BATCH: ${{ runner.temp }}/decision-requests.jsonl.gz
+        run: >-
+          python -m pytest -q tests/test_decision_batch.py tests/test_decision_batch_worker.py
+          tests/test_decision_batch_transport.py tests/test_decision_batch_cloud.py
+
+  cloud-run:
+    # review/59. Owner enables the repository variable after provisioning the protected environment.
+    if: >-
+      inputs.action != 'rehearsal' && github.ref == 'refs/heads/main' &&
+      vars.DECISION_BATCH_CLOUD_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: decision-batch-canary
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.DECISION_BATCH_WIF_PROVIDER }}
+          service_account: >-
+            ${{ inputs.action == 'prepare' && vars.DECISION_BATCH_PRODUCER_SA ||
+                inputs.action == 'launch' && vars.DECISION_BATCH_DISPATCHER_SA ||
+                vars.DECISION_BATCH_COLLECTOR_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+        with:
+          version: '593.0.0'
+          install_components: beta
+      - name: Run one canary control operation
+        env:
+          CITYPODS_BATCH_BUCKET: ${{ vars.DECISION_BATCH_BUCKET }}
+          CITYPODS_BATCH_JOB: ${{ vars.DECISION_BATCH_JOB }}
+          CITYPODS_IMAGE_DIGEST: ${{ vars.DECISION_BATCH_IMAGE_DIGEST }}
+          ACTION: ${{ inputs.action }}
+          MODE: ${{ inputs.mode }}
+          MANIFEST: ${{ inputs.manifest }}
+          ATTEMPT: ${{ inputs.attempt }}
+          EXECUTION: ${{ inputs.execution }}
+        run: |
+          case "$ACTION" in
+            prepare) args=(--mode "$MODE") ;;
+            launch) args=(--mode "$MODE" --manifest "$MANIFEST") ;;
+            collect|settle-failed) args=(--manifest "$MANIFEST" --attempt "$ATTEMPT" --execution "$EXECUTION") ;;
+            status) args=() ;;
+            *) exit 2 ;;
+          esac
+          python -m scripts.decision_batch_pilot "$ACTION" "${args[@]}"

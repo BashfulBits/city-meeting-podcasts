@@ -1,0 +1,100 @@
+{
+ "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+ "kernel_fallbacks": [
+  "causal_conv1d_fn"
+ ],
+ "load_seconds": 91.2,
+ "loader": "AutoModelForImageTextToText['device_map']",
+ "logits_to_keep": true,
+ "model_id": "hf-lfm-rtx",
+ "params_b": 3.12,
+ "records": [
+  {
+   "micro_batches": [
+    {
+     "child_cpu_seconds": 0.02,
+     "cold_seconds": 0.5644,
+     "new_cache_entries": 1,
+     "padded_tokens": 16384,
+     "rows": 64,
+     "warm_seconds": 0.3241,
+     "width": 256
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 0.3257,
+     "new_cache_entries": 0,
+     "padded_tokens": 16384,
+     "rows": 32,
+     "warm_seconds": 0.3252,
+     "width": 512
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 0.3293,
+     "new_cache_entries": 0,
+     "padded_tokens": 16384,
+     "rows": 16,
+     "warm_seconds": 0.3293,
+     "width": 1024
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 0.3373,
+     "new_cache_entries": 0,
+     "padded_tokens": 16384,
+     "rows": 8,
+     "warm_seconds": 0.3374,
+     "width": 2048
+    },
+    {
+     "child_cpu_seconds": 0.03,
+     "cold_seconds": 0.4219,
+     "new_cache_entries": 1,
+     "padded_tokens": 16200,
+     "rows": 54,
+     "warm_seconds": 0.3253,
+     "width": 300
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 0.3233,
+     "new_cache_entries": 0,
+     "padded_tokens": 16100,
+     "rows": 23,
+     "warm_seconds": 0.3234,
+     "width": 700
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 0.3086,
+     "new_cache_entries": 0,
+     "padded_tokens": 15000,
+     "rows": 10,
+     "warm_seconds": 0.3087,
+     "width": 1500
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 0.3186,
+     "new_cache_entries": 0,
+     "padded_tokens": 15000,
+     "rows": 5,
+     "warm_seconds": 0.3186,
+     "width": 3000
+    }
+   ],
+   "peak_gpu_gib": 7.37,
+   "token_budget": 16384
+  }
+ ],
+ "runtime": {
+  "causal-conv1d": null,
+  "fla-core": "0.5.2",
+  "flash-linear-attention": "0.5.2",
+  "torch": "2.14.0",
+  "transformers": "5.17.0",
+  "triton": "3.8.0"
+ },
+ "weights_gib": 5.82
+}

@@ -45,7 +45,8 @@ def anchor_family(anchor_model: str | None, families: Mapping[str, str]) -> str 
     """The anchor judge's family, which a sibling or adjudicator must not share (review/58 WP9).
 
     JEV (``typesafe``) shared no family with any producer or sibling, so the rule was never
-    exercised; Gemini Decision 1 is ``google``, like the Gemini producers and the Gemma sibling."""
+    exercised; Gemini Decision 1 is ``google``, like the Gemini producers. Gemma is its own family
+    (``gemma``), so it is not barred by the anchor's family."""
     if not anchor_model:
         return None
     return family_of(anchor_model, families)
@@ -76,7 +77,7 @@ def anchor_for(
     """The first anchor model (lane order) independent of every producer, or None (review/58 12.9).
 
     Gemini Decision 1 comes first and judges every entry it is independent of; a later anchor (a
-    non-Google decision model) takes only the Google-produced entries the first cannot."""
+    non-Google decision model) takes only the Gemini-produced entries the first cannot."""
     for model in anchor_models:
         if anchor_independent_of(producer_models, model, families):
             return model

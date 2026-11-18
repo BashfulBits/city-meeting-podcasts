@@ -1,0 +1,314 @@
+{
+ "marks": {
+  "done": 275.993,
+  "load_end": 62.241,
+  "load_start": 12.224,
+  "start": 0.0,
+  "warmup_end": 236.314,
+  "warmup_start": 62.241
+ },
+ "probe": {
+  "env": {
+   "PROBE_CHUNK_KEY": "pending/2da874fb7d7c04a589c0534eb398cb298a4eec7fc2da8ac7446f98a69402c23a.jsonl.gz",
+   "PROBE_LABEL": "b32-rtx",
+   "PROBE_ROW_MULTIPLIER": "3",
+   "PROBE_STATE_REPEAT": "4",
+   "PROBE_TOKEN_BUDGET": "32768",
+   "PROBE_TORCH_PROFILE": "0",
+   "PROBE_WARMUP_GRID": "1"
+  },
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "gpu_utilization": {
+   "mean_percent": 57.9
+  },
+  "label": "b32-rtx",
+  "linear_num_key_heads": 16,
+  "real_batch_kernel_trace": [
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     64,
+     512
+    ]
+   },
+   {
+    "new_kernels": {
+     "_bmm_outer_product_kernel": 1,
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     61,
+     536
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     58,
+     562
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     50,
+     644
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     44,
+     741
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     37,
+     877
+    ]
+   },
+   {
+    "new_kernels": {
+     "_bmm_outer_product_kernel": 1
+    },
+    "shape": [
+     32,
+     1006
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     26,
+     1194
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     24,
+     1310
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     22,
+     1458
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     20,
+     1606
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     18,
+     1718
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     16,
+     2006
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     2,
+     2006
+    ]
+   }
+  ],
+  "rows": 474,
+  "warmup": {
+   "entries_after": 607,
+   "entries_before": 1,
+   "seconds": 174.07,
+   "shapes": 48,
+   "tokens": 291200
+  }
+ },
+ "telemetry": {
+  "gpu_peak_bytes": 22011694592,
+  "host_peak_bytes": 2226950144,
+  "inference_seconds": 39.65170805200003,
+  "input_count": 474,
+  "load_seconds": 236.040921628,
+  "local_processing_started_at": "2026-11-17T16:34:04.650828+00:00",
+  "profile": {
+   "forward": {
+    "calls": [
+     {
+      "child_cpu_seconds": 0.1,
+      "cpu_seconds": 3.25,
+      "padded_tokens": 32768,
+      "rows": 64,
+      "seconds": 3.2925,
+      "width": 512
+     },
+     {
+      "child_cpu_seconds": 0.13,
+      "cpu_seconds": 3.34,
+      "padded_tokens": 32696,
+      "rows": 61,
+      "seconds": 3.4041,
+      "width": 536
+     },
+     {
+      "child_cpu_seconds": 0.09,
+      "cpu_seconds": 3.27,
+      "padded_tokens": 32596,
+      "rows": 58,
+      "seconds": 3.3102,
+      "width": 562
+     },
+     {
+      "child_cpu_seconds": 0.09,
+      "cpu_seconds": 3.24,
+      "padded_tokens": 32200,
+      "rows": 50,
+      "seconds": 3.2853,
+      "width": 644
+     },
+     {
+      "child_cpu_seconds": 0.12,
+      "cpu_seconds": 3.28,
+      "padded_tokens": 32604,
+      "rows": 44,
+      "seconds": 3.3146,
+      "width": 741
+     },
+     {
+      "child_cpu_seconds": 0.08,
+      "cpu_seconds": 3.27,
+      "padded_tokens": 32449,
+      "rows": 37,
+      "seconds": 3.3155,
+      "width": 877
+     },
+     {
+      "child_cpu_seconds": 0.08,
+      "cpu_seconds": 2.84,
+      "padded_tokens": 32192,
+      "rows": 32,
+      "seconds": 2.8511,
+      "width": 1006
+     },
+     {
+      "child_cpu_seconds": 0.03,
+      "cpu_seconds": 2.67,
+      "padded_tokens": 31044,
+      "rows": 26,
+      "seconds": 2.6756,
+      "width": 1194
+     },
+     {
+      "child_cpu_seconds": 0.04,
+      "cpu_seconds": 2.7,
+      "padded_tokens": 31440,
+      "rows": 24,
+      "seconds": 2.6931,
+      "width": 1310
+     },
+     {
+      "child_cpu_seconds": 0.05,
+      "cpu_seconds": 2.77,
+      "padded_tokens": 32076,
+      "rows": 22,
+      "seconds": 2.7749,
+      "width": 1458
+     },
+     {
+      "child_cpu_seconds": 0.02,
+      "cpu_seconds": 2.79,
+      "padded_tokens": 32120,
+      "rows": 20,
+      "seconds": 2.7839,
+      "width": 1606
+     },
+     {
+      "child_cpu_seconds": 0.04,
+      "cpu_seconds": 2.69,
+      "padded_tokens": 30924,
+      "rows": 18,
+      "seconds": 2.6815,
+      "width": 1718
+     },
+     {
+      "child_cpu_seconds": 0.06,
+      "cpu_seconds": 2.81,
+      "padded_tokens": 32096,
+      "rows": 16,
+      "seconds": 2.8032,
+      "width": 2006
+     },
+     {
+      "child_cpu_seconds": 0.0,
+      "cpu_seconds": 0.33,
+      "padded_tokens": 4012,
+      "rows": 2,
+      "seconds": 0.329,
+      "width": 2006
+     }
+    ],
+    "forward_calls": 14,
+    "forward_seconds": 39.5145,
+    "padded_tokens": 421217,
+    "padded_tokens_per_second": 10659.8
+   },
+   "kernel_fallbacks": [
+    "causal_conv1d_fn"
+   ],
+   "runtime": {
+    "causal-conv1d": null,
+    "fla-core": "0.5.2",
+    "flash-linear-attention": "0.5.2",
+    "torch": "2.14.0",
+    "transformers": "5.17.0",
+    "triton": "3.8.0"
+   },
+   "tokens": {
+    "count": 474,
+    "expected_microbatches": 14,
+    "expected_padded_tokens": 421217,
+    "max": 2006,
+    "median": 695,
+    "min": 325,
+    "p90": 1502,
+    "padding_overhead": 0.0588,
+    "sum": 397815,
+    "token_budget": 32768
+   },
+   "triton_cache_entries_after": 639,
+   "triton_cache_entries_before": 607
+  },
+  "total_seconds": 275.73834539999996,
+  "valid_count": 474,
+  "validation_seconds": 0.01969147299999996
+ }
+}

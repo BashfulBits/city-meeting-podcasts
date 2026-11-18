@@ -1,0 +1,145 @@
+{
+ "marks": {
+  "done": 131.992,
+  "load_end": 97.232,
+  "load_start": 16.935,
+  "start": 1.779
+ },
+ "probe": {
+  "cache_restore": {
+   "after": 404,
+   "bytes": 10441998,
+   "entries": 404
+  },
+  "env": {
+   "PROBE_CACHE_RESTORE": "attempts/probe-a1-l4/kernel-cache.tar.gz",
+   "PROBE_CACHE_SHA": "96d28443e64370184dadf945ce7fa5af044935a912d7ab1c924cfa75c9b14786",
+   "PROBE_CHUNK_KEY": "pending/2da874fb7d7c04a589c0534eb398cb298a4eec7fc2da8ac7446f98a69402c23a.jsonl.gz",
+   "PROBE_LABEL": "m1-l4",
+   "PROBE_TOKEN_BUDGET": "16384",
+   "PROBE_TORCH_PROFILE": "0"
+  },
+  "gpu": "NVIDIA L4",
+  "gpu_utilization": {
+   "mean_percent": 85.9
+  },
+  "label": "m1-l4",
+  "linear_num_key_heads": 16,
+  "real_batch_kernel_trace": [
+   {
+    "new_kernels": {
+     "_bmm_outer_product_kernel": 1,
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     74,
+     219
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     44,
+     355
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     31,
+     519
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     9,
+     605
+    ]
+   }
+  ],
+  "rows": 158
+ },
+ "telemetry": {
+  "gpu_peak_bytes": 18935522304,
+  "host_peak_bytes": 1658404864,
+  "inference_seconds": 34.738720455999896,
+  "input_count": 158,
+  "load_seconds": 95.10043025200008,
+  "local_processing_started_at": "2026-11-17T16:24:12.494669+00:00",
+  "profile": {
+   "forward": {
+    "calls": [
+     {
+      "child_cpu_seconds": 0.49,
+      "cpu_seconds": 11.47,
+      "padded_tokens": 16206,
+      "rows": 74,
+      "seconds": 14.0185,
+      "width": 219
+     },
+     {
+      "child_cpu_seconds": 0.35,
+      "cpu_seconds": 8.9,
+      "padded_tokens": 15620,
+      "rows": 44,
+      "seconds": 8.9745,
+      "width": 355
+     },
+     {
+      "child_cpu_seconds": 0.23,
+      "cpu_seconds": 8.73,
+      "padded_tokens": 16089,
+      "rows": 31,
+      "seconds": 8.7253,
+      "width": 519
+     },
+     {
+      "child_cpu_seconds": 0.08,
+      "cpu_seconds": 2.96,
+      "padded_tokens": 5445,
+      "rows": 9,
+      "seconds": 2.9551,
+      "width": 605
+     }
+    ],
+    "forward_calls": 4,
+    "forward_seconds": 34.6734,
+    "padded_tokens": 53360,
+    "padded_tokens_per_second": 1538.9
+   },
+   "kernel_fallbacks": [
+    "causal_conv1d_fn"
+   ],
+   "runtime": {
+    "causal-conv1d": null,
+    "fla-core": "0.5.2",
+    "flash-linear-attention": "0.5.2",
+    "torch": "2.14.0",
+    "transformers": "5.17.0",
+    "triton": "3.8.0"
+   },
+   "tokens": {
+    "count": 158,
+    "expected_microbatches": 4,
+    "expected_padded_tokens": 53360,
+    "max": 605,
+    "median": 231,
+    "min": 136,
+    "p90": 479,
+    "padding_overhead": 0.205,
+    "sum": 44282,
+    "token_budget": 16384
+   },
+   "triton_cache_entries_after": 415,
+   "triton_cache_entries_before": 404
+  },
+  "total_seconds": 129.87102306400004,
+  "valid_count": 158,
+  "validation_seconds": 0.01172234899996738
+ }
+}

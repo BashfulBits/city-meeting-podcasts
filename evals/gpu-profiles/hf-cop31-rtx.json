@@ -1,0 +1,98 @@
+{
+ "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+ "kernel_fallbacks": [],
+ "load_seconds": 500.8,
+ "loader": "AutoModelForCausalLM['device_map']",
+ "logits_to_keep": true,
+ "model_id": "hf-cop31-rtx",
+ "params_b": 31.27,
+ "records": [
+  {
+   "micro_batches": [
+    {
+     "child_cpu_seconds": 0.05,
+     "cold_seconds": 4.2429,
+     "new_cache_entries": 2,
+     "padded_tokens": 16384,
+     "rows": 64,
+     "warm_seconds": 3.9289,
+     "width": 256
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 4.0201,
+     "new_cache_entries": 0,
+     "padded_tokens": 16384,
+     "rows": 32,
+     "warm_seconds": 4.0247,
+     "width": 512
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 4.2185,
+     "new_cache_entries": 0,
+     "padded_tokens": 16384,
+     "rows": 16,
+     "warm_seconds": 4.2229,
+     "width": 1024
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 4.6102,
+     "new_cache_entries": 0,
+     "padded_tokens": 16384,
+     "rows": 8,
+     "warm_seconds": 4.6133,
+     "width": 2048
+    },
+    {
+     "child_cpu_seconds": 0.12,
+     "cold_seconds": 4.3996,
+     "new_cache_entries": 2,
+     "padded_tokens": 16200,
+     "rows": 54,
+     "warm_seconds": 3.9625,
+     "width": 300
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 4.0756,
+     "new_cache_entries": 0,
+     "padded_tokens": 16100,
+     "rows": 23,
+     "warm_seconds": 4.0783,
+     "width": 700
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 4.1055,
+     "new_cache_entries": 0,
+     "padded_tokens": 15000,
+     "rows": 10,
+     "warm_seconds": 4.106,
+     "width": 1500
+    },
+    {
+     "child_cpu_seconds": 0.0,
+     "cold_seconds": 4.6667,
+     "new_cache_entries": 0,
+     "padded_tokens": 15000,
+     "rows": 5,
+     "warm_seconds": 4.6675,
+     "width": 3000
+    }
+   ],
+   "peak_gpu_gib": 75.66,
+   "token_budget": 16384
+  }
+ ],
+ "runtime": {
+  "causal-conv1d": null,
+  "fla-core": "0.5.2",
+  "flash-linear-attention": "0.5.2",
+  "torch": "2.14.0",
+  "transformers": "5.17.0",
+  "triton": "3.8.0"
+ },
+ "weights_gib": 58.25
+}

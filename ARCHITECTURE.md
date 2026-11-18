@@ -1793,6 +1793,20 @@ an eligible model, for Google-produced entries, with `DeciderBackend`. The Worke
 the `openrouter_decisions` API shape (`POST /api/alpha/decisions`: JEV's body with the decisions
 key map, Bearer auth) on provider `openrouter_decisions`, gateway slug `custom-openrouter-api`; its
 route is held at `rpd: 0` until that custom gateway provider is registered.
+**Deferred decision pilot (review/59).** The manual `decision-batch.yml` workflow exports frozen tag
+and moment questions as versioned gzip JSONL for a file-based decision worker. Private GCS objects
+pin request and result generations. A conditional admission ledger reserves a bounded canary and
+allows one outstanding Cloud Run execution. A separate collection action validates every result ID
+and writes an evaluation receipt. Cloud execution starts disabled and the pilot writes outside the
+episode judging ledger. Its experimental, opt-in GLiDE streaming adapter uses a model-neutral
+safetensors package to authenticate bounded GCS slices before synchronous GPU copies; the manifest
+is an independently authenticated trust root. A failed load must discard the partial model. The
+existing local model path remains the default. A reusable GPU launcher (`citypods/gpu_launch`)
+plans the cheapest GPU class, timeout and ledger reservation from measured per-model calibrations
+(`config/gpu_profiles.json`), pins the plan in the manifest, and applies committed fla autotune configs
+(`config/fla/<arch>`) in the worker so cold inference stops paying for kernel compilation.
+[Design and acceptance gates](review/59-deferred-decision-batches.md)
+
 Explicit immutable-public reads in the storage adapter can use the configured CDN; ordinary
 state, conditional, and other storage reads continue to use their owning backend directly. For
 B2-backed runs, judge transcript reads try the configured public CDN URL through the guarded HTTP

@@ -15,6 +15,79 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Gemma models are family `gemma`, not `google`** (review/60 section 2, maintainer decision
+  2026-11-17). `llm_families` now labels `google/gemma-4-31b-it` and `google/gemma-4-26b-a4b-it`
+  `gemma`; Gemini models stay `google`, so no Gemini model can sibling the Gemini Decision anchor.
+  Behaviour change: a Gemma-produced entry is now anchored by Gemini Decision 1 (before, by
+  Perplexity Decider), a Gemma model is no longer barred as a sibling by the anchor's family
+  (neither Gemma is in the dispatched `judge:sibling` lane, so no lane changes), and adjudication
+  and the agreement report pair a Gemini anchor reading with a recorded Gemma sibling reading.
+
+Added `review/60`, the evaluation plan for open-weight decision models on Cloud Run: candidate
+matrix for the judge lane and multi-question tagging, the Gemma-as-separate-family decision,
+phasing, a $20 spend cap, and a local screen for the small models before any cloud integration.
+
+Added `evals/open-weight-decision/`, a frozen evaluation set (240 tag items, 60 moments, 60
+chapters) with separate inputs, truth, and production reference, a dev/holdout split, and a test
+that keeps labels out of the inputs. Records the provenance of every label (human or Claude).
+
+- Add the review/60 Phase 3 evaluation harness and its first results. Request builders read only
+  the frozen `manifest.json`; scoring gives accuracy against gold (tag strata re-weighted to the
+  production mix), ECE, Brier, agreement with Perplexity, invalid rate and paired cluster-
+  bootstrap intervals. Includes an OpenRouter and Gemini decision runner, a cloud worker for Karpo
+  (9B, 12B, 31B; FP8 and BF16, chapters grouped and one question per request) and GLiDE 9B,
+  elephant-1 (through the Phase 1 adapters), a list-rate cost script, and dated
+  results for dev and holdout under `evals/open-weight-decision/results/`.
+
+- Add a model-neutral torch sink for the authenticated streaming loader (`TorchSink`,
+  `CollectSink`) with FP8 quantize-on-complete, and `load_karpo`, a streaming loader for Karpo
+  decision models (Gemma 4 12B and 31B, Qwen3.5 4B and 9B), plus `load_hf_backbone` for the
+  weights of Copernicus-31B and elephant-1. Revisions are pinned with their exact weight sizes.
+  Weights go straight to the GPU through verified slices and are quantized one tensor at a time,
+  so Karpo 12B fits an L4 without loading BF16 first and without a 24 GB host copy. On an L4 the
+  12B loads in 103 s at 313 MB/s with 1.55 GiB of host RAM (8 MiB slices) and in 80 s at
+  408 MB/s with 1.76 GiB (32 MiB slices), with a 12.8 GiB GPU peak (Phase 0: about 250 s and
+  24 GB of host RAM). The 9B loads in 92 s (FP8) or 69 s (BF16), the 4B in 56 s, and on an RTX
+  PRO 6000 the 31B loads in 236 s as FP8 (31 GiB) and 173 s as BF16 (58 GiB), each with under
+  2 GiB of host RAM. In each tested configuration every streamed tensor matched, byte for byte,
+  the same model loaded through its own path at the same precision (for FP8 that is Karpo's
+  quantizer applied after a BF16 load; for 12B the Phase 0 layer-wise path); answer parity is
+  reported separately. Adds a manifest derivation script, a cloud probe and calibration profiles.
+- Add a decision adapter for elephant-1 (OneJev `qev` and the checkpoint's own engine and
+  readout) in `citypods.judging.open_weight_runtimes`. It streams the weights through the loader,
+  checks the pinned author sources by SHA-256 before importing them, and answers with the Karpo
+  adapter's call.
+  Answers equal the authors' own loading path on 60 sample questions (RTX; on an L4 elephant-1
+  keeps its embedding table and head in host memory, computes the head in float32 and chunks
+  the MLPs, mean difference 0.001). elephant-1 does not fit an L4 as authored (22.4 GiB peak);
+  with those options a 32,400-token state with 50 questions (39,795 tokens) ran at a 20.6 GiB
+  peak. Adds the image recipe and parity job, and measured calibration rows for both models.
+
+- Remove the baked-in GCP project identifiers: the evaluation image's `BASE_IMAGE` build argument
+  and the `CITYPODS_MODEL_BUCKET` variable (probe job and `download_glide_weights.py`) are now
+  required, with no project, number or registry defaults.
+
+- Add a manual deferred decision pilot for frozen tag and moment questions. The offline rehearsal
+  exercises the GLiDE worker and collection contract. Cloud launch starts disabled and supports
+  a three-attempt canary comparing regular and delayed Cloud Run Jobs. The worker uses a separate
+  pinned Linux GPU dependency lane with the GLiDE-9B CUDA 13.0 runtime.
+- Add an experimental, opt-in authenticated streaming loader for GLiDE with a reusable
+  model-neutral safetensors package, bounded range reads and trusted generation-pinned manifests.
+  The existing local model path remains the default; one L4 canary passed structural validation,
+  and an RTX PRO 6000 canary also passed structural validation; quality qualification remains
+  pending.
+- Add inference diagnostics to the decision-batch worker: a prompt-length distribution, per-forward
+  timings, kernel-version and Triton-cache counters in the completion telemetry, an abort when
+  the gated-delta-rule kernels fall back to PyTorch, and an opt-in warm-repeat probe.
+- Add a reusable GPU launcher (`citypods/gpu_launch`). A planner picks the cheapest GPU class
+  that fits a model and token volume from measured calibrations, and sizes the timeout and the
+  ledger reservation from the p90 load time. `plan_and_launch` seals the choice into the manifest
+  and starts the fixed Cloud Run job with a per-execution timeout. Committed fla autotune configs
+  applied by the worker cut inference from 88 to 37 s on an L4 and from 38 to 10 s on an RTX PRO
+  6000. An optional hash-pinned kernel cache archive and `scripts/gpu_launch.py` (plan, launch,
+  collect, calibrate) complete it. Calibrations for eight models are recorded with their evidence
+  in `evals/gpu-profiles/`.
+
 Agenda text fetching now unwraps Granicus `AgendaViewer.php` redirects to the Google Docs viewer
 (fetching the same-origin document it wraps) and recognises a PDF by its `%PDF-` signature when the
 content type and URL do not say so, so those agendas are no longer rejected as
