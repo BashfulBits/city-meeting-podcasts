@@ -602,6 +602,57 @@ container (no credentials beyond the read-only weights mount, no egress needed).
 module in-process, so elephant-1 must run in its own process. (3) The patch targets the transformers version pinned in `constraints.txt` (5.19.0, `create_causal_mask(block_sequence_ids=...)`);
 whether our image's version behaves the same is what the parity check shows, not this audit.
 
+### Result 2026-11-18: Phase 1 follow-up, decision adapters for elephant-1 and Copernicus-31B
+
+Both runtimes were audited clean (previous section), so adapters were built in `citypods/judging/open_weight_runtimes.py` (PR #2727). They expose
+the Karpo adapter's call: `runner.run(requests)` returns one reply per request, `{"answers": {qid: {"type": "noul", "noul": p}}, "usage": ...}` or
+`"too_large"` / `"invalid_input"`. Each runs the author's own code: elephant-1 through the checkpoint's `engine.py` (OneJev `qev` @81ce62f plus
+`serve.patch`, `slot_lm` readout, the model's bidirectional-in-suffix attention), Copernicus-31B through `copernicus_server.Copernicus` with its
+`HF` scoring backend and the server's default flags (temperature 1, input read twice). The weights stream through the Phase 1 loader into the class the
+author's code expects. The sources are pinned by commit and SHA-256 in `workers/decision-batch/open_weight_runtimes.Dockerfile` (downloaded once at
+build, no pip install, no network at run time, `HF_HUB_OFFLINE=1`) and each file is re-checked by digest before import. Image
+the `glide-worker` image tagged `r60-rt-v7`.
+
+*Parity* (16 dev requests: 4 chapters as grouped requests, 8 tags, 4 moments; 60 questions; streamed weights against the author's own `from_pretrained` load of the
+same checkpoint, `noul` compared):
+
+| Model, GPU | Streamed load | Author's load | Max / mean abs difference | Flips at 0.5 | Peak GPU |
+|---|---|---|---|---|---|
+| Copernicus-31B, RTX PRO 6000 | 165 s, 412 MB/s, 1.9 GiB host | 551 s, 60 GiB host | 0.0 / 0.0 | 0 | 61.3 GiB |
+| elephant-1 as authored, RTX PRO 6000 | 93 s, 505 MB/s, 2.2 GiB host | 254 s, 19 GiB host | 0.0 / 0.0 | 0 | 22.4 GiB |
+| elephant-1 lean, L4 (against the RTX reference) | 129-133 s (3 runs) | not loadable on an L4 | 0.0086 / 0.0011 | 0 | 17.5 GiB at load, 21.5 GiB at 24k tokens |
+
+Throughput on the sample: Copernicus 4,007 tok/s streamed, 4,033 tok/s with the author's load; elephant-1 8,891 tok/s warm on the RTX and about 820 tok/s on
+the L4 (a short sample, so partly cold kernels; 16k to 22k-token requests ran at 810 to 1,490 tok/s).
+
+*elephant-1 does not fit an L4 as authored.* The checkpoint is 17.5 GiB; with the vision tower dropped 16.7 GiB are resident, and the engine's
+`_upcast_head` then makes a float32 copy of the head (a 1.9 GiB bf16 clone, then 3.8 GiB), a peak of 22.4 GiB on a 22.0 GiB card. The author's own
+`from_pretrained` path has the same peak. The L4 adapter (`load_elephant(..., lean_head=True, mlp_chunk=4096, fork_token_budget=64000)`) keeps the
+head bf16 and computes its logits in float32, a vocabulary chunk at a time (a bf16 weight converts to float32 exactly, so the logits equal the float32
+copy's up to summation order), runs each MLP over 4,096 tokens at a time (a per-token operation, so the same computation), and lets the engine's own
+fork budget limit the cache copies. No weight or activation is quantized. On the L4 the answers match the RTX reference to a mean 0.001.
+
+*Context on the L4.* The engine takes many questions in one request: it prefills the shared state once and scores every question's suffix as its own branch on a
+copy of that cache; a branch (state plus question) may be 32,768 tokens and a request (state once plus every suffix) 65,536. Measured on the L4 with
+the lean configuration (state tokens x questions): 16,000 x 1, x 12 and x 40 (21,925 tokens) ran; 24,000 x 12 (25,809 tokens) and 24,000 x 40 (29,925 tokens) ran; 24,000 x 1 and every
+32,000-token state ran out of memory (the fla gated-delta kernel at 24k, the embedding at 32k with 21.2 GiB already allocated). So the L4 handles about 30k
+tokens in total, not 32k for one state and not 64k. Anything larger needs the RTX, where the unmodified engine fits. The frozen set is far below this
+(its largest chapters are a few thousand tokens), so the L4 lean configuration covers it; the adapters answer an over-length request with `too_large`.
+
+*Calibration rows* (`config/gpu_profiles.json`): `copernicus-31b-stream` (RTX) and `elephant-1` (L4 and RTX) are now **measured**. They apply to the review/60
+evaluation worker only; the production decision worker does not contain these runtimes.
+
+*How a runner is used* (see the Phase 3 hand-over): `load_elephant(manifest, token, device="cuda", workers=16, stats=stats, lean_head=True, mlp_chunk=4096,
+fork_token_budget=64000)` on an L4 (drop the three options on an RTX), `load_copernicus(manifest, token, device="cuda", workers=16, stats=stats)` on an RTX;
+manifests `attempts/r60/4e076b32d824/manifest-ELE-32mib.json` and `attempts/r60/5df8605d9576/manifest-COP-32mib.json`.
+
+*Cost.* Cloud runs and builds for this follow-up were about $2.5 (Copernicus RTX about 35 minutes, elephant-1 RTX about 9 minutes, eight short L4 runs, seven
+builds). Left in place, not deleted: jobs `r60-rt-parity-l4`, `r60-rt-parity-rtx`, `r60-rt-parity-rtx-ele`, images `r60-rt-v1` to `v7`, and the
+`attempts/r60/rt/` results.
+
+*Residual risks.* The reference and streamed answers are one run each on a 16-request sample: run-to-run kernel nondeterminism is not characterized (Phase 1
+saw it on the 12B). The L4 versus RTX difference of 0.009 maximum could be GPU arithmetic rather than the lean head; it was not separated. The sample is dev only.
+
 ### Result 2026-11-18: Phase 2 dataset frozen (`evals/open-weight-decision/`)
 
 Coverage first: `evals/judge` holds 30 synthetic bundling items and 10 controls; its tag and moment gold files are
