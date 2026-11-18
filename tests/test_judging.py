@@ -3055,6 +3055,7 @@ def test_a_gemma_model_may_sibling_the_gemini_anchor_and_gemini_may_anchor_gemma
     anchor_excluded = frozenset({"google"})
     # Gemma is a different family from the Gemini anchor, so the anchor's family no longer bars it
     # (it is still absent from the repository's dispatched sibling lane; that is a lane choice).
+    # LANES here is the module's synthetic pool that offers Gemma (see the top of this file).
     assert GEMMA_31B in sibling_candidates(
         None, sibling, REPO_FAMILIES, exclude_families=anchor_excluded
     )
