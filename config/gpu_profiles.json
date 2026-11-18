@@ -75,6 +75,27 @@
       "revision": "664640316919ce368750b3e16cc263e927ac6e2b",
       "weight_gib": 22.3
     },
+    "karpo-12b-fp8": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 0.6,
+          "confidence": "measured",
+          "config_overhead_seconds": 0.6,
+          "load_seconds": 91.4,
+          "load_seconds_p90": 130.0,
+          "peak_gpu_gib": 12.95,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1): streaming FP8 loader, 2 L4 loads (103.2 s at 8 MiB slices, 79.6 s at 32 MiB), p90 is 1.25x the slower; rate from 8-chapter grouped requests (Phase 0 run and two streaming runs), peak at requests up to 6.3k tokens",
+          "startup_seconds": 24.0,
+          "token_budget": 8192,
+          "tokens_per_second": 1263.0
+        }
+      },
+      "family": "generic",
+      "max_len": 4096,
+      "notes": "MachinePulseAI Karpo 12B (Gemma 4 unified) quantized to FP8 while streaming: 12.2 GiB of weights, so it fits an L4. Needs the Karpo runner (Decider), not the generic backbone probe; FP8 changes answers by more than bf16 noise (review/60).",
+      "revision": "664640316919ce368750b3e16cc263e927ac6e2b",
+      "weight_gib": 12.2
+    },
     "karpo-4b": {
       "calibrations": {
         "L4": {
@@ -140,6 +161,27 @@
       "notes": "MachinePulseAI Karpo 9B (Qwen3.5 backbone); L4 holds only an 8192-token budget; configs overhead not measured so it equals the cache-less overhead.",
       "revision": "0fb729874694e9a4928882eefb2cb1aa49b93735",
       "weight_gib": 15.6
+    },
+    "karpo-9b-fp8": {
+      "calibrations": {
+        "L4": {
+          "cold_overhead_seconds": 30.6,
+          "confidence": "measured",
+          "config_overhead_seconds": 30.6,
+          "load_seconds": 92.1,
+          "load_seconds_p90": 115.0,
+          "peak_gpu_gib": 10.01,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1): streaming FP8 loader, 1 L4 load (92.1 s), p90 is 1.25x; rate from the four warm single-pack requests of the 8-chapter run, cold overhead from the first two requests (fla autotune)",
+          "startup_seconds": 24.0,
+          "token_budget": 8192,
+          "tokens_per_second": 1667.0
+        }
+      },
+      "family": "qwen_fla",
+      "max_len": 4096,
+      "notes": "MachinePulseAI Karpo 9B (Qwen3.5) quantized to FP8 while streaming: 9.2 GiB of weights against 15.6 GiB in BF16. Only one load measured, so the tail is an assumption.",
+      "revision": "0fb729874694e9a4928882eefb2cb1aa49b93735",
+      "weight_gib": 9.2
     },
     "lfm-d1-3b": {
       "calibrations": {

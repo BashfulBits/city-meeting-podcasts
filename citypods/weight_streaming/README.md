@@ -46,3 +46,21 @@ plus the current verified chunk and the parsed header. Set the worker count and
 chunk size to fit the host memory budget. The lower-level `stream_safetensors`
 accepts a custom fetcher, whose identity and immutable version must be bound by
 its caller to the authenticated manifest.
+
+## Torch destinations
+
+`citypods.weight_streaming.torch_sink` (import it only where torch is installed) provides the
+sinks model owners usually need. `TorchSink` copies verified segments into pre-allocated tensors
+(`direct`) and, for the weights in `quantized`, stages one BF16 tensor at a time, quantizes it
+to FP8 e4m3 with one float32 scale per output row when it completes, and writes the result into
+the destination `(weight, scale)`. The BF16 model is never resident, so a model whose BF16 weights
+exceed the GPU can still load. The quantizer reproduces Karpo's `serve.fp8` operation by
+operation, and the tests compare bytes against that formula. `CollectSink` gathers small tensors
+(such as a readout) into CPU tensors. Both reject unexpected, mismatched, duplicate and
+incomplete tensors, and `discard()` releases every destination after a failure.
+
+`citypods.judging.karpo_stream.load_karpo` composes them for Karpo decision models: it builds the
+backbone on the meta device, replaces the decoder projections Karpo's `--fp8` would quantize with
+that path's own `Fp8Linear` shells, allocates on the GPU, restores non-persistent buffers with
+transformers' own initialisation, streams every shard, and returns a
+`karpo_decision.decider.Decider`.

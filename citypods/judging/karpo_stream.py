@@ -60,9 +60,9 @@ def validate_manifest(manifest):
     revision = manifest.get("revision") if isinstance(manifest, dict) else None
     if revision not in KARPO_PREFIXES:
         raise ValueError("unexpected model revision")
-    paths = _validate(manifest, revision=revision, prefix=KARPO_PREFIXES[revision])
-    if sum(obj["size"] for obj in paths.values()) > MAX_TOTAL_BYTES:
-        raise ValueError("object size exceeds limit")
+    paths = _validate(
+        manifest, revision=revision, prefix=KARPO_PREFIXES[revision], max_total=MAX_TOTAL_BYTES
+    )
     return paths
 
 

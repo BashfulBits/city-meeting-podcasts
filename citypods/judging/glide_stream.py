@@ -19,7 +19,7 @@ MAX_OBJECTS = 1000
 MAX_TOTAL_BYTES = 20 * 1024**3
 
 
-def validate_manifest(manifest, *, revision=REVISION, prefix=None):
+def validate_manifest(manifest, *, revision=REVISION, prefix=None, max_total=MAX_TOTAL_BYTES):
     """Validate a trusted object manifest; ``prefix`` is the object-name prefix of ``revision``."""
     prefix = revision if prefix is None else prefix
     if not isinstance(manifest, dict):
@@ -63,7 +63,7 @@ def validate_manifest(manifest, *, revision=REVISION, prefix=None):
             not isinstance(generation, str)
             or not re.fullmatch(r"[1-9][0-9]*", generation)
             or type(size) is not int
-            or not 0 < size <= MAX_TOTAL_BYTES
+            or not 0 < size <= max_total
             or not isinstance(digest, str)
             or not re.fullmatch(r"[0-9a-f]{64}", digest)
             or not isinstance(slices, list)
@@ -75,7 +75,7 @@ def validate_manifest(manifest, *, revision=REVISION, prefix=None):
             raise ValueError("non-weight object exceeds limit")
         paths[path] = obj
         total += size
-    if total > MAX_TOTAL_BYTES or any(
+    if total > max_total or any(
         "/".join(path.split("/")[:i]) in paths
         for path in paths
         for i in range(1, path.count("/") + 1)

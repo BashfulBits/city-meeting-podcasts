@@ -1,0 +1,170 @@
+{
+ "byte_identity": {
+  "12B": {
+   "digest_of_digests": "db21ae2943daa61fb088c0e309e85fb5362389c59f3eeb50a09dc617af5c1b3c",
+   "keys_equal": true,
+   "mismatches": 0,
+   "reference_after_load": {
+    "gpu_alloc_gib": 12.14,
+    "gpu_peak_gib": 12.14,
+    "gpu_reserved_gib": 12.58,
+    "host_rss_peak_gib": 9.62
+   },
+   "reference_host_rss_peak_gib": 9.62,
+   "reference_load_seconds": 192.3,
+   "reference_path": "Phase 0 layer-wise (12B: load on CPU, quantize per layer on GPU) / author quantize (9B)",
+   "result_object": "attempts/r60/reference-12B-1794988647.json",
+   "tensors_compared": 1006
+  },
+  "9B": {
+   "digest_of_digests": "3473cf3aa60cd7489f2d53a851632ebb413f5c24280beead408945cd440cb4ad",
+   "keys_equal": true,
+   "mismatches": 0,
+   "reference_after_load": {
+    "gpu_alloc_gib": 9.22,
+    "gpu_peak_gib": 16.18,
+    "gpu_reserved_gib": 9.29,
+    "host_rss_peak_gib": 6.08
+   },
+   "reference_host_rss_peak_gib": 6.08,
+   "reference_load_seconds": 157.5,
+   "reference_path": "Phase 0 layer-wise (12B: load on CPU, quantize per layer on GPU) / author quantize (9B)",
+   "result_object": "attempts/r60/reference-9B-1794988678.json",
+   "tensors_compared": 960
+  }
+ },
+ "gpu": "NVIDIA L4 (us-east4, Cloud Run job, 16 GiB host limit for streaming runs)",
+ "image": "glide-worker:r60-karpo-stream-v4 (Phase 0 spike image + citypods + torchvision 0.29.0)",
+ "note": "Tensor digests are SHA-256 of the raw bytes of every backbone state_dict tensor (FP8 weights and scales included) and the readout. Per-request probabilities differ between container runs at the 1e-2 level (kernel nondeterminism: the reference run differs from Phase 0 by the same amount while the weights are identical), so identity is claimed for weights, not for answers.",
+ "phase": "review/60 Phase 1",
+ "runner_commit": "6600011eb5cf46232d056ec0717dc726146d29de",
+ "runs": {
+  "12B_32mib": {
+   "after_load": {
+    "gpu_alloc_gib": 12.22,
+    "gpu_peak_gib": 12.76,
+    "gpu_reserved_gib": 13.3,
+    "host_rss_peak_gib": 1.76
+   },
+   "after_tests": {
+    "gpu_alloc_gib": 12.22,
+    "gpu_peak_gib": 12.95,
+    "gpu_reserved_gib": 13.67,
+    "host_rss_peak_gib": 5.05
+   },
+   "load_seconds_total": 79.6,
+   "request_seconds": [
+    3.535,
+    4.996,
+    3.276,
+    3.187,
+    4.386,
+    4.055,
+    3.323,
+    3.508
+   ],
+   "result_object": "attempts/r60/stream-12B-stream-fp8-w16-1794988502.json",
+   "stream": {
+    "direct_tensors": 349,
+    "host_rss_gib": 1.76,
+    "quantized_tensors": 328,
+    "stream_bytes": 23919544312,
+    "stream_mb_per_s": 408.1,
+    "stream_seconds": 58.62
+   },
+   "vs_baseline": {
+    "baseline": "fp8_layerwise",
+    "flips_at_0.5": 2,
+    "identical_pairs": 89,
+    "max_abs_diff": 0.0623,
+    "mean_abs_diff": 0.00315,
+    "pairs": 304
+   }
+  },
+  "12B_8mib": {
+   "after_load": {
+    "gpu_alloc_gib": 12.22,
+    "gpu_peak_gib": 12.76,
+    "gpu_reserved_gib": 13.3,
+    "host_rss_peak_gib": 1.55
+   },
+   "after_tests": {
+    "gpu_alloc_gib": 12.22,
+    "gpu_peak_gib": 12.95,
+    "gpu_reserved_gib": 13.67,
+    "host_rss_peak_gib": 5.35
+   },
+   "load_seconds_total": 103.2,
+   "request_seconds": [
+    3.672,
+    5.158,
+    3.372,
+    3.278,
+    4.5,
+    4.119,
+    3.344,
+    3.501
+   ],
+   "result_object": "attempts/r60/stream-12B-stream-fp8-w16-1794988128.json",
+   "stream": {
+    "direct_tensors": 349,
+    "host_rss_gib": 1.55,
+    "quantized_tensors": 328,
+    "stream_bytes": 23919544312,
+    "stream_mb_per_s": 313.3,
+    "stream_seconds": 76.35
+   },
+   "vs_baseline": {
+    "baseline": "fp8_layerwise",
+    "flips_at_0.5": 0,
+    "identical_pairs": 304,
+    "max_abs_diff": 0.0,
+    "mean_abs_diff": 0.0,
+    "pairs": 304
+   }
+  },
+  "9B_8mib": {
+   "after_load": {
+    "gpu_alloc_gib": 9.22,
+    "gpu_peak_gib": 9.68,
+    "gpu_reserved_gib": 9.98,
+    "host_rss_peak_gib": 1.49
+   },
+   "after_tests": {
+    "gpu_alloc_gib": 9.22,
+    "gpu_peak_gib": 10.01,
+    "gpu_reserved_gib": 10.71,
+    "host_rss_peak_gib": 5.28
+   },
+   "load_seconds_total": 92.1,
+   "request_seconds": [
+    20.113,
+    21.558,
+    1.855,
+    9.157,
+    10.066,
+    2.505,
+    1.926,
+    2.01
+   ],
+   "result_object": "attempts/r60/stream-9B-stream-fp8-w16-1794988249.json",
+   "stream": {
+    "direct_tensors": 559,
+    "host_rss_gib": 1.49,
+    "quantized_tensors": 200,
+    "stream_bytes": 16785478992,
+    "stream_mb_per_s": 251.5,
+    "stream_seconds": 66.73
+   },
+   "vs_baseline": {
+    "baseline": "bf16",
+    "flips_at_0.5": 2,
+    "identical_pairs": 36,
+    "max_abs_diff": 0.0868,
+    "mean_abs_diff": 0.00359,
+    "pairs": 304
+   }
+  }
+ },
+ "workers": 16
+}
