@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- `scripts/derive_karpo_manifest.py` now validates the bucket name before building the request and
+  refuses redirects, so its bearer token can only go to `storage.googleapis.com`.
+
 - **Review/60 Phase 4 decision memo (§9).** Karpo 9B FP8 on an L4 is the recommended Perplexity
   fallback, with L4 and RTX routes, step-up points, the models not recommended and why, and the
   firmness caveats (Claude-made chapter gold, holdout-only intervals include zero, estimated not
