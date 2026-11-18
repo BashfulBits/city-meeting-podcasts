@@ -62,7 +62,8 @@ MODELS = {
         62_546_329_272,
     ),
     # Plain Hugging Face checkpoints in ForConditionalGeneration layout: weights only (the
-    # authors' runtimes run through citypods.judging.open_weight_runtimes). No readout and no Karpo decision config.
+    # authors' runtimes run through citypods.judging.open_weight_runtimes). No readout and no
+    # Karpo decision config.
     "ae28efb0ae759c3494a1078c0a56eda10a9adb38": Pin(
         "hf/Poindexter-Labs__Copernicus-31B/ae28efb0ae759c3494a1078c0a56eda10a9adb38",
         62_546_336_352,
@@ -244,9 +245,10 @@ def _stream_backbone(
 def load_hf_backbone(manifest, token, *, fp8=False, device="cuda", workers=8, stats=None):
     """Stream a pinned plain Hugging Face checkpoint into its backbone; returns (backbone, extras).
 
-    For the checkpoints pinned with ``kind="hf"`` (weights only; their authors' runtimes are driven by
-    ``citypods.judging.open_weight_runtimes``). ``extras`` holds the tensors outside the backbone the pin asks to keep (such as
-    ``lm_head.weight``). The model is discarded on any failure.
+    For the checkpoints pinned with ``kind="hf"`` (weights only; their authors' runtimes are driven
+    by ``citypods.judging.open_weight_runtimes``). ``extras`` holds the tensors outside the
+    backbone the pin asks to keep (such as ``lm_head.weight``). The model is
+    discarded on any failure.
     """
     if fp8:
         raise ValueError("plain checkpoints load in BF16 only; FP8 projections are Karpo's")
