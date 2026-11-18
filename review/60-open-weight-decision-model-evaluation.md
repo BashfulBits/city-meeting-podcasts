@@ -835,3 +835,43 @@ negatives (58 of 60 are supported). The tag labels are 11 to 17% `uncertain`, wh
 - Left in place, not deleted: jobs `r60-eval-l4`, `r60-eval-rtx` (new), images `glide-worker:r60-eval-v1` to `v3`, and every
   `attempts/r60/eval/` result in the batch bucket.
 
+### Result 2026-11-18: Phase 3 recommendations and where to step up (FP8 to BF16, L4 to RTX)
+
+*This is the evaluator's reading of the Phase 3 data for the Phase 4 memo; it is not that memo, and it does not relabel the
+`gemma` family.* Roles, in order:
+
+1. **Fallback if the Perplexity route goes: Karpo 9B on an L4, FP8.** Tags +0.05 over Perplexity pooled (interval just above zero;
+   holdout alone spans zero), chapters F1 0.80 against 0.78, moments equal, 10.5 GiB.
+2. **Second, cheaper fallback for tags only: elephant-1 on an L4.** Tags +0.05 pooled and no wrongly rejected moments on holdout,
+   cheaper than Karpo 9B FP8 above about 180 decisions per launch ($0.162 against $0.227 at 1,000). It is the same Qwen family as
+   Perplexity and Karpo 9B (capacity, not an independent vote) and its chapter F1 is 0.62 against 0.80, so it is not a chapter
+   fallback.
+3. **Third, independent-voice model: Karpo 31B (RTX) if quality matters, Karpo 12B (L4) if it must stay on an L4.** Gemma family. The
+   31B is about 5 points above Perplexity on tags and F1 0.78 on chapters; the 12B is level with Perplexity on tags and F1 0.75.
+   Their agreement with Perplexity (85 to 88%) is about Gemini's, so the independence is mostly in the label.
+4. **Not recommended:** GLiDE 9B (2,024 tokens per tag on lane B; tags only), Copernicus-31B (tags like the 9B, F1 0.64, about
+   4 times the cost per decision of the 31B Karpo, 69 GiB), the small models with other roots (Liquid d1-2B and d1-3B, MiniCPM5-2B-Jev
+   wrongly reject 10, 15 and 6 of 40 correct quotes; ArseneLupinstral fails the tag gate).
+
+*How firm this is.* Holdout-only tag intervals all include zero; pooled, only Karpo 9B (both precisions) and 31B FP8 exclude zero, by
+a hair. The chapter gold is Claude's, chosen from the same 12-tag list. "Karpo is best" means "not worse than Perplexity and about 5
+points better pooled on tags", not a proven margin; about 410 more human tag labels would settle a 5-point gap.
+
+**Step-up points.** A "decision" is one tag, moment or chapter tag; the dev mix is 105 tags, 18 moments and 372 chapter tags and
+averages about 500 input tokens per decision, so 100 decisions is about 50k tokens. Cost is one launch at Cloud Run list rates
+(unreconciled): fixed (load plus about 35 s on an L4 or 80 s on an RTX of start-up) plus inference per decision. Break-even is the
+number of decisions per launch where the two options cost the same (or take the same time).
+
+| Step | Measured? | Cost break-even | Time break-even | Reading |
+|---|---|---:|---:|---|
+| Karpo 9B, FP8 to BF16 (both L4) | yes | about 620 decisions (about 310k tokens) | same | BF16 is cheaper above it, by $0.02 at 1,000; costs 6 GiB more and gains +0.015 tag accuracy, within noise. Stay on FP8 unless batches reach 600 and more. |
+| Karpo 9B, L4 to RTX | **no, extrapolated** from the 12B speed-up (10.5x) | about 680 decisions | about 110 decisions | Estimate only; run 9B on the RTX before relying on it. |
+| elephant-1, L4 to RTX (lean to as authored) | partly: RTX speed from the Phase 1 sample (8,891 against about 820 tokens/s), load 93 s | about 1,150 decisions | about 90 decisions | The RTX is faster almost always, cheaper only for very large batches. |
+| Karpo 12B, L4 FP8 to RTX BF16 | yes | about 2,200 decisions (about 1.1M tokens) | about 650 decisions | Choose the RTX only for speed under 2,200; above, it is also cheaper. |
+| Karpo 31B, FP8 to BF16 (RTX only) | yes | FP8 is cheaper above about 860 decisions | same | Does not fit an L4. The two differ by under $0.03 per launch and have the same tag accuracy; stay on FP8. |
+
+Why the 31B can be faster than the 12B: it ran on the RTX PRO 6000 (30 s for the 495 dev decisions) and the 12B on an L4 (194 s);
+the same 12B in BF16 on the RTX took 19 s. Per second the RTX costs 2.2 times an L4, so it is cheaper per decision when it is more
+than 2.2 times faster, but its fixed cost per launch is higher ($0.20 to $0.32 against $0.05 to $0.08), which is why small batches
+belong on an L4. The break-evens rest on single load measurements and one dev run per model, so treat differences under about 20%
+as noise.
