@@ -250,6 +250,42 @@ def test_moment_evidence_is_the_quote_with_context():
     assert spec.evidence(subject, "T0", TEXTS) is None
 
 
+def test_moment_evidence_keeps_a_quote_buried_in_one_long_segment():
+    """A provider-aligned segment can hold minutes of speech; the quote must survive the cap."""
+    spec = task("moment")
+    quote = "we will repave the whole bridge deck by october"
+    filler = " ".join(f"w{i}" for i in range(900))
+    texts = EpisodeTexts(
+        segments=[{"start": 0.0, "end": 700.0, "text": f"{filler} {quote} {filler}"}],
+        chapters=[],
+    )
+    ep = _episode(moments=[_moment(quote, 600)])
+    [subject] = spec.subjects(ep)
+    text = spec.evidence(subject, "T1", texts).text
+    assert text.count(quote) == 2  # the Quote: line and the transcript window
+    window = text.split("Transcript around the quote: ", 1)[1]
+    assert len(window.split()) <= 400
+
+
+def test_moment_evidence_is_unchanged_when_the_quote_is_already_in_the_head():
+    spec = task("moment")
+    quote = "the bridge opens in may"
+    body = f"{quote} " + " ".join(f"w{i}" for i in range(900))
+    texts = EpisodeTexts(segments=[{"start": 0.0, "end": 700.0, "text": body}], chapters=[])
+    [subject] = spec.subjects(_episode(moments=[_moment(quote, 10)]))
+    window = spec.evidence(subject, "T1", texts).text.split("Transcript around the quote: ", 1)[1]
+    assert window.split() == body.split()[:400]
+
+
+def test_moment_evidence_falls_back_to_the_head_when_the_quote_is_not_found():
+    spec = task("moment")
+    body = " ".join(f"w{i}" for i in range(900))
+    texts = EpisodeTexts(segments=[{"start": 0.0, "end": 700.0, "text": body}], chapters=[])
+    [subject] = spec.subjects(_episode(moments=[_moment("never said this", 10)]))
+    window = spec.evidence(subject, "T1", texts).text.split("Transcript around the quote: ", 1)[1]
+    assert window.split() == body.split()[:400]
+
+
 GEMMA_31B = "google/gemma-4-31b-it"
 GEMMA_26B = "google/gemma-4-26b-a4b-it"
 

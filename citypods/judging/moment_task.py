@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from citypods.judging.subjects import moment_subject_id
@@ -73,6 +74,40 @@ def _subjects(ep: Any) -> list[Subject]:
     return subjects
 
 
+_WORD_CHARS = re.compile(r"[^a-z0-9]+")
+
+
+def _norm(word: str) -> str:
+    return _WORD_CHARS.sub("", word.lower())
+
+
+def _window_around_quote(words: list[str], quote: str, cap: int) -> list[str]:
+    """At most ``cap`` words that keep the whole quote in view.
+
+    Provider-aligned transcripts carry whole minutes in one segment, so the segments overlapping
+    the quote can start far before it and a head-truncation cuts the quote off (review/60: 34 of
+    60 sampled moments). When the quote is already inside the first ``cap`` words nothing changes
+    (same evidence, same digest); otherwise the window is centred on the quote. If the quote
+    cannot be found the head is kept, as before.
+    """
+    if len(words) <= cap:
+        return words
+    needle = [n for n in (_norm(w) for w in quote.split()) if n]
+    normed = [_norm(w) for w in words]
+    at = -1
+    if needle:
+        probe = needle[: min(len(needle), 6)]
+        for i in range(len(normed) - len(probe) + 1):
+            if normed[i : i + len(probe)] == probe:
+                at = i
+                break
+    if at < 0 or at + len(needle) <= cap:
+        return words[:cap]
+    pad = max(0, (cap - len(needle)) // 2)
+    begin = min(max(0, at - pad), len(words) - cap)
+    return words[begin : begin + cap]
+
+
 def _evidence(subject: Subject, tier: ContextTier, texts: EpisodeTexts) -> Evidence | None:
     candidate = subject.payload
     if tier not in ("T1", "T2") or not texts.segments:
@@ -85,7 +120,9 @@ def _evidence(subject: Subject, tier: ContextTier, texts: EpisodeTexts) -> Evide
         if float(row.get("end") or 0) > start - QUOTE_CONTEXT_SECONDS
         and float(row.get("start") or 0) < end + QUOTE_CONTEXT_SECONDS
     )
-    context = " ".join(context.split()[:CONTEXT_WORD_CAP])
+    context = " ".join(
+        _window_around_quote(context.split(), str(candidate.get("quote") or ""), CONTEXT_WORD_CAP)
+    )
     lines = [
         f"Quote: {candidate.get('quote')}",
         f"Stated reason: {candidate.get('why') or ''}",
