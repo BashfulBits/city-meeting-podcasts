@@ -83,6 +83,19 @@ llm = [
     # for anything instructor's own code paths do internally.
     "instructor>=1.15",             # Pydantic structured outputs and bounded validation retries
 ]
+# GLiDE-9B's validated inference stack; isolate it from the WhisperX ASR lane.
+# Its `glide` source is supplied separately at the pinned model revision.
+decision-gpu = [
+    "torch>=2.14.0",
+    "triton>=3.8.0",
+    "transformers>=5.17.0",
+    "tokenizers>=0.23.2",
+    "safetensors>=0.8.0",
+    "huggingface-hub>=1.33.0",
+    "numpy>=2.5.3",
+    "Pillow>=12.3.0",
+    "flash-linear-attention>=0.5.2",
+]
 dev = ["pytest>=8.0", "ruff>=0.6", "boto3>=1.34", "pip-tools>=7.4"]
 
 [project.scripts]

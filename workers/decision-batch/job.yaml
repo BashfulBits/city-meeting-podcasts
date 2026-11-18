@@ -1,0 +1,49 @@
+# TEMPLATE ONLY: replace placeholders only after the runbook gates are satisfied.
+# Never apply this template as-is.
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: citypods-decision-batch
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/gpu-zonal-redundancy-disabled: 'true'
+    spec:
+      taskCount: 1
+      parallelism: 1
+      template:
+        spec:
+          maxRetries: 0
+          timeoutSeconds: 300
+          serviceAccountName: REPLACE_WITH_SCOPED_SERVICE_ACCOUNT
+          containers:
+            - image: REPLACE_WITH_DIGEST_PINNED_IMAGE
+              resources:
+                limits:
+                  cpu: '4'
+                  memory: 16Gi
+                  nvidia.com/gpu: '1'
+              env:
+                - name: CITYPODS_BATCH_BUCKET
+                  value: REPLACE_WITH_PRIVATE_BUCKET
+                - name: CITYPODS_IMAGE_DIGEST
+                  value: REPLACE_WITH_IMAGE_DIGEST
+                - name: CITYPODS_MODEL_DIR
+                  value: /models/glide-9b
+              volumeMounts:
+                - name: model
+                  mountPath: /models/glide-9b
+          volumes:
+            - name: model
+              csi:
+                driver: gcsfuse.run.googleapis.com
+                readOnly: true
+                volumeAttributes:
+                  bucketName: REPLACE_WITH_PRIVATE_MODEL_BUCKET
+                  mountOptions: only-dir=ab54df5acba0eebf7df45560ffdaacd64e32df3b
+          nodeSelector:
+            run.googleapis.com/accelerator: nvidia-l4

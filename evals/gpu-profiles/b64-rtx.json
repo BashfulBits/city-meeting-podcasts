@@ -1,0 +1,204 @@
+{
+ "marks": {
+  "done": 476.132,
+  "load_end": 67.069,
+  "load_start": 11.144,
+  "start": 0.0,
+  "warmup_end": 435.373,
+  "warmup_start": 67.069
+ },
+ "probe": {
+  "env": {
+   "PROBE_CHUNK_KEY": "pending/2da874fb7d7c04a589c0534eb398cb298a4eec7fc2da8ac7446f98a69402c23a.jsonl.gz",
+   "PROBE_LABEL": "b64-rtx",
+   "PROBE_ROW_MULTIPLIER": "3",
+   "PROBE_STATE_REPEAT": "4",
+   "PROBE_TOKEN_BUDGET": "65536",
+   "PROBE_TORCH_PROFILE": "0",
+   "PROBE_WARMUP_GRID": "1"
+  },
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "gpu_utilization": {
+   "mean_percent": 60.3
+  },
+  "label": "b64-rtx",
+  "linear_num_key_heads": 16,
+  "real_batch_kernel_trace": [
+   {
+    "new_kernels": {
+     "_bmm_outer_product_kernel": 1,
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     122,
+     534
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     104,
+     630
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     76,
+     854
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     58,
+     1106
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     47,
+     1390
+    ]
+   },
+   {
+    "new_kernels": {
+     "chunk_local_cumsum_scalar_kernel": 4,
+     "chunk_local_cumsum_scalar_kernel.autotune": 1
+    },
+    "shape": [
+     39,
+     1662
+    ]
+   },
+   {
+    "new_kernels": {},
+    "shape": [
+     28,
+     2006
+    ]
+   }
+  ],
+  "rows": 474,
+  "warmup": {
+   "entries_after": 1103,
+   "entries_before": 1,
+   "seconds": 368.3,
+   "shapes": 64,
+   "tokens": 1094016
+  }
+ },
+ "telemetry": {
+  "gpu_peak_bytes": 28067678208,
+  "host_peak_bytes": 2416349184,
+  "inference_seconds": 40.729407649999985,
+  "input_count": 474,
+  "load_seconds": 435.066220375,
+  "local_processing_started_at": "2026-11-17T16:40:46.029669+00:00",
+  "profile": {
+   "forward": {
+    "calls": [
+     {
+      "child_cpu_seconds": 0.15,
+      "cpu_seconds": 6.03,
+      "padded_tokens": 65148,
+      "rows": 122,
+      "seconds": 6.0681,
+      "width": 534
+     },
+     {
+      "child_cpu_seconds": 0.14,
+      "cpu_seconds": 6.02,
+      "padded_tokens": 65520,
+      "rows": 104,
+      "seconds": 6.0245,
+      "width": 630
+     },
+     {
+      "child_cpu_seconds": 0.16,
+      "cpu_seconds": 5.99,
+      "padded_tokens": 64904,
+      "rows": 76,
+      "seconds": 6.0174,
+      "width": 854
+     },
+     {
+      "child_cpu_seconds": 0.09,
+      "cpu_seconds": 5.47,
+      "padded_tokens": 64148,
+      "rows": 58,
+      "seconds": 5.4315,
+      "width": 1106
+     },
+     {
+      "child_cpu_seconds": 0.13,
+      "cpu_seconds": 6.08,
+      "padded_tokens": 65330,
+      "rows": 47,
+      "seconds": 6.0918,
+      "width": 1390
+     },
+     {
+      "child_cpu_seconds": 0.11,
+      "cpu_seconds": 6.1,
+      "padded_tokens": 64818,
+      "rows": 39,
+      "seconds": 6.1063,
+      "width": 1662
+     },
+     {
+      "child_cpu_seconds": 0.07,
+      "cpu_seconds": 4.91,
+      "padded_tokens": 56168,
+      "rows": 28,
+      "seconds": 4.8639,
+      "width": 2006
+     }
+    ],
+    "forward_calls": 7,
+    "forward_seconds": 40.6035,
+    "padded_tokens": 446036,
+    "padded_tokens_per_second": 10985.2
+   },
+   "kernel_fallbacks": [
+    "causal_conv1d_fn"
+   ],
+   "runtime": {
+    "causal-conv1d": null,
+    "fla-core": "0.5.2",
+    "flash-linear-attention": "0.5.2",
+    "torch": "2.14.0",
+    "transformers": "5.17.0",
+    "triton": "3.8.0"
+   },
+   "tokens": {
+    "count": 474,
+    "expected_microbatches": 7,
+    "expected_padded_tokens": 446036,
+    "max": 2006,
+    "median": 695,
+    "min": 325,
+    "p90": 1502,
+    "padding_overhead": 0.1212,
+    "sum": 397815,
+    "token_budget": 65536
+   },
+   "triton_cache_entries_after": 1129,
+   "triton_cache_entries_before": 1103
+  },
+  "total_seconds": 475.84483298699996,
+  "valid_count": 474,
+  "validation_seconds": 0.020690301999999328
+ }
+}

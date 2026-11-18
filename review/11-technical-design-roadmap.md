@@ -646,6 +646,7 @@ or backfill change.
 ### Cross-cutting / ongoing · sketches §5.5
 | Item | #/GH | Maturity |
 |---|---|---|
+| Deferred Decision API batches (GLiDE on Cloud Run L4) | new (Infra) | L2 · [review/59](59-deferred-decision-batches.md) · GLiDE-9B shadow tags and moments, a $4/month gross allowance, and intended delayed dispatch at a measured fill target or 24 hours from oldest enqueue. Benchmark about 400 decisions with the implemented authenticated eight-reader loader. Delayed provisioning may add up to 12 hours after submission. The manual workflow remains disabled: revise the 300-second timeout and admission cap with a safe bounded ceiling and budget, and complete scale and model qualification before production. Recurring aggregation is not implemented. The reusable GPU launcher (`citypods/gpu_launch`) now plans the GPU, timeout and ledger reservation from measured calibrations for eight models and ships committed fla configs; the planner, not a fixed 300-second cap, bounds each launch. |
 | Strong Towns-focused city discovery | #27/#32 (rescoped) | L1 |
 | City-request issue + `/approve` onboarding | #28 | L1 |
 | User "report a feed problem" template | #56 | L1 |
