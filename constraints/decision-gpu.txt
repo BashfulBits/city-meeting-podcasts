@@ -128,7 +128,7 @@ packaging==26.3
     # via
     #   huggingface-hub
     #   transformers
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   -r constraints/decision-gpu.in
     #   torchvision
