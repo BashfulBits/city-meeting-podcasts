@@ -645,9 +645,20 @@ Measured (state tokens x questions): 32,000 x 1 (32,192 tokens, 33 s), x 12 (33,
 returns `too_large` for it. Limits to document for the questions: a branch (state plus its longest question) must be at most 32,768 tokens, so a 32k state leaves
 about 700 tokens for any one question; all questions of a request together (shared state counted once) must fit in 65,536 tokens, which is about 225
 questions of about 150 tokens above a 32k state, or about 32,000 tokens of question text. Peak memory does not grow with the number of questions (the
-engine runs the branches two at a time under the 64,000-token fork budget), but time does: each branch attends to the whole 32k prefix, about 1 s per question
+engine scores the branches in batches of `fork_token_budget // state tokens`, 2 at a 32k state with the 64,000 budget used here; this is a memory setting, not a
+limit on the number of questions), but time does: each branch attends to the whole 32k prefix, about 1 s per question
 at that state size, so a request near the cap takes about 3.5 minutes on an L4. Shorter states are cheaper per question. A request over either cap gets `too_large`. The frozen set (the longest chapter is 11,400 characters, about 3,000 tokens; tag and moment
 evidence is under 2,800 characters) is far below all of this.
+
+*Requirements for the submitter (elephant-1, from these measurements).* (1) Put every question that shares a state in one request: the state is prefilled once
+and each question is a branch on a copy of its cache, so grouping is what makes tagging cheap; do not send one request per tag. (2) Caps, each refused with
+`too_large`: state plus the longest single question at most 32,768 tokens; shared state counted once plus all question texts at most 65,536 tokens (split a
+request into several only when it would pass either). (3) Cost model on an L4 (first-call warmup included, so conservative): a fixed prefill of about 30 s at a
+32k state (shorter states less) plus about 0.3 to 1 s per question, the per-question cost growing with the state length; a chapter of about 3,000 tokens
+with 12 tags is a few seconds. A request near the 65k cap takes about 3.5 minutes, so the job timeout and any per-request deadline must allow that. (4) The batch
+size (questions scored together) is `fork_token_budget // state tokens`, so long states run few questions at a time; this changes speed, not answers, and the 64,000
+budget is the value that fits an L4 with the host-memory tables (the engine's default 200,000 was not tried on the L4; the engine halves a batch on out-of-memory).
+(5) One elephant-1 runner per process on one GPU; requests run one after another.
 
 *Calibration rows* (`config/gpu_profiles.json`): `copernicus-31b-stream` (RTX) and `elephant-1` (L4 and RTX) are now **measured**. They apply to the review/60
 evaluation worker only; the production decision worker does not contain these runtimes.
