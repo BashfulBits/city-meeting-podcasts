@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Moment judging evidence now centres its 400-word cap on the quote when a long provider-aligned
+  segment would have cut it off (review/60 found 34 of 60 sampled quotes missing from the passage).
+  Evidence is unchanged, digest included, when the quote was already inside the first 400 words.
+
 - Added `torchvision` to the `decision-gpu` lane (locked at 0.29.2) so Qwen3.5-based Karpo models,
   whose image processor imports it, load in the production decision worker image.
 
