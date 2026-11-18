@@ -612,8 +612,8 @@ are chosen, so answering "no" every time scores 0.88 accuracy and F1 is the numb
 
 Perplexity's chapter lane was run grouped (all 12 shown tags in one request, the chapter as shared state). On holdout Karpo 9B equals
 Perplexity (F1 0.80 against 0.78, accuracy 0.945 both), and with dev's weaker 0.67 to 0.69 against Perplexity's 0.61 no Karpo is
-clearly below it. **Grouped against single (the Phase 0 question):** grouped is better on every Karpo model and both splits (F1 +0.07
-to +0.12 on dev, +0.03 to +0.12 on holdout, largest for the 31B) and costs 5× fewer tokens, so the Phase 0 grouped/single difference
+clearly below it. **Grouped against single (the Phase 0 question):** grouped is better on every Karpo model and both splits (F1 +0.06
+to +0.12 on dev and +0.03 to +0.12 on holdout) and costs 5× fewer tokens, so the Phase 0 grouped/single difference
 (mean 0.05 in probability) is not noise that hurts the grouped answers. **Caution:** the Claude reference chose its tags from the same
 12-tag list, so grouped requests, which also see the other candidate tags, may mirror that choice process; human chapter labels are
 needed before this is read as quality. GLiDE 9B pays 2,024 tokens per tag (7× Karpo grouped), which is the cost of having no one-pass
@@ -634,7 +634,7 @@ Triton/fla autotuning on new shapes, so warm rates are lower):
 | GLiDE 9B (FUSE) | L4 | 101 | 534 | 0.43 | 0.04 | 17.6 |
 
 Perplexity (OpenRouter `:free`, price 0) took 1,007 s for 154 dev requests at the route's rpm limit; Gemini decision-1 (free API key)
-took 704 s. The 31B in FP8 gives the same tag answers as BF16 (0.752 against 0.747 pooled) at half the memory, and FP8 matches BF16 at
+took 704 s. The 31B in FP8 gives the same tag accuracy as BF16 (0.752 against 0.747 pooled) at half the memory, and FP8 matches BF16 at
 9B and 12B too, so FP8 is the default. **Spend:** 15 executions, **$5.05 at list rates** (`cloud-costs.json`, includes a smoke run),
 plus three image builds under $0.2, so Phase 3 is about $5.2 and Phases 0 to 3 about $7.7 against the $20 cap (unreconciled).
 
