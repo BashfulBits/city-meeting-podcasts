@@ -1,7 +1,6 @@
-"""review/60 Phase 1 follow-up cloud job: parity and measurements for the elephant-1 and
-Copernicus-31B decision adapters.
+"""review/60 Phase 1 follow-up cloud job: parity and measurements for the elephant-1 adapter.
 
-    runtime_parity.py elephant|copernicus [--chapters N --tags N --moments N] [--skip-reference]
+    runtime_parity.py elephant [--chapters N --tags N --moments N] [--skip-reference]
 
 The job answers a small fixed sample of the frozen dev split twice: with the checkpoint streamed
 through ``citypods.judging.karpo_stream.load_hf_backbone`` into the author's scoring code
@@ -34,13 +33,6 @@ MODELS = {
         "manifest": "attempts/r60/4e076b32d824/manifest-ELE-32mib.json",
         "stream": rt.load_elephant,
         "reference": rt.load_elephant_reference,
-    },
-    "copernicus": {
-        "revision": rt.COPERNICUS_REVISION,
-        "dir": HF + "Poindexter-Labs__Copernicus-31B/" + rt.COPERNICUS_REVISION,
-        "manifest": "attempts/r60/5df8605d9576/manifest-COP-32mib.json",
-        "stream": rt.load_copernicus,
-        "reference": rt.load_copernicus_reference,
     },
 }
 

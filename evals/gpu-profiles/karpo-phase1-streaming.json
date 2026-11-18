@@ -489,7 +489,7 @@
   }
  },
  "runtime_adapters": {
-  "image": "r60-rt-v7 (sha256 of the digest is in review/60); OneJev 81ce62f + serve.patch, decision-index f5a6e4f, Copernicus files at ae28efb",
+  "image": "r60-rt-v7 (sha256 of the digest is in review/60); OneJev 81ce62f + serve.patch, decision-index f5a6e4f",
   "runs": {
    "copernicus_rtx": {
     "gpu": "RTX PRO 6000",
@@ -503,6 +503,7 @@
     "reference_host_rss_peak_gib": 60.15,
     "reference_load_s": 551.3,
     "result": "attempts/r60/rt/d0157cec395a-copernicus.json",
+    "status": "recorded result only; the Copernicus-31B adapter was removed (maintainer decision: Copernicus is not pursued) and its weights deleted",
     "stream_load_s": 165.3,
     "stream_mb_s": 411.7,
     "tokens_per_s_reference": 4033.4,

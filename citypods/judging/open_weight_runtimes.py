@@ -1,6 +1,6 @@
-"""Decision adapters for elephant-1 and Copernicus-31B on their authors' own scoring code.
+"""Decision adapter for elephant-1 on its authors' own scoring code.
 
-review/60 Phase 1 follow-up. Both adapters expose the call of the Karpo adapter in
+review/60 Phase 1 follow-up. The adapter exposes the call of the Karpo adapter in
 ``workers/decision-batch/open_weight_eval_worker.py``::
 
     runner.run(requests) -> one reply per request, in order
@@ -12,8 +12,6 @@ status string ``"too_large"`` / ``"invalid_input"``.
 * elephant-1 runs OneJev's ``qev`` ``DecisionEngine`` (commit 81ce62f plus the model's
   ``serve.patch``) through the checkpoint's own ``engine.py``, with the checkpoint's own readout
   (``readout.json``: ``slot_lm``, bidirectional attention inside the suffix block).
-* Copernicus-31B runs ``copernicus_server.Copernicus`` with its ``HF`` scoring backend and the
-  server's default flags (temperature 1, input read twice for requests up to 3,000 tokens).
 
 The authors' code is read-only source on ``PYTHONPATH`` (audited in review/60; each file is
 checked against a pinned SHA-256 before it is imported). Weights stream through
@@ -35,10 +33,8 @@ from citypods.judging.glide_stream import fetch_small_objects
 from citypods.judging.karpo_stream import load_hf_backbone, validate_manifest
 
 ELEPHANT_REVISION = "b3f8a93462fb1051a9de031e94a7ff380e254072"
-COPERNICUS_REVISION = "ae28efb0ae759c3494a1078c0a56eda10a9adb38"
 ONEJEV_ROOT = "/opt/onejev"
 ELEPHANT_ROOT = "/opt/elephant"
-COPERNICUS_ROOT = "/opt/copernicus"
 # SHA-256 of every author file that the adapters import, as installed in the image (the OneJev
 # files after serve.patch). A different byte stream is refused rather than run.
 SOURCE_SHA256 = {
@@ -60,17 +56,12 @@ SOURCE_SHA256 = {
         "decision_index/engines/__init__.py": "808a0971ad2ce9f9a1afc3c071691001375aa73b26f3ba891beb8364dcabba77",  # noqa: E501
         "decision_index/engines/base.py": "ae548636cfbd583fe774b67e4d3d2cdc6db10f580f47d9559d5de44373b79ca5",  # noqa: E501
     },
-    "copernicus": {
-        "copernicus_server.py": "1717f334094b44926a4a46e7860d3e67135cc91158125f8cccf4a637ef757a32",
-        "copernicus_layout.py": "dc641d4dbac05cd088de59c20c06cfc44e1dcc18d4102470fc8feba943359639",
-    },
 }
 DECISION_INDEX_ROOT = "/opt/decision-index"
 ROOTS = {
     "elephant": ELEPHANT_ROOT,
     "onejev": ONEJEV_ROOT,
     "decision_index": DECISION_INDEX_ROOT,
-    "copernicus": COPERNICUS_ROOT,
 }
 
 
@@ -403,126 +394,6 @@ def load_elephant(
         traceback.clear_frames(exc.__traceback__)
         backbone = extras = causal = engine = runner = None  # noqa: F841  (release GPU tensors)
         raise
-
-
-# ------------------------------------------------------------------ Copernicus-31B
-
-
-class CopernicusRunner(_Runner):
-    def __init__(self, engine, unsupported):
-        self.engine = engine
-        self.too_large = (unsupported,)
-        self.invalid = (ValueError,)
-
-    def _decide(self, state, questions):
-        answers, usage = self.engine.run(state, questions)
-        return answers, usage.get("input_tokens")
-
-
-def _copernicus_server():
-    verify_sources("copernicus")
-    import sys
-
-    root = str(Path(COPERNICUS_ROOT))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-    import copernicus_layout
-    import copernicus_server
-
-    check_origin(copernicus_server, "copernicus")
-    check_origin(copernicus_layout, "copernicus")
-    return copernicus_server, copernicus_layout
-
-
-def _copernicus_engine(server, layout_module, tokenizer, backend):
-    """``Copernicus(...)`` with the server's default command-line flags (see its ``main``)."""
-    layout = layout_module.Layout(
-        header=False,
-        header_min_questions=1,
-        read_twice=True,
-        twice_max_tokens=3000,
-        referenced_fields=False,
-    )
-    return server.Copernicus(
-        tokenizer, backend, 1.0, 16, {}, layout, server.Calibration(), False, "locate", None, None
-    )
-
-
-def load_copernicus_reference(model_dir, *, device=None):
-    """The author's own load: its ``HF`` backend (``from_pretrained``) and its ``Copernicus``."""
-    from transformers import AutoTokenizer
-
-    server, layout_module = _copernicus_server()
-    tokenizer = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True)
-    backend = server.HF(str(model_dir), device=device)
-    return CopernicusRunner(
-        _copernicus_engine(server, layout_module, tokenizer, backend), server.Unsupported
-    )
-
-
-def conditional_model_from_backbone(backbone, extras, directory, torch):
-    """The class ``HF`` picks (``AutoModelForMultimodalLM``) over the streamed backbone."""
-    import transformers
-    from transformers import AutoConfig
-
-    config = AutoConfig.from_pretrained(directory, local_files_only=True)
-    multimodal = hasattr(config, "vision_config") or hasattr(config, "audio_config")
-    cls = (
-        getattr(transformers, "AutoModelForMultimodalLM", transformers.AutoModelForImageTextToText)
-        if multimodal
-        else transformers.AutoModelForCausalLM
-    )
-    with torch.device("meta"):
-        model = cls.from_config(config, dtype=torch.bfloat16)
-    model.model = backbone
-    if config.get_text_config().tie_word_embeddings:
-        model.lm_head.weight = backbone.get_input_embeddings().weight
-    else:
-        raise ValueError("an untied head needs a pinned lm_head tensor")
-    model.eval().requires_grad_(False)
-    return model
-
-
-def load_copernicus(manifest, token, *, device="cuda", workers=8, stats=None):
-    """Stream Copernicus-31B and score it with the author's backend class and engine."""
-    if manifest.get("revision") != COPERNICUS_REVISION:
-        raise ValueError("not the pinned Copernicus-31B revision")
-    import torch
-
-    paths = validate_manifest(manifest)
-    server, layout_module = _copernicus_server()
-    from transformers import AutoTokenizer
-
-    backbone = extras = model = backend = runner = None
-    try:
-        backbone, extras = load_hf_backbone(
-            manifest, token, fp8=False, device=device, workers=workers, stats=stats
-        )
-        with tempfile.TemporaryDirectory() as temp:
-            fetch_small_objects(paths, manifest["bucket"], token, temp)
-            model = conditional_model_from_backbone(backbone, extras, temp, torch)
-            tokenizer = AutoTokenizer.from_pretrained(temp, local_files_only=True)
-            backend = _streamed_hf(server, torch, model, tokenizer)
-            runner = CopernicusRunner(
-                _copernicus_engine(server, layout_module, tokenizer, backend), server.Unsupported
-            )
-        del backbone, extras, model
-        _release(torch)
-        return runner
-    except BaseException as exc:
-        traceback.clear_frames(exc.__traceback__)
-        backbone = extras = model = backend = runner = None  # noqa: F841  (release GPU tensors)
-        raise
-
-
-def _streamed_hf(server, torch, model, tokenizer):
-    """An ``HF`` backend object (the author's ``warm`` and ``score``) around an existing model."""
-    import threading
-
-    backend = server.HF.__new__(server.HF)
-    backend.torch, backend.model, backend.tok = torch, model, tokenizer
-    backend.lock = threading.Lock()
-    return backend
 
 
 # ------------------------------------------------------------------ comparison

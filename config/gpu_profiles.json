@@ -21,27 +21,6 @@
       "revision": "ae28efb0ae759c3494a1078c0a56eda10a9adb38",
       "weight_gib": 58.2
     },
-    "copernicus-31b-stream": {
-      "calibrations": {
-        "RTX_PRO_6000": {
-          "cold_overhead_seconds": 0.7,
-          "confidence": "measured",
-          "config_overhead_seconds": 0.7,
-          "load_seconds": 165.3,
-          "load_seconds_p90": 206.6,
-          "peak_gpu_gib": 61.3,
-          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1 follow-up, runtime adapters): Copernicus-31B streamed into the author's HF backend and Copernicus engine (read twice, T=1): 1 run, load 165 s, 61.3 GiB GPU peak, 4,007 tok/s on 16 requests; answers identical to the author's own from_pretrained path on all 60 questions. p90 is 1.25x one load",
-          "startup_seconds": 104.0,
-          "token_budget": 16384,
-          "tokens_per_second": 4006.5
-        }
-      },
-      "family": "generic",
-      "max_len": 4096,
-      "notes": "Copernicus-31B (Gemma 4 merge) through its own scoring path (copernicus_server.Copernicus with the HF backend and the server's default flags), weights streamed by the Phase 1 loader. Adapter: citypods.judging.open_weight_runtimes.load_copernicus. Measured with the review/60 evaluation worker; the production decision worker does not contain these runtimes.",
-      "revision": "ae28efb0ae759c3494a1078c0a56eda10a9adb38",
-      "weight_gib": 58.3
-    },
     "elephant-1": {
       "calibrations": {
         "L4": {

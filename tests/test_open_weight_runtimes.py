@@ -43,11 +43,9 @@ def test_pinned_source_tables_match_the_dockerfile():
         {Path(m[0]).name: m[1] for m in re.findall(r"get \S+ (\S+) ([0-9a-f]{64})", docker)}
     )
     assert rt.SOURCE_SHA256["elephant"]["engine.py"] == downloaded["engine.py"]
-    for name, digest in rt.SOURCE_SHA256["copernicus"].items():
-        assert downloaded[name] == digest
     for files in rt.SOURCE_SHA256.values():
         assert all(len(digest) == 64 for digest in files.values())
-    assert rt.ELEPHANT_REVISION in docker and rt.COPERNICUS_REVISION in docker
+    assert rt.ELEPHANT_REVISION in docker and "copernicus" not in docker.lower()
     assert "81ce62f1597c91e46767d4d02d6ac2e18534fe94" in docker
     assert "pip install" not in docker  # nothing is installed from the network
 
@@ -56,14 +54,12 @@ def test_check_origin_refuses_a_module_from_another_directory(tmp_path):
     inside = tmp_path / "root"
     inside.mkdir()
     module = types.SimpleNamespace(__name__="m", __file__=str(inside / "m.py"))
-    rt.check_origin(module, "copernicus", {"copernicus": str(inside)})
+    rt.check_origin(module, "elephant", {"elephant": str(inside)})
     elsewhere = types.SimpleNamespace(__name__="m", __file__=str(tmp_path / "m.py"))
     with pytest.raises(ValueError, match="not imported from the verified"):
-        rt.check_origin(elsewhere, "copernicus", {"copernicus": str(inside)})
+        rt.check_origin(elsewhere, "elephant", {"elephant": str(inside)})
     with pytest.raises(ValueError, match="not imported"):
-        rt.check_origin(
-            types.SimpleNamespace(__name__="m"), "copernicus", {"copernicus": str(inside)}
-        )
+        rt.check_origin(types.SimpleNamespace(__name__="m"), "elephant", {"elephant": str(inside)})
 
 
 def test_compare_answers_reports_differences_flips_and_status_mismatches():
@@ -145,65 +141,9 @@ def test_runner_maps_cuda_out_of_memory_to_too_large(need_torch):
     assert runner.run([{"state": "s", "questions": {"a": {}}}]) == ["too_large"]
 
 
-def test_copernicus_runner_uses_the_engine_run_and_maps_errors():
-    class Engine:
-        def run(self, state, questions):
-            if state == "long":
-                raise Unsupported("too long")
-            if state == "bad":
-                raise ValueError("criteria")
-            return {q: {"type": "noul", "noul": 0.1} for q in questions}, {"input_tokens": 9}
-
-    runner = rt.CopernicusRunner(Engine(), Unsupported)
-    ok, long, bad = runner.run(
-        [{"state": s, "questions": {"q": {}}} for s in ("fine", "long", "bad")]
-    )
-    assert ok == {"answers": {"q": {"type": "noul", "noul": 0.1}}, "usage": {"input_tokens": 9}}
-    assert (long, bad) == ("too_large", "invalid_input")
-
-
 def test_loaders_refuse_a_manifest_for_another_revision():
     with pytest.raises(ValueError, match="pinned elephant-1"):
         rt.load_elephant({"revision": "0" * 40}, "token")
-    with pytest.raises(ValueError, match="pinned Copernicus"):
-        rt.load_copernicus({"revision": "0" * 40}, "token")
-
-
-def test_copernicus_engine_uses_the_server_default_flags():
-    seen = {}
-
-    class Server:
-        class Calibration:
-            pass
-
-        @staticmethod
-        def Copernicus(*args):  # noqa: N802
-            seen["args"] = args
-            return "engine"
-
-    layout = types.SimpleNamespace(Layout=lambda **kw: kw)
-    assert rt._copernicus_engine(Server, layout, "tok", "backend") == "engine"
-    tok, backend, temperature, workers, temps, lay, _, urls, prompt, template, coords = seen["args"]
-    assert (tok, backend, temperature, workers, temps) == ("tok", "backend", 1.0, 16, {})
-    assert lay == {
-        "header": False,
-        "header_min_questions": 1,
-        "read_twice": True,
-        "twice_max_tokens": 3000,
-        "referenced_fields": False,
-    }
-    assert (urls, prompt, template, coords) == (False, "locate", None, None)
-
-
-def test_streamed_backend_is_the_authors_class_around_an_existing_model(need_torch):
-    class HF:
-        def score(self, text, media, ids):
-            return self.model, self.tok
-
-    server = types.SimpleNamespace(HF=HF)
-    backend = rt._streamed_hf(server, torch, "model", "tok")
-    assert isinstance(backend, HF) and backend.score("t", None, []) == ("model", "tok")
-    assert backend.torch is torch and backend.lock is not None
 
 
 QWEN = FIXTURES / "karpo_qwen3_5_tiny_config.json"
