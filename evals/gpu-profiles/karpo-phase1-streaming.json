@@ -514,12 +514,10 @@
     "gpu_peak_gib_load": 17.54,
     "long": {
      "16000x1": "ok, 19.57 GiB",
-     "16000x12": "ok, 19.65 GiB",
      "16000x40": "ok, 19.65 GiB (21,925 tokens)",
-     "24000x1": "out of memory in the fla gated-delta kernel",
-     "24000x12": "ok, 21.46 GiB (25,809 tokens)",
+     "24000x1": "out of memory (fla gated-delta kernel)",
      "24000x40": "ok, 21.46 GiB (29,925 tokens)",
-     "32000": "out of memory for 1, 12 and 40 questions"
+     "32000": "out of memory at 5.3 GiB headroom (before offload)"
     },
     "parity_vs_rtx_reference": {
      "flips_at_0_5": 0,
@@ -533,6 +531,21 @@
      133.3
     ],
     "tokens_per_s": 818.0
+   },
+   "elephant_l4_offload": {
+    "allocated_after_each_request_gib": 12.9,
+    "gpu": "L4",
+    "long": {
+     "32000x1": "ok, 20.42 GiB, 32,192 tokens, 33 s",
+     "32000x12": "ok, 20.42 GiB, 33,809 tokens, 42 s",
+     "32000x24": "ok, 20.42 GiB, 35,573 tokens, 40 s",
+     "32000x50": "ok, 20.42 GiB, 39,395 tokens, 61 s",
+     "32400x1": "ok, 20.58 GiB, 32,592 tokens, 22 s",
+     "32400x50": "ok, 20.58 GiB, 39,795 tokens, 61 s"
+    },
+    "options": "lean head + offloaded embedding table and head + mlp_chunk 4096 + fork_token_budget 64000 + expandable_segments",
+    "resident_gib": 12.9,
+    "result": "attempts/r60/rt/ (runs b85l9 and 8v5z2 of r60-rt-parity-l4)"
    },
    "elephant_rtx": {
     "gpu": "RTX PRO 6000",

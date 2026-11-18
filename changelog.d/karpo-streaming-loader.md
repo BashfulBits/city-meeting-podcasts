@@ -19,7 +19,7 @@
   `citypods.judging.open_weight_runtimes`. They stream the weights through the loader, check the
   pinned author sources by SHA-256 before importing them, and answer with the Karpo adapter's call.
   Answers equal the authors' own loading path on 60 sample questions (RTX; on an L4 elephant-1
-  uses a lean float32 head and chunked MLPs, mean difference 0.001). elephant-1 does not fit an L4
-  as authored (22.4 GiB peak); on the L4, requests of about 30,000 tokens in total ran and a
-  32,000-token state did not. Adds the image recipe and parity job, and measured calibration rows
-  for both models.
+  keeps its embedding table and head in host memory, computes the head in float32 and chunks
+  the MLPs, mean difference 0.001). elephant-1 does not fit an L4 as authored (22.4 GiB peak);
+  with those options a 32,400-token state with 50 questions (39,795 tokens) ran at a 20.6 GiB
+  peak. Adds the image recipe and parity job, and measured calibration rows for both models.

@@ -50,8 +50,8 @@
           "config_overhead_seconds": 29.2,
           "load_seconds": 130.5,
           "load_seconds_p90": 163.1,
-          "peak_gpu_gib": 21.46,
-          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1 follow-up, runtime adapters): elephant-1 on the OneJev qev engine with a bf16-stored float32 head, 4096-token MLP chunks and fork_token_budget 64000: 3 L4 loads (129-133 s), 818 tok/s on 16 sample requests, 21.46 GiB peak at 24,000-token states. Does not fit as authored (float32 head copy): peak 22.4 GiB. Requests up to about 30k tokens in total run; a 32k-token state runs out of memory",
+          "peak_gpu_gib": 20.58,
+          "source": "evals/gpu-profiles/karpo-phase1-streaming.json (review/60 Phase 1 follow-up, runtime adapters): elephant-1 on the OneJev qev engine with a bf16-stored float32 head, embedding table and head in pinned host memory, 4096-token MLP chunks and fork_token_budget 64000: 5 L4 loads (129-149 s), 818 tok/s on 16 sample requests, 12.9 GiB resident, 20.58 GiB peak at a 32,400-token state with 50 questions (39,795 tokens). Does not fit as authored (float32 head copy): peak 22.4 GiB",
           "startup_seconds": 24.0,
           "token_budget": 8192,
           "tokens_per_second": 818.0
@@ -71,7 +71,7 @@
       },
       "family": "qwen_fla",
       "max_len": 4096,
-      "notes": "baselabs/elephant-1 (Qwen3.5-9B full fine-tune, MIT) on OneJev qev @81ce62f + serve.patch and the checkpoint's own engine.py and slot_lm readout; weights streamed by the Phase 1 loader. Adapter: citypods.judging.open_weight_runtimes.load_elephant (L4 needs lean_head=True, mlp_chunk=4096, fork_token_budget=64000). Measured with the review/60 evaluation worker; the production decision worker does not contain these runtimes.",
+      "notes": "baselabs/elephant-1 (Qwen3.5-9B full fine-tune, MIT) on OneJev qev @81ce62f + serve.patch and the checkpoint's own engine.py and slot_lm readout; weights streamed by the Phase 1 loader. Adapter: citypods.judging.open_weight_runtimes.load_elephant (L4 needs lean_head=True, offload_tables=True, mlp_chunk=4096, fork_token_budget=64000). Measured with the review/60 evaluation worker; the production decision worker does not contain these runtimes.",
       "revision": "b3f8a93462fb1051a9de031e94a7ff380e254072",
       "weight_gib": 17.5
     },
