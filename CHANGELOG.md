@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- review/59 and the review/11 rows now state the goal, what shipped, and that review/60's results
+  supersede its GLiDE-9B model choice (Karpo 9B FP8 on an L4 is the candidate).
+
 - Maintenance leases held by a GitHub Actions run that GitHub reports as completed are now taken
   over instead of blocking for the 6 h TTL. A runner that dies mid-run (twice on 2026-11-18, in the
   chapter-locator lane) never released its lease, so every later scheduled and dispatched run
