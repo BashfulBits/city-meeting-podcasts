@@ -6,6 +6,35 @@
 It adds a way for GitHub Actions to produce typed decisions for offline GPU inference. Promotion into
 the judge stack and use as a tag prefilter each require separate evidence and a maintainer decision.
 
+## Status and outcome (updated 2026-11-18)
+
+**Goal.** Give Citypods a second, independent *capacity source* for typed decisions (tag and moment
+validation, later chapter tags): GitHub Actions produces the questions, an offline GPU job answers
+them cheaply (about $4/month gross, delayed batches on a Cloud Run L4), and the result can back up
+or replace the OpenRouter Perplexity route if that free route loses capacity. Promotion into the
+judge stack and use as a tag prefilter each remain separate maintainer decisions.
+
+**What shipped (PR #2695, then #2727 and #2728).** The offline contract, the disabled Cloud Run
+workflow and worker, the authenticated eight-reader streaming loader, the reusable GPU launcher
+with measured calibrations, and (from review/60) streaming loaders and decision adapters for the
+Karpo and elephant-1 families.
+
+**Model choice is superseded by [review/60](60-open-weight-decision-model-evaluation.md).** The
+2026-11-14 pilot named GLiDE-9B. Review/60 measured it against the frozen set and four other
+open-weight routes (§8, recommendations in §9): GLiDE-9B is as accurate on tags but needs about
+2,024 input tokens per chapter tag against about 423 for Karpo 9B, scores chapter F1 0.69, and is
+tags-only. The recommended Perplexity fallback is now **Karpo 9B, FP8, on an L4**; the cheaper
+tags-only fallback is elephant-1; the independent Gemma-family voice is Karpo 31B (RTX) or 12B
+(L4). Read this document's GLiDE sections as the infrastructure record (loader, launcher,
+transport, canaries), not the model recommendation. GLiDE-9B weights stay available for the
+canary lane; the S1 Gemma, Liquid d1-3B and Karpo 4B weights were removed from the model buckets
+on 2026-11-18 (re-downloadable from Hugging Face).
+
+**Still open from this review.** The launch gates below (timeout and admission cap, scale and model
+qualification), slice D (qualification and optional recurring shadow, now with Karpo 9B as the
+candidate), recurring aggregation, slice E (live judge or prefilter) and billing reconciliation.
+The eleven authorized canary attempts are used.
+
 ## Recommendation
 
 Use the implemented, reusable authenticated eight-reader streaming loader for the finite GLiDE-9B
