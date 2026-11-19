@@ -151,3 +151,80 @@ def test_chapter_lanes_can_run_concurrently_with_separate_leases(monkeypatch):
 def test_non_cas_storage_is_rejected():
     with pytest.raises(RuntimeError, match="CAS-capable"):
         acquire(object(), owner="reset", now=NOW)
+
+
+def test_lease_held_by_a_finished_actions_run_is_taken_over(monkeypatch):
+    monkeypatch.setattr(maintenance_leases, "_now", lambda: NOW)
+    store = MemCAS()
+    acquire(store, owner="github-actions:Chapter boundary locator:111", now=NOW)
+    monkeypatch.setattr(maintenance_leases, "_owner_run_finished", lambda owner: True)
+    taken = acquire(store, owner="github-actions:Chapter boundary locator:222", now=NOW)
+    assert taken.owner.endswith(":222")
+
+
+def test_lease_held_by_a_still_running_run_stays_busy(monkeypatch):
+    monkeypatch.setattr(maintenance_leases, "_now", lambda: NOW)
+    store = MemCAS()
+    acquire(store, owner="github-actions:Chapter boundary locator:111", now=NOW)
+    monkeypatch.setattr(maintenance_leases, "_owner_run_finished", lambda owner: False)
+    with pytest.raises(MaintenanceLeaseBusy):
+        acquire(store, owner="github-actions:Chapter boundary locator:222", now=NOW)
+
+
+@pytest.mark.parametrize(
+    "owner,env,expected",
+    [
+        ("chapter-agenda", {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "o/r"}, False),
+        ("github-actions:wf:abc", {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "o/r"}, False),
+        ("github-actions:wf:12", {}, False),
+        (
+            "github-actions:wf:12",
+            {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "12"},
+            False,
+        ),
+    ],
+)
+def test_owner_run_finished_fails_closed_without_certainty(monkeypatch, owner, env, expected):
+    for name in ("GITHUB_TOKEN", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        maintenance_leases.urllib.request, "urlopen", lambda *a, **k: pytest.fail("no request")
+    )
+    assert maintenance_leases._owner_run_finished(owner) is expected
+
+
+@pytest.mark.parametrize(
+    "status,expected", [("completed", True), ("in_progress", False), ("queued", False)]
+)
+def test_owner_run_finished_reads_the_run_status(monkeypatch, status, expected):
+    import io
+    import json as _json
+
+    monkeypatch.setenv("GITHUB_TOKEN", "t")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    monkeypatch.setenv("GITHUB_RUN_ID", "999")
+    seen = {}
+
+    def fake(request, timeout):
+        seen["url"] = request.full_url
+        return io.StringIO(_json.dumps({"status": status}))
+
+    monkeypatch.setattr(maintenance_leases.urllib.request, "urlopen", fake)
+    assert (
+        maintenance_leases._owner_run_finished("github-actions:Chapter boundary locator:111")
+        is expected
+    )
+    assert seen["url"] == "https://api.github.com/repos/o/r/actions/runs/111"
+
+
+def test_owner_run_finished_treats_an_api_error_as_still_held(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "t")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+
+    def boom(request, timeout):
+        raise OSError("network down")
+
+    monkeypatch.setattr(maintenance_leases.urllib.request, "urlopen", boom)
+    assert maintenance_leases._owner_run_finished("github-actions:wf:111") is False
