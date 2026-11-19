@@ -31,7 +31,7 @@ defusedxml==0.7.1
     # via -r constraints/decision-gpu.in
 einops==0.8.2
     # via fla-core
-filelock==4.2.10
+filelock==4.2.11
     # via
     #   huggingface-hub
     #   torch
