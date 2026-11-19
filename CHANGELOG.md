@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Maintenance leases held by a GitHub Actions run that GitHub reports as completed are now taken
+  over instead of blocking for the 6 h TTL. A runner that dies mid-run (twice on 2026-11-18, in the
+  chapter-locator lane) never released its lease, so every later scheduled and dispatched run
+  failed with `MaintenanceLeaseBusy`. Any uncertainty still fails closed.
+
 - Moment judging evidence now centres its 400-word cap on the quote when a long provider-aligned
   segment would have cut it off (review/60 found 34 of 60 sampled quotes missing from the passage).
   Evidence is unchanged, digest included, when the quote was already inside the first 400 words.
