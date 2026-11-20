@@ -35,6 +35,11 @@ on:
         required: false
         type: string
         default: ""
+      max_clear:
+        description: "Refuse to clear more than this many markers (blank = script default, 300)"
+        required: false
+        type: string
+        default: ""
       apply:
         description: "Actually delete failure markers from storage (unchecked = dry-run)"
         required: false
@@ -84,6 +89,7 @@ jobs:
           DAYS_INPUT: ${{ inputs.days }}
           RECIPE_HASH_INPUT: ${{ inputs.recipe_hash }}
           CAUSE_INPUT: ${{ inputs.last_error_contains }}
+          MAX_CLEAR_INPUT: ${{ inputs.max_clear }}
           APPLY_INPUT: ${{ inputs.apply }}
           GIT_REF: ${{ github.ref }}
         run: |
@@ -93,6 +99,7 @@ jobs:
           if [ -n "$DAYS_INPUT" ]; then ARGS+=(--days "$DAYS_INPUT"); fi
           if [ -n "$RECIPE_HASH_INPUT" ]; then ARGS+=(--recipe-hash "$RECIPE_HASH_INPUT"); fi
           if [ -n "$CAUSE_INPUT" ]; then ARGS+=(--last-error-contains "$CAUSE_INPUT"); fi
+          if [ -n "$MAX_CLEAR_INPUT" ]; then ARGS+=(--max-clear "$MAX_CLEAR_INPUT"); fi
           if [ "$APPLY_INPUT" = "true" ]; then
             if [ "$GIT_REF" != "refs/heads/main" ]; then
               echo "::error::apply can only mutate state from main"
