@@ -7,20 +7,25 @@ import { API_SHAPES, apiShapeFor, decisionKeyMap } from "../src/api_shapes.js";
 import { resolveProviderCredentials } from "../src/gateway.js";
 
 const PROVIDER = {
-  api_base: "https://openrouter.ai/api",
-  ai_gateway_slug: "custom-openrouter-api",
-  ai_gateway_chat_path: "/v1/chat/completions",
-  chat_path: "/v1/chat/completions",
+  api_base: "https://openrouter.ai/api/v1",
+  ai_gateway_slug: "openrouter",
+  ai_gateway_chat_path: "/chat/completions",
+  chat_path: "/chat/completions",
+  rpd: 1000,
   accounts: [{ id: "primary", api_key_env: "OPENROUTER_API_KEY" }],
 };
-const LIMITS = { providers: { openrouter_decisions: PROVIDER } };
+const LIMITS = { providers: { openrouter: PROVIDER } };
 const DECIDER = {
   route_id: "openrouter_pplx_decider_v1_3_free",
-  provider: "openrouter_decisions",
+  provider: "openrouter",
   upstream_model: "perplexity/pplx-decider-v1.3:free",
   account_id: "primary",
   api_shape: "openrouter_decisions",
   request_path: "/alpha/decisions",
+  api_base: "https://openrouter.ai/api",
+  ai_gateway_slug: "custom-openrouter-api",
+  ai_gateway_chat_path: "/v1/chat/completions",
+  chat_path: "/v1/chat/completions",
 };
 const PAYLOAD = {
   systemone: {

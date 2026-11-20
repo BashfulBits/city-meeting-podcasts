@@ -18,6 +18,9 @@ LiteLLM and multi-provider routes:
 | **NVIDIA build.nvidia.com** | `NVIDIA_API_KEY` | [build.nvidia.com](https://build.nvidia.com) | Direct & Dispatch | Kimi K3, DeepSeek V4 Pro/Flash, Gemma 4 31B, GPT-OSS 120B, Nemotron 3 Ultra/Super/Nano-Omni, Riva Translate 4B — **no published rate-limit table**; self-imposed 4 RPM and 40k TPM per route in `config/provider_limits.yml` (2 RPM / 18k TPM after `token_estimate_buffer` and `split_cap_multiplier`), plus `concurrency: 1`. Rate was never the binding limit — at 1.15 req/min we still took 57% 429s, ~35x under the ~40 RPM community-reported baseline; NVIDIA rejects *overlap*, so concurrency is the real cap. See the `nvidia` provider block |
 | **OrcaRouter** | `ORCAROUTER_API_KEY` | [orcarouter.ai](https://orcarouter.ai) | Direct & Dispatch | DeepSeek-V4-Flash (1M Context), Tencent Hy3 (256k Context), Z.AI GLM-5.3-Flash (1M Context) (10 RPM / 800 Free RPD) |
 
+> OpenRouter `:free` variants share 20 RPM and 1,000 RPD after the qualifying $10 credit purchase;
+> the provider-wide RPD pool is configured in `config/provider_limits.yml`.
+
 > **SiliconFlow runs two separate platforms.** `siliconflow.com` (global) is the one
 > `config/provider_limits.yml` calls, and `siliconflow.cn` (China) is a distinct service with its own
 > accounts — a `.com` key is rejected by `.cn` with `401 "Api key is invalid"`. Only the `.cn` platform

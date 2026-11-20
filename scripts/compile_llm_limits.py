@@ -432,12 +432,18 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
                 "direct_model": _direct_model(
                     str(source.get("provider", "")), str(source.get("upstream_model", ""))
                 ),
-                "api_base": provider_cfg.get("api_base", ""),
-                "ai_gateway_slug": provider_cfg.get("ai_gateway_slug", source.get("provider", "")),
-                "ai_gateway_chat_path": provider_cfg.get(
-                    "ai_gateway_chat_path", "/chat/completions"
+                "api_base": source.get("api_base", provider_cfg.get("api_base", "")),
+                "ai_gateway_slug": source.get(
+                    "ai_gateway_slug",
+                    provider_cfg.get("ai_gateway_slug", source.get("provider", "")),
                 ),
-                "chat_path": provider_cfg.get("chat_path", "/v1/chat/completions"),
+                "ai_gateway_chat_path": source.get(
+                    "ai_gateway_chat_path",
+                    provider_cfg.get("ai_gateway_chat_path", "/chat/completions"),
+                ),
+                "chat_path": source.get(
+                    "chat_path", provider_cfg.get("chat_path", "/v1/chat/completions")
+                ),
                 "api_key_env": (account or {}).get("api_key_env", ""),
                 "reset_timezone": source.get(
                     "reset_timezone", provider_cfg.get("reset_timezone", "UTC")
@@ -517,6 +523,12 @@ _WORKER_ROUTE_FIELDS = (
     # work (an ordering rule in coordinator.js, never a structural one).
     "api_shape",
     "request_path",
+    # Optional endpoint overrides let a route use a special gateway mapping while retaining its
+    # provider identity for account-wide quota pools (OpenRouter's decisions API is one example).
+    "api_base",
+    "ai_gateway_slug",
+    "ai_gateway_chat_path",
+    "chat_path",
     "yields_to",
     # Read by the Worker's upstreamRequestForRoute (gateway.js) to shape a schema-only structured
     # job for this route (review/48 R10). Each entry lands under its own field name in the

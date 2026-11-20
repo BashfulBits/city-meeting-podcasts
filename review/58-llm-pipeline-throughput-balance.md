@@ -1304,9 +1304,9 @@ and the decisions endpoint is `https://openrouter.ai/api/alpha/decisions`. Throu
 `/api/v1/decisions` alias (404, 2026-11-13 23:20Z), and the Worker sends every
 provider through the gateway when one is configured. So the route needs a custom gateway provider.
 
-**Owner step.** Register a custom AI Gateway provider `custom-openrouter-api` with Base URL
-`https://openrouter.ai/api` (as for `custom-beatapi`). Then set
-`openrouter_pplx_decider_v1_3_free` to `rpd: 40` in `config/provider_limits.yml`, move
+**Owner step (initial configuration).** Register custom AI Gateway provider `custom-openrouter-api`
+with Base URL `https://openrouter.ai/api` (as for `custom-beatapi`). The initial configuration set
+`openrouter_pplx_decider_v1_3_free` to `rpd: 40` in `config/provider_limits.yml`, moved
 `perplexity/pplx-decider-v1.3` from `eligible_models` to `models` (after Gemini) in
 `judge:anchor`, and recompile.
 
@@ -1321,10 +1321,12 @@ Edit permission, so this stays an owner step), and the route went to `rpd: 40` w
   with the `decisions` key map and `noul` criteria dropped, Bearer auth, usage from
   `input_tokens`/`output_tokens`, and every asked answer required. No status rewriting: OpenRouter's
   4xx are ordinary, so the generic classification applies. `classify.js` is unchanged.
-- **Provider `openrouter_decisions`** (same key and account as `openrouter`) and the free route
-  `openrouter_pplx_decider_v1_3_free` (`upstream_model: perplexity/pplx-decider-v1.3:free`,
-  `request_path: /alpha/decisions`, `rpm: 10`, `concurrency: 1`, `rpd: 0`). Catalog 2026-11-14: one
-  endpoint (Perplexity), prompt and completion price 0, 262,144 context.
+- **Current route and quota configuration (2026-11-19).** The free route
+  `openrouter_pplx_decider_v1_3_free` uses provider `openrouter`, with route-level overrides for the
+  custom gateway slug and decisions endpoint. Its daily allowance comes from the shared
+  provider-wide 1,000-RPD pool; the old `openrouter_decisions` provider block and route `rpd: 0` are
+  removed. Catalog 2026-11-14: one endpoint (Perplexity), prompt and completion price 0, 262,144
+  context.
 - **Python.** `DeciderBackend` (JEV's questions and parser, the 45,000-token packet ceiling, output
   reservation 1). Family `qwen`: the Decider is a Qwen3.8-27B checkpoint.
 - **Anchor per entry** (`families.anchor_for`). Each entry's anchor is the first active anchor
@@ -1337,15 +1339,19 @@ Edit permission, so this stays an owner step), and the route went to `rpd: 40` w
 - **Unchanged.** Independence rules, the shadow mode, per-model statistics (the report keys anchor
   cells by model) and every stored judgment.
 
-**Sizing.** OpenRouter's free models share 1,000 requests a day per account. The configured
-OpenRouter routes total 440 rpd, and the account had used 179 of 1,000 by 09:2xZ on 11-14. The
+**Sizing.** OpenRouter's free models share 1,000 requests a day per account after the qualifying
+credit purchase. At the time of the 2026-11-14 decision, route-level ceilings totaled 480 rpd
+(including this route's 40); on 2026-11-19 those individual ceilings were removed and replaced by
+the provider-wide 1,000-RPD pool, shared with this route. The account had used 179 of 1,000 by
+09:2xZ on 11-14. The
 Google-produced backlog is about 7,400 subjects, about 310 anchor packets of about 32 items; steady
 state is about 2 subjects a day. The anchor lane's ceiling (12.4) is 120 packets a day, which the
 Gemini anchor's backlog fills. So the runner packs a later anchor's packets first in each pass
 and lets them take at most a quarter of that pass's anchor run cap (`LATER_ANCHOR_SHARE`, counter
 `run_cap_share:<model>`): **30 of the 120 packets a day**, which drains the backlog in about ten
 days. If the owner prefers, the lane ceiling can instead grow by 30; this PR does not change lane
-caps. The route's `rpd: 40` leaves room for retries; 440 + 40 stays well within 1,000.
+caps. The shared provider pool admits all OpenRouter calls up to 1,000/day, subject to each route's
+RPM, concurrency, and normal provider availability.
 
 **Re-qualification** follows review/49: probes, the 2% stability sample, and agreement with the
 Gemini anchor on entries both may judge, before any verdict counts. A decision model is not added

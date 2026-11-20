@@ -2912,7 +2912,7 @@ def _two_anchor_ctx(dispatch, **extra):
 
 
 def test_the_repository_runs_the_decider_as_the_second_anchor():
-    """Enabled 2026-11-14 once the custom-openrouter-api gateway provider existed."""
+    """Enabled 2026-11-14, then moved into OpenRouter's shared quota pool."""
     from citypods.judging.backends import DECIDER_ROUTE_ID, DeciderBackend, anchor_backend_class
 
     assert REPO_ANCHOR_LANE.models == (DECISION, DECIDER)
@@ -2927,7 +2927,11 @@ def test_the_repository_runs_the_decider_as_the_second_anchor():
     assert route["api_shape"] == "openrouter_decisions"
     assert route["request_path"] == "/alpha/decisions"
     assert route["ai_gateway_slug"] == "custom-openrouter-api"
-    assert route["free"] is True and route["rpd"] == 40
+    assert route["provider"] == "openrouter"
+    assert route["free"] is True and "rpd" not in route
+    assert route["provider_rpd"] == 1000
+    assert route["api_base"] == "https://openrouter.ai/api"
+    assert route["ai_gateway_chat_path"] == "/v1/chat/completions"
     assert route["hard_input_ceiling"] == DeciderBackend.hard_input_ceiling
     assert route["transports"] == []
 
