@@ -73,4 +73,36 @@ ignored:
     model: meta/muse-glimmer-30b
     reason: Maintainer /apply selection
     decided_on: '2026-11-04'
+  - provider: nvidia
+    model: openai/gpt-oss-20b
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-20'
+  - provider: openrouter
+    model: liquid/lfm-3-1.7b:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-20'
+  - provider: nvidia
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-20'
+  - provider: openrouter
+    model: recursive/flint-v1.0:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-20'
+  - provider: kilo
+    model: liquid/lfm-3-1.7b:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-20'
+  - provider: nvidia
+    model: nvidia/riva-translate-4b-instruct-v2
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-20'
+  - provider: kilo
+    model: recursive/flint-v1.0:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-20'
+  - provider: openrouter
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-20'
 acknowledged: []
