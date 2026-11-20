@@ -225,8 +225,9 @@ def test_allowlist_can_select_the_free_deepseek_v41_route():
         now=datetime(2026, 7, 16, 18, tzinfo=UTC),
     )
     assert result.model == model
-    # One pool name per DeepSeek version (2026-09-24): v4.1 is served only by NVIDIA's route.
-    assert result.route.route_id == "nvidia_deepseek_v4_1_flash_free"
+    # One pool name per DeepSeek version (2026-09-24); NVIDIA's leg was removed 2026-11-19
+    # (end of life), so v4.1 is served by the BeatAPI routes.
+    assert result.route.route_id.startswith("beatapi_")
     assert result.route.model == model
 
 

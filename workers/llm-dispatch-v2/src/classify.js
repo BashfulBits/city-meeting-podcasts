@@ -653,10 +653,14 @@ export function classifyProviderFailure({ status, body, headers, route, inputTok
         scope: "route",
       };
     }
-    if (status === 504 || (status === 503 && isProviderCapacityMessage(body, msg))) {
+    // 529 is "overloaded" by definition (NVIDIA: {"message":"Service temporarily overloaded",
+    // "type":"Overloaded","code":529}, 2026-11-19); it is capacity, never a server defect.
+    if (status === 504 || status === 529 ||
+        (status === 503 && isProviderCapacityMessage(body, msg))) {
       return {
         failure_class: "upstream_capacity",
-        rule_id: status === 504 ? "http-504-timeout" : "provider-5xx-capacity",
+        rule_id: status === 504 ? "http-504-timeout"
+          : status === 529 ? "http-529-overloaded" : "provider-5xx-capacity",
         retry_after_seconds: retryAfterSeconds,
         scope: "route",
       };

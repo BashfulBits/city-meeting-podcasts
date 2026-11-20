@@ -384,11 +384,40 @@ def test_production_locator_pins_small_packets_to_v4_flash_alone():
     assert request.max_output_tokens == LOCATOR_OUTPUT_TOKEN_RESERVE
 
 
-def test_overflow_cap_is_the_wp8a_probe_value():
-    # review/58 WP8a: 500,000 estimated tokens is about 795,000 provider tokens at the worst
-    # observed ratio (1.59), under the 941,663 MiniMax admitted. Changing it is an owner decision.
+def test_overflow_cap_is_derived_from_the_minimax_route():
+    # The cap follows config/provider_limits.yml, not a constant: the largest admitted input
+    # (hard_input_ceiling, inside the context window less the output reserve) divided by the
+    # worst measured provider/estimate ratio. 2026-11-19 probe: 1,034,675 / 1.59 = 650,738.
+    from citypods.chapter_locator import (
+        locator_max_output_tokens,
+        locator_overflow_max_input_tokens,
+    )
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
+
     assert DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS == 76_000
-    assert LOCATOR_OVERFLOW_MAX_INPUT_TOKENS == 500_000
+    (route,) = ROUTE_CANDIDATES[canonical_model(MINIMAX_LOCATOR_MODEL)]
+    room = min(
+        route.hard_input_ceiling,
+        route.input_context_limit - locator_max_output_tokens(MINIMAX_LOCATOR_MODEL),
+    )
+    assert LOCATOR_OVERFLOW_MAX_INPUT_TOKENS == locator_overflow_max_input_tokens()
+    assert LOCATOR_OVERFLOW_MAX_INPUT_TOKENS == int(room / route.input_token_ratio)
+    assert LOCATOR_OVERFLOW_MAX_INPUT_TOKENS == 650_738
+
+
+def test_overflow_cap_moves_with_the_route_and_is_zero_without_one(monkeypatch):
+    import dataclasses
+
+    from citypods import chapter_locator
+    from citypods.compute import llm_policy
+
+    key = llm_policy.canonical_model(MINIMAX_LOCATOR_MODEL)
+    (route,) = llm_policy.ROUTE_CANDIDATES[key]
+    smaller = dataclasses.replace(route, hard_input_ceiling=318_000, input_token_ratio=1.59)
+    monkeypatch.setitem(llm_policy.ROUTE_CANDIDATES, key, (smaller,))
+    assert chapter_locator.locator_overflow_max_input_tokens() == 200_000
+    monkeypatch.setitem(llm_policy.ROUTE_CANDIDATES, key, ())
+    assert chapter_locator.locator_overflow_max_input_tokens() == 0
 
 
 @pytest.mark.parametrize(
@@ -465,7 +494,8 @@ def test_minimax_route_admits_a_cap_sized_packet():
     (route,) = ROUTE_CANDIDATES[MINIMAX_LOCATOR_MODEL]
     scaled = route_input_tokens(LOCATOR_OVERFLOW_MAX_INPUT_TOKENS, route)
     assert route.input_token_ratio == pytest.approx(1.59)
-    assert route.hard_input_ceiling == 941_663
+    assert route.hard_input_ceiling == 1_034_675  # 2026-11-19 probe
+    assert route.input_context_limit == 1_048_576  # NVIDIA's reported window
     assert scaled <= route.hard_input_ceiling
     assert scaled + route.output_context_limit <= route.input_context_limit
 

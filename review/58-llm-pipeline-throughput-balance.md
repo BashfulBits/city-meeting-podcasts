@@ -454,6 +454,13 @@ is added then.
      862,960 estimated tokens and no free route admits it as one request; it needs a split-packet
      design, tracked in [GH#2651](https://github.com/BashfulBits/city-meeting-podcasts/issues/2651)
      and not in this plan.
+   - **Update 2026-11-19:** a second direct probe admitted 1,034,675 provider tokens and saw HTTP
+     400 `context_length` (limit 1,048,576) at 1,053,919. The route ceiling is now 1,034,675 and
+     the cap is no longer a constant: `LOCATOR_OVERFLOW_MAX_INPUT_TOKENS` is derived from the
+     compiled route (ceiling / 1.59 = 650,738 estimated). NVIDIA's provider `tpm` was removed (it
+     has none; its x5 reservation gate was refusing every MiniMax job above 450,000), the retired
+     NVIDIA V4.1 route (HTTP 410) was removed, and `upstream_capacity` refusals (including 529)
+     now retry without spending the job's retry budget.
    - Risks: accuracy above 191,294 estimated tokens is unmeasured, the probe checked admission
      only, and 2 of its 5 admitted large answers were invalid (duplicate locator unit; the producer
      makes one corrective resubmit, then gives up). If large-packet quality proves poor, lower the

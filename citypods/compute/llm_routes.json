@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 54,
+    "routes_count": 53,
     "providers_count": 14,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -10,7 +10,6 @@
     "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "kilo/nvidia/nemotron-3.5-super-vl:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3.5-super-vl-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "orcarouter/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
@@ -29,7 +28,8 @@
     "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "nvidia/nemotron-3.5-super-vl:free": "openrouter/nvidia/nemotron-3.5-super-vl:free",
     "nvidia/nemotron-3.5-super-vl": "openrouter/nvidia/nemotron-3.5-super-vl:free",
-    "openrouter/nvidia/nemotron-3.5-super-vl": "openrouter/nvidia/nemotron-3.5-super-vl:free"
+    "openrouter/nvidia/nemotron-3.5-super-vl": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+    "nvidia/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash"
   },
   "model_routing": {
     "gemini/gemini-3.7-flash": [
@@ -1301,50 +1301,6 @@
       "reset_timezone": "UTC"
     },
     {
-      "route_id": "nvidia_deepseek_v4_1_flash_free",
-      "model": "deepseek/deepseek-v4.1-flash",
-      "provider": "nvidia",
-      "upstream_model": "deepseek-ai/deepseek-v4.1-flash",
-      "response_timeout_seconds": 720,
-      "input_context_limit": 1000000,
-      "output_context_limit": 384000,
-      "account_id": "primary",
-      "rpm": 4,
-      "rpd": 0,
-      "tpm": 36000,
-      "concurrency": 1,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_method": "prompt_only",
-      "structured_output_verified_on": "2026-09-24",
-      "reasoning_controls": {
-        "off": {
-          "chat_template_kwargs": {
-            "enable_thinking": false
-          }
-        }
-      },
-      "structured_output_method_source": "route",
-      "structured_output_response_format": "none",
-      "structured_output_include_schema_in_prompt": true,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct"
-      ],
-      "direct_model": "openai/deepseek-ai/deepseek-v4.1-flash",
-      "api_base": "https://integrate.api.nvidia.com/v1",
-      "ai_gateway_slug": "custom-nvidia",
-      "ai_gateway_chat_path": "/chat/completions",
-      "chat_path": "/chat/completions",
-      "api_key_env": "NVIDIA_API_KEY",
-      "reset_timezone": "UTC",
-      "provider_rpm": 35,
-      "provider_tpm": 90000,
-      "provider_concurrency": 4
-    },
-    {
       "route_id": "nvidia_gemma_4_31b_it_free",
       "model": "google/gemma-4-31b-it",
       "provider": "nvidia",
@@ -1356,7 +1312,6 @@
       "account_id": "primary",
       "rpm": 4,
       "rpd": 800,
-      "tpm": 36000,
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
@@ -1381,7 +1336,6 @@
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
       "provider_rpm": 35,
-      "provider_tpm": 90000,
       "provider_concurrency": 4
     },
     {
@@ -1402,7 +1356,6 @@
       "input_token_ratio": 1.75,
       "account_id": "primary",
       "rpm": 4,
-      "tpm": 36000,
       "hard_input_ceiling": 246109,
       "concurrency": 4,
       "free": true,
@@ -1429,7 +1382,6 @@
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
       "provider_rpm": 35,
-      "provider_tpm": 90000,
       "provider_concurrency": 4
     },
     {
@@ -1442,7 +1394,6 @@
       "output_context_limit": 262144,
       "account_id": "primary",
       "rpm": 4,
-      "tpm": 36000,
       "concurrency": 4,
       "free": true,
       "input_per_token": 0.0,
@@ -1469,7 +1420,6 @@
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
       "provider_rpm": 35,
-      "provider_tpm": 90000,
       "provider_concurrency": 4
     },
     {
@@ -1683,7 +1633,7 @@
       "observed_on": "2026-10-07",
       "upstream_429_default": "upstream_capacity",
       "structured_output_method": "prompt_only",
-      "structured_output_method_source": "model",
+      "structured_output_method_source": "provider",
       "structured_output_verified_on": null,
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -1831,7 +1781,7 @@
       "observed_on": "2026-10-07",
       "upstream_429_default": "upstream_capacity",
       "structured_output_method": "prompt_only",
-      "structured_output_method_source": "model",
+      "structured_output_method_source": "provider",
       "structured_output_verified_on": null,
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -2113,8 +2063,8 @@
       "upstream_model": "minimaxai/minimax-m3.1-flash",
       "response_timeout_seconds": 720,
       "account_id": "primary",
-      "input_context_limit": 941663,
-      "hard_input_ceiling": 941663,
+      "input_context_limit": 1048576,
+      "hard_input_ceiling": 1034675,
       "input_token_ratio": 1.59,
       "structured_output_method": "json_schema",
       "structured_output_verified_on": "2026-11-04",
@@ -2122,6 +2072,7 @@
       "concurrency": 1,
       "free": true,
       "output_context_limit": 12800,
+      "upstream_429_default": "upstream_capacity",
       "structured_output_method_source": "route",
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
@@ -2137,7 +2088,6 @@
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
       "provider_rpm": 35,
-      "provider_tpm": 90000,
       "provider_concurrency": 4
     },
     {
