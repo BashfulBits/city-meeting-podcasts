@@ -224,7 +224,7 @@ test("Gemma routes enforce hard_input_ceiling while reopened legs remain eligibl
   const underIds = routesEligibleFor(jobUnderCeiling, DISPATCH_LIMITS).map((r) => r.route_id);
   assert.ok(underIds.includes("gemma_4_31b_primary"));
   assert.ok(underIds.includes("gemma_4_31b_secondary"));
-  // Maintainer reopened these legs at 20 RPD for ordinary dispatch and health monitoring.
+  // These legs are eligible under the shared OpenRouter provider-wide daily pool.
   assert.ok(underIds.includes("nvidia_gemma_4_31b_it_free"));
   assert.ok(underIds.includes("openrouter_google_gemma_4_31b_it_free"));
 
@@ -247,15 +247,19 @@ test("Gemma routes enforce hard_input_ceiling while reopened legs remain eligibl
   ]));
 });
 
-test("the reopened Gemma legs keep their allowances and admit a small free-policy job", () => {
-  // OpenRouter's two legs stay at 20 RPD. NVIDIA's 31B leg was raised to 800 RPD on 2026-10-16
+test("the OpenRouter shared pool and NVIDIA Gemma allowance admit free-policy jobs", () => {
+  // OpenRouter's free routes share 1,000 RPD at provider scope. NVIDIA's 31B leg was raised
+  // to 800 RPD on 2026-10-16
   // and holds one of the provider's four shared slots (two on 2026-10-17, back to one on
   // 2026-10-19 when hung calls rose), so slow Gemma calls cannot starve Ultra.
-  const rpd = {
-    openrouter_google_gemma_4_31b_it_free: 20,
-    openrouter_google_gemma_4_26b_a4b_it_free: 20,
-    nvidia_gemma_4_31b_it_free: 800,
-  };
+  assert.equal(DISPATCH_LIMITS.providers.openrouter.rpd, 1000);
+  for (const id of [
+    "openrouter_google_gemma_4_31b_it_free",
+    "openrouter_google_gemma_4_26b_a4b_it_free",
+  ]) {
+    assert.equal(DISPATCH_LIMITS.routes_by_id[id].rpd, null);
+  }
+  const rpd = { nvidia_gemma_4_31b_it_free: 800 };
   assert.equal(DISPATCH_LIMITS.routes_by_id.nvidia_gemma_4_31b_it_free.concurrency, 1);
   assert.equal(DISPATCH_LIMITS.providers.nvidia.concurrency, 4);
   for (const id of Object.keys(rpd)) {
