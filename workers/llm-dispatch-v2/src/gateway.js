@@ -266,7 +266,7 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
     throw new Error(`missing secret ${account.api_key_env} for provider ${route.provider}`);
   }
 
-  const apiBase = trimTrailingSlashes(String(providerCfg.api_base || ""));
+  const apiBase = trimTrailingSlashes(String(route.api_base || providerCfg.api_base || ""));
   if (!apiBase) {
     throw new Error(`no api_base configured for provider ${route.provider}`);
   }
@@ -278,9 +278,9 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
   // own chat URL: for BeatAPI that is `api_base` itself (`…/v1` + `/systemone`), for Google AI
   // Studio, whose `api_base` ends in `/v1beta/openai`, it is the host (`…` + `/v1beta/decisions`).
   const requestPath = typeof route.request_path === "string" && route.request_path ? route.request_path : null;
-  const chatPath = providerCfg.chat_path || "/v1/chat/completions";
+  const chatPath = route.chat_path || providerCfg.chat_path || "/v1/chat/completions";
   const providerChatUrl = `${apiBase}${chatPath}`;
-  const gatewayChatPath = providerCfg.ai_gateway_chat_path;
+  const gatewayChatPath = route.ai_gateway_chat_path || providerCfg.ai_gateway_chat_path;
   const directRequestBase = requestPath && gatewayChatPath && providerChatUrl.endsWith(gatewayChatPath)
     ? providerChatUrl.slice(0, providerChatUrl.length - gatewayChatPath.length)
     : apiBase;
@@ -316,12 +316,12 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
     if (parsedGateway.protocol !== "https:") {
       throw new Error("AI_GATEWAY_BASE_URL must use HTTPS");
     }
-    const gatewaySlug = providerCfg.ai_gateway_slug || route.provider;
+    const gatewaySlug = route.ai_gateway_slug || providerCfg.ai_gateway_slug || route.provider;
     const gatewayPath = requestPath
       ? `${requestPath}${parsedDirectUrl.search}`
-      : providerCfg.ai_gateway_chat_path
-      ? `${providerCfg.ai_gateway_chat_path}${parsedDirectUrl.search}`
-      : `${parsedDirectUrl.pathname}${parsedDirectUrl.search}`;
+      : gatewayChatPath
+        ? `${gatewayChatPath}${parsedDirectUrl.search}`
+        : `${parsedDirectUrl.pathname}${parsedDirectUrl.search}`;
     url = `${aiGatewayBase}/${gatewaySlug}${gatewayPath}`;
   }
 

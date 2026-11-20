@@ -287,22 +287,12 @@ providers:
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
+    # OpenRouter's free-model allowance is shared across the account: 20 RPM and 1,000 RPD
+    # after the qualifying credit purchase (official docs checked 2026-11-19). Put the daily
+    # allowance on the provider so all free-model routes share one local ledger.
+    rpd: 1000
     discovery:
       endpoint: https://openrouter.ai/api/v1/models
-    accounts:
-      - id: primary
-        api_key_env: OPENROUTER_API_KEY
-  # OpenRouter's decisions endpoint (POST /api/alpha/decisions, review/58 12.9) lives outside the
-  # /api/v1 base the AI Gateway `openrouter` slug maps to: through that slug /alpha/decisions and
-  # /api/alpha/decisions both return 404 (2026-11-13). It needs a custom AI Gateway provider,
-  # `custom-openrouter-api`, whose Base URL is `https://openrouter.ai/api` (owner step, as for
-  # custom-beatapi). Same key and account as `openrouter`; the routes stay at rpd 0 until then.
-  openrouter_decisions:
-    api_base: https://openrouter.ai/api
-    ai_gateway_slug: custom-openrouter-api
-    ai_gateway_chat_path: /v1/chat/completions
-    chat_path: /v1/chat/completions
-    reset_timezone: UTC
     accounts:
       - id: primary
         api_key_env: OPENROUTER_API_KEY
@@ -959,10 +949,7 @@ routes:
     input_token_ratio: 1.2
     account_id: primary
     rpm: 10
-    # Paused 2026-09-23 (was 200): 148 of 149 attempts on 2026-09-22 were upstream 429s.
-    # Maintainer-approved reopening at 20 RPD, 2026-10-09, for health monitoring and calibration.
-    # This limited reopening precedes live recovery proof; ordinary dispatch can use the allowance.
-    rpd: 20
+    # Local RPM/concurrency remain conservative; daily capacity comes from the shared provider pool.
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -979,10 +966,7 @@ routes:
     input_token_ratio: 1.2
     account_id: primary
     rpm: 10
-    # Paused 2026-09-23 (was 200): all 27 attempts on 2026-09-21 were upstream 429s.
-    # Maintainer-approved reopening at 20 RPD, 2026-10-09, for health monitoring and calibration.
-    # The two AI Studio routes still carry this model's larger 14,400-RPD free quota.
-    rpd: 20
+    # Local RPM/concurrency remain conservative; daily capacity comes from the shared provider pool.
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -991,25 +975,28 @@ routes:
   # Perplexity Decider V1.3 (review/58 12.9): the second, non-Google judge:anchor, for the
   # Google-produced entries Gemini Decision 1 may not judge. Catalog 2026-11-14: one endpoint
   # (Perplexity), prompt and completion price 0, context 262,144. A 2026-11-13 replay of 14 stored
-  # anchor requests was accepted 14 of 14 (review/58 12.6). OpenRouter's free models share one
-  # 1,000-request daily allowance with the other OpenRouter routes (440 rpd configured), and its
-  # free tier allows 20 requests a minute. Enabled 2026-11-14 at rpd 40 (owner decision), after the
-  # `custom-openrouter-api` gateway provider was registered: the Google-produced backlog
+  # anchor requests was accepted 14 of 14 (review/58 12.6). OpenRouter's free routes share one
+  # 1,000-request daily account pool and 20 RPM limit. This decisions endpoint uses the same
+  # `openrouter` provider identity so it participates in that pool; its route-level API Gateway
+  # settings preserve the custom endpoint mapping. The Google-produced backlog
   # (about 7,400 subjects, about 310 packets of 32 items) clears in about ten days at the 30
   # packets a day review/58 12.9 proposes as this anchor's share, and then needs under one a day.
   - route_id: openrouter_pplx_decider_v1_3_free
     model: perplexity/pplx-decider-v1.3
-    provider: openrouter_decisions
+    provider: openrouter
     upstream_model: perplexity/pplx-decider-v1.3:free
     response_timeout_seconds: 720
     api_shape: openrouter_decisions
     request_path: /alpha/decisions
+    api_base: https://openrouter.ai/api
+    ai_gateway_slug: custom-openrouter-api
+    ai_gateway_chat_path: /v1/chat/completions
+    chat_path: /v1/chat/completions
     input_context_limit: 262144
     output_context_limit: 1
     hard_input_ceiling: 45000
     account_id: primary
     rpm: 10
-    rpd: 40
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1092,7 +1079,6 @@ routes:
     account_id: primary
     hard_input_ceiling: 234437
     rpm: 10
-    rpd: 200
     concurrency: 1
     free: true
     observed_on: "2026-09-12"
@@ -1112,7 +1098,6 @@ routes:
     account_id: primary
     hard_input_ceiling: 249027
     rpm: 10
-    rpd: 200
     concurrency: 1
     free: true
     observed_on: "2026-10-17"
