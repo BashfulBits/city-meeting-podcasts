@@ -20,7 +20,7 @@ from citypods.provider_catalog.issue import (
     migrate_ticks,
 )
 from citypods.provider_catalog.readiness import output_cap_for
-from citypods.provider_catalog.reconcile import Report
+from citypods.provider_catalog.reconcile import CANARY_MEMORY_DAYS, RATE_LIMITED_VERDICT, Report
 from citypods.review_issues import DECISION_BLOCK_END, DECISION_BLOCK_START, checked_decisions
 
 BRANCH = "automation/provider-catalog-additions"
@@ -202,6 +202,38 @@ def _needs_another_test(candidate) -> bool:
         and discovery.get("retryable") is True
         and not _verified_input_cap(discovery)
         and candidate_readiness(candidate).state == ACTION
+    )
+
+
+# How old a stored JSON-output check may be when `/apply`'s re-check is rate-limited; the same
+# window the daily run trusts a remembered canary for.
+STORED_PROOF_MAX_DAYS = CANARY_MEMORY_DAYS
+
+
+def _age_days(stamp: str | None, today: date) -> int | None:
+    try:
+        return (today - date.fromisoformat(str(stamp))).days if stamp else None
+    except ValueError:
+        return None
+
+
+def _recheck_gap(decision: Decision, report: Report, old) -> str:
+    """Say why `/apply` could not re-confirm a ticked route, in the maintainer's terms."""
+    if not old:
+        return (
+            "no saved test result for this route yet; the daily run tests it, then comment "
+            "`/apply` again (your tick stays)"
+        )
+    prefix = f"{decision.key}: free-marked but "
+    seen = next((o[len(prefix) :] for o in report.observations if o.startswith(prefix)), None)
+    if seen:
+        return (
+            f"the re-check just now did not get through ({seen}, after retries); the provider "
+            "is probably busy. Your tick stays: comment `/apply` again later"
+        )
+    return (
+        "the re-check just now did not reach this route (absent from the provider's catalog or "
+        "no longer free). Your tick stays: comment `/apply` again after the next daily run"
     )
 
 
@@ -417,11 +449,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             )
             old = decision.evidence
             if not proof or not old:
-                deferred.append(
-                    f"{decision.key}: no current test result for this model; run the Provider "
-                    "catalog reconciliation workflow (or wait for the daily run), then "
-                    "comment `/apply` again"
-                )
+                deferred.append(f"{decision.key}: {_recheck_gap(decision, report, old)}")
                 continue
             comparison = (
                 "provider",
@@ -444,6 +472,31 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                     "then comment `/apply`"
                 )
                 continue
+            stored_on = None
+            if proof.verdict == RATE_LIMITED_VERDICT:
+                # Today's re-check stayed rate-limited after its retries. The catalog values were
+                # re-compared above; trust the stored JSON check only while it is recent.
+                age = _age_days(old.structured_output_verified_on, config.today)
+                if (
+                    old.verdict != "proven"
+                    or age is None
+                    or age > STORED_PROOF_MAX_DAYS
+                    or old.structured_output_method
+                    not in config.limits.get("structured_output_methods", {})
+                ):
+                    deferred.append(
+                        f"{decision.key}: the re-check was rate-limited and the saved test result "
+                        f"is missing or older than {STORED_PROOF_MAX_DAYS} days; comment `/apply` "
+                        "again later (your tick stays)"
+                    )
+                    continue
+                stored_on = old.structured_output_verified_on
+                proof = replace(
+                    proof,
+                    verdict="proven",
+                    structured_output_method=old.structured_output_method,
+                    structured_output_verified_on=stored_on,
+                )
             # A contended proof (the provider was not drained first) still shows the route
             # answering with valid JSON; only its rate signals are unreliable, and those are not
             # copied below. `/apply` does not drain providers for additions (review/48 rework).
@@ -452,7 +505,10 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 or not proof.free
                 or proof.verdict != "proven"
                 or proof.observed_at != config.today.isoformat()
-                or proof.structured_output_verified_on != config.today.isoformat()
+                or (
+                    stored_on is None
+                    and proof.structured_output_verified_on != config.today.isoformat()
+                )
                 or proof.structured_output_method
                 not in config.limits.get("structured_output_methods", {})
             ):
@@ -544,6 +600,15 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 (
                     rid,
                     (
+                        *(
+                            (
+                                f"Added on the stored test result from {stored_on}: today's "
+                                "re-check was rate-limited (HTTP 429 or spent quota) after "
+                                "retries.",
+                            )
+                            if stored_on
+                            else ()
+                        ),
                         f"Input cap evidence: {cap['admitted_input']} provider-counted input "
                         f"tokens admitted; {cap['generated_output']} output tokens generated "
                         f"in the same request (control {cap['control']}).",
