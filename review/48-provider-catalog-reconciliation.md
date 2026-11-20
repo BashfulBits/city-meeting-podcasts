@@ -3764,3 +3764,9 @@ After the merge, the 5 added routes stayed listed (carried from the last full ru
   60 s (`APPLY_RECHECK_WAITS_SECONDS`); scheduled runs keep one attempt.
 - The deferral states the observed verdict, or that the route left the catalog, and that the tick
   stays.
+- A re-check still rate-limited after the retries (`quota_exhausted`, or an unrecognized HTTP 429;
+  never a timeout, 5xx, 401/402/403 or 404) yields a `rate_limited` candidate built from the live
+  catalog. `plan_apply` re-compares its catalog values with the ticked evidence as usual and adds the
+  route on the stored JSON check when that is `proven` and at most `STORED_PROOF_MAX_DAYS` (28, the
+  canary memory window) old; the route's `structured_output_verified_on` keeps the stored date and
+  the PR notes the reliance.

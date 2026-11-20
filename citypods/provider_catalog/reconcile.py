@@ -78,6 +78,17 @@ RETIREMENT_VERDICTS = frozenset({"retired", "not_served"})
 DEFINITIVE_VERDICTS = ANOMALY_VERDICTS | {"proven"}
 # Spaced retries for an `/apply` re-check that hits a busy provider (429, timeout).
 APPLY_RECHECK_WAITS_SECONDS = (20, 60)
+# An `/apply` re-check that stayed rate-limited: the route answered, but not with a completion.
+RATE_LIMITED_VERDICT = "rate_limited"
+
+
+def _rate_limited(result: Classification) -> bool:
+    """A spent quota or an HTTP 429; never a timeout, 5xx, 401/402/403 or 404."""
+    return result.verdict == "quota_exhausted" or (
+        result.verdict == "inconclusive" and result.status == 429
+    )
+
+
 _VARIANT_SUFFIX = re.compile(r"-(it|instruct|chat|preview|latest|reasoning)$")
 
 
@@ -1447,6 +1458,25 @@ def reconcile(
                             )
                     if result.verdict in DEFINITIVE_VERDICTS:
                         break
+                if candidate_keys and result.verdict != "proven" and _rate_limited(result):
+                    # Still rate-limited after the retries: the catalog (just fetched) lists the
+                    # model as free and the key reached the provider, so the route is answerable.
+                    # `/apply` may then rely on the maintainer-reviewed stored proof (plan_apply
+                    # bounds its age and re-compares every catalog value).
+                    report.candidates.append(
+                        evidenced_candidate(
+                            model, record, score, today.isoformat(), None, None, {}, True
+                        )
+                    )
+                    busy = report.candidates[-1]
+                    busy.evidence = {**busy.evidence, "verdict": RATE_LIMITED_VERDICT}
+                    busy.evidence_digest = candidate_digest(
+                        RouteEvidence.from_dict(busy.evidence), busy.lanes
+                    )
+                    report.observations.append(
+                        f"{provider}/{model}: free-marked but {result.verdict} ({result.reason})"
+                    )
+                    continue
                 discovery_pending_on = memory.get("discovery_pending_on") if memory else None
                 canary_memory[f"{provider}/{model}"] = {
                     "verdict": result.verdict,

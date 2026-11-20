@@ -1423,9 +1423,15 @@ def test_an_apply_recheck_retries_a_busy_provider_before_giving_up(monkeypatch):
     assert len(calls) == 2 and waits == [APPLY_RECHECK_WAITS_SECONDS[0]]
     assert [c.key for c in report.candidates] == ["openrouter/creator/selected:free"]
 
+    # Still 429 after the retries: listed for `/apply` to weigh its stored proof, never proven.
     report, calls, waits = run([busy])
     assert len(calls) == len(APPLY_RECHECK_WAITS_SECONDS) + 1
     assert waits == list(APPLY_RECHECK_WAITS_SECONDS)
+    assert [c.evidence["verdict"] for c in report.candidates] == ["rate_limited"]
+
+    # A dead 5xx is never treated as rate limiting.
+    report, calls, waits = run([Response(status=503, body="down")])
+    assert len(calls) == len(APPLY_RECHECK_WAITS_SECONDS) + 1
     assert not report.candidates
     assert any(
         o.startswith("openrouter/creator/selected:free: free-marked but ")

@@ -225,6 +225,48 @@ def test_a_contended_proof_adds_the_route_without_its_rate_signals():
     assert dict(plan(replace(proof, contended=False)).routes[0])["rpm"] == 30
 
 
+def test_a_rate_limited_recheck_adds_the_route_on_a_recent_stored_proof():
+    """`/apply`'s re-check shares busy providers with production; a 429 after its retries
+    still shows the catalog lists the model as free, so a recent stored JSON check stands."""
+    from datetime import timedelta
+
+    busy = replace(
+        PROOF,
+        verdict="rate_limited",
+        structured_output_method=None,
+        structured_output_verified_on=None,
+        contended=True,
+    )
+
+    def stored(days):
+        on = (TODAY - timedelta(days=days)).isoformat()
+        old = replace(PROOF, structured_output_verified_on=on)
+        return Decision(
+            "host",
+            "creator/new",
+            "add",
+            ("lane",),
+            old,
+            discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+        ), on
+
+    decision, on = stored(10)
+    result = plan(busy, decision)
+    route = dict(result.routes[0])
+    assert route["structured_output_method"] == "prompt_only"
+    assert route["structured_output_verified_on"] == on
+    assert any("rate-limited" in n for _rid, notes in result.route_notes for n in notes)
+
+    decision, _on = stored(40)
+    result = plan(busy, decision)
+    assert not result.routes and "older than" in result.deferred[0]
+
+    # Catalog values are still re-compared: a changed context limit defers as before.
+    decision, _on = stored(10)
+    result = plan(replace(busy, input_context_limit=99), decision)
+    assert not result.routes and "changed since you ticked" in result.deferred[0]
+
+
 def test_an_unknown_identity_starts_its_own_pool_named_after_the_model():
     unknown = replace(PROOF, upstream_model="creator/new:free", model_key=None)
     candidate = replace(
