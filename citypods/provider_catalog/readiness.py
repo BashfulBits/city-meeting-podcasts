@@ -109,8 +109,8 @@ def candidate_readiness(candidate) -> Readiness:
             return Readiness(
                 ACTION,
                 "Limits not tested: below the quality bar, so it is not measured automatically.",
-                "Tick `ignore`, or tick `add route only` if you want it anyway; `/apply` will "
-                "then say what evidence is missing.",
+                "Tick `ignore`, or `add` if you want it anyway; `/apply` says what evidence is "
+                "missing.",
             )
         note = getattr(candidate, "measure_note", None)
         if note == CATALOG_MISSING_NOTE:
@@ -151,8 +151,8 @@ def candidate_readiness(candidate) -> Readiness:
                 READY,
                 f"**Ready to add.** Tested input cap {_tokens(admitted)} tokens{speed}; "
                 f"output cap {_tokens(output)} ({how}).",
-                "Tick `add route only` (or a lane), then comment `/apply`. The PR you review "
-                "carries exactly these values.",
+                "Tick `add`, then comment `/apply`. The PR you review carries exactly these "
+                "values.",
                 admitted,
                 output,
                 source,
@@ -160,8 +160,8 @@ def candidate_readiness(candidate) -> Readiness:
         return Readiness(
             WAITING,
             f"Input cap tested: {_tokens(admitted)} tokens{speed}. Output limit not tested yet.",
-            "Tick `add route only` now. The next daily run measures the output limit; "
-            "then comment `/apply` again (a deferral never loses your tick).",
+            "Tick `add` now. The next daily run measures the output limit; then comment "
+            "`/apply` again (a deferral never loses your tick).",
             admitted,
         )
 
@@ -197,14 +197,14 @@ def candidate_readiness(candidate) -> Readiness:
             ACTION,
             "Too slow: even the smallest probe did not finish inside the 600 s time budget, "
             "so no cap can keep calls under the Worker's 720 s ceiling.",
-            "Tick `ignore` unless you expect the provider to speed up; `test again` re-checks.",
+            "Tick `ignore` unless you expect the provider to speed up.",
         )
     if reason in _NOT_MEASURED:
         return Readiness(
             ACTION,
             "Limits not tested: the daily run does not measure this model automatically.",
-            "Tick `ignore`, or tick `add route only` if you want it anyway; `/apply` will "
-            "then say what evidence is missing.",
+            "Tick `ignore`, or `add` if you want it anyway; `/apply` says what evidence is "
+            "missing.",
         )
     if retrying and (discovery.get("retryable") is True or reason == "discovery_stopped_safely"):
         return Readiness(
@@ -217,8 +217,7 @@ def candidate_readiness(candidate) -> Readiness:
         return Readiness(
             ACTION,
             f"Input limit still not found after {tries} automatic tries.",
-            "Tick `test again` to queue one more bounded run, then comment `/apply`; or tick "
-            "`ignore`.",
+            "Tick `add` and comment `/apply` to queue one more bounded test, or tick `ignore`.",
         )
     return Readiness(
         WAITING,

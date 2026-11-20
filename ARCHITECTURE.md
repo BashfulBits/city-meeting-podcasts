@@ -294,8 +294,10 @@ input/output/two combined-mix brackets, actual-count fixture correction and fini
 budgets. Pure input probes request 16,384 output tokens (64 times the previous cap) so reasoning-
 heavy replies have room to complete the input fixture; typed output-cap refusals halve that fixed
 counterpart and start a new `v2` control identity. The existing aggregate output budgets remain
-binding, so an interrupted search reports partial evidence for authenticated `test again`
-refinement. It runs only after a new route
+binding, so an interrupted search reports partial evidence; ticking `add` on a model whose automatic
+tests ran out queues one more bounded test. The rolling issue offers only add / ignore / remove per
+route with a one-line AA quality summary, and an additions-only `/apply` adds routes (no lane edits)
+without draining providers (review/48 addendum 2026-11-19). It runs only after a new route
 passes the existing reachability and structured-output
 checks, under the same drained provider pause. The 64-submission candidate budget includes those
 reachability checks; the two-candidate run budget is shared. A journal charges attempts before child

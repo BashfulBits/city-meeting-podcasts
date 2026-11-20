@@ -227,7 +227,7 @@ def test_decisions_are_grouped_per_model_and_every_row_is_still_machine_readable
         quality_error="Artificial Analysis HTTP 401",
     )
     body = render_body(report, run_date="2026-10-31")
-    assert body.count("### `x/new`") == 1 and "### `y/other`" in body
+    assert body.count("**`x/new`**") == 1 and "**`y/other`**" in body
     assert "**free tier ends 2026-11-30**" in body
     assert "Quality data unavailable: Artificial Analysis HTTP 401" in body
     block = body.split("<!-- citypods-review-decisions:start -->")[1].split(
@@ -257,9 +257,11 @@ def test_every_anomaly_says_what_happens_next():
         ]
     )
     body = render_body(report, run_date="2026-10-31")
-    assert body.count("**Next:**") == 4
+    # The three without a checkbox say what happens next; the paid route is a remove/ignore tick.
+    assert body.count("Next:") == 3
     assert "opens a removal PR" in body and "no automatic removal while a lane would stall" in body
-    assert "switch to `json_object`" in body and "keep it as a paid route" in body
+    assert "switch to `json_object`" in body and "keep as a paid route" in body
+    assert "- [ ] `paid`: remove" in body and "- [ ] `paid`: ignore" in body
     assert "Slice 3" not in body
 
 
@@ -515,11 +517,11 @@ def test_placeholder_release_dates_and_vendor_boilerplate_are_not_facts(monkeypa
 
 
 def test_the_header_names_the_bar_and_where_it_comes_from():
-    report = Report(floor=33.5, floor_source="weakest AA-scored model our lanes run")
-    assert "quality bar = 33.5 (weakest AA-scored model our lanes run" in render_body(
-        report, run_date="d"
-    )
-    assert "no quality bar" in render_body(Report(), run_date="d")
+    report = Report(floor=33.5, ceiling=52.0, floor_source="weakest AA-scored model our lanes run")
+    body = render_body(report, run_date="d")
+    assert "the models our lanes run score 33.5–52" in body
+    assert "models at or below 33.5 are skipped automatically" in body
+    assert "No quality bar" in render_body(Report(), run_date="d")
 
 
 def test_a_future_free_tier_expiry_is_kept_but_a_future_release_date_is_not():
