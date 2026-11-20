@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Provider catalog decisions: add / ignore / remove.** The rolling issue now shows each new model
+  as one quality line (AA Index vs. our lanes' range, lanes it clears, size, context, free-tier end)
+  and one line per provider route (ready/testing/needs you, tested caps), with only `add`/`ignore`
+  (or `remove`/`ignore` for paid routes). Lane-assignment, `test again` and `AA match` rows are
+  gone; old ticks carry over. The body drops from ~65k to ~10k readable characters.
+- **`/apply` opens the PR.** Additions no longer defer on new identities, lane changes or contended
+  proofs; routes inherit backup tier from backup-only providers; additions-only applies skip the
+  per-provider drain (previously up to 13 minutes each). A pinned BeatAPI route test that failed
+  every catalog addition now checks invariants instead.
+
 - **Clear-terminal-failures workflow takes `max_clear`.** The script's 300-marker safety cap can
   now be raised deliberately from the Actions form (used to clear the 389 exhausted locator markers
   left by the 2026-11-10..12 timeout wave).
