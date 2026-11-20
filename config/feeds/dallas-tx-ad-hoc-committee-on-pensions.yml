@@ -4,6 +4,10 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: Ad Hoc Committee on Pensions
+lifecycle:
+  status: dormant
+  reason: "The mayor dissolved the ad hoc pensions committee after it completed its assignment in September 2026; keep polling for any later recordings."
+  evidence_url: "https://oakcliff.advocatemag.com/2026/09/city-council-committee-updates/"
 podcast_title: 'Dallas: Ad Hoc Committee on Pensions'
 podcast_author: City of Dallas, TX
 podcast_email: ''
