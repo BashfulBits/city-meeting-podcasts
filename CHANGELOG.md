@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Clear-terminal-failures workflow takes `max_clear`.** The script's 300-marker safety cap can
+  now be raised deliberately from the Actions form (used to clear the 389 exhausted locator markers
+  left by the 2026-11-10..12 timeout wave).
+
 - **NVIDIA MiniMax ceiling, retired DeepSeek V4.1 route, no NVIDIA TPM.** A 2026-11-19 direct
   probe admitted 1,034,675 prompt tokens on MiniMax M3.1 Flash (HTTP 400 `context_length` above
   1,048,576), so the route's `hard_input_ceiling` is 1,034,675 in a 1,048,576 window. The
