@@ -1368,6 +1368,71 @@ def test_apply_selection_uses_fresh_specific_canaries_and_carries_safe_provenanc
     assert "sensitive-test-token" not in json.dumps(candidate.evidence)
 
 
+def test_an_apply_recheck_retries_a_busy_provider_before_giving_up(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.provider_catalog.reconcile import APPLY_RECHECK_WAITS_SECONDS
+    from citypods.provider_catalog.registry import all_rules
+    from citypods.provider_catalog.rules import namespaced_identity
+
+    monkeypatch.setenv("K", "key")
+    rules = all_rules()
+    plugin = replace(rules["openrouter"], model_identity=namespaced_identity(":free"))
+    monkeypatch.setattr(
+        "citypods.provider_catalog.reconcile.all_rules", lambda: {**rules, "openrouter": plugin}
+    )
+    catalog = {
+        "data": [
+            {
+                "id": "creator/selected:free",
+                "context_length": 1000000,
+                "top_provider": {"max_completion_tokens": 32000},
+                "pricing": {"prompt": "0", "completion": "0"},
+            }
+        ]
+    }
+
+    def run(replies):
+        calls, waits = [], []
+
+        def ping(_rules, _cfg, model, _key, _session):
+            calls.append(model)
+            return replies[min(len(calls), len(replies)) - 1]
+
+        report = reconcile(
+            LIMITS,
+            {},
+            Decisions(),
+            QualityIndex(),
+            {},
+            session=FakeSession({"https://or.test": catalog}),
+            control=FakeControl(),
+            today=TODAY,
+            providers={"openrouter"},
+            candidate_keys={"openrouter/creator/selected:free"},
+            canary_fn=ping,
+            structured_canary_fn=lambda *_a, **_k: {
+                "prompt_only": {"outcome": "valid", "completion_seconds": 1}
+            },
+            sleep=waits.append,
+        )
+        return report, calls, waits
+
+    busy = Response(status=429, body="rate limited")
+    report, calls, waits = run([busy, OK])
+    assert len(calls) == 2 and waits == [APPLY_RECHECK_WAITS_SECONDS[0]]
+    assert [c.key for c in report.candidates] == ["openrouter/creator/selected:free"]
+
+    report, calls, waits = run([busy])
+    assert len(calls) == len(APPLY_RECHECK_WAITS_SECONDS) + 1
+    assert waits == list(APPLY_RECHECK_WAITS_SECONDS)
+    assert not report.candidates
+    assert any(
+        o.startswith("openrouter/creator/selected:free: free-marked but ")
+        for o in report.observations
+    )
+
+
 def test_temporary_free_evidence_outage_keeps_prior_candidate_as_advisory(monkeypatch):
     from dataclasses import replace
 
@@ -1454,6 +1519,40 @@ def test_selected_add_survives_until_the_route_is_on_main():
     final = render_body(Report(), run_date="2026-10-11", previous_body=new, fulfilled=fulfilled)
     assert not checked_decisions(final, (choice,))
     assert not decode_state(final).get("last_full", {}).get("candidates")
+
+
+def test_a_route_that_landed_on_main_leaves_the_list_entirely():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import fulfilled_choices, render_body
+    from citypods.provider_catalog.reconcile import Candidate, Report
+
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        30,
+        False,
+        100000,
+        (),
+        ("lane",),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08").replace(
+        "- [ ] `host/creator/new`: add", "- [x] `host/creator/new`: add"
+    )
+    limits = {
+        "routes": [
+            {"provider": "host", "upstream_model": "creator/new", "model": "x", "free": True}
+        ]
+    }
+    fulfilled = fulfilled_choices(prior, limits, {}, Decisions(), TODAY)
+    assert {"`host/creator/new`: add", "`host/creator/new`: ignore"} <= fulfilled
+    # A carried (not re-listed) candidate is still in the report; it must not be shown.
+    body = render_body(old, run_date="2026-10-09", previous_body=prior, fulfilled=fulfilled)
+    assert "host/creator/new" not in body.split("<!-- citypods:provider-catalog-state")[0]
+    assert "0 new model(s) from 0 provider route(s)" in body
 
 
 def test_ticks_in_the_old_wording_carry_over_as_add_ignore_remove():

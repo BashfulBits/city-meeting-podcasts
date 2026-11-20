@@ -603,7 +603,8 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
         }
         if len(pools) != 1:
             continue
-        fulfilled.add(prefix + ADD)
+        # The route is on main: the model is no longer new, so neither choice is shown again.
+        fulfilled.update((prefix + ADD, prefix + IGNORE))
     for anomaly in snapshot.anomalies:
         if anomaly.verdict != PAID_ROUTE_VERDICT:
             continue
@@ -709,11 +710,17 @@ def render_body(
         )
     else:
         quality_note = "No quality bar: AA scores none of the models our lanes run."
-    groups = len({_group_key(c) for c in (*report.candidates, *pending)})
+    # A carried candidate whose route has since landed on main has no choice left: not new.
+    listed = [
+        c
+        for c in (*report.candidates, *pending)
+        if any(choice.startswith(f"`{c.key}`: ") for choice in choices)
+    ]
+    groups = len({_group_key(c) for c in listed})
     lines = [
         MARKER,
         f"**Provider catalog, {run_date}:** {groups} new model(s) from "
-        f"{len(report.candidates) + len(pending)} provider route(s), "
+        f"{len(listed)} provider route(s), "
         f"{len(report.anomalies)} route problem(s). {quality_note}",
         "",
     ]

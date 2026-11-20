@@ -1546,3 +1546,17 @@ def test_readiness_explains_a_429_wait_and_why_a_candidate_was_not_measured():
         replace(CANDIDATE, discovery=None, below_floor=False, measure_note="it waited")
     )
     assert noted.state == WAITING and "it waited" in noted.headline
+
+
+def test_a_busy_recheck_says_what_it_saw_instead_of_no_test_result():
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.apply import _recheck_gap
+    from citypods.provider_catalog.reconcile import Report
+
+    decision = SimpleNamespace(key="kilo/creator/m:free")
+    report = Report(observations=["kilo/creator/m:free: free-marked but inconclusive (HTTP 429)"])
+    busy = _recheck_gap(decision, report, object())
+    assert "inconclusive (HTTP 429), after retries" in busy and "tick stays" in busy
+    assert "catalog" in _recheck_gap(decision, Report(), object())
+    assert "daily run tests it" in _recheck_gap(decision, report, None)

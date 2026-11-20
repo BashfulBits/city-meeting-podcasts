@@ -76,6 +76,8 @@ RETIREMENT_VERDICTS = frozenset({"retired", "not_served"})
 # Verdicts worth remembering for CANARY_MEMORY_DAYS. Inconclusive and spent-quota results say
 # nothing durable about the model, so those candidates are retried next run (after fresh ones).
 DEFINITIVE_VERDICTS = ANOMALY_VERDICTS | {"proven"}
+# Spaced retries for an `/apply` re-check that hits a busy provider (429, timeout).
+APPLY_RECHECK_WAITS_SECONDS = (20, 60)
 _VARIANT_SUFFIX = re.compile(r"-(it|instruct|chat|preview|latest|reasoning)$")
 
 
@@ -1424,14 +1426,27 @@ def reconcile(
                     sleep(rules.canary_interval_seconds)
                 pause.renew()
                 first_probe = False
-                count_existing_request(model)
-                response = canary_fn(rules, cfg, model, api_key or "", session)
-                result = classify(response, rules)
-                method, _evidence = None, {}
-                if result.verdict == "proven":
-                    method, _evidence = verify(model, api_key or "")
-                    if method is None:
-                        result = Classification("inconclusive", result.status, "JSON not verified")
+                # `/apply` re-checks the routes the maintainer ticked while production shares the
+                # provider (no drain), so a 429 or timeout there is expected. Each re-check gets a
+                # couple of spaced retries; scheduled runs keep one attempt.
+                waits = APPLY_RECHECK_WAITS_SECONDS if candidate_keys is not None else ()
+                for attempt in range(len(waits) + 1):
+                    if attempt:
+                        pause.renew()
+                        sleep(waits[attempt - 1])
+                        pause.renew()
+                    count_existing_request(model)
+                    response = canary_fn(rules, cfg, model, api_key or "", session)
+                    result = classify(response, rules)
+                    method, _evidence = None, {}
+                    if result.verdict == "proven":
+                        method, _evidence = verify(model, api_key or "")
+                        if method is None:
+                            result = Classification(
+                                "inconclusive", result.status, "JSON not verified"
+                            )
+                    if result.verdict in DEFINITIVE_VERDICTS:
+                        break
                 discovery_pending_on = memory.get("discovery_pending_on") if memory else None
                 canary_memory[f"{provider}/{model}"] = {
                     "verdict": result.verdict,

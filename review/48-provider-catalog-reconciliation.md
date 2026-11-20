@@ -3750,3 +3750,17 @@ characters, mostly discovery diagnostics behind `<details>`.
   780 s each. Proofs are then contended, which only withholds rate signals.
 - **Tests.** The BeatAPI secondary test checks invariants (non-empty, subset, backup tier), not a
   pinned set, so catalog additions no longer fail their own validation.
+
+## Addendum 2026-11-20: landed routes leave the issue; `/apply` re-check retries
+
+Evidence: #2740 added 5 of 13 ticked routes. The other 7 were deferred as "no current test result"
+although the issue showed them ready: the undrained `/apply` re-check made one call per route, and a
+429 or timeout from production traffic on kilo, BeatAPI, NVIDIA and OpenRouter meant no fresh proof.
+After the merge, the 5 added routes stayed listed (carried from the last full run) with only
+`ignore`, because fulfillment hid just the `add` row.
+
+- Fulfillment hides both rows once the route is on main, and the header counts only listed routes.
+- An `/apply` re-check (explicit `candidate_keys`) retries a non-definitive canary after 20 s and
+  60 s (`APPLY_RECHECK_WAITS_SECONDS`); scheduled runs keep one attempt.
+- The deferral states the observed verdict, or that the route left the catalog, and that the tick
+  stays.

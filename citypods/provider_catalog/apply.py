@@ -205,6 +205,26 @@ def _needs_another_test(candidate) -> bool:
     )
 
 
+def _recheck_gap(decision: Decision, report: Report, old) -> str:
+    """Say why `/apply` could not re-confirm a ticked route, in the maintainer's terms."""
+    if not old:
+        return (
+            "no saved test result for this route yet; the daily run tests it, then comment "
+            "`/apply` again (your tick stays)"
+        )
+    prefix = f"{decision.key}: free-marked but "
+    seen = next((o[len(prefix) :] for o in report.observations if o.startswith(prefix)), None)
+    if seen:
+        return (
+            f"the re-check just now did not get through ({seen}, after retries); the provider "
+            "is probably busy. Your tick stays: comment `/apply` again later"
+        )
+    return (
+        "the re-check just now did not reach this route (absent from the provider's catalog or "
+        "no longer free). Your tick stays: comment `/apply` again after the next daily run"
+    )
+
+
 def paid_fulfilled(decision: Decision, config: ApplyConfig) -> bool:
     from citypods.provider_catalog.config_edit import load_config
 
@@ -417,11 +437,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             )
             old = decision.evidence
             if not proof or not old:
-                deferred.append(
-                    f"{decision.key}: no current test result for this model; run the Provider "
-                    "catalog reconciliation workflow (or wait for the daily run), then "
-                    "comment `/apply` again"
-                )
+                deferred.append(f"{decision.key}: {_recheck_gap(decision, report, old)}")
                 continue
             comparison = (
                 "provider",
