@@ -2225,15 +2225,15 @@ def test_schedule_guard_script_skips_only_on_a_recent_dispatched_success(tmp_pat
     args_file = tmp_path / "gh-args.txt"
     assert args_file.exists() or not skips
     if args_file.exists():
-        # Only successful runs on the scheduled run's own branch count.
+        # Include failed runs when looking up completed runs on the scheduled branch.
         args = args_file.read_text(encoding="utf-8").splitlines()
-        assert "status=success" in args
+        assert "status=completed" in args
         assert f"branch={kwargs.get('branch', 'main')}" in args
 
 
 def test_schedule_guard_filter_counts_only_dispatched_runs_by_start_time():
     """The jq filter ignores schedule runs (a skipped run also ends 'success') and takes the
-    youngest start among repository_dispatch and workflow_dispatch runs."""
+    youngest dispatched start before checking its conclusion."""
     import json
     import shutil
     import subprocess
@@ -2260,13 +2260,16 @@ def test_schedule_guard_filter_counts_only_dispatched_runs_by_start_time():
         return out.stdout.strip()
 
     runs = [
-        {"event": "schedule", "run_started_at": stamp(2)},
-        {"event": "repository_dispatch", "run_started_at": stamp(50)},
-        {"event": "workflow_dispatch", "run_started_at": stamp(30)},
-        {"event": "workflow_dispatch", "run_started_at": None},
+        {"event": "schedule", "run_started_at": stamp(2), "conclusion": "success"},
+        {"event": "repository_dispatch", "run_started_at": stamp(50), "conclusion": "success"},
+        {"event": "workflow_dispatch", "run_started_at": stamp(30), "conclusion": "success"},
+        {"event": "workflow_dispatch", "run_started_at": None, "conclusion": "success"},
     ]
     assert int(age(runs)) in (29, 30)
-    assert age([{"event": "schedule", "run_started_at": stamp(1)}]) == ""
+    assert age(runs[:1]) == ""
+    failed = {"event": "repository_dispatch", "run_started_at": stamp(5), "conclusion": "failure"}
+    assert age([*runs, failed]) == ""
+    assert int(age([*runs, {**failed, "run_started_at": stamp(40)}])) in (29, 30)
 
 
 def test_ffmpeg_lib_install_uses_the_shared_hardened_script_everywhere():

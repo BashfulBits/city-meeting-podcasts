@@ -4,8 +4,8 @@
 # The dispatch Worker's cron starts each producer workflow through `repository_dispatch`
 # (config/producer_triggers.yml); the workflow's own `schedule:` stays as a fallback for when that
 # trigger is off or fails. Run only on schedule-triggered runs, this decides whether the fallback
-# is needed: it writes `skip=true` to $GITHUB_OUTPUT when a repository_dispatch or
-# workflow_dispatch run of the same workflow concluded successfully and STARTED less than
+# is needed: it writes `skip=true` to $GITHUB_OUTPUT when the latest completed
+# repository_dispatch or workflow_dispatch run succeeded and STARTED less than
 # WINDOW_MINUTES ago. The later steps of the job are conditioned on that output, so a skipped run
 # ends green.
 #
@@ -33,20 +33,21 @@ if [[ ! "$workflow" =~ ^[a-z0-9][a-z0-9-]*\.yml$ ]] || [[ ! "$window" =~ ^[1-9][
   exit 0
 fi
 err="${RUNNER_TEMP:-/tmp}/schedule-guard.err"
-# Minutes since the most recent successful dispatched run started, or empty when there is none.
+# Select by start time before checking the conclusion so an older success cannot mask a failure.
 filter='[.workflow_runs[]
   | select(.event == "repository_dispatch" or .event == "workflow_dispatch")
-  | select(.run_started_at != null)
-  | ((now - (.run_started_at | fromdateiso8601)) / 60 | floor)]
-  | min // empty'
+  | select(.run_started_at != null)]
+  | max_by(.run_started_at)
+  | select(.conclusion == "success")
+  | ((now - (.run_started_at | fromdateiso8601)) / 60 | floor)'
 if ! age=$(gh api -X GET "repos/${repository}/actions/workflows/${workflow}/runs" \
-  -f status=success -f branch="$branch" -f per_page=30 --jq "$filter" 2>"$err"); then
+  -f status=completed -f branch="$branch" -f per_page=30 --jq "$filter" 2>"$err"); then
   echo "::warning::schedule guard could not list runs ($(head -c 300 "$err")); running normally"
   exit 0
 fi
 
 if [[ -z "$age" ]]; then
-  echo "schedule guard: no successful dispatched ${workflow} run found; running as the fallback"
+  echo "schedule guard: latest completed dispatch for ${workflow} is missing or did not succeed; running as the fallback"
   exit 0
 fi
 if [[ ! "$age" =~ ^-?[0-9]+$ ]]; then
