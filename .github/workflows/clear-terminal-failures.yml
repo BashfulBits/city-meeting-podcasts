@@ -56,7 +56,7 @@ permissions:
 jobs:
   clear:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 120
     env:
       PYTHONUNBUFFERED: "1"
       B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
