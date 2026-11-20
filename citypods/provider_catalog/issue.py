@@ -119,20 +119,65 @@ def accepted_aa_matches(body: str, state: Mapping[str, Any]) -> dict[str, tuple[
     return accepted
 
 
+ADD = "add"
+IGNORE = "ignore"
+REMOVE = "remove"
+
+# Ticks made under the earlier (v3) wording still count: `migrate_ticks` rewrites them to the
+# add/ignore/remove choices, so a maintainer never has to re-tick after the format changed.
+_LEGACY_TICKS = (
+    (re.compile(r"^(`[^`]+`): add route only$"), rf"\1: {ADD}"),
+    (re.compile(r"^(`[^`]+`): add as backup to `[^`]+`$"), rf"\1: {ADD}"),
+    (re.compile(r"^(`[^`]+`): remove route$"), rf"\1: {REMOVE}"),
+    (re.compile(r"^(`[^`]+`): keep as a paid route$"), rf"\1: {IGNORE}"),
+)
+# Choices the issue no longer offers (lane placement, AA matching and re-tests moved out of it).
+_RETIRED_TICKS = re.compile(r"^`[^`]+`: (AA match .*|test again)$")
+
+
+def migrate_ticks(body: str) -> str:
+    """Rewrite ticked rows from the old wording inside the decision block; drop retired ones.
+
+    Several old rows can map to one new choice (`add route only` plus a lane backup both mean
+    `add`), so a rewritten row that repeats a choice is dropped. A row ticked twice in the current
+    wording is left alone, so `/apply` still rejects it as a duplicate.
+    """
+    text = (body or "").replace("\r\n", "\n")
+    start = text.rfind(DECISION_BLOCK_START)
+    end = text.find(DECISION_BLOCK_END, start) if start != -1 else -1
+    if start == -1 or end == -1:
+        return text
+    seen: set[str] = set()
+    out = []
+    for line in text[start:end].split("\n"):
+        match = re.fullmatch(r"- \[[xX]\] (.*?)\s*", line)
+        if match:
+            original = choice = match.group(1)
+            for pattern, replacement in _LEGACY_TICKS:
+                choice = pattern.sub(replacement, choice)
+            if _RETIRED_TICKS.match(choice) or (choice != original and choice in seen):
+                continue
+            seen.add(choice)
+            if choice != original:
+                line = f"- [x] {choice}"
+        out.append(line)
+    return text[:start] + "\n".join(out) + text[end:]
+
+
 def decision_choices(report: Report) -> tuple[str, ...]:
+    """Every candidate is `add` or `ignore`; a free route that turned paid is `remove` or `ignore`.
+
+    Lane placement is not offered: a new route joins its model pool, and lane membership stays a
+    reviewed manual edit. `ignore` on a paid route keeps it as a paid route (acknowledged).
+    """
     choices: list[str] = []
     for candidate in report.candidates:
         key = f"`{candidate.key}`"
-        choices.append(f"{key}: ignore")
-        choices.extend(aa_match_choice(candidate.key, m) for m in candidate.aa_matches or ())
-        choices.append(f"{key}: add route only")
-        choices.extend(f"{key}: add as backup to `{lane}`" for lane in candidate.lanes)
-        if candidate.discovery and candidate.discovery.get("retryable") is True:
-            choices.append(f"{key}: test again")
+        choices += [f"{key}: {ADD}", f"{key}: {IGNORE}"]
     for anomaly in report.anomalies:
         if anomaly.verdict == PAID_ROUTE_VERDICT:
-            choices.append(f"`{anomaly.route_id}`: remove route")
-            choices.append(f"`{anomaly.route_id}`: keep as a paid route")
+            choices.append(f"`{anomaly.route_id}`: {REMOVE}")
+            choices.append(f"`{anomaly.route_id}`: {IGNORE}")
     for anomaly in report.anomalies:
         if anomaly.verdict == "structured_output_invalid" and anomaly.alternative_method:
             choices.append(method_choice(anomaly.route_id, anomaly.alternative_method))
@@ -167,7 +212,7 @@ def _anomaly_next(anomaly) -> str:
             "once two independent checks agree (lanes are repaired in that PR)"
         )
     if anomaly.verdict == PAID_ROUTE_VERDICT:
-        return "decide under **Decisions**: remove the route, or keep it as a paid route"
+        return "tick `remove`, or `ignore` to keep it as a paid route"
     if anomaly.verdict == "structured_output_invalid":
         if anomaly.alternative_method:
             return (
@@ -181,36 +226,99 @@ def _anomaly_next(anomaly) -> str:
     )
 
 
-def _facts_line(candidate) -> str:
+def _short(value) -> str:
+    """A token count at a glance: 1.05M, 128k, 900."""
+    if type(value) is not int or value <= 0:
+        return "?"
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.2f}".rstrip("0").rstrip(".") + "M"
+    if value >= 1_000:
+        return f"{round(value / 1_000)}k"
+    return str(value)
+
+
+def _quality_line(candidate, floor: float | None, ceiling: float | None) -> str:
+    """What a maintainer judges a model by: its AA index against the bar and the lanes we run."""
+    score = candidate.score
+    if score is None:
+        text = "AA **unscored**"
+        match = next(iter(candidate.aa_matches or ()), None)
+        if isinstance(match, Mapping) and isinstance(match.get("score"), (int, float)):
+            name = _inline(match.get("name") or match.get("slug"), 60)
+            text += f" (closest AA entry: {name}, {match['score']:g})"
+    else:
+        text = f"AA **{score:g}**"
+        if floor is not None and score <= floor:
+            text += f", at or below the bar ({floor:g})"
+        elif floor is not None and ceiling is not None:
+            text += f" vs our lanes' {floor:g}–{ceiling:g}"
+        elif floor is not None:
+            text += f", above the bar ({floor:g})"
+    if candidate.lanes:
+        text += " · good enough for " + ", ".join(f"`{lane}`" for lane in candidate.lanes)
+    elif candidate.other_lanes:
+        text += " · short of " + ", ".join(
+            f"`{lane}` by {gap:g}" for lane, gap in candidate.other_lanes[:3]
+        )
     facts = candidate.facts or {}
-    context = f"{candidate.context_limit:,} context" if candidate.context_limit else None
-    parts = [
+    parts = (
         facts.get("params") or facts.get("size"),
-        context,
+        f"{_short(candidate.context_limit)} context" if candidate.context_limit else None,
         f"released {facts['released']}" if facts.get("released") else None,
-        f"inputs: {facts['inputs']}" if facts.get("inputs") else None,
-        f"license {facts['license']}" if facts.get("license") else None,
-        "AA "
-        + _score_cell(candidate.score, candidate.below_floor)
-        + (
-            " (tick the closest AA entry under **Decisions** if one is the same model)"
-            if candidate.score is None and candidate.aa_matches
-            else ""
-        ),
-    ]
-    line = " · ".join(p for p in parts if p)
+    )
+    for part in parts:
+        if part:
+            text += f" · {_inline(part, 40)}"
     if facts.get("expires"):
-        line += f" · **free tier ends {facts['expires']}**"
+        text += f" · **free tier ends {_inline(facts['expires'], 24)}**"
+    return text
+
+
+_STATE_LABEL = {"ready": "ready", "waiting": "testing", "action": "needs you"}
+
+
+def _route_line(candidate) -> str:
+    """One provider's offer of the model: whether `/apply` can add it now, and its tested caps."""
+    from citypods.provider_catalog.readiness import READY, candidate_readiness
+
+    readiness = candidate_readiness(candidate)
+    caps = (
+        f"in {_short(readiness.input_cap)} / out {_short(readiness.output_cap)}"
+        if readiness.input_cap or readiness.output_cap
+        else "caps not tested yet"
+    )
+    if readiness.output_source == "provisional":
+        caps += " (provisional)"
+    method = candidate.structured_output_method or "unverified"
+    line = (
+        f"`{candidate.provider}` · **{_STATE_LABEL[readiness.state]}** · {caps} · "
+        f"JSON {method} · tested {candidate.proven_on}"
+    )
+    if readiness.state != READY:
+        line += f" — {_inline(readiness.next_step, 160)}"
     return line
 
 
+def _links(members) -> str:
+    card = next(((c.facts or {}).get("card") for c in members if (c.facts or {}).get("card")), None)
+    links = [("model card", card)] if card else []
+    links += list(dict.fromkeys(link for c in members for link in c.links))
+    return " · ".join(f"[{label}]({url})" for label, url in links[:2])
+
+
 def _render_decision_block(
-    choices: Sequence[str], checked: set[str], candidates=(), anomalies=()
+    choices: Sequence[str],
+    checked: set[str],
+    candidates=(),
+    anomalies=(),
+    floor: float | None = None,
+    ceiling: float | None = None,
 ) -> str:
     """Checkboxes grouped by model; the rows are exactly the choices, only prose is added.
 
     Only the `- [ ] choice` lines are machine-read (checked_decisions/parse_decisions), so any
-    heading or description between them is inert.
+    heading or description between them is inert. Each model takes a heading line with its
+    quality, one line per provider offering it, and that provider's add/ignore boxes.
     """
 
     def row(choice: str) -> str:
@@ -226,47 +334,41 @@ def _render_decision_block(
         if not any(rows.values()):
             continue
         lead = members[0]
-        out += ["", f"### `{lead.model.removesuffix(':free')}`", ""]
-        summary = (lead.facts or {}).get("summary") or next(
+        name = re.sub(r"(:free|-free)$", "", lead.model)
+        heading = f"**`{name}`** — {_quality_line(lead, floor, ceiling)}"
+        links = _links(members)
+        out += ["", heading + (f" · {links}" if links else "")]
+        summary = next(
             ((c.facts or {}).get("summary") for c in members if (c.facts or {}).get("summary")),
             "",
         )
         if summary:
-            out += [f"> {_inline(summary)}", ""]
-        out += [_facts_line(lead), ""]
+            out.append(f"<sub>{_inline(summary, 160)}</sub>")
         for candidate in members:
             if not rows[candidate.key]:
                 continue
-            method = candidate.structured_output_method or "unverified"
-            label = f"\n**{candidate.provider}** · JSON {method} · proven {candidate.proven_on}"
-            if candidate.other_lanes:
-                label += " · could also fit: " + ", ".join(
-                    f"{lane} (-{gap:g})" for lane, gap in candidate.other_lanes
-                )
-            out.append(label)
-            out.append(f"\n> {_readiness_line(candidate)}\n")
+            out += ["", _route_line(candidate)]
             out += [row(x) for x in rows[candidate.key]]
             placed.update(rows[candidate.key])
-        links = [
-            f"[{label}]({url})"
-            for label, url in dict.fromkeys(link for c in members for link in c.links)
-        ]
-        card = (lead.facts or {}).get("card")
-        if card:
-            links.insert(0, f"[model card]({card})")
-        if links:
-            out += ["", "Research: " + " · ".join(links)]
     leftover = [x for x in choices if x not in placed]
     if leftover:
         by_route = {a.route_id: a for a in anomalies}
-        out += ["", "### Route and limit decisions"]
+        out += ["", "**Route maintenance**"]
         current = None
         for choice in leftover:
             match = re.match(r"`([^`]+)`: ", choice)
             route = by_route.get(match.group(1)) if match else None
             if route is not None and route.route_id != current:
                 current = route.route_id
-                out += ["", f"**`{route.route_id}`** ({route.verdict}): {_inline(route.reason)}"]
+                lanes = ", ".join(
+                    f"`{lane}`" + ("" if alternates else " (it would stall)")
+                    for lane, alternates in route.lane_usage
+                )
+                out += [
+                    "",
+                    f"`{route.route_id}` ({route.verdict}): {_inline(route.reason, 160)}"
+                    + (f" · used by {lanes}" if lanes else " · used by no lane"),
+                ]
             elif route is None and current is not None:
                 current = None
                 out.append("")
@@ -280,38 +382,6 @@ def _readiness_line(candidate) -> str:
 
     readiness = candidate_readiness(candidate)
     return f"{readiness.headline} {readiness.next_step}"
-
-
-_STATE_LABEL = {"ready": "READY", "waiting": "WAITING", "action": "YOUR CALL"}
-
-
-def _next_steps_section(candidates) -> list[str]:
-    """The one table a maintainer needs: per new route, its state, tested caps and next step."""
-    if not candidates:
-        return []
-    from citypods.provider_catalog.readiness import candidate_readiness
-
-    lines = [
-        "## Next steps",
-        "",
-        "**READY** = limits tested; tick under **Decisions** and comment `/apply`. "
-        "**WAITING** = the daily run is still testing; nothing to do. "
-        "**YOUR CALL** = needs a decision from you.",
-        "",
-        "| Model | State | Input cap | Output cap | What to do |",
-        "|---|---|---:|---:|---|",
-    ]
-    for candidate in candidates:
-        readiness = candidate_readiness(candidate)
-        input_cap = _discovery_count(readiness.input_cap)
-        output_cap = _discovery_count(readiness.output_cap)
-        if readiness.output_source == "provisional":
-            output_cap += " (provisional)"
-        lines.append(
-            f"| `{candidate.key}` | {_STATE_LABEL[readiness.state]} | {input_cap} | "
-            f"{output_cap} | {readiness.next_step} |"
-        )
-    return [*lines, ""]
 
 
 def _inline(value, limit: int = 240) -> str:
@@ -533,13 +603,7 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
         }
         if len(pools) != 1:
             continue
-        model_key = next(iter(pools))
-        fulfilled.add(prefix + "add route only")
-        fulfilled.update(
-            prefix + f"add as backup to `{lane}`"
-            for lane in candidate.lanes
-            if lane in lanes and model_key in lanes[lane].backup_models
-        )
+        fulfilled.add(prefix + ADD)
     for anomaly in snapshot.anomalies:
         if anomaly.verdict != PAID_ROUTE_VERDICT:
             continue
@@ -558,7 +622,7 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
                 for entry in decisions.acknowledged
             )
         ):
-            fulfilled.add(f"`{anomaly.route_id}`: keep as a paid route")
+            fulfilled.add(f"`{anomaly.route_id}`: {IGNORE}")
     for change in snapshot.rate_changes:
         block = (
             next((r for r in limits.get("routes") or [] if r.get("route_id") == change.target), {})
@@ -588,6 +652,7 @@ def render_body(
     report: Report, *, run_date: str, previous_body: str = "", fulfilled: set[str] | None = None
 ) -> str:
     fulfilled = fulfilled or set()
+    previous_body = migrate_ticks(previous_body)
     choices = tuple(c for c in decision_choices(report) if c not in fulfilled)
     prior = Report()
     try:
@@ -600,12 +665,7 @@ def render_body(
         c
         for c in prior.candidates
         if c.key not in {current.key for current in report.candidates}
-        # An accepted AA match is a note for the next run, not a decision to fulfil: it must not
-        # keep a candidate that has since left the list (e.g. auto-ignored by that match) pending.
-        and any(
-            choice.startswith(f"`{c.key}`: ") and not choice.startswith(f"`{c.key}`: AA match ")
-            for choice in selected
-        )
+        and any(choice.startswith(f"`{c.key}`: ") for choice in selected)
     ]
     pending_paid = [
         a
@@ -634,324 +694,52 @@ def render_body(
         pending_choices = decision_choices(Report(candidates=pending, anomalies=pending_paid))
         choices += tuple(c for c in pending_choices if c not in choices and c not in fulfilled)
     checked = set(checked_decisions(previous_body, choices)) if previous_body else set()
-    floor = f"{report.floor:g}" if report.floor is not None else "unavailable"
-    quality_note = (
-        f"**Quality data unavailable: {_inline(report.quality_error)}.** Every model shows as "
-        "unscored until this is fixed."
-        if report.quality_error
-        else (
-            f"quality bar = {floor} ({report.floor_source}; candidates at or below it are not "
-            "automatically measured)."
-            if report.floor is not None
-            else "no quality bar: AA scores none of the models our lanes run."
+    ceiling = getattr(report, "ceiling", None)
+    if report.quality_error:
+        quality_note = (
+            f"**Quality data unavailable: {_inline(report.quality_error)}.** Every model shows "
+            "as unscored until this is fixed."
         )
-    )
+    elif report.floor is not None:
+        span = f"{report.floor:g}–{ceiling:g}" if ceiling is not None else f"{report.floor:g}+"
+        quality_note = (
+            f"Quality is the [Artificial Analysis](https://artificialanalysis.ai/) Intelligence "
+            f"Index; the models our lanes run score {span}, and models at or below "
+            f"{report.floor:g} are skipped automatically."
+        )
+    else:
+        quality_note = "No quality bar: AA scores none of the models our lanes run."
+    groups = len({_group_key(c) for c in (*report.candidates, *pending)})
     lines = [
         MARKER,
-        f"Weekly provider-catalog reconciliation, {run_date} (review/48). Quality data: "
-        f"[Artificial Analysis](https://artificialanalysis.ai/) Intelligence Index; "
-        f"{quality_note}",
+        f"**Provider catalog, {run_date}:** {groups} new model(s) from "
+        f"{len(report.candidates) + len(pending)} provider route(s), "
+        f"{len(report.anomalies)} route problem(s). {quality_note}",
         "",
     ]
-    lines += _next_steps_section(report.candidates)
-    lines += [f"## Candidates ({len(report.candidates)})", ""]
-    if report.candidates:
-        lines += [
-            "Free-marked models that completed a canary on our account and are not configured. "
-            "Each model has its own section under **Decisions**, with what is known about it.",
-            "",
-            "| Model | AA index | Context | JSON method | Proven |",
-            "|---|---|---|---|---|",
-        ]
-        for c in report.candidates:
-            context = f"{c.context_limit:,}" if c.context_limit else "unlisted"
-            lines.append(
-                f"| `{c.key}` | {_score_cell(c.score, c.below_floor)} | {context} | "
-                f"{c.structured_output_method or 'unverified'} | {c.proven_on} |"
-            )
-        lines += [
-            "",
-            "A lane checkbox is offered when the candidate scores at least that lane's weakest "
-            "scored model; other eligible lanes are noted with the gap (capacity backups are "
-            "often weaker by design). Promoting a lane's primary model stays a manual edit.",
-        ]
-    else:
-        lines.append("None this week.")
-    discoveries = [c for c in report.candidates if c.discovery]
-    if discoveries:
-        lines += [
-            "",
-            "## Request-cap discovery",
-            "",
-            "Evidence behind the **Next steps** above. Open a section only to audit a result.",
-            "",
-        ]
-        for candidate in discoveries:
-            result = candidate.discovery or {}
-            lines += [f"### `{candidate.key}`", "", _readiness_line(candidate), ""]
-            lines += ["<details><summary>Test details and diagnostics</summary>", ""]
-            hints = result.get("litellm")
-            if isinstance(hints, dict):
-                lines += [
-                    f"LiteLLM {hints.get('version', 'unknown')} exact route "
-                    f"`{hints.get('key', '')}`: "
-                    f"input {_discovery_count(hints.get('input'))}, "
-                    f"output {_discovery_count(hints.get('output'))}. "
-                    "[Catalog source](https://github.com/BerriAI/litellm/blob/main/"
-                    "model_prices_and_context_window.json). "
-                    "Starting hints only; missing entries use normal defaults. "
-                    "These values are not measured bounds.",
-                    "",
-                ]
-            primary = result.get("input_characterization")
-            if isinstance(primary, dict) and primary.get("admitted_input"):
-                input_axis = next(
-                    (
-                        row
-                        for row in result.get("axes", [])
-                        if isinstance(row, dict) and row.get("axis") == "input"
-                    ),
-                    {},
-                )
-                admitted = primary.get("admitted_input")
-                generated = primary.get("generated_output")
-                claim = input_axis.get("published")
-                if (
-                    type(admitted) is int
-                    and admitted > 0
-                    and type(generated) is int
-                    and generated >= 0
-                    and primary.get("count_basis") == input_axis.get("count_basis")
-                    and primary.get("control") == input_axis.get("control")
-                ):
-                    claim_value = claim if type(claim) is int and claim > 0 else 0
-                    operational_window = max(claim_value, admitted + generated)
-                    claim_label = _discovery_count(claim) if type(claim) is int else "not published"
-                    output_claim = next(
-                        (
-                            row.get("published")
-                            for row in result.get("axes", [])
-                            if isinstance(row, dict) and row.get("axis") == "output"
-                        ),
-                        None,
-                    )
-                    if not output_claim and isinstance(hints, dict):
-                        output_claim = hints.get("output")
-                    output_label = (
-                        _discovery_count(output_claim)
-                        if type(output_claim) is int and output_claim > 0
-                        else "not published"
-                    )
-                    lines += [
-                        "**Proposed route values if you select add:** "
-                        f"`hard_input_ceiling` = {_discovery_count(admitted)} provider-counted "
-                        "input (verified admitted value); "
-                        f"`input_context_limit` = {_discovery_count(operational_window)} "
-                        f"(max of provider claim {claim_label} and the admitted input plus "
-                        f"{_discovery_count(generated)} actually generated output).",
-                        "The provider claim and source are preserved in route YAML comments. "
-                        "Output/combined probe results do not set caps; the route's separate "
-                        "`output_context_limit` comes from a provider/catalog or LiteLLM claim "
-                        "and stays visible for review. If neither exists, `/apply` defers for "
-                        "a maintainer-entered value.",
-                        f"Proposed `output_context_limit`: {output_label}.",
-                        "This proposal uses one successful authenticated discovery run; the "
-                        "addition remains subject to maintainer review.",
-                        "",
-                    ]
-                lines += [
-                    "**Primary input characterization:** confirmed "
-                    f"{_discovery_count(primary.get('admitted_input'))} provider-counted input "
-                    f"tokens, with {_discovery_count(primary.get('requested_output'))} output "
-                    f"requested and {_discovery_count(primary.get('generated_output'))} generated.",
-                    f"Passing request local input estimate: "
-                    f"{_discovery_count(primary.get('admitted_local_estimate'))} tokens.",
-                ]
-                rejections = primary.get("rejected_estimates")
-                for rejected in rejections[:3] if isinstance(rejections, list) else ():
-                    if not isinstance(rejected, dict):
-                        continue
-                    lines.append(
-                        "Rejected input-size request: local estimate "
-                        f"{_discovery_count(rejected.get('local_input_estimate'))}; "
-                        "approximately "
-                        f"{_discovery_count(rejected.get('provider_scale_estimate'))} input tokens "
-                        "after calibration against the passing request. "
-                        "This is an estimated rejected size, not a provider-counted upper bound."
-                    )
-                lines.append("")
-            if result.get("profile") == "input_priority":
-                lines += ["Output and combined checks are supporting examples, not maxima.", ""]
-                examples = {
-                    row["axis"]: row
-                    for row in _discovery_attempt_diagnostics(result.get("attempt_diagnostics"))
-                    if row["axis"] in {"output", "total_input_heavy"}
-                }
-                for axis, example in examples.items():
-                    reported_input = example.get("reported_input")
-                    generated = example.get("reported_output")
-                    consumed = (
-                        reported_input + generated
-                        if isinstance(reported_input, int) and isinstance(generated, int)
-                        else None
-                    )
-                    lines.append(
-                        f"Supporting `{axis}` example: reported input "
-                        f"{_discovery_count(reported_input)}, generated output "
-                        f"{_discovery_count(generated)}, requested output "
-                        f"{_discovery_count(example.get('requested_output'))}; observed "
-                        f"input plus generated output {_discovery_count(consumed)}; "
-                        f"finish `{example.get('finish_reason_state', 'unknown')}`. "
-                        "Consumed totals are separate from requested-output capacity proof."
-                    )
-                lines.append("")
-            lines += [
-                "| Axis | Catalog claim | Admitted | Refused | Width / goal | "
-                "Count basis / control | Status / note |",
-                "|---|---:|---:|---:|---:|---|---|",
-            ]
-            for axis in result.get("axes", []):
-                claim = axis.get("published")
-                admitted, refused, width = (
-                    axis.get("admitted"),
-                    axis.get("refused"),
-                    axis.get("target_width"),
-                )
-                source = axis.get("source")
-                claim_text = _discovery_count(claim)
-                if source:
-                    claim_text += f" ([source]({source}))"
-                basis = axis.get("count_basis") or "unverified"
-                control = axis.get("control") or "—"
-                note = axis.get("reason") or "—"
-                lines.append(
-                    f"| {axis.get('axis', 'unknown')} | {claim_text} | "
-                    f"{_discovery_count(admitted)} | {_discovery_count(refused)} | "
-                    f"{_discovery_count(width)} | {basis}; `{control}` | "
-                    f"{axis.get('status', 'inconclusive')}; {note} |"
-                )
-            lines += [
-                "",
-                "The admitted count is the largest verified passing value to consider as an "
-                "operational cap for the tested request conditions; the refused count, "
-                "when present, "
-                "is a measured upper boundary. An empty refused cell does not mean no approximate "
-                "boundary was found. These "
-                "results are evidence only and are never written to configuration automatically.",
-                f"Reachability: {result.get('reachability', 'verified')}; "
-                f"AA index: {_score_cell(candidate.score, candidate.below_floor)}; "
-                f"spent: {result.get('calls', 0)} calls, "
-                f"{_discovery_count(result.get('input_tokens', 0))} reserved input, "
-                f"{_discovery_count(result.get('output_tokens', 0))} requested output tokens.",
-                f"Status: {result.get('reason', 'partial')}. "
-                f"{result.get('detail', 'Only verified comparable counts establish bounds.')}",
-            ]
-            attempts = _discovery_attempt_diagnostics(result.get("attempt_diagnostics"))
-            if attempts:
-                lines += [
-                    "",
-                    "Recent request diagnostics (response text is shown only as a redacted, "
-                    "bounded preview on failed attempts):",
-                    "",
-                    "| Axis / target | Outcome / diagnostic | HTTP / media / bytes | "
-                    "Content / finish / usage | Provider counts | Stream bytes / events | "
-                    "Sentinel accuracy | "
-                    "Correlation IDs | Preview |",
-                    "|---|---|---|---|---:|---|---|---|---|",
-                ]
-                for attempt in attempts:
-                    status = attempt["response_status"] or "—"
-                    counts = (
-                        f"{_discovery_count(attempt['reported_input'])} / "
-                        f"{_discovery_count(attempt['reported_output'])}"
-                    )
-                    ids = (
-                        ", ".join(
-                            f"`{attempt[name]}`"
-                            for name in ("provider_request_id", "response_id")
-                            if attempt[name]
-                        )
-                        or "—"
-                    )
-                    lines.append(
-                        f"| {attempt['axis']} / {_discovery_count(attempt['target'])} | "
-                        f"{attempt['outcome']} / `{attempt['diagnostic']}` | "
-                        f"{status} / {attempt['response_media_type']} / "
-                        f"{_discovery_count(attempt['response_bytes'])} | "
-                        f"{attempt['message_content_state']} / "
-                        f"{attempt['finish_reason_state']} ({attempt['finish_reason']}) / "
-                        f"{attempt['usage_state']} | {counts} | "
-                        f"{_discovery_count(attempt['stream_bytes'])} / "
-                        f"{_discovery_count(attempt['stream_events'])} | "
-                        f"{attempt['sentinel_verification']} | {ids} | "
-                        f"{attempt['response_preview'] or '—'} |"
-                    )
-                lines.append(
-                    "Input admission measures API capacity using provider usage. Sentinel accuracy "
-                    "is a separate retrieval/truncation warning, not a token-size refusal."
-                )
-            for group in _discovery_transport_groups(result.get("transport_retries")):
-                lines.append("No-response attempt telemetry:")
-                for attempt in group:
-                    lines.append(
-                        "- "
-                        f"{attempt.get('axis', 'unknown')} target "
-                        f"{attempt['target']}: "
-                        f"{attempt['reserved_input']} reserved input, "
-                        f"{attempt['requested_output']} requested output; "
-                        f"{attempt['outcome']} / {attempt['diagnostic']} "
-                        f"(attempt `{attempt['attempt_id']}`)"
-                    )
-            lines += ["", "</details>", ""]
-    if pending:
-        names = ", ".join(f"`{c.key}`" for c in pending)
-        lines += [
-            "",
-            f"Pending prior selections: {names}. Their previous proofs are advisory; "
-            "selected decisions stay below until fulfilled on main or changed by a maintainer.",
-        ]
-    if pending_paid:
-        names = ", ".join(f"`{a.route_id}`" for a in pending_paid)
-        lines += [
-            "",
-            f"Pending prior paid-route selections: {names}. Prior anomaly evidence is "
-            "advisory; selections remain until fulfilled on main or changed by a maintainer.",
-        ]
-    lines += ["", f"## Configured-route anomalies ({len(report.anomalies)})", ""]
-    if report.anomalies:
-        for a in report.anomalies:
-            flag = "**new** " if a.new else ""
+    problems = [a for a in report.anomalies if a.verdict != PAID_ROUTE_VERDICT]
+    if problems:
+        lines += [f"**Route problems ({len(problems)})** — no tick; the next step is noted.", ""]
+        for a in problems:
             where = ", absent from catalog" if a.absent_from_catalog else ""
+            stalls = [lane for lane, alternates in a.lane_usage if not alternates]
+            stall = f" **Stalls `{'`, `'.join(stalls)}`.**" if stalls else ""
             lines.append(
-                f"- {flag}`{a.route_id}` (`{a.model}`): **{a.verdict}** -- "
-                f"{_inline(a.reason)}{where}"
+                f"- `{a.route_id}`: **{a.verdict}**{where} — {_inline(a.reason, 160)}.{stall} "
+                f"Next: {_anomaly_next(a)}"
             )
-            if not a.lane_usage:
-                lines.append("  - used by no LLM lane")
-            for lane, alternates in a.lane_usage:
-                still = (
-                    ", ".join(f"`{m}`" for m in alternates) or "**nothing else -- the lane stalls**"
-                )
-                lines.append(f"  - used by `{lane}`; still served by: {still}")
-            lines.append(f"  - **Next:** {_anomaly_next(a)}")
-    else:
-        lines.append("None.")
+        lines.append("")
     if report.rate_changes or pending_rates:
-        lines += ["", "## Rate maintenance", ""]
+        lines += ["**Rate changes**", ""]
         for change in (*report.rate_changes, *pending_rates):
             lines.append(
                 f"- {change.scope} `{change.target}` {change.metric}: {change.old} → {change.new}"
-                + (" (material tightening greater than 50%)" if change.material else "")
+                + (" (tightening greater than 50%)" if change.material else "")
             )
-        lines += [
-            "",
-            "Tightening is prepared from verified evidence. Increases require a selected choice. "
-            "Every preparation re-fetches successful workflow artifacts; "
-            "these values are advisory.",
-        ]
-    # The decision block must survive truncation whole: the next weekly update reads ticks back
-    # from it (checked_decisions), so a cut block would silently reset them. Only the report above
-    # it is truncated; observations are dropped to a stub before the block is touched.
+        lines.append("")
+    # The decision block must survive truncation whole: the next update reads ticks back from it
+    # (checked_decisions), so a cut block would silently reset them. Only the text above it is
+    # ever truncated.
     decisions = ""
     if choices:
         decisions = "\n".join(
@@ -959,27 +747,28 @@ def render_body(
                 "",
                 "## Decisions",
                 "",
-                "Tick what you want, then comment `/apply` to prepare a reviewed PR with those "
-                "changes (review/48). Each model's line says whether it is ready. If `/apply` "
-                "cannot do something yet, its reply says why and what to do; your ticks are "
-                "kept, so just comment `/apply` again later. `add route only` adds the route "
-                "with its tested input and output caps and no lane; lane placement needs "
-                "measured evidence. `test again` queues another bounded limit test. A free "
-                "route that became paid is never removed automatically: remove it, or keep it "
-                "as a paid route. Retired routes are removed by their own automatic PR, so "
-                "they need no tick. An open PR does not fulfill a selection until it is merged.",
+                "Tick **add** or **ignore** for each new model (per provider), **remove** or "
+                "**ignore** (keep as a paid route) for a route that stopped being free, then "
+                "comment `/apply`. **ready** routes are added with their tested input/output "
+                "caps to the model's own pool; lane placement stays a manual edit. **testing** "
+                "routes are still being measured by the daily run: a tick on one stays until "
+                "it is ready. `/apply` replies with what it did and why anything waited.",
                 "",
                 _render_decision_block(
                     choices,
                     checked,
                     [*report.candidates, *pending],
                     [*report.anomalies, *pending_paid],
+                    report.floor,
+                    ceiling,
                 ),
             ]
         )
-    summary = f"<details><summary>Observations ({len(report.observations)})</summary>"
-    observations = "\n".join(
-        ["", summary, "", *[f"- {o}" for o in report.observations], "", "</details>", ""]
+    observations = (
+        f"\n<sub>{len(report.observations)} run observation(s) are in the reconcile workflow "
+        "log.</sub>\n"
+        if report.observations
+        else ""
     )
     state = dict(report.state)
     if pending or pending_paid or pending_rates or pending_context:
@@ -1010,7 +799,7 @@ def render_body(
     room = min(_HUMAN_BODY_LIMIT, 65_000 - len(state_marker.encode("utf-8")))
     room -= len(decisions.encode("utf-8"))
     if len(observations.encode("utf-8")) > room // 2:
-        observations = f"\n{summary}\n\nOmitted: the issue body limit was reached.\n\n</details>\n"
+        observations = ""
     report_text, _ = bounded_body(
         "\n".join(lines) + "\n", limit=max(0, room - len(observations.encode("utf-8")))
     )

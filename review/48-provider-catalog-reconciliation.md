@@ -3720,3 +3720,33 @@ session as `quota_deferred`. The run had used 33 of its 120 minutes.
   `near_misses` ranks the three closest AA entries for each unscored candidate, shown as
   `AA match` checkboxes. A ticked row counts only if it is exactly one that the last run offered; it is
   stored in state (`aa_matches`) and applied by the next run, which also re-scores carried candidates.
+
+## Addendum 2026-11-19: add / ignore / remove, shorter issue, `/apply` that opens the PR
+
+Evidence: the `/apply` run on issue #2554 after 13 `add route only` ticks. It ran 40 minutes, then
+failed validation on a test that pinned the exact BeatAPI secondary route set, so no PR opened and the
+ticks stayed. The same plan had also deferred models whose identity had no existing pool, any tick
+that implied lane edits, and every proof taken without a provider drain. The issue body was ~65k
+characters, mostly discovery diagnostics behind `<details>`.
+
+- **Three choices.** Each new route offers `add` or `ignore`; a paid (`not_entitled`) route offers
+  `remove` or `ignore`. Lane assignment (`add as backup to …`), `test again` and `AA match` rows are
+  gone. Old ticks are rewritten on the next render (`migrate_ticks`): add-route variants → `add`,
+  `remove route` → `remove`, `keep as a paid route` → `ignore`; retired rows are dropped. Ticking both
+  choices on one route is rejected.
+- **Quality first.** Each model gets one heading line: AA Index in bold against the floor–ceiling of
+  the models our lanes run, which lanes it clears (or the gap to the nearest), size, context, release
+  and free-tier end. An unscored model shows its closest AA entry as information only. Each provider
+  route gets one line: ready / testing / needs you, tested input and output caps, JSON method, date.
+  Diagnostics stay in the workflow log and the state artifact; the human part is ~10k characters.
+- **`add` on an exhausted model.** When automatic tests ran out without a verified input cap, `add`
+  queues one more bounded test instead of adding the route. Several such requests queue the first and
+  list the rest.
+- **`/apply` adds routes, not lanes.** An added route joins its identity's pool (a new pool named after
+  the model when none matches), inherits `backup` tier when the provider has only backup routes, and
+  copies measured rate signals only from an uncontended proof. Lane placement is a manual edit.
+- **No drain for additions.** The re-probe uses `NoDispatchControl` unless the ticks include a removal
+  or paid decision, so an additions-only `/apply` no longer pauses production providers for up to
+  780 s each. Proofs are then contended, which only withholds rate signals.
+- **Tests.** The BeatAPI secondary test checks invariants (non-empty, subset, backup tier), not a
+  pinned set, so catalog additions no longer fail their own validation.

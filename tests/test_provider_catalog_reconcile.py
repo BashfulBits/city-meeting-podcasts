@@ -590,9 +590,10 @@ def test_a_new_lane_is_offered_with_no_code_change(monkeypatch):
         LANES = original
     new = next(c for c in report.candidates if c.model == "meta-llama/llama-new")
     assert "brand-new-lane" in new.lanes
-    assert "`groq/meta-llama/llama-new`: add as backup to `brand-new-lane`" in decision_choices(
-        report
-    )
+    # Lane fit is shown as quality information; the decision itself is add or ignore.
+    assert "`groq/meta-llama/llama-new`: add" in decision_choices(report)
+    assert "good enough for" in render_body(report, run_date="2026-09-24")
+    assert "`brand-new-lane`" in render_body(report, run_date="2026-09-24")
 
 
 def test_quality_matching_rules():
@@ -618,11 +619,13 @@ def test_issue_body_round_trips_state_and_keeps_ticked_boxes(monkeypatch):
     body = render_body(report, run_date="2026-09-24")
     assert MARKER in body
     assert decode_state(body) == json.loads(json.dumps(report.state))  # tuples become lists
-    choice = "`groq/meta-llama/llama-new`: add as backup to `tagger`"
+    choice = "`groq/meta-llama/llama-new`: add"
     ticked = body.replace(f"- [ ] {choice}", f"- [x] {choice}")
     rerendered = render_body(report, run_date="2026-10-01", previous_body=ticked)
     assert f"- [x] {choice}" in rerendered
-    assert "<details><summary>Observations" in rerendered
+    # Observations go to the workflow log; the issue only counts them (no collapsed block).
+    assert "<details>" not in rerendered
+    assert "run observation(s) are in the reconcile workflow log" in rerendered
 
 
 class FakeGh:
@@ -870,12 +873,10 @@ def test_a_free_route_turned_paid_is_a_decision_with_its_lane_impact(monkeypatch
     assert anomaly.verdict == "not_entitled"
     assert anomaly.lane_usage == (("moments", ("meta/llama-keep",)), ("solo", ()))
     choices = decision_choices(report)
-    assert "`or_scarce`: remove route" in choices
-    assert "`or_scarce`: keep as a paid route" in choices
+    assert "`or_scarce`: remove" in choices
+    assert "`or_scarce`: ignore" in choices  # keep it as a paid route
     body = render_body(report, run_date="2026-09-24")
-    assert "used by `moments`; still served by: `meta/llama-keep`" in body
-    assert "used by `solo`; still served by: **nothing else -- the lane stalls**" in body
-    assert body.index("## Decisions") > body.index("## Configured-route anomalies")
+    assert "used by `moments`, `solo` (it would stall)" in body
 
 
 def test_a_due_only_run_calls_only_providers_with_deferred_checks(monkeypatch):
@@ -923,14 +924,18 @@ def test_the_decision_block_survives_a_truncated_body(monkeypatch):
     import citypods.provider_catalog.issue as issue
 
     report, _, _ = _run(monkeypatch)
-    choice = "`groq/meta-llama/llama-new`: add as backup to `tagger`"
+    from citypods.provider_catalog.reconcile import Anomaly
+
+    choice = "`groq/meta-llama/llama-new`: add"
     ticked = render_body(report, run_date="2026-09-24").replace(
         f"- [ ] {choice}", f"- [x] {choice}"
     )
-    report.observations.extend(f"observation {i} " + "x" * 200 for i in range(200))
-    monkeypatch.setattr(issue, "_HUMAN_BODY_LIMIT", 2_500)
+    report.anomalies.extend(
+        Anomaly("groq", f"route_{i}", "m", "not_served", "x" * 150, False) for i in range(60)
+    )
+    monkeypatch.setattr(issue, "_HUMAN_BODY_LIMIT", 4_000)
     body = render_body(report, run_date="2026-10-01", previous_body=ticked)
-    assert "Truncated" in body or "Omitted" in body
+    assert "Truncated" in body or "truncated" in body
     assert f"- [x] {choice}" in body  # the tick survives, so the next update keeps it
     assert set(decision_choices(report)) <= {
         line.split("] ", 1)[1] for line in body.splitlines() if line.startswith("- [")
@@ -1407,7 +1412,7 @@ def test_temporary_free_evidence_outage_keeps_prior_candidate_as_advisory(monkey
     assert candidate.evidence["free"] is False and candidate.evidence["contended"] is True
 
 
-def test_selected_lane_choice_survives_route_added_on_main_until_lane_is_fulfilled():
+def test_selected_add_survives_until_the_route_is_on_main():
     from dataclasses import asdict
 
     from citypods.provider_catalog.issue import fulfilled_choices
@@ -1426,10 +1431,14 @@ def test_selected_lane_choice_survives_route_added_on_main_until_lane_is_fulfill
         structured_output_method="prompt_only",
     )
     old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
-    prior = render_body(old, run_date="2026-10-08").replace(
-        "- [ ] `host/creator/new`: add as backup to `lane`",
-        "- [x] `host/creator/new`: add as backup to `lane`",
-    )
+    choice = "`host/creator/new`: add"
+    prior = render_body(old, run_date="2026-10-08").replace(f"- [ ] {choice}", f"- [x] {choice}")
+    lanes = {"lane": LaneConfig("lane", ("primary",), 1, 1, 10)}
+    fulfilled = fulfilled_choices(prior, {"routes": []}, lanes, Decisions(), TODAY)
+    assert choice not in fulfilled
+    new = render_body(Report(), run_date="2026-10-09", previous_body=prior, fulfilled=fulfilled)
+    assert checked_decisions(new, (choice,)) == (choice,)
+    assert decode_state(new)["last_full"]["candidates"][0]["model"] == candidate.model
     limits = {
         "routes": [
             {
@@ -1440,24 +1449,38 @@ def test_selected_lane_choice_survives_route_added_on_main_until_lane_is_fulfill
             }
         ]
     }
-    lanes = {"lane": LaneConfig("lane", ("primary",), 1, 1, 10)}
-    fulfilled = fulfilled_choices(prior, limits, lanes, Decisions(), TODAY)
-    choice = "`host/creator/new`: add as backup to `lane`"
-    assert choice not in fulfilled
-    new = render_body(Report(), run_date="2026-10-09", previous_body=prior, fulfilled=fulfilled)
-    assert checked_decisions(new, (choice,)) == (choice,)
-    assert decode_state(new)["last_full"]["candidates"][0]["model"] == candidate.model
-    assert "Pending prior selections" in new
-    # Another weekly run still retains the choice and its advisory provenance.
-    again = render_body(Report(), run_date="2026-10-10", previous_body=new, fulfilled=fulfilled)
-    assert checked_decisions(again, (choice,)) == (choice,)
-    from dataclasses import replace
-
-    lanes["lane"] = replace(lanes["lane"], backup_models=("creator/new",))
-    fulfilled = fulfilled_choices(again, limits, lanes, Decisions(), TODAY)
-    final = render_body(Report(), run_date="2026-10-11", previous_body=again, fulfilled=fulfilled)
+    fulfilled = fulfilled_choices(new, limits, lanes, Decisions(), TODAY)
+    assert choice in fulfilled
+    final = render_body(Report(), run_date="2026-10-11", previous_body=new, fulfilled=fulfilled)
     assert not checked_decisions(final, (choice,))
     assert not decode_state(final).get("last_full", {}).get("candidates")
+
+
+def test_ticks_in_the_old_wording_carry_over_as_add_ignore_remove():
+    from citypods.provider_catalog.issue import migrate_ticks
+    from citypods.review_issues import DECISION_BLOCK_END, DECISION_BLOCK_START
+
+    body = "\n".join(
+        [
+            "- [x] `a/m`: add route only",  # outside the block: untouched
+            DECISION_BLOCK_START,
+            "- [x] `a/m`: add route only",
+            "- [x] `a/m`: add as backup to `tagger`",
+            "- [ ] `b/m`: add route only",
+            "- [x] `c/m`: AA match `x/y` (Y, index 40)",
+            "- [x] `d/m`: test again",
+            "- [x] `paid`: keep as a paid route",
+            "- [X] `gone`: remove route",
+            DECISION_BLOCK_END,
+        ]
+    )
+    migrated = migrate_ticks(body)
+    block = migrated[migrated.index(DECISION_BLOCK_START) :]
+    assert migrated.startswith("- [x] `a/m`: add route only\n")
+    assert block.count("- [x] `a/m`: add") == 1
+    assert "- [ ] `b/m`: add route only" in block  # unticked rows are left alone
+    assert "AA match" not in block and "test again" not in block
+    assert "- [x] `paid`: ignore" in block and "- [x] `gone`: remove" in block
 
 
 def test_pending_selected_choice_keeps_the_rolling_issue_open():
@@ -1478,7 +1501,7 @@ def test_pending_selected_choice_keeps_the_rolling_issue_open():
     )
     old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
     prior = render_body(old, run_date="2026-10-08").replace(
-        "- [ ] `host/creator/new`: add route only", "- [x] `host/creator/new`: add route only"
+        "- [ ] `host/creator/new`: add", "- [x] `host/creator/new`: add"
     )
     calls = []
 
@@ -1566,10 +1589,10 @@ def test_pending_paid_selection_survives_outage_until_main_fulfills_it():
     anomaly = Anomaly("host", "route", "creator/old", "not_entitled", "paid", False)
     report = Report(anomalies=[anomaly], state={"last_full": {"anomalies": [asdict(anomaly)]}})
     body = render_body(report, run_date=TODAY.isoformat()).replace(
-        "- [ ] `route`: keep as a paid route", "- [x] `route`: keep as a paid route"
+        "- [ ] `route`: ignore", "- [x] `route`: ignore"
     )
     rewritten = render_body(Report(), run_date=TODAY.isoformat(), previous_body=body)
-    assert "- [x] `route`: keep as a paid route" in rewritten
+    assert "- [x] `route`: ignore" in rewritten
     assert decode_state(rewritten)["last_full"]["anomalies"][0]["route_id"] == "route"
     route = {
         "route_id": "route",
@@ -1588,12 +1611,12 @@ def test_pending_paid_selection_survives_outage_until_main_fulfills_it():
         )
     )
     fulfilled = fulfilled_choices(rewritten, {"routes": [route]}, {}, acks, TODAY)
-    assert fulfilled == {"`route`: keep as a paid route"}
+    assert fulfilled == {"`route`: ignore"}
     assert not fulfilled_choices(rewritten, {"routes": [route]}, {}, NO_DECISIONS, TODAY)
     final = render_body(
         Report(), run_date=TODAY.isoformat(), previous_body=rewritten, fulfilled=fulfilled
     )
-    assert "- [x] `route`: keep as a paid route" not in final
+    assert "- [x] `route`: ignore" not in final
 
 
 @pytest.mark.parametrize("value,expected", [("1000", 1000), ("0", 0), ("-1", None), ("1.5", None)])
@@ -2110,10 +2133,10 @@ def test_issue_lists_litellm_separately_from_measured_bounds(monkeypatch):
         "litellm": {"key": "groq/new/model", "version": "1.test", "input": 131072, "output": 32768},
     }
     body = render_body(report, run_date=TODAY.isoformat())
-    assert "LiteLLM 1.test exact route `groq/new/model`" in body
-    assert "input 131,072, output 32,768" in body
-    assert "not measured bounds" in body
-    assert "1,234" in body
+    # The issue carries only the caps `/apply` would write; LiteLLM hints are not measured caps
+    # and stay out of it (the full discovery record is in the run's evidence artifact).
+    assert "LiteLLM" not in body
+    assert "131,072" not in body and "131k" not in body
 
 
 def test_litellm_discovery_reads_installed_metadata_without_sdk_import(tmp_path, monkeypatch):
@@ -2990,12 +3013,8 @@ def test_carried_bounds_from_another_identity_are_not_merged(monkeypatch):
     assert by_axis["output"]["admitted"] == 4_096
 
 
-def test_an_accepted_aa_match_does_not_keep_a_dropped_candidate_pending():
-    """Regression (#2554, muse-glimmer): the accepted AA match re-scored it below the bar and it
-    left the candidates, but the ticked match row kept it listed as a pending prior selection."""
-    from dataclasses import asdict
-
-    from citypods.provider_catalog.issue import aa_match_choice
+def test_an_unscored_candidate_shows_its_closest_aa_entry_as_information():
+    """AA matches are no longer checkboxes (#2554 rework): the closest entry is shown inline."""
     from citypods.provider_catalog.reconcile import Candidate, Report
 
     match = {"creator": "meta", "slug": "muse-glimmer", "name": "Muse Glimmer", "score": 6.3}
@@ -3011,11 +3030,6 @@ def test_an_accepted_aa_match_does_not_keep_a_dropped_candidate_pending():
         structured_output_method="prompt_only",
         aa_matches=[match],
     )
-    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
-    prior = render_body(old, run_date="2026-10-08")
-    row = aa_match_choice(candidate.key, match)
-    assert f"- [ ] {row}" in prior
-    ticked = prior.replace(f"- [ ] {row}", f"- [x] {row}")
-    new = render_body(Report(), run_date="2026-10-09", previous_body=ticked)
-    assert "Pending prior selections" not in new
-    assert not (decode_state(new).get("last_full") or {}).get("candidates")
+    body = render_body(Report(candidates=[candidate]), run_date="2026-10-08")
+    assert "AA **unscored** (closest AA entry: Muse Glimmer, 6.3)" in body
+    assert "AA match" not in body

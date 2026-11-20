@@ -1110,15 +1110,10 @@ def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
     chat = [r for r in beatapi if r["api_shape"] != "systemone"]
     assert chat and all(r["tier"] == "backup" for r in chat)
     # The secondary account's free entitlement shrank 2026-10-31 (V4 Flash, V4 Pro and GPT-6
-    # Astra now answer 403 "not available on free credit"); it keeps these five routes, each of
-    # whose upstream model also exists on the primary account.
-    assert {r["route_id"] for r in secondary} == {
-        "beatapi_secondary_deepseek_v4_1_flash_free",
-        "beatapi_secondary_gpt_6_1_sol_free",
-        "beatapi_secondary_gemini_3_8_flash_free",
-        "beatapi_secondary_glm_5_3_flash_free",
-        "beatapi_secondary_minimax_m3_1_flash_free",
-    }
+    # Astra now answer 403 "not available on free credit"). Its route list changes through
+    # provider-catalog `/apply` PRs, so this checks the invariants rather than a fixed set (a
+    # pinned set failed the 2026-11-20 `/apply`): every secondary model also exists on primary.
+    assert secondary
     primary_models = {r["upstream_model"] for r in chat}
     assert {r["upstream_model"] for r in secondary} <= primary_models
     assert all(r["tier"] == "backup" and not r["yields_to"] for r in secondary)

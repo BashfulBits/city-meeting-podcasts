@@ -11,7 +11,14 @@ from typing import Any
 
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.provider_catalog.evidence import RouteEvidence, candidate_digest, digest
-from citypods.provider_catalog.issue import decision_choices, method_choice
+from citypods.provider_catalog.issue import (
+    ADD,
+    IGNORE,
+    REMOVE,
+    decision_choices,
+    method_choice,
+    migrate_ticks,
+)
 from citypods.provider_catalog.readiness import output_cap_for
 from citypods.provider_catalog.reconcile import Report
 from citypods.review_issues import DECISION_BLOCK_END, DECISION_BLOCK_START, checked_decisions
@@ -88,7 +95,12 @@ class ApplyConfig:
 
 
 def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
-    """Read exact publisher choices; reject forged or duplicate checked rows."""
+    """Read exact publisher choices; reject forged or duplicate checked rows.
+
+    Ticks made under the earlier wording (`add route only`, `add as backup to ...`, `remove
+    route`, `keep as a paid route`) are read as their add/ignore/remove equivalents.
+    """
+    body = migrate_ticks(body)
     if body.count(DECISION_BLOCK_START) != 1 or body.count(DECISION_BLOCK_END) != 1:
         raise ValueError("expected one complete decision block")
     start = body.index(DECISION_BLOCK_START) + len(DECISION_BLOCK_START)
@@ -103,49 +115,32 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
     result = []
     for candidate in snapshot.candidates:
         prefix = f"`{candidate.key}`: "
-        selected = [x.removeprefix(prefix) for x in checked if x.startswith(prefix)]
-        # AA matches change only what the next run scores; they never mix with route decisions.
-        matches = [x for x in selected if x.startswith("AA match ")]
-        if matches:
-            if len(matches) != 1:
-                raise ValueError(f"{candidate.key}: choose at most one AA match")
-            result.append(Decision(candidate.provider, candidate.model, "aa_match"))
-            selected = [x for x in selected if x not in matches]
+        selected = {x.removeprefix(prefix) for x in checked if x.startswith(prefix)}
         if not selected:
             continue
-        if "test again" in selected:
-            if len(selected) != 1 or not (
-                candidate.discovery and candidate.discovery.get("retryable") is True
-            ):
-                raise ValueError(f"{candidate.key}: test again is unavailable or conflicts")
-            result.append(Decision(candidate.provider, candidate.model, "test_again"))
-            continue
-        ignore = "ignore" in selected
-        if ignore and len(selected) != 1:
-            raise ValueError(f"{candidate.key}: ignore conflicts with addition")
-        if "add route only" in selected and len(selected) != 1:
-            raise ValueError(f"{candidate.key}: route-only conflicts with lane placement")
+        if selected == {ADD, IGNORE}:
+            raise ValueError(f"{candidate.key}: tick add or ignore, not both")
         evidence = RouteEvidence.from_dict(candidate.evidence) if candidate.evidence else None
         if evidence and candidate.evidence_digest != candidate_digest(evidence, candidate.lanes):
             raise ValueError(f"{candidate.key}: invalid candidate evidence digest; refresh issue")
-        lanes = tuple(
-            x.removeprefix("add as backup to `").removesuffix("`")
-            for x in selected
-            if x.startswith("add as backup to `")
-        )
         discovery_digest = None
-        if not ignore and candidate.discovery:
+        if ADD in selected and candidate.discovery:
             input_evidence = candidate.discovery.get("input_characterization")
             if isinstance(input_evidence, Mapping):
                 stamp = input_evidence.get("evidence_digest")
                 if isinstance(stamp, str) and re.fullmatch(r"[a-f0-9]{64}", stamp):
                     discovery_digest = stamp
+        if ADD in selected and _needs_another_test(candidate):
+            # Automatic tries are spent and no cap was found: `add` asks for one more bounded
+            # test (the former `test again` box). The add itself follows once it is measured.
+            result.append(Decision(candidate.provider, candidate.model, "test_again"))
+            continue
         result.append(
             Decision(
                 candidate.provider,
                 candidate.model,
-                "ignore" if ignore else "add",
-                lanes,
+                "add" if ADD in selected else "ignore",
+                (),
                 evidence,
                 candidate.evidence_digest,
                 candidate.lanes,
@@ -155,15 +150,19 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
     for anomaly in snapshot.anomalies:
         if anomaly.verdict != "not_entitled":
             continue
-        selected = [x for x in checked if x.startswith(f"`{anomaly.route_id}`: ")]
+        selected = {
+            x.removeprefix(f"`{anomaly.route_id}`: ")
+            for x in checked
+            if x.startswith(f"`{anomaly.route_id}`: ")
+        }
         if len(selected) > 1:
-            raise ValueError(f"{anomaly.route_id}: conflicting paid-route decisions")
+            raise ValueError(f"{anomaly.route_id}: tick remove or ignore, not both")
         if selected:
             result.append(
                 Decision(
                     anomaly.provider,
                     anomaly.model,
-                    "keep_paid" if selected[0].endswith("keep as a paid route") else "remove",
+                    "remove" if selected == {REMOVE} else "keep_paid",
                     route_id=anomaly.route_id,
                     route_digest=anomaly.config_digest,
                 )
@@ -192,6 +191,18 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
     if not result:
         raise ValueError("select at least one supported decision")
     return tuple(result)
+
+
+def _needs_another_test(candidate) -> bool:
+    from citypods.provider_catalog.readiness import ACTION, candidate_readiness
+
+    discovery = candidate.discovery
+    return bool(
+        isinstance(discovery, Mapping)
+        and discovery.get("retryable") is True
+        and not _verified_input_cap(discovery)
+        and candidate_readiness(candidate).state == ACTION
+    )
 
 
 def paid_fulfilled(decision: Decision, config: ApplyConfig) -> bool:
@@ -412,12 +423,6 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                     "comment `/apply` again"
                 )
                 continue
-            if decision.offered_lanes and tuple(current.lanes) != decision.offered_lanes:
-                deferred.append(
-                    f"{decision.key}: the lanes offered for this model changed; re-tick the lane "
-                    "you want in the updated issue, then comment `/apply`"
-                )
-                continue
             comparison = (
                 "provider",
                 "upstream_model",
@@ -439,10 +444,12 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                     "then comment `/apply`"
                 )
                 continue
+            # A contended proof (the provider was not drained first) still shows the route
+            # answering with valid JSON; only its rate signals are unreliable, and those are not
+            # copied below. `/apply` does not drain providers for additions (review/48 rework).
             if (
                 not proof.catalog_complete
                 or not proof.free
-                or proof.contended
                 or proof.verdict != "proven"
                 or proof.observed_at != config.today.isoformat()
                 or proof.structured_output_verified_on != config.today.isoformat()
@@ -454,11 +461,13 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                     "comment `/apply` again later (it re-checks the route each time)"
                 )
                 continue
-            if not proof.model_key:
+            model_key = proof.model_key or new_pool_name(decision.model)
+            if not proof.model_key and model_key in {
+                str(r.get("model_key") or r.get("model")) for r in existing
+            }:
                 deferred.append(
-                    f"{decision.key}: cannot tell which existing model this is (no model_key); "
-                    "add a `model_key` mapping in `config/provider_limits.yml` by hand, or "
-                    "tick `ignore`"
+                    f"{decision.key}: its name matches more than one configured model; add a "
+                    "`model_key` for it in `config/provider_limits.yml` by hand, or tick `ignore`"
                 )
                 continue
             discovery = current.discovery if current else None
@@ -470,7 +479,7 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
             if not cap:
                 deferred.append(
                     f"{decision.key}: input limit not tested (or retested since you ticked); "
-                    "the daily run measures it, or tick `test again`. Then comment `/apply` again"
+                    "the daily run measures it. Then comment `/apply` again (your tick stays)"
                 )
                 continue
             provider_context_claim = (
@@ -495,7 +504,6 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                     "daily run measures it -- comment `/apply` again after that (your tick stays)"
                 )
                 continue
-            model_key = proof.model_key
             account = proof.account_id
             if account not in {a.get("id") for a in provider["accounts"]}:
                 rejected.append(f"{decision.key}: account changed")
@@ -524,8 +532,11 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
                 # 720 s, never the 780 s ceiling reserved for slow reasoning routes.
                 "response_timeout_seconds": 720,
             }
-            # Only route-scoped positive observations can supply independent route limits.
-            for observation in proof.limits:
+            if provider_tier(existing, decision.provider) == "backup":
+                route["tier"] = "backup"
+            # Only route-scoped positive observations, measured while the provider was drained,
+            # can supply independent route limits.
+            for observation in () if proof.contended else proof.limits:
                 if observation.scope == "route" and observation.metric in {"rpm", "tpm", "rpd"}:
                     route[observation.metric] = observation.value
             route["output_context_limit"] = output_context_limit
@@ -615,6 +626,29 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         last_routes=last_routes,
         method_changes=tuple(method_changes),
     )
+
+
+def new_pool_name(upstream_model: str) -> str:
+    """The pool a model with no configured identity starts: its name without free decorations.
+
+    The same model offered by two providers (BeatAPI's two accounts, say) gets the same name, so
+    their routes share one pool.
+    """
+    from citypods.provider_catalog.evidence import _pool_form
+
+    return _pool_form(upstream_model)
+
+
+def provider_tier(routes, provider: str) -> str | None:
+    """`backup` when every chat route this provider already has is a backup (BeatAPI's are)."""
+    chat = [
+        r
+        for r in routes
+        if r.get("provider") == provider and r.get("api_shape", "chat") in {"chat", None}
+    ]
+    if chat and all(r.get("tier") == "backup" for r in chat):
+        return "backup"
+    return None
 
 
 def _plan_removals(removals, config, applied, rejected):

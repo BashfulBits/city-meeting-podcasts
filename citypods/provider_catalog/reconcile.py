@@ -204,6 +204,9 @@ class Report:
     # Why every model is unscored (the quality fetch failed); shown at the top of the issue.
     quality_error: str | None = None
     floor_source: str = ""
+    # The best AA index among the models our lanes run: with `floor`, the range a candidate is
+    # compared against in the rolling issue.
+    ceiling: float | None = None
 
     @property
     def actionable(self) -> bool:
@@ -584,6 +587,7 @@ def reconcile(
     routes = [r for r in limits.get("routes") or [] if isinstance(r, dict)]
     incumbents = lane_incumbent_scores(lanes, routes, quality)
     report.floor, report.floor_source = production_floor(incumbents, quality)
+    report.ceiling = max((x for scores in incumbents.values() for x in scores), default=None)
     # Data-driven usability floor: no candidate smaller than the smallest configured free route.
     min_context = min(
         (

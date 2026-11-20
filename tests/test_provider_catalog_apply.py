@@ -130,7 +130,6 @@ def test_selected_addition_preserves_primary_and_records_route_method():
     [
         {"catalog_complete": False},
         {"free": False},
-        {"contended": True},
         {"observed_at": "2026-10-07"},
         {"structured_output_verified_on": "2026-10-07"},
         {"structured_output_method": None},
@@ -214,11 +213,59 @@ def test_model_digest_ignores_other_models_and_old_evidence_keeps_its_candidate_
     assert candidate_digest(PROOF, ("lane",)) == digest({"evidence": legacy, "lanes": ["lane"]})
 
 
-def test_unknown_identity_is_deferred_and_legacy_state_is_advisory():
-    unknown = replace(PROOF, model_key=None)
-    result = plan(unknown, Decision("host", "creator/new", "add", evidence=unknown))
-    assert "no model_key" in result.deferred[0]
+def test_a_contended_proof_adds_the_route_without_its_rate_signals():
+    """`/apply` does not drain providers for additions, so its proof is contended: the route
+    still answered with valid JSON, but rate headers seen under production load are not used."""
+    from citypods.provider_catalog.evidence import LimitObservation
+
+    rpm = LimitObservation("rpm", 30, TODAY.isoformat(), "host", "primary", scope="route")
+    proof = replace(PROOF, contended=True, limits=(rpm,))
+    route = dict(plan(proof).routes[0])
+    assert route["rpm"] == 1
+    assert dict(plan(replace(proof, contended=False)).routes[0])["rpm"] == 30
+
+
+def test_an_unknown_identity_starts_its_own_pool_named_after_the_model():
+    unknown = replace(PROOF, upstream_model="creator/new:free", model_key=None)
+    candidate = replace(
+        CANDIDATE, model="creator/new:free", evidence=unknown.to_dict(), discovery=DISCOVERY
+    )
+    decision = Decision(
+        "host",
+        "creator/new:free",
+        "add",
+        evidence=unknown,
+        discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+    )
+    result = plan_apply(Report(candidates=[candidate]), (decision,), config())
+    assert dict(result.routes[0])["model"] == "creator/new"
+    # A pool of that name already exists for another model: a person decides the identity.
+    taken = {"route_id": "x", "model": "creator/new", "provider": "host", "upstream_model": "o"}
+    result = plan_apply(Report(candidates=[candidate]), (decision,), config((taken,)))
+    assert not result.routes and "model_key" in result.deferred[0]
     assert plan(decision=Decision("host", "creator/new", "add")).deferred
+
+
+def test_a_backup_only_provider_adds_routes_as_backups():
+    """BeatAPI's chat routes are all `tier: backup`; a new one must be too (the 2026-11-20
+    `/apply` failed the compile test on an untiered BeatAPI route)."""
+    from citypods.provider_catalog.apply import provider_tier
+
+    backup = {"route_id": "b", "provider": "host", "tier": "backup", "upstream_model": "x"}
+    shaped = {**backup, "route_id": "s", "tier": None, "api_shape": "systemone"}
+    assert provider_tier([backup, shaped], "host") == "backup"
+    assert provider_tier([backup, {**backup, "route_id": "p", "tier": None}], "host") is None
+    assert provider_tier([], "host") is None
+    conf = config((backup,))
+    report = Report(candidates=[replace(CANDIDATE, discovery=DISCOVERY)])
+    decision = Decision(
+        "host",
+        "creator/new",
+        "add",
+        evidence=PROOF,
+        discovery_digest=DISCOVERY["input_characterization"]["evidence_digest"],
+    )
+    assert dict(plan_apply(report, (decision,), conf).routes[0])["tier"] == "backup"
 
 
 def test_measured_window_raises_operational_context_and_retains_provider_claim():
@@ -335,9 +382,8 @@ def test_existing_physical_route_never_gets_duplicated():
 @pytest.mark.parametrize(
     "selection",
     [
-        "`host/creator/new`: ignore\n- [x] `host/creator/new`: add route only",
-        "`host/creator/new`: add route only\n- [x] `host/creator/new`: add as backup to `lane`",
-        "`host/creator/new`: add as backup to `unknown`",
+        "`host/creator/new`: ignore\n- [x] `host/creator/new`: add",
+        "`host/creator/new`: AA match `x/y`",  # retired choice: dropped, so nothing is selected
         "`forged`: ignore",
         "`host/creator/new`: ignore\n- [x] `host/creator/new`: ignore",
     ],
@@ -350,123 +396,45 @@ def test_unknown_conflicting_duplicate_decisions_rejected(selection):
         parse_decisions(body, report)
 
 
-def test_discovery_test_again_is_a_single_retry_choice_not_an_addition():
-    candidate = replace(
-        CANDIDATE,
-        discovery={
-            "retryable": True,
-            "reason": "daily",
-            "calls": 3,
-            "input_tokens": 12000,
-            "output_tokens": 768,
-            "axes": [
-                {
-                    "axis": "input",
-                    "published": 8000,
-                    "source": "https://provider.test/limits",
-                    "admitted": 7900,
-                    "refused": 8000,
-                    "target_width": 40,
-                    "status": "partial",
-                }
-            ],
-        },
-    )
-    report = Report(candidates=[candidate])
+def test_add_on_a_model_whose_automatic_tests_ran_out_queues_one_more_test():
+    """The former `test again` box: `add` asks for another bounded test when that is all that
+    can happen; while the daily run is still trying, `add` is an ordinary (deferred) addition."""
+    discovery = {
+        "retryable": True,
+        "reason": "daily",
+        "auto_attempts": 4,
+        "axes": [{"axis": "input", "admitted": 7900, "refused": 8000, "reason": "stalled"}],
+    }
+    report = Report(candidates=[replace(CANDIDATE, discovery=discovery)])
     body = render_body(report, run_date=TODAY.isoformat())
-    assert "## Request-cap discovery" in body
-    assert "| input | 8,000 ([source](https://provider.test/limits))" in body
-    assert "Count basis / control" in body and "unverified" in body
-    selected = body.replace(
-        "- [ ] `host/creator/new`: test again", "- [x] `host/creator/new`: test again"
-    )
+    assert "**needs you**" in body and "queue one more bounded test" in body
+    assert "test again" not in body and "Request-cap discovery" not in body
+    selected = body.replace("- [ ] `host/creator/new`: add", "- [x] `host/creator/new`: add")
     [decision] = parse_decisions(selected, report)
-    assert decision.action == "test_again"
-    assert decision.key == "host/creator/new"
+    assert decision.action == "test_again" and decision.key == "host/creator/new"
 
-    conflicting = selected.replace(
-        "- [ ] `host/creator/new`: add route only",
-        "- [x] `host/creator/new`: add route only",
+    still_trying = Report(
+        candidates=[replace(CANDIDATE, discovery={**discovery, "auto_attempts": 1})]
     )
-    with pytest.raises(ValueError, match="conflicts"):
-        parse_decisions(conflicting, report)
+    [decision] = parse_decisions(selected, still_trying)
+    assert decision.action == "add"
 
 
-def test_discovery_telemetry_and_edited_spend_counters_render_safely():
+def test_the_issue_shows_tested_caps_not_discovery_diagnostics():
+    """Request-cap evidence stays in the run's artifact and the PR; the issue shows the caps."""
     candidate = replace(
         CANDIDATE,
         discovery={
-            "retryable": False,
-            "calls": "bad",
-            "input_tokens": "bad",
-            "output_tokens": None,
-            "axes": [],
-            "attempt_diagnostics": [
-                {
-                    "axis": "input",
-                    "target": 500000,
-                    "reserved_input": 500000,
-                    "requested_output": 256,
-                    "outcome": "inconclusive",
-                    "diagnostic": "completion_content_null",
-                    "response_status": 200,
-                    "response_media_type": "application/json",
-                    "response_bytes": 900,
-                    "message_content_state": "null",
-                    "finish_reason_state": "missing",
-                    "finish_reason": "",
-                    "usage_state": "valid",
-                    "reported_input": 490000,
-                    "reported_output": 0,
-                    "provider_request_id": "request-123",
-                    "response_id": "response-456",
-                    "response_preview": '"Provider suggests reduce the request"',
-                }
-            ],
-            "transport_retries": [
-                [
-                    {
-                        "attempt_id": "a" * 64,
-                        "axis": "input",
-                        "target": 1000,
-                        "reserved_input": 1000,
-                        "requested_output": 256,
-                        "diagnostic": "transport_timeout",
-                        "outcome": "inconclusive",
-                    },
-                    {
-                        "attempt_id": "b" * 64,
-                        "axis": "input",
-                        "target": 1000,
-                        "reserved_input": 1000,
-                        "requested_output": 256,
-                        "diagnostic": "verified_input_fixture",
-                        "outcome": "admitted",
-                    },
-                ]
-            ],
+            **DISCOVERY,
+            "litellm": {"key": "host/creator/new", "version": "1", "input": 131072},
+            "attempt_diagnostics": [{"axis": "input", "provider_request_id": "request-123"}],
+            "transport_retries": [[{"attempt_id": "a" * 64}]],
         },
     )
-
     body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
-
-    assert "— reserved input" in body
-    assert "— requested output tokens" in body
-    assert "No-response attempt telemetry" in body
-    assert "`aaaaaaaaaaaa`" in body and "`bbbbbbbbbbbb`" in body
-    assert "Recent request diagnostics" in body
-    assert "completion_content_null" in body
-    assert "490,000 / 0" in body
-    assert "request-123" in body and "response-456" in body
-    assert '"Provider suggests reduce the request"' in body
-
-    malformed = replace(
-        candidate,
-        discovery={"transport_retries": "malformed"},
-    )
-    assert "No-response attempt telemetry" not in render_body(
-        Report(candidates=[malformed]), run_date=TODAY.isoformat()
-    )
+    assert "in 12k / out" in body
+    for absent in ("<details>", "request-123", "aaaaaaaa", "LiteLLM", "Count basis"):
+        assert absent not in body
 
 
 def test_edited_discovery_preview_cannot_inject_issue_markup():
@@ -482,17 +450,18 @@ def test_edited_discovery_preview_cannot_inject_issue_markup():
 def test_discovery_retry_choice_cannot_be_forged_without_retryable_evidence():
     report = Report(candidates=[replace(CANDIDATE, discovery={"retryable": False})])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
-        "- [ ] `host/creator/new`: add route only",
+        "- [ ] `host/creator/new`: add",
         "- [x] `host/creator/new`: test again",
     )
-    with pytest.raises(ValueError, match="unknown or duplicate"):
+    # The retired box is dropped when read, leaving nothing selected.
+    with pytest.raises(ValueError, match="at least one"):
         parse_decisions(body, report)
 
 
 def test_explicit_removal_is_parsed_and_needs_a_fresh_proof():
     report = Report(anomalies=[Anomaly("host", "route", "model", "not_entitled", "paid", False)])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
-        "- [ ] `route`: remove route", "- [x] `route`: remove route"
+        "- [ ] `route`: remove", "- [x] `route`: remove"
     )
     [decision] = parse_decisions(body, report)
     assert decision.action == "remove" and decision.route_id == "route"
@@ -670,7 +639,7 @@ def test_human_branch_is_never_replaced():
 def test_tampered_digest_cannot_supply_an_apply_selection():
     report = Report(candidates=[replace(CANDIDATE, evidence_digest="forged")])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
-        "- [ ] `host/creator/new`: add route only", "- [x] `host/creator/new`: add route only"
+        "- [ ] `host/creator/new`: add", "- [x] `host/creator/new`: add"
     )
     with pytest.raises(ValueError, match="digest"):
         parse_decisions(body, report)
@@ -875,11 +844,11 @@ def test_paid_checkbox_conflict_and_exact_identity():
     conf, proof, decision = paid_fixture()
     report = Report(anomalies=[proof])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
-        "- [ ] `paid`: keep as a paid route", "- [x] `paid`: keep as a paid route"
+        "- [ ] `paid`: ignore", "- [x] `paid`: ignore"
     )
     assert parse_decisions(body, report) == (decision,)
-    both = body.replace("- [ ] `paid`: remove route", "- [x] `paid`: remove route")
-    with pytest.raises(ValueError, match="conflicting"):
+    both = body.replace("- [ ] `paid`: remove", "- [x] `paid`: remove")
+    with pytest.raises(ValueError, match="not both"):
         parse_decisions(both, report)
 
 
@@ -918,7 +887,7 @@ def test_prepare_rechecks_paid_route_then_skips_probes_after_fulfillment(tmp_pat
         target.write_text(text)
     snapshot = Report(anomalies=[proof], state={"last_full": {"anomalies": [asdict(proof)]}})
     body = render_body(snapshot, run_date=TODAY.isoformat()).replace(
-        "- [ ] `paid`: keep as a paid route", "- [x] `paid`: keep as a paid route"
+        "- [ ] `paid`: ignore", "- [x] `paid`: ignore"
     )
     from datetime import datetime
 
@@ -1052,7 +1021,7 @@ def test_paid_fulfillment_requires_literal_ack_in_planner_and_issue(model):
             Decisions(acknowledged=(entry,)),
             TODAY,
         )
-        assert ("`paid`: keep as a paid route" in choices) is expected
+        assert ("`paid`: ignore" in choices) is expected
         plan = plan_apply(Report(), (decision,), conf)
         assert bool(plan.deferred) is not expected
 
@@ -1118,6 +1087,37 @@ def prepare_fixture(tmp_path, monkeypatch, limits, report, site_text):
     return commands, texts, seen
 
 
+def test_an_additions_only_apply_does_not_drain_providers(tmp_path, monkeypatch):
+    """Draining waited up to 13 minutes per provider (the 2026-11-20 `/apply` took 40 minutes and
+    paused production meanwhile); a route that is not configured yet needs no drain."""
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.reconcile import NoDispatchControl
+
+    candidate = replace(CANDIDATE, discovery=DISCOVERY)
+    snapshot = Report(
+        candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}}
+    )
+    body = render_body(snapshot, run_date=TODAY.isoformat()).replace(
+        "- [ ] `host/creator/new`: add", "- [x] `host/creator/new`: add"
+    )
+    commands, _texts, _seen = prepare_fixture(
+        tmp_path, monkeypatch, config().limits, Report(candidates=[candidate]), lane_yaml()
+    )
+    monkeypatch.setattr(commands, "_control", lambda _: pytest.fail("additions must not drain"))
+    controls = []
+
+    def fresh(limits, lanes, *args, control, **kwargs):
+        controls.append(control)
+        return Report(candidates=[candidate])
+
+    monkeypatch.setattr(commands, "reconcile", fresh)
+    plan = commands.prepare(body, "main-sha")
+    assert [type(c) for c in controls] == [NoDispatchControl]
+    assert [dict(r)["route_id"] for r in plan.routes] == ["host_creator_new"]
+    assert not plan.backups and not plan.deferred
+
+
 def test_apply_rebuild_honors_current_free_primary_pool_despite_warm_lane_cache(
     tmp_path, monkeypatch
 ):
@@ -1130,7 +1130,7 @@ def test_apply_rebuild_honors_current_free_primary_pool_despite_warm_lane_cache(
     }
     snapshot = Report(anomalies=[proof], state={"last_full": {"anomalies": [asdict(proof)]}})
     body = render_body(snapshot, run_date=TODAY.isoformat()).replace(
-        "- [ ] `paid`: keep as a paid route", "- [x] `paid`: keep as a paid route"
+        "- [ ] `paid`: ignore", "- [x] `paid`: ignore"
     )
     commands, texts, seen = prepare_fixture(
         tmp_path,
@@ -1149,33 +1149,6 @@ def test_apply_rebuild_honors_current_free_primary_pool_despite_warm_lane_cache(
     assert [lane.models for lane in seen] == [("old", "spare"), ("old",)]
     assert plan.base_commit == "second-main"
     assert (tmp_path / SOURCE_PATHS[0]).read_text() == texts[SOURCE_PATHS[0]]
-
-
-def test_apply_rebuild_honors_current_backup_opt_out_despite_warm_lane_cache(tmp_path, monkeypatch):
-    from dataclasses import asdict
-
-    conf = config()
-    candidate = replace(CANDIDATE, discovery=DISCOVERY)
-    snapshot = Report(
-        candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}}
-    )
-    body = render_body(snapshot, run_date=TODAY.isoformat()).replace(
-        "- [ ] `host/creator/new`: add as backup to `lane`",
-        "- [x] `host/creator/new`: add as backup to `lane`",
-    )
-    commands, texts, seen = prepare_fixture(
-        tmp_path, monkeypatch, conf.limits, Report(candidates=[candidate]), lane_yaml()
-    )
-    assert commands.prepare(body, "first-main").backups == (("lane", "creator/new"),)
-    for p, text in texts.items():
-        (tmp_path / p).write_text(text)
-    site = lane_yaml(catalog_backup_candidates=False)
-    (tmp_path / SOURCE_PATHS[1]).write_text(site)
-    plan = commands.prepare(body, "second-main")
-    assert not plan.routes and not plan.backups
-    assert "no longer eligible" in plan.rejected[0]
-    assert [lane.accepts_catalog_backups for lane in seen] == [True, False]
-    assert (tmp_path / SOURCE_PATHS[1]).read_text() == site
 
 
 def test_rate_choices_preserve_selection_and_reject_forged_value():
@@ -1214,8 +1187,7 @@ def test_due_only_merge_keeps_current_candidate_without_duplicate_choice():
 
     assert report.candidates == [current]
     body = render_body(report, run_date=TODAY.isoformat())
-    assert body.count("## Request-cap discovery") == 1
-    assert "complete" in body and "partial" not in body
+    assert body.count("- [ ] `host/creator/new`: add") == 1
 
 
 def test_prepare_rate_increase_uses_verified_artifact_values_not_issue_observations(
@@ -1328,90 +1300,6 @@ def test_rate_increase_waits_for_open_tightening_and_merged_branch_does_not_bloc
     )
 
 
-@pytest.mark.parametrize("profile", ["input_priority", "selected_axes", "history"])
-def test_input_characterization_report_separates_provider_usage_and_estimates(profile):
-    candidate = replace(
-        CANDIDATE,
-        discovery={
-            "profile": profile,
-            "input_characterization": {
-                "admitted_input": 10000,
-                "admitted_local_estimate": 11000,
-                "requested_output": 2048,
-                "generated_output": 234,
-                "rejected_estimates": [
-                    {"local_input_estimate": 12100, "provider_scale_estimate": 11000}
-                ],
-            },
-        },
-    )
-    body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
-    assert "confirmed 10,000 provider-counted input" in body
-    assert "2,048 output requested and 234 generated" in body
-    assert "Passing request local input estimate: 11,000" in body
-    assert "Rejected input-size request: local estimate 12,100; approximately 11,000" in body
-    assert "not a provider-counted upper bound" in body
-    assert ("Output and combined checks are supporting examples, not maxima" in body) == (
-        profile == "input_priority"
-    )
-
-
-def test_issue_shows_measured_operational_window_and_preserves_published_claim():
-    discovery = {
-        "profile": "history",
-        "axes": [
-            {
-                "axis": "input",
-                "published": 8000,
-                "source": "https://provider.test/models",
-                "count_basis": "input",
-                "control": "input:v2",
-            },
-            {"axis": "output", "published": 4096},
-        ],
-        "input_characterization": {
-            "admitted_input": 9000,
-            "generated_output": 100,
-            "count_basis": "input",
-            "control": "input:v2",
-        },
-    }
-    body = render_body(
-        Report(candidates=[replace(CANDIDATE, discovery=discovery)]),
-        run_date=TODAY.isoformat(),
-    )
-    assert "`hard_input_ceiling` = 9,000" in body
-    assert "`input_context_limit` = 9,100" in body
-    assert "Proposed `output_context_limit`: 4,096" in body
-    assert "provider claim 8,000" in body
-    assert "one successful authenticated discovery run" in body
-
-
-def test_input_priority_supporting_counts_do_not_claim_full_requested_output():
-    candidate = replace(
-        CANDIDATE,
-        discovery={
-            "profile": "input_priority",
-            "attempt_diagnostics": [
-                {
-                    "axis": "total_input_heavy",
-                    "outcome": "inconclusive",
-                    "reported_input": 130463,
-                    "reported_output": 609,
-                    "requested_output": 2444,
-                    "finish_reason_state": "length",
-                    "usage_state": "valid",
-                }
-            ],
-            "input_characterization": {"admitted_input": 130625, "rejected_estimates": 42},
-        },
-    )
-    body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
-    assert "reported input 130,463, generated output 609, requested output 2,444" in body
-    assert "input plus generated output 131,072" in body
-    assert "Consumed totals are separate from requested-output capacity proof" in body
-
-
 def test_route_only_addition_waits_for_the_daily_measurement_then_lists_its_pool():
     report = Report(candidates=[replace(CANDIDATE, discovery=None)])
     decision = Decision("host", "creator/new", "add", (), PROOF)
@@ -1500,7 +1388,7 @@ def test_readiness_states_tell_the_maintainer_what_happens_next():
         replace(CANDIDATE, evidence=proof.to_dict(), discovery=_finished_output_axis())
     )
     assert ready.state == READY and ready.output_source == "provisional"
-    assert "Ready to add" in ready.headline and "`add route only`" in ready.next_step
+    assert "Ready to add" in ready.headline and "Tick `add`" in ready.next_step
 
     slow_input = {**DISCOVERY["axes"][0], "reason": "input_time_limited_lower_bound"}
     slow = candidate_readiness(
@@ -1542,23 +1430,19 @@ def test_readiness_states_tell_the_maintainer_what_happens_next():
             },
         )
     )
-    assert exhausted.state == ACTION and "`test again`" in exhausted.next_step
+    assert exhausted.state == ACTION and "queue one more bounded test" in exhausted.next_step
 
 
-def test_issue_leads_with_next_steps_and_hides_diagnostics_in_details():
+def test_each_provider_line_says_ready_with_its_caps_beside_the_checkboxes():
     proof = replace(PROOF, output_context_limit=None)
     candidate = replace(CANDIDATE, evidence=proof.to_dict(), discovery=_finished_output_axis())
     body = render_body(Report(candidates=[candidate]), run_date=TODAY.isoformat())
-    assert body.index("## Next steps") < body.index("## Candidates")
-    row = next(
-        line for line in body.splitlines() if line.startswith("| `host/creator/new` | READY")
-    )
-    assert "12,000" in row and "4,096 (provisional)" in row and "`/apply`" in row
-    # The same verdict sits beside the checkboxes, so the tick and its meaning are together.
     decisions = body[body.index("## Decisions") :]
-    assert "Ready to add." in decisions and "- [ ] `host/creator/new`: add route only" in decisions
-    details = body[body.index("## Request-cap discovery") :]
-    assert details.count("<details>") == details.count("</details>") >= 1
+    line = next(x for x in decisions.splitlines() if x.startswith("`host` · **ready**"))
+    assert "in 12k / out 4k (provisional)" in line
+    after = decisions[decisions.index(line) :].splitlines()
+    assert after[1:3] == ["- [ ] `host/creator/new`: add", "- [ ] `host/creator/new`: ignore"]
+    assert "<details>" not in body and "## Next steps" not in body
 
 
 @pytest.mark.parametrize(
@@ -1618,30 +1502,6 @@ def _unscored_with_matches():
         {"creator": "meta", "slug": "llama-4", "name": "Llama 4", "score": 10.0},
     ]
     return replace(CANDIDATE, score=None, below_floor=None, aa_matches=matches)
-
-
-def test_closest_aa_matches_are_checkboxes_and_a_ticked_one_is_read_back_next_run():
-    from dataclasses import asdict
-
-    from citypods.provider_catalog.issue import accepted_aa_matches, decode_state
-
-    candidate = _unscored_with_matches()
-    report = Report(candidates=[candidate])
-    report.state = {"version": 3, "last_full": {"candidates": [asdict(candidate)]}}
-    body = render_body(report, run_date=TODAY.isoformat())
-    row = "- [ ] `host/creator/new`: AA match `meta/muse-spark` (Muse Spark, index 40)"
-    assert row in body and "AA match `meta/llama-4`" in body
-    ticked = body.replace(row, row.replace("[ ]", "[x]"))
-
-    decisions = parse_decisions(ticked, report)
-    assert [d.action for d in decisions] == ["aa_match"]
-    assert accepted_aa_matches(ticked, decode_state(ticked)) == {
-        "host/creator/new": ("meta", "muse-spark")
-    }
-    # Nothing ticked: nothing accepted. A row that was not offered is never accepted.
-    assert accepted_aa_matches(body, decode_state(body)) == {}
-    forged = ticked.replace("`meta/muse-spark`", "`openai/gpt-oss-120b`")
-    assert accepted_aa_matches(forged, decode_state(body)) == {}
 
 
 def test_a_stored_aa_match_survives_without_the_checkbox():

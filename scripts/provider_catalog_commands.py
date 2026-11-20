@@ -180,8 +180,12 @@ def prepare(body, base_commit, proposal_kind=None):
     }
     report = Report()
     if selected or paid:
-        control = _control(False)
-        if isinstance(control, NoDispatchControl):
+        # Additions re-check an unconfigured route that production never calls, so they need no
+        # drained provider pause: waiting up to 13 minutes per provider for in-flight jobs made a
+        # 13-route `/apply` take 40 minutes and stalled production meanwhile (2026-11-20). Paid,
+        # removal and method decisions judge a configured route, so they still drain first.
+        control = _control(False) if paid else NoDispatchControl()
+        if paid and isinstance(control, NoDispatchControl):
             raise ValueError("route changes require a configured exclusive dispatch pause")
         discovery_history = ()
         discovery_history_gaps = ()
@@ -645,8 +649,10 @@ def main(argv=None):
             retries = [d for d in decisions if d.action == "test_again"]
             retry_receipt = None
             if retries:
-                if len(retries) != 1 or args.retry_receipt is None:
-                    raise ValueError("one test-again choice and a retry artifact path are required")
+                # One retest is queued per command (one receipt artifact); the others keep their
+                # `add` tick and are queued by the next `/apply`.
+                if args.retry_receipt is None:
+                    raise ValueError("a retest needs the retry artifact path")
                 retry_receipt = prepare_discovery_retry(
                     retries[0],
                     event=event,
@@ -709,8 +715,14 @@ def main(argv=None):
                 )
             if retry_receipt:
                 comments.append(
-                    "Request-cap discovery queued for the next eligible UTC day. "
-                    "This command makes no provider request."
+                    f"`{retries[0].key}`: one more limit test is queued for the next eligible UTC "
+                    "day; keep its `add` tick and comment `/apply` once the issue shows it ready."
+                    + (
+                        " Also waiting for a retest (comment `/apply` again to queue the next): "
+                        + ", ".join(f"`{d.key}`" for d in retries[1:])
+                        if retries[1:]
+                        else ""
+                    )
                 )
                 result["retry_receipt_id"] = retry_receipt["payload"]["receipt_id"]
                 result["retry_receipt"] = retry_receipt
@@ -796,7 +808,7 @@ def prepare_discovery_retry(decision, *, event, issue_number, now):
     if not unresolved:
         raise ValueError(
             "every request-cap axis is already fully measured, so there is nothing to retry; "
-            "tick `add route only` instead"
+            "comment `/apply` again once the issue shows it as ready"
         )
     revision = digest([asdict(item) for item in compatible])
     comment = event.get("comment") or {}
