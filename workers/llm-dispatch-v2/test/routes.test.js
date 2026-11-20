@@ -303,8 +303,8 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
   // Providers serving the same version share a pool (BeatAPI joined 2026-10-07); V4 Pro is
   // BeatAPI's own pool, not the retired alias for NVIDIA's v4.1.
   const map = DISPATCH_LIMITS.model_routes_map;
+  // NVIDIA's v4.1 leg was removed 2026-11-19: the model reached end of life (HTTP 410).
   assert.deepEqual(map["deepseek/deepseek-v4.1-flash"], [
-    "nvidia_deepseek_v4_1_flash_free",
     "beatapi_deepseek_v4_1_flash_free",
     "beatapi_secondary_deepseek_v4_1_flash_free",
   ]);
@@ -315,11 +315,10 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
   ]);
   assert.deepEqual(map["deepseek/deepseek-v4-pro"], ["beatapi_deepseek_v4_pro_free"]);
   assert.equal(
-    modelForRouteId("nvidia_deepseek_v4_1_flash_free", DISPATCH_LIMITS),
+    modelForRouteId("beatapi_deepseek_v4_1_flash_free", DISPATCH_LIMITS),
     "deepseek/deepseek-v4.1-flash"
   );
-  // An exact-model contestant must never be answered by the older v4-flash pool. The NVIDIA leg
-  // stays in the pool but is stood down (rpd 0, review/58 12.7), so only BeatAPI is eligible.
+  // An exact-model contestant must never be answered by the older v4-flash pool.
   const job = {
     policy_json: JSON.stringify({ allowed_models: ["deepseek/deepseek-v4.1-flash"] }),
     input_token_estimate: 1000,

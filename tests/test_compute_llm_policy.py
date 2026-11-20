@@ -64,7 +64,8 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     # mismatch in Cloudflare AI Gateway (see config/provider_limits.yml's `nvidia` block). Restored
     # once the path fix was verified end-to-end against the live gateway. Paid routes are absent.
     # One pool name per DeepSeek version (2026-09-24), shared by every provider serving that model
-    # (BeatAPI joined 2026-10-07): v4 is OrcaRouter + BeatAPI, v4.1 NVIDIA + BeatAPI. The old
+    # (BeatAPI joined 2026-10-07): v4 is OrcaRouter + BeatAPI, v4.1 BeatAPI only (NVIDIA's
+    # v4.1 reached end of life 2026-11-16 and its route was removed 2026-11-19). The old
     # `v4-pro` alias that pointed at NVIDIA's v4.1 stays retired; the pool is now BeatAPI's own.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
     # The secondary BeatAPI account lost its free V4 Flash and V4 Pro routes 2026-10-31.
@@ -75,7 +76,6 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
         "beatapi_deepseek_v4_pro_free",
     ]
     assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4.1-flash"]] == [
-        "nvidia_deepseek_v4_1_flash_free",
         "beatapi_deepseek_v4_1_flash_free",
         "beatapi_secondary_deepseek_v4_1_flash_free",
     ]

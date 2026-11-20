@@ -92,6 +92,11 @@ model_aliases:
     to: openrouter/nvidia/nemotron-3.5-super-vl:free
     reason: "OpenRouter model alias without :free tag mapping to canonical pool"
     decided_on: "2026-11-04"
+  nvidia/deepseek-v4.1-flash:
+    to: deepseek/deepseek-v4.1-flash
+    reason: "Same model: NVIDIA's V4.1 leg reached end of life (HTTP 410) and was removed; the
+      selector stays so stored judge identities and old jobs resolve to the BeatAPI V4.1 pool"
+    decided_on: "2026-11-19"
 
 # Optional cross-model overflow routing. A key names a model whose callers may also be satisfied
 # by any of its listed target models once its own routes are exhausted/unavailable -- extra daily
@@ -326,14 +331,8 @@ providers:
   #     for the full reasoning; this is the one number this account actually enforces via the
   #     shared `ProviderLedger`, see `citypods/compute/llm_budget.py`), mirroring how the Mistral
   #     provider block already paces every Mistral model off one shared account limit.
-  #   - Every route below also declares `tpm: 100000` as a second, independent self-imposed cap.
-  #     NOTE: this is an *approximation*, not a true provider-level TPM ledger -- the schema/code
-  #     (`LLMBudget`/`ProviderLedger`) only actually enforces a shared limit for `rpm`
-  #     (`route.provider_rpm`); there is no equivalent provider-wide token-rate ledger today, so
-  #     each route's 40k TPM is checked independently rather than summed across the account. If
-  #     several NVIDIA routes are dispatched concurrently at full token throughput, the account's
-  #     *aggregate* token rate could exceed 40k TPM even though no single route did. Adding a real
-  #     provider-level TPM ledger (parallel to `provider_rpm`) is a follow-up, not done here.
+  #   - No `tpm`, provider-wide or per route (removed 2026-11-19): NVIDIA publishes none and a
+  #     1,034,675-token MiniMax request was admitted (see the provider block's comment below).
   #   - No `rpd` is set anywhere below: NVIDIA publishes no daily cap, so encoding one would be
   #     inventing a number we have no basis for.
   # No native LiteLLM adapter is assumed for this gateway; routes compile through the same
@@ -365,7 +364,12 @@ providers:
     # with the stale "0.5 rpm each" arithmetic once written here) defeats by becoming the
     # accidental binding constraint instead.
     rpm: 35
-    tpm: 100000
+    # No provider `tpm` (removed 2026-11-19). NVIDIA publishes no token-rate limit and enforces
+    # none we can find: one MiniMax M3.1 Flash request of 1,034,675 provider tokens was admitted
+    # and answered (direct probe 2026-11-19), and its only refusal was the model's context window.
+    # A self-imposed 100k figure here became the Worker's `reservation_over_provider_tokens` gate
+    # (tpm x 5 windows) and held every locator overflow packet above ~450k tokens forever.
+    # Requests are paced by `rpm` and each route's `rpm`/`rpd`/`concurrency` only.
     # Raised 2 -> 3 on 2026-09-23 while Gemma was paused so Nemotron 3 Ultra could keep a slot
     # beside slow overflow work (kimi-k3 ~590s, deepseek-v4.1-flash), each capped at concurrency 1.
     # Raised 3 -> 4 on 2026-10-17 when Gemma 4 31B got a second slot (800 RPD, route concurrency 2):
@@ -1126,11 +1130,10 @@ routes:
   # lockouts began at 28, 37 and 31 successes/hr), and the lockouts appear to lengthen when we keep
   # exhausting it. 30/hr is 0.5/min, so that is the pace. It costs no throughput -- the hourly quota
   # caps us either way -- it just spends the quota evenly instead of burning it in half an hour and
-  # then sitting locked out. Below 1 rpm is deliberate and supported; see _scale_rate_limit and
-  # per-route 40k TPM self-imposed cap that is *not* summed across routes (no real provider-level
-  # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. The provider-level
+  # then sitting locked out. Below 1 rpm is deliberate and supported; see _scale_rate_limit.
+  # No `tpm` (see the provider block). No `rpd` -- NVIDIA publishes no daily cap. The provider-level
   # `structured_output_method: json_schema` is inherited, not verified: NVIDIA serves each model
-  # through its own stack, and at least one (deepseek-v4.1-flash) answers json_schema with empty
+  # through its own stack, and at least one (the retired deepseek-v4.1-flash) answered json_schema with empty
   # content, so a route that has been checked carries its own verified method.
   #
   # Each route ALSO declares its own `rpm: 12`, matching the provider-wide cap, even though
@@ -1152,58 +1155,11 @@ routes:
   # rather than a new one, exactly like the existing SambaNova+SiliconFlow / OpenRouter+Kilo+
   # OpenCode poolings above.
 
-  # NVIDIA retired both `deepseek-ai/deepseek-v4-pro-0813` and `deepseek-ai/deepseek-v4-flash-0731`
-  # (HTTP 410 Gone; 22-28 locator/moments jobs a day failed terminally against the pro route on
-  # 2026-09-21/22) and now serves `deepseek-ai/deepseek-v4.1-flash` in their place -- confirmed
-  # in NVIDIA's /v1/models listing on 2026-09-23.
-  #
-  # One pool name per DeepSeek version (2026-09-24). Pooling v4 and v4.1 under one name hid
-  # OrcaRouter's v4 (no lane used the shared name) and meant a job could be answered by either
-  # version. Lanes now list the versions they want explicitly:
-  #   deepseek/deepseek-v4.1-flash -> this route (AA 39.5): r6-moments overflow, tournament:tag
-  #   deepseek/deepseek-v4-flash   -> OrcaRouter's v4 only (AA 34.3): chapter-locator overflow,
-  #                                   tagger spill, its own tournament:tag contestant
-  # The former `deepseek/deepseek-v4-pro` alias (which also pointed here) is retired.
-  #
-  # No `hard_input_ceiling` yet: NVIDIA was returning 503 "Service temporarily overloaded" for
-  # every model when this route was added, so run the route probe (llm-rate-probe.yml) and author
-  # a measured ceiling in a follow-up. Until then admission falls back to `input_context_limit`.
-  - route_id: nvidia_deepseek_v4_1_flash_free
-    model: nvidia/deepseek-v4.1-flash
-    model_key: deepseek/deepseek-v4.1-flash
-    provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4.1-flash
-    response_timeout_seconds: 720
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    # Carried over from the v4-flash-0731 route it replaces (never returned a 429 at 4 rpm).
-    rpm: 4
-    # STOOD DOWN 2026-11-13 (review/58 12.7): `rpd: 0` is the paused-route convention. Workers
-    # Logs 2026-11-12 04Z to 11-13 11:40Z: 2 of 4 judge:adjudicator calls and 0 of 58 queued
-    # chapter-locator calls succeeded (mostly 720 s timeouts); AI Gateway, 7 days: 5 x 200 of 7.
-    # V4.1 stays served by the two BeatAPI legs below (47 x 200 of 52 in 7 days, p50 95 s).
-    # Restore (delete this line) after an llm-rate-probe.yml run shows NVIDIA answering again.
-    rpd: 0
-    tpm: 40000
-    # 1, not the old routes' 4: this route carries full-transcript overflow (multi-minute calls)
-    # and must not crowd Nemotron 3 Ultra out of NVIDIA's shared provider concurrency.
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    upstream_429_default: upstream_capacity
-    # Verified 2026-09-24: json_schema and json_object both return a 200 with EMPTY content
-    # (reasoning only); with no response_format the model returns valid JSON.
-    structured_output_method: prompt_only
-    structured_output_verified_on: "2026-09-24"
-    # How this route turns thinking off when a lane asks for `reasoning: off` (verified
-    # 2026-09-24: no reasoning tokens, valid JSON). Not applied by default: the model keeps its
-    # default thinking unless a lane opts in for a job type (llm_lanes[...].reasoning).
-    reasoning_controls:
-      "off":  # quoted: bare `off` is YAML's boolean false
-        chat_template_kwargs:
-          enable_thinking: false
+  # NVIDIA has retired every DeepSeek model it served: v4-pro-0813 and v4-flash-0731 (HTTP 410,
+  # 2026-09-21/22), then deepseek-ai/deepseek-v4.1-flash (HTTP 410 "reached its end of life on
+  # 2026-11-16T08:00:00Z", confirmed by a direct probe 2026-11-19). The route
+  # `nvidia_deepseek_v4_1_flash_free` is removed; deepseek/deepseek-v4.1-flash stays served by
+  # the two BeatAPI legs below.
 
   - route_id: nvidia_gemma_4_31b_it_free
     model: google/gemma-4-31b-it
@@ -1230,7 +1186,6 @@ routes:
     # slots Nemotron Ultra, DeepSeek V4.1 and the adjudicator need; at the 172 s median that is
     # about 500 calls a day, so 800 is a ceiling, not a target.
     rpd: 800
-    tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1281,23 +1236,9 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
-    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
-    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
-    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
-    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
-    # formula, not measured or published. Input-ceiling (max size of one request, measured
-    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
-    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
-    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
-    # developer forums: "limits vary by model and are not published"). This tpm value remains
-    # exactly what it was before this session -- an unverified inherited placeholder, not a
-    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
-    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
-    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
-    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
-    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
-    # request this size, exactly the behavior this route's real ~6x ratio calls for.
-    tpm: 40000
+    # No `tpm`: NVIDIA does not expose a rate-limit header or publish a per-model TPM figure, and
+    # the 40000 that sat here was an unverified inherited placeholder (removed 2026-11-19; see the
+    # provider block). hard_input_ceiling below is the only size-admission check.
     hard_input_ceiling: 246109
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1328,7 +1269,6 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 4
-    tpm: 40000
     concurrency: 4
     free: true
     input_per_token: 0.0
@@ -1762,13 +1702,15 @@ routes:
   # 564,797 / 755,581 / 941,663 provider-counted input tokens (estimate_tokens 219,129 to 610,831;
   # provider/estimate ratio 1.40 to 1.59; 44 to 225 s); a 709,545-estimate packet was rejected
   # with HTTP 400 "Invalid request" after 20.8 s (about 1.0 to 1.13M provider tokens at the
-  # observed ratios). hard_input_ceiling is the largest admitted input, a lower bound;
-  # input_context_limit is held to the same verified figure (the probe did not record that
-  # call's output tokens). input_token_ratio is the worst probe ratio. The chapter-locator lane
-  # sends this route packets up to 500,000 estimated tokens (about 795,000 provider tokens at
-  # 1.59, plus up to 12,800 output, inside 941,663).
-  # Provider/catalog input_context_limit claim: not published; source:
-  # https://integrate.api.nvidia.com/v1/models.
+  # observed ratios).
+  # 2026-11-19 (direct probe, synthetic transcript filler, max_tokens 64): admitted 1,034,675
+  # provider prompt tokens (46 s); rejected 1,053,919 and 1,083,072 with HTTP 400
+  # `{"type":"context_length","limit":1048576}`. input_context_limit is that provider-reported
+  # window; hard_input_ceiling is the largest admitted input (1,034,675 + 12,800 output fits the
+  # window). input_token_ratio is the worst real-packet ratio from 2026-11-11. The chapter-locator
+  # lane derives its overflow cap from these three values (chapter_locator.py), so it moves with
+  # this entry. NVIDIA also returned HTTP 529 "Service temporarily overloaded" to 4 of 7 calls in
+  # that probe: capacity, not size -- retried, never treated as a size rejection.
   # Output context: configured value 12800 is sourced from a measured output search (a verified
   # lower bound, not a proven maximum).
   - route_id: nvidia_minimaxai_minimax_m3_1_flash
@@ -1777,8 +1719,8 @@ routes:
     upstream_model: minimaxai/minimax-m3.1-flash
     response_timeout_seconds: 720
     account_id: primary
-    input_context_limit: 941663
-    hard_input_ceiling: 941663
+    input_context_limit: 1048576
+    hard_input_ceiling: 1034675
     input_token_ratio: 1.59
     structured_output_method: json_schema
     structured_output_verified_on: '2026-11-04'
@@ -1786,6 +1728,9 @@ routes:
     concurrency: 1
     free: true
     output_context_limit: 12800
+    # A bare 429 from NVIDIA is pool capacity (as on every other NVIDIA route), retried without
+    # limit by the Worker; without this it classed as unknown_429 and failed after one retry.
+    upstream_429_default: upstream_capacity
   # Input cap evidence: 957162 provider-counted input tokens admitted; 193 output tokens
   # generated in the same request (control input:v2).
   # The hard_input_ceiling is the admitted input lower bound; the estimated rejection is not

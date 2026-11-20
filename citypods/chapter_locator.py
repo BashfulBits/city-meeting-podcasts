@@ -59,15 +59,6 @@ MINIMAX_LOCATOR_MODEL = "minimaxai/minimax-m3.1-flash"
 # Saved V4 Flash telemetry accepted packets through 76,546 internal estimated tokens and
 # repeatedly rejected packets from 81,301. Keep a small margin below the observed accepted edge.
 DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS = 76_000
-# Largest packet sent to MINIMAX_LOCATOR_MODEL. A larger packet is never submitted: the producer
-# holds it as deferred (``locator-over-input-cap``), and it becomes eligible on the first run after
-# this cap is raised. Set from the WP8a input-size probe (2026-11-11): MiniMax admitted 941,663
-# provider tokens (610,831 estimated) and rejected a 709,545-estimate packet with HTTP 400; the
-# provider/estimate ratio ran 1.40 to 1.59, so 500,000 estimated is about 795,000 provider tokens
-# at the worst ratio. Accuracy above 191,294 estimated tokens is unmeasured (no gold labels), and
-# two of five probe answers above it were structurally invalid; lower this one value (for example
-# to 300,000, below which both probe answers were valid) if production quality disappoints.
-LOCATOR_OVERFLOW_MAX_INPUT_TOKENS = 500_000
 # Deliberately NOT bumped for WP8. This string is part of every locator recipe hash and of the
 # reuse check on completed results, so bumping it would re-queue every accepted V4 Flash result in
 # the catalog. A request's model is already in its recipe hash, so moving the overflow band to a
@@ -566,6 +557,38 @@ def locator_max_output_tokens(model: str) -> int:
     if not limits:
         return LOCATOR_OUTPUT_TOKEN_RESERVE
     return min(LOCATOR_OUTPUT_TOKEN_RESERVE, max(limits))
+
+
+def locator_overflow_max_input_tokens() -> int:
+    """Largest packet (``estimate_tokens`` units) sent to MINIMAX_LOCATOR_MODEL.
+
+    Derived from the compiled route catalog (``config/provider_limits.yml``), so a re-measured
+    ceiling moves the cap with no code change: for each of the model's routes, the provider-token
+    room is the smaller of ``hard_input_ceiling`` and ``input_context_limit`` less the request's
+    output reserve, divided by the route's ``input_token_ratio`` (the worst provider/estimate ratio
+    measured on real locator packets). The largest across routes wins, since the Worker may use
+    any of them. With no MiniMax route configured the cap is 0 and every overflow packet is held.
+
+    A packet above the cap is never submitted: the producer holds it as deferred
+    (``locator-over-input-cap``), and it becomes eligible on the first run after the cap rises.
+    Accuracy above 191,294 estimated tokens is unmeasured (no gold labels), and two of five WP8a
+    probe answers above it were structurally invalid (review/58).
+    """
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
+
+    output = locator_max_output_tokens(MINIMAX_LOCATOR_MODEL)
+    caps = []
+    for route in ROUTE_CANDIDATES.get(canonical_model(MINIMAX_LOCATOR_MODEL), ()):
+        room = route.input_context_limit - output
+        if route.hard_input_ceiling is not None:
+            room = min(room, route.hard_input_ceiling)
+        ratio = route.input_token_ratio if route.input_token_ratio > 0 else 1.0
+        caps.append(max(0, int(room / ratio)))
+    return max(caps, default=0)
+
+
+# Read once at import from the compiled catalog (tests monkeypatch this name).
+LOCATOR_OVERFLOW_MAX_INPUT_TOKENS = locator_overflow_max_input_tokens()
 
 
 def build_locator_request(

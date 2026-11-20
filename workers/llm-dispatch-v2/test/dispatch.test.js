@@ -2154,6 +2154,42 @@ test("a provider missing-function 404 requeues and cools only the affected route
   assert.equal(second.jobs[0].id, "j-cap-404");
 });
 
+test("upstream_capacity refusals retry without spending the job's retry budget", async () => {
+  // 2026-11-19: NVIDIA MiniMax answered 4 of 7 probes with 529 and admitted the rest, so a
+  // capacity refusal is never the job's fault. Even a job far past the upstream retry ceiling
+  // requeues, and its transient_retry_count is left alone; the route cooldown paces retries.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-cap-loop")]);
+  sql.exec("UPDATE jobs SET transient_retry_count = 50 WHERE id = 'j-cap-loop'");
+  for (let i = 0; i < 3; i += 1) {
+    sql.exec("UPDATE routes SET blocked_until = 0");
+    const t = Date.now() + i * 120_000;
+    const plan = await coordinator.claimDispatchWindow(t, 25);
+    assert.equal(plan.jobs.length, 1, `attempt ${i} must be claimable`);
+    const claimed = plan.jobs[0];
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: claimed.id,
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-cap-loop-${i}`,
+        planned_at: claimed.not_before_at,
+        actual_start_at: t,
+        actual_end_at: t + 500,
+        observed_input_tokens: 400,
+        observed_output_tokens: 0,
+        outcome: "retryable_error",
+        provider_status_code: 529,
+        failure_class: "upstream_capacity",
+      },
+    ]);
+    const row = [...sql.exec(
+      "SELECT state, transient_retry_count FROM jobs WHERE id = 'j-cap-loop'"
+    )][0];
+    assert.equal(row.state, "queued", "a capacity refusal never fails the job");
+    assert.equal(row.transient_retry_count, 50, "a capacity refusal spends no retry budget");
+  }
+});
+
 test("a provider input-limit failure requeues for a sibling route", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j-input-limit")]);

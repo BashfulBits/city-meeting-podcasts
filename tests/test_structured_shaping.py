@@ -126,10 +126,15 @@ def test_a_direct_call_on_a_prompt_only_route_sends_no_response_format():
     assert "matching this JSON Schema" in calls[0]["messages"][0]["content"]
 
 
-def _direct_v41_call(monkeypatch, level):
+def _direct_call(monkeypatch, level, model, route_id):
     from citypods.compute import llm as llm_module
 
     monkeypatch.setattr(llm_module, "_lane_reasoning_level", lambda job, route: level)
+    # A policy-free direct call uses the pool's first route; pin it so the test names its route.
+    pool = llm_module.ROUTE_CANDIDATES[model]
+    pinned = tuple(r for r in pool if r.route_id == route_id)
+    assert pinned, route_id
+    monkeypatch.setitem(llm_module.ROUTE_CANDIDATES, model, pinned)
     calls = []
 
     def completion(**kwargs):
@@ -142,9 +147,7 @@ def _direct_v41_call(monkeypatch, level):
             },
         )
 
-    backend = LiteLLMBackend(
-        LLMBackendConfig(model="deepseek/deepseek-v4.1-flash"), completion=completion
-    )
+    backend = LiteLLMBackend(LLMBackendConfig(model=model), completion=completion)
     backend.run_inference(
         InferenceJob(
             task="tag",
@@ -160,18 +163,22 @@ def _direct_v41_call(monkeypatch, level):
     return calls[0]
 
 
+ULTRA = "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+
 def test_a_lanes_reasoning_level_reaches_the_direct_request_only_when_set(monkeypatch):
-    off = _direct_v41_call(monkeypatch, "off")
+    # NVIDIA's Nemotron 3 Ultra leg switches thinking off through its chat template.
+    off = _direct_call(monkeypatch, "off", ULTRA, "nvidia_nemotron_3_ultra_550b_a55b_free")
     assert off["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
-    default = _direct_v41_call(monkeypatch, None)
+    default = _direct_call(monkeypatch, None, ULTRA, "nvidia_nemotron_3_ultra_550b_a55b_free")
     assert "extra_body" not in default  # the model keeps its default thinking
 
 
 def test_a_route_max_job_sends_the_routes_output_limit_capped(monkeypatch):
     from citypods.compute.llm_policy import MAX_ROUTE_OUTPUT_TOKENS
 
-    call = _direct_v41_call(monkeypatch, None)
-    # NVIDIA v4.1 allows 384,000 output tokens; the send is capped, and never below the request.
+    call = _direct_call(monkeypatch, None, "zai/glm-5.3-flash", "orcarouter_zai_glm_5_3_flash_free")
+    # OrcaRouter GLM allows 131,072 output tokens; the send is capped, never below the request.
     assert call["max_tokens"] == MAX_ROUTE_OUTPUT_TOKENS
 
 

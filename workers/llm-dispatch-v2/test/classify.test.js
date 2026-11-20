@@ -66,6 +66,19 @@ test("classifyProviderFailure recognizes an input limit in a provider 500", () =
   assert.equal(result.rule_id, "provider-input-limit");
 });
 
+test("classifyProviderFailure reads HTTP 529 overloaded as upstream_capacity (2026-11-19)", () => {
+  // NVIDIA's MiniMax answers "Service temporarily overloaded" with 529 at every prompt size;
+  // repeated calls get through, so it must retry as capacity, never terminate as server_error.
+  const res = classifyProviderFailure({
+    status: 529,
+    body: { message: "Service temporarily overloaded", type: "Overloaded", code: 529 },
+    headers: null,
+    route: { provider: "nvidia", route_id: "nvidia_minimaxai_minimax_m3_1_flash" },
+  });
+  assert.equal(res.failure_class, "upstream_capacity");
+  assert.equal(res.rule_id, "http-529-overloaded");
+});
+
 test("classifyProviderFailure handles HTTP 400 upstream capacity as upstream_capacity", () => {
   const res = classifyProviderFailure({
     status: 400,

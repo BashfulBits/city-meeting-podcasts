@@ -62,6 +62,7 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert len(worker["routes_by_id"]) == len(compiled["routes"])
     assert "routes" not in worker
     assert "structured_output_methods" not in worker
+    # The route is gone (end of life 2026-11-16) but the selector is a declared alias.
     assert worker["model_aliases"]["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
     # One pool name per DeepSeek version (2026-09-24): the old `v4-pro` alias that pointed at
     # NVIDIA's v4.1 stays retired. `deepseek/deepseek-v4-pro` is now a real pool holding only a
@@ -72,9 +73,8 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert worker["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
         "beatapi_deepseek_v4_pro_free",
     ]
-    assert worker["routes_by_id"]["nvidia_deepseek_v4_1_flash_free"]["model"] == (
-        "deepseek/deepseek-v4.1-flash"
-    )
+    # NVIDIA retired deepseek-ai/deepseek-v4.1-flash (HTTP 410, 2026-11-16); its route is gone.
+    assert "nvidia_deepseek_v4_1_flash_free" not in worker["routes_by_id"]
     assert worker["model_aliases"]["orcarouter/deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
     gemma = worker["routes_by_id"]["gemma_4_31b_primary"]
     assert isinstance(gemma, dict)
@@ -121,7 +121,6 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
         "beatapi_deepseek_v4_flash_free",
     ]
     assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
-        "nvidia_deepseek_v4_1_flash_free",
         "beatapi_deepseek_v4_1_flash_free",
         "beatapi_secondary_deepseek_v4_1_flash_free",
     ]
@@ -236,7 +235,7 @@ def test_compiled_routes_resolve_a_structured_output_method_per_route():
     compiled = compile_llm_limits.compile_limits()
     routes = compiled["routes_by_id"]
     gemma = routes["gemma_4_31b_primary"]
-    v41 = routes["nvidia_deepseek_v4_1_flash_free"]
+    orca = routes["orcarouter_deepseek_v4_flash_free"]
     nemotron = routes["nvidia_nemotron_3_ultra_550b_a55b_free"]
 
     assert (gemma["structured_output_method"], gemma["structured_output_method_source"]) == (
@@ -244,19 +243,21 @@ def test_compiled_routes_resolve_a_structured_output_method_per_route():
         "provider",
     )
     assert "minLength" in gemma["structured_output_schema_strip_keys"]
-    assert (v41["structured_output_method"], v41["structured_output_method_source"]) == (
-        "prompt_only",
+    assert (orca["structured_output_method"], orca["structured_output_method_source"]) == (
+        "json_object",
         "route",
     )
-    assert v41["structured_output_verified_on"] == "2026-09-24"
-    assert v41["structured_output_response_format"] == "none"
-    assert v41["structured_output_include_schema_in_prompt"] is True
-    # Same provider, different model: the v4.1 override is not a provider-wide change.
-    assert nemotron["structured_output_method"] == "json_schema"
+    assert orca["structured_output_verified_on"] == "2026-09-24"
+    assert orca["structured_output_response_format"] == "json_object"
+    assert orca["structured_output_include_schema_in_prompt"] is True
+    assert (nemotron["structured_output_method"], nemotron["structured_output_method_source"]) == (
+        "json_schema",
+        "provider",
+    )
     worker_route = compile_llm_limits._worker_catalog(compiled)["routes_by_id"][
-        "nvidia_deepseek_v4_1_flash_free"
+        "orcarouter_deepseek_v4_flash_free"
     ]
-    assert worker_route["structured_output_response_format"] == "none"
+    assert worker_route["structured_output_response_format"] == "json_object"
     assert worker_route["structured_output_include_schema_in_prompt"] is True
 
 
@@ -1067,9 +1068,9 @@ def test_request_params_are_limited_to_provider_controls(params, match):
 def test_reasoning_controls_are_compiled_for_the_worker_and_not_applied_by_default():
     compiled = compile_llm_limits.compile_limits()
     worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
-    v41 = worker["nvidia_deepseek_v4_1_flash_free"]
-    assert v41["request_params"] is None  # thinking is no longer switched off route-wide
-    assert v41["reasoning_controls"] == {
+    ultra = worker["nvidia_nemotron_3_ultra_550b_a55b_free"]
+    assert ultra["request_params"] is None  # thinking is never switched off route-wide
+    assert ultra["reasoning_controls"] == {
         "off": {"chat_template_kwargs": {"enable_thinking": False}}
     }
 

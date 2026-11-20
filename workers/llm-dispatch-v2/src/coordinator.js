@@ -7798,9 +7798,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // With MAX_5XX_RETRIES=1 shared across every transient cause, two unrelated upstream
         // blips destroyed a job that had done nothing wrong -- 26 such events landed on just two
         // routes on 2026-09-09 alone.
+        // A provider saying its pool is full (upstream_capacity: a capacity 429, 503 or 529) is
+        // retried without limit and without spending the job's transient budget: NVIDIA answered
+        // 4 of 7 calls with 529 "Service temporarily overloaded" and the 5th went through
+        // (2026-11-19 probe), and a production MiniMax run took 8 capacity 503s beside 6
+        // successes. Failing such a job only sends it back to the producer, whose terminal-failure
+        // limit then blocks the recipe. The route's escalating cooldown (below) bounds the call
+        // rate instead. Gateway limits and empty/invalid structured replies keep the budget.
+        const isUpstreamCapacity = result.failure_class === "upstream_capacity";
         const isUpstreamRetryable =
           isUpstreamClass &&
-          job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
+          (isUpstreamCapacity ||
+            job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries()));
         const isRateLimitTerminal =
           result.provider_status_code === 429 &&
           job.transient_retry_count < _retryCeiling(this._max5xxRetries());
@@ -7960,8 +7969,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
                              response_timeout_routes=?,
                              attempts = MAX(0, attempts - ?), updated_at=?
              WHERE id=?`,
-            // Job-local exclusions have a finite route bound; preserve the transient budget.
-            isRouteExcluded || isQuotaRejection || isResponseTimeout
+            // Job-local exclusions have a finite route bound, and a capacity refusal is the
+            // provider's, not the job's: both preserve the transient budget.
+            isRouteExcluded || isQuotaRejection || isResponseTimeout || isUpstreamCapacity
               ? (job.transient_retry_count || 0) : nextTransientRetryCount,
             JSON.stringify(queueModels),
             nextSizeExcludedRoutes,

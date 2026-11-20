@@ -61,8 +61,11 @@ docs/  ──► GitHub Pages              ;   audio + transcripts + state ─�
 
 The production `chapter-locator` stage uses the baseline locator prompt and routes by the complete
 request's internal token estimate: DeepSeek V4 Flash at or below 76,000 tokens, MiniMax M3.1 Flash
-(`nvidia_minimaxai_minimax_m3_1_flash`) from 76,001 up to `LOCATOR_OVERFLOW_MAX_INPUT_TOKENS`
-(500,000, set from the review/58 WP8a admission probe). A larger packet is not submitted: it is held
+(`nvidia_minimaxai_minimax_m3_1_flash`) from 76,001 up to `LOCATOR_OVERFLOW_MAX_INPUT_TOKENS`.
+The cap is derived at import from the compiled MiniMax route, never a literal: its
+`hard_input_ceiling` (inside the context window less the 12,800-token output reserve) divided by the
+route's `input_token_ratio`, so 1,034,675 / 1.59 = 650,738 since the 2026-11-19 probe that admitted
+1,034,675 prompt tokens and saw HTTP 400 `context_length` above NVIDIA's 1,048,576. A larger packet is not submitted: it is held
 as deferred (`locator-over-input-cap` in the run event, `policy_held` work state) and re-measured
 each run, so raising the cap releases it. Each request is pinned to one model, its `max_tokens` is
 clamped to that model's largest route output limit (12,800 for MiniMax), and its recipe records the
@@ -1063,7 +1066,10 @@ its context window: some providers' `tpm` is enforced as a hard per-request cap 
 above it regardless of how idle the account is (confirmed live against Gemini's free tier — the
 real usable ceiling can sit well below both `tpm` and the model's advertised context window), while
 others genuinely tolerate a request several times their configured `tpm` (confirmed live against
-NVIDIA's free tier). This field is therefore never derived from `tpm` automatically; it is set
+NVIDIA's free tier, which has no token-rate limit at all: since 2026-11-19 the `nvidia` provider and
+its routes declare no `tpm` and are paced by RPM alone, after a single 1,034,675-token MiniMax
+request was admitted and the old `tpm: 100000` x 5 reservation gate was the only thing refusing
+the large locator jobs). This field is therefore never derived from `tpm` automatically; it is set
 only where a provider's hard-reject behavior has actually been verified (today, every direct Google
 AI Studio Gemini/Gemma route, capped at 14,400 tokens for Gemma 26B/31B — the same Gemma models fronted by
 OpenRouter's or NVIDIA's free gateways remain `null` pending their own verification), and is enforced
@@ -1263,8 +1269,15 @@ a `payment_required` day-to-month backoff ladder. In the V2 Worker a route whose
 answering `upstream_capacity` (its pool is full) doubles its cooldown from 60 s up to one probe a day
 (`UPSTREAM_CAPACITY_SATURATED_*`); its first success resets the ladder, while gateway limits and
 unusable replies keep the 15 s to 5 minute ladder. V2 also unwraps Gemini's one-element error arrays
-and structured retry delays in memory; actionable provider 503 overloads and 504 timeouts use the
-upstream-capacity budget, while explicit input/context-limit failures briefly quarantine the route
+and structured retry delays in memory; actionable provider 503 overloads, 504 timeouts and 529
+"Service temporarily overloaded" (rule `http-529-overloaded`, NVIDIA MiniMax) are
+`upstream_capacity`. Since 2026-11-19 an `upstream_capacity` refusal requeues without limit and
+without spending the job's `transient_retry_count`: the provider's pool is full, not the job
+broken, and repeated calls do get through (4 of 7 MiniMax probes were 529, the rest admitted), so
+the route cooldown and health ladder bound the call rate instead. Other upstream classes
+(`server_error`, `route_unavailable`, timeouts) still spend `MAX_UPSTREAM_CAPACITY_RETRIES`. A
+route may set `upstream_429_default: upstream_capacity` (MiniMax does) so a bare 429 is read as a
+full pool rather than an account limit, while explicit input/context-limit failures briefly quarantine the route
 and requeue once for sibling-route selection. A 410 Gone (retired model) is `route_unavailable`: the
 job requeues on the upstream-capacity budget and the route is stood down for
 `ROUTE_UNAVAILABLE_BLOCK_SECONDS`. A 404 is treated as a transient upstream fault (requeue plus the
