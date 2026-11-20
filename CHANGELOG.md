@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Clear-terminal-failures timeout raised to 120 minutes.** Listing ~35k markers takes ~21 minutes,
+  which left a 30-minute job too little time for the locked per-marker deletes.
+
 - **Provider catalog decisions: add / ignore / remove.** The rolling issue now shows each new model
   as one quality line (AA Index vs. our lanes' range, lanes it clears, size, context, free-tier end)
   and one line per provider route (ready/testing/needs you, tested caps), with only `add`/`ignore`
