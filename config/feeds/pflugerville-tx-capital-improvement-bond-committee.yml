@@ -4,6 +4,10 @@ provider: granicus
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
   body: "Capital Improvement Bond Committee"
+lifecycle:
+  status: dormant
+  reason: "The 2026 bond committee presented its recommendations to council in July; the city archive shows its latest recording on June 15. Continue polling for future activity."
+  evidence_url: "https://pflugerville.granicus.com/viewpublisher.php?view_id=1"
 podcast_title: "Pflugerville: Capital Improvement Bond Committee"
 podcast_author: "City of Pflugerville, TX"
 podcast_email: ""
