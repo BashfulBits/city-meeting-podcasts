@@ -1,0 +1,100 @@
+name: LLM judge clear
+
+# review/53 recovery: archive and remove stored judgments so the planner asks for them again
+# (`python -m citypods.judging.clear`, which documents the two scopes). A manual dispatch is a dry
+# run unless `apply` is set. It shares the `llm-judge` concurrency group with judge.yml, so GitHub
+# runs it alone: a judge run queues behind it and a running judge run finishes first, which is why
+# the tool's own "judge run in progress" check is skipped here.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Judged task"
+        required: true
+        default: moment
+        type: choice
+        options: [moment, tag]
+      mode:
+        description: "stale-evidence removes rows asked of evidence that has since changed; before removes every row judged before the date"
+        required: true
+        default: stale-evidence
+        type: choice
+        options: [stale-evidence, before]
+      before:
+        description: "With mode before: remove rows judged before this date (YYYY-MM-DD)"
+        required: false
+        default: ""
+        type: string
+      archive_name:
+        description: "New archive name under state/archive/ (letters, digits, dot, dash); required to apply"
+        required: false
+        default: ""
+        type: string
+      apply:
+        description: "Archive and remove (otherwise a dry run that changes nothing)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: llm-judge
+  cancel-in-progress: false
+
+jobs:
+  clear:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Archive and clear judgments
+        env:
+          TASK: ${{ inputs.task }}
+          MODE: ${{ inputs.mode }}
+          BEFORE: ${{ inputs.before }}
+          ARCHIVE_NAME: ${{ inputs.archive_name }}
+          APPLY: ${{ inputs.apply }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          args=(--task "$TASK" --mode "$MODE" --skip-run-check)
+          if [ "$MODE" = "before" ]; then
+            [[ "$BEFORE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "mode before needs before=YYYY-MM-DD" >&2; exit 1; }
+            args+=(--before "$BEFORE")
+          fi
+          if [ "$APPLY" = "true" ]; then
+            [[ "$ARCHIVE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{2,80}$ ]] || { echo "apply needs a valid archive_name" >&2; exit 1; }
+            args+=(--apply --archive-name "$ARCHIVE_NAME")
+          fi
+          python -m citypods.judging.clear "${args[@]}" | tee clear-summary.json
+
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: judge-clear-summary-${{ github.run_id }}
+          path: clear-summary.json
+          if-no-files-found: ignore
+          retention-days: 30
