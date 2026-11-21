@@ -1,7 +1,8 @@
 # Provider limit revalidation and burst/refill characterization
 
-**Status: §8.14 (configured-route input/output cap re-measurement) is L3, approved 2026-11-21;
-the rest of this document stays Deferred, L2.** Tracking issue:
+**Status: §8.14 (configured-route input/output cap re-measurement) is implemented (approved L3
+2026-11-21; first live run is the next Monday weekly run); the rest of this document stays
+Deferred, L2.** Tracking issue:
 [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
 
 **Maintainer scope correction — 2026-10-11.** Review/48 remains new-route discovery,
@@ -28,7 +29,7 @@ operationally configured values. A provider-canonical mismatch triggers an indep
 re-check, not silent replacement. Daily/monthly exhaustion may bound limits with complete scoped
 period accounting; no deliberate daily/monthly exhaustion experiment is planned.
 
-## 8.14 Configured-route input/output cap re-measurement — L3, approved 2026-11-21
+## 8.14 Configured-route input/output cap re-measurement — implemented 2026-11-21
 
 **Maintainer direction (2026-11-21).** Fold one part of this document into the review/48 weekly run:
 re-measuring the input and output caps of routes that are already configured. The weekly full run
