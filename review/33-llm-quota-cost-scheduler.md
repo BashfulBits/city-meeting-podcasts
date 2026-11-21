@@ -1,5 +1,12 @@
 # review/33 — LLM Quota, Cost-Window & Batch Scheduler (R13)
 
+> **Rescoped 2026-11-21.** The scheduler and its CAS ledger (`state/llm_budget.json`) now govern
+> only direct synchronous callers: city onboarding, interactive remedy classification and
+> evaluation scripts. Queued work moved to the v2 dispatch Worker (review/44, 55, 57, 58), which owns
+> its own route/provider pacing. Where both paths share a provider credential, the two ledgers do not
+> see each other's use; designing one accounting authority is
+> [#2249](https://github.com/BashfulBits/city-meeting-podcasts/issues/2249).
+
 **Maturity: L3 · revised 2026-07-16 (simplification pass on the initial L2 draft) · completed to
 dev-ready depth 2026-07-16 · implemented and revised again 2026-07-17 (code review + a unified
 deferred-completion interface) · ROADMAP R13 · depends on R2 and R10 · co-ships the still-unbuilt
