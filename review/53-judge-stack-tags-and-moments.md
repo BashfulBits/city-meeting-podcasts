@@ -688,6 +688,58 @@ policy fingerprint, and the evidence (sample sizes, intervals) into the PR descr
 maintainer merges. A threshold change re-projects display from stored judgments without recalling
 any judge (review/42 pattern).
 
+#### PR7 as built, and the first proposal (2026-11-21)
+
+Maintainer decisions (2026-11-21): calibrate **Gemini Decision 1 only**, on judgments since
+2026-11-12 (JEV's are history and are never pooled); the baseline is a **fixed false-accept cap**,
+not "the retired gate's rate" (that gate admitted nothing): the upper 95% Wilson bound of the
+weighted false-accept rate on adjudicated items must be at most 5% (`FALSE_ACCEPT_CAP`), with the
+Kish effective sample size for the weights. Within the cap the fit maximises agreement with the
+adjudicator, preferring the stricter admit. Items whose deciding sibling quote is **not in the
+adjudicator's evidence window** (the 2026-11-09 T2-window finding) are excluded and counted per
+question; so are items whose adjudicator window cannot be rebuilt (no transcript, or the rebuilt
+evidence digest differs from the stored one). **Every adjudication made before the cutover is
+excluded**, contested and calibration alike: a contested item was picked by the previous anchor's
+disagreement, and a calibration item as one the previous anchor left uncontested, so neither samples
+this anchor's population. Only routine answers under the question's current prompt version count
+(stability re-asks and probes never replace them). A gate level is proposed only if it holds at most
+half of the items the adjudicator cleared (`MAX_FALSE_HOLD`); otherwise the candidate level is
+reported as a diagnostic with no proposal. The thresholds are written under
+`judging.tasks.<task>.thresholds` with the policy fingerprint (task, method version, anchor, cutover,
+cap, sample rate, the anchor's family members and the question prompt versions). **Both tasks stay in
+shadow mode and nothing reads the thresholds until graduation.**
+
+First run on production state (contested items weigh 1, the 3% calibration sample weighs 1/0.03):
+
+| Task / question | Contested | Calibration | Excluded | Result |
+|---|---|---|---|---|
+| tag `supported` | 333,367 | 24,405 | 233,702 before the cutover; 307 window unavailable | admit at p >= 0.70 with sibling support, reject at p <= 0.69; agreement 84.9%, 97.6% decided; false-accept 4.55% (upper 95% 4.80%) over 230,914 adjudicated negatives |
+| moment `supported` | 7,373 | 1,154 | 9,008 before the cutover; 163 no anchor or sibling | admit at p >= 0.85 with sibling support, reject at p <= 0.83; agreement 80.5%, 91.7% decided; false-accept 2.22% (upper 95% 4.81%) over 1,539 negatives |
+| moment `publishable` (gate) | 6,549 | 1,296 | 10,648 before the cutover; 20 incomplete | **no threshold**: the highest level that still holds every flagged item is 0.16, and it would hold 94.7% of the cleared items. Sibling check: Gemma missed 0 of the flags; Nemotron missed 485 |
+| moment `usefulness` (grade) | 21,662 | 871 | 9,073 before the cutover; 205 incomplete; 12 window unavailable | within one level of the adjudicator 83.2% (reported, no threshold) |
+| moment `best` (choose) | 0 | 0 | none | not calibrated: the adjudicator has judged no `best` items yet |
+
+Reading the numbers:
+- The tag threshold is usable as a shadow proposal: admit and reject sit one hundredth apart, so
+  97.6% of items are decided.
+- The moment `supported` threshold is usable as a shadow proposal too, with 8% undecided. Its
+  calibration sample is small (1,154 items, 1,539 negatives), so its interval is wider than the
+  tag's; re-run it as the sample grows.
+- The Gemini anchor alone does not separate flagged from clear on `publishable`; moment graduation
+  needs a different mechanism for that gate.
+- Reproduce with `python -m citypods.judging.calibrate --task <task> --write` against the pulled
+  state. A first run reads each needed transcript once (about an hour); `--window-cache` keeps the
+  verdicts, keyed by the quote and evidence, and never caches a failed or unbuildable read.
+- **Is the weak moment result an old evidence-window artifact?** Until 2026-11-18 the moment
+  evidence window was cut at the first 400 words, and review/60 found the quote outside it for 34
+  of 60 sampled moments (fixed in `1c199e27`, `c9f0d559`). The cutover to Gemini was 2026-11-12, so
+  six days of judgments may have seen truncated evidence. A fit restricted to judgments from
+  2026-11-18 (`--since 2026-11-18`) did not improve (an earlier, looser run of the report): `supported`
+  had no pair under the cap, with only 51 calibration items (each weighing about 33); `publishable`
+  still held 99.7% of cleared items; `usefulness` agreed 65%. That sample is too small to confirm or
+  rule the cause out, and the stricter cutover rule above already gave better moment numbers. Do not
+  clear and re-run adjudication on this evidence; re-run this report as the post-fix sample grows.
+
 ### Graduation (PR8 tags, PR9 moments)
 
 The review/49 rule, applied per task on the same sample of adjudicated items:
