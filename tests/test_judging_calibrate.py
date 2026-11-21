@@ -491,3 +491,46 @@ def test_write_thresholds_skips_comment_lines_between_tasks():
     )
     out = calibrate.write_thresholds(text, "moment", {"policy_fingerprint": "x"})
     assert yaml.safe_load(out)["judging"]["tasks"]["moment"]["thresholds"]
+
+
+def test_a_retired_anchor_is_scored_in_its_own_era_at_the_current_thresholds():
+    old = "typesafe/jev-1.13"
+
+    def rows(anchor_p, truth, at):
+        return [
+            _row("supported", "anchor", old, anchor_p, at=at),
+            _row("supported", "anchor", ANCHOR, 0.99, at="2026-11-15T00:00:00Z"),
+            _row("supported", "sibling", "qwen/qwen3.8-27b", True),
+            _row("supported", "adjudicator", "adj", truth, sample="contested", at=at),
+        ]
+
+    era = "2026-11-01T00:00:00Z"
+    subjects = [_subject(f"ok{i}", rows(0.9, True, era)) for i in range(60)]
+    subjects += [_subject(f"no{i}", rows(0.1, False, era)) for i in range(60)]
+    subjects.append(_subject("late", rows(0.9, True, "2026-11-20T00:00:00Z")))
+    data = calibrate.collect(
+        [subjects],
+        _spec(VALIDATE),
+        calibration_rate=0.03,
+        anchor_model=old,
+        since=None,
+        until="2026-11-12",
+        families=FAMILIES,
+    )
+    cell = data["supported"]
+    assert len(cell.items) == 120
+    assert cell.excluded == {calibrate.EXCLUDED_AFTER_WINDOW: 1}
+    block = {"supported": {"t_admit": 0.8, "t_reject": 0.2}}
+    assert calibrate.evaluate(data, block, cap=0.1)["accepted"] is True
+    # A threshold that admits the anchor's wrong answers is not accepted.
+    bad = {"supported": {"t_admit": 0.05, "t_reject": 0.04}}
+    wrong = calibrate.evaluate(data, bad, cap=0.1)
+    assert wrong["accepted"] is False
+    assert wrong["questions"]["supported"]["scored"]["false_accept_rate"] == 1.0
+
+
+def test_gate_evaluation_counts_missed_flags_at_the_given_level():
+    items = [_item(0.6, True, True), _item(0.2, True, True), _item(0.1, False, False)]
+    out = calibrate._gate_at(items, 0.5)
+    assert out["missed_flag_share"] == 0.5 and out["accepted"] is False
+    assert calibrate._gate_at(items, 0.15)["accepted"] is True
