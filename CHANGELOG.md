@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/53 anchor acceptance check.** `python -m citypods.judging.calibrate --evaluate` scores
+  any anchor model (a retired one, a Cloud Run endpoint, a new free route) at the thresholds
+  already in `judging.tasks.<task>.thresholds`, over that model's own era (`--anchor-model`,
+  `--since`, `--until`). It reports agreement, the false-accept upper bound and whether the
+  thresholds are accepted for that model, for validate, gate, grade and choose questions, and
+  `--record` stores the result under `evals/judge/acceptance/`. Nothing is fitted or written to
+  the site config.
+
 - **Review/53 judgment clear pushes through the merged record push.** `citypods.judging.clear`
   now writes the changed records with `push_records_merged` (the judge lane's protected blocks),
   so a block another lane wrote since the pull is kept, and the archive is uploaded before the
