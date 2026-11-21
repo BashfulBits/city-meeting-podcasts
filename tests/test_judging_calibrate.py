@@ -368,7 +368,7 @@ def test_the_cap_uses_the_unrounded_bound_and_ranking_uses_unrounded_agreement()
     assert calibrate.fit_validate(many, cap=0.5)["proposal"]["t_admit"] == 0.9
 
 
-def test_contested_adjudications_from_before_the_cutover_are_left_out():
+def test_adjudications_from_before_the_cutover_are_left_out():
     def rows(at):
         return [
             _row("supported", "anchor", ANCHOR, 0.9),
@@ -384,8 +384,8 @@ def test_contested_adjudications_from_before_the_cutover_are_left_out():
         [[old, old_cal, new]], _spec(VALIDATE), calibration_rate=0.03, families=FAMILIES
     )
     cell = data["supported"]
-    assert sorted(i.subject_id for i in cell.items) == ["new", "oldcal"]
-    assert cell.excluded == {calibrate.EXCLUDED_PRECUTOVER: 1}
+    assert [i.subject_id for i in cell.items] == ["new"]
+    assert cell.excluded == {calibrate.EXCLUDED_PRECUTOVER: 2}
 
 
 def test_write_thresholds_handles_comments_and_stays_inside_judging_tasks():
@@ -447,3 +447,47 @@ def test_window_cache_keys_the_quote_and_does_not_cache_read_failures(tmp_path):
     cache.write_text(json.dumps({"v": 2, "r": {checks._name(("s", "supported", "other")): True}}))
     checks.pending["ep"] = [(first, subject, sibling("quote a"), adjudicator)]
     assert checks.run(cache) == {first: None}
+
+
+def test_stability_probe_and_old_prompt_rows_do_not_replace_the_routine_answer():
+    versioned = QuestionSpec("supported", "validate", "Is it supported?", prompt_version="2")
+    subject = _subject(
+        "a",
+        [
+            _row("supported", "anchor", ANCHOR, 0.9, prompt_version="2"),
+            _row("supported", "anchor", ANCHOR, 0.1, at="2026-11-16T00:00:00Z", sample="stability"),
+            _row("supported", "anchor", ANCHOR, 0.2, at="2026-11-17T00:00:00Z", prompt_version="1"),
+            _row("supported", "sibling", "qwen/qwen3.8-27b", True, prompt_version="2"),
+            _row("supported", "adjudicator", "adj", True, sample="contested", prompt_version="2"),
+        ],
+    )
+    data = calibrate.collect(
+        [[subject]], _spec(versioned), calibration_rate=0.03, families=FAMILIES
+    )
+    assert [i.anchor for i in data["supported"].items] == [0.9]
+
+
+def test_choose_pairs_adjudicated_before_the_cutover_are_left_out():
+    rows = [
+        _row("best", "anchor", ANCHOR, "m0"),
+        _row("best_r", "anchor", ANCHOR, "m0"),
+        _row("best", "adjudicator", "adj", "m0", sample="contested", at="2026-11-10T00:00:00Z"),
+        _row("best_r", "adjudicator", "adj", "m0", sample="contested"),
+    ]
+    key = _subject("m0", rows, group="g")
+    data = calibrate.collect(
+        [[key, _subject("m1", [], group="g")]],
+        _spec(CHOOSE, selection="top_k_per_group"),
+        calibration_rate=0.03,
+    )
+    assert data["best"].items == []
+    assert data["best"].excluded == {calibrate.EXCLUDED_PRECUTOVER: 1}
+
+
+def test_write_thresholds_skips_comment_lines_between_tasks():
+    text = (
+        "judging:\n  tasks:\n    tag: {mode: shadow}\n"
+        "  # moment settings\n    moment: {mode: shadow}\n"
+    )
+    out = calibrate.write_thresholds(text, "moment", {"policy_fingerprint": "x"})
+    assert yaml.safe_load(out)["judging"]["tasks"]["moment"]["thresholds"]

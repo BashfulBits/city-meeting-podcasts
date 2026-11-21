@@ -339,8 +339,8 @@ llm_families:
 judging:
   enabled: true
   tasks:
-    tag: {mode: shadow, thresholds: {policy_fingerprint: 759c1940daa614f8, anchor_model: gemini/gemini-decision-1, false_accept_cap: 0.05, supported: {t_admit: 0.68, t_reject: 0.67}}}
-    moment: {mode: shadow, top_k: 3, thresholds: {policy_fingerprint: dfc598fdcb92fced, anchor_model: gemini/gemini-decision-1, false_accept_cap: 0.05, supported: {t_admit: 0.9, t_reject: 0.85}}}
+    tag: {mode: shadow, thresholds: {policy_fingerprint: a2c0d17a7c00cac7, anchor_model: gemini/gemini-decision-1, false_accept_cap: 0.05, supported: {t_admit: 0.7, t_reject: 0.69}}}
+    moment: {mode: shadow, top_k: 3, thresholds: {policy_fingerprint: 5650027b7742a31f, anchor_model: gemini/gemini-decision-1, false_accept_cap: 0.05, supported: {t_admit: 0.85, t_reject: 0.83}}}
   all_tiers_sample_rate: 0.05
   calibration_sample_rate: 0.03
   stability_sample_rate: 0.02

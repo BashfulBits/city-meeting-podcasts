@@ -41,6 +41,8 @@ from citypods.judging.tasks import TIERS, QuestionSpec, Subject, TaskSpec
 ANCHOR_MODEL = "gemini/gemini-decision-1"
 # The Gemini anchor took over on 2026-11-12; earlier rows are another anchor's history.
 ANCHOR_SINCE = "2026-11-12"
+# Bumped when the fitting rules change, so a threshold block says which rules produced it.
+METHOD_VERSION = "2"
 # Maintainer decision 2026-11-21: a fixed cap on the upper 95% bound of the weighted false-accept
 # rate, not "no worse than the retired gate" (which never admitted anything).
 FALSE_ACCEPT_CAP = 0.05
@@ -55,7 +57,9 @@ MAX_FALSE_HOLD = 0.5
 EXCLUDED_WINDOW = "sibling_quote_outside_adjudicator_window"
 EXCLUDED_UNCHECKED = "adjudicator_window_unavailable"
 EXCLUDED_INCOMPLETE = "missing_anchor_or_sibling"
-EXCLUDED_PRECUTOVER = "contested_before_anchor_cutover"
+EXCLUDED_PRECUTOVER = "adjudicated_before_anchor_cutover"
+# Re-asks of an answered question and human-verified probes are not the routine answer.
+NON_ROUTINE_SAMPLES = frozenset({"stability", "probe"})
 
 # (subject, sibling row, adjudicator row) -> whether the sibling's quote is in the adjudicator's
 # evidence; None when that evidence cannot be rebuilt.
@@ -106,8 +110,12 @@ def _rows(
     exclude_family: str | None = None,
     families: Mapping[str, str] | None = None,
     since: str | None = None,
+    prompt_version: str | None = None,
 ) -> list[dict]:
-    """Usable rows of one role, oldest tier first and newest last within a tier."""
+    """Usable rows of one role, oldest tier first and newest last within a tier.
+
+    Only routine answers under the question's current prompt version count: a stability re-ask or
+    probe must not replace the routine answer, and an older prompt is another calibration cell."""
     rows = [
         row
         for row in ledger.judgments(subject)
@@ -120,6 +128,8 @@ def _rows(
             and family_of(str(row.get("judge_model") or ""), families) == exclude_family
         )
         and (since is None or str(row.get("judged_at") or "") >= since)
+        and row.get("sample") not in NON_ROUTINE_SAMPLES
+        and (prompt_version is None or row.get("prompt_version") in (None, prompt_version))
         and row.get("context_tier") in TIERS
         and ledger.usable_vote(row)
     ]
@@ -154,20 +164,27 @@ def collect(
                 _collect_choose(cell, subjects, anchor_model, since, weights)
                 continue
             for subject in subjects:
-                adjudicator = _deciding(_rows(subject, question.id, "adjudicator"))
+                version = question.prompt_version
+                adjudicator = _deciding(
+                    _rows(subject, question.id, "adjudicator", prompt_version=version)
+                )
                 if adjudicator is None or adjudicator.get("sample") not in weights:
                     continue
-                if (
-                    adjudicator["sample"] == CONTESTED
-                    and since is not None
-                    and str(adjudicator.get("judged_at") or "") < since
-                ):
-                    # Contested under the previous anchor: the item was picked by its
-                    # disagreement, not by this anchor's, so it would bias this fit.
+                if since is not None and str(adjudicator.get("judged_at") or "") < since:
+                    # Chosen under the previous anchor: a contested item by that anchor's
+                    # disagreement, a calibration item as one the previous anchor left
+                    # uncontested. Neither is a sample of this anchor's population.
                     cell.exclude(EXCLUDED_PRECUTOVER)
                     continue
                 anchor = _deciding(
-                    _rows(subject, question.id, "anchor", model=anchor_model, since=since)
+                    _rows(
+                        subject,
+                        question.id,
+                        "anchor",
+                        model=anchor_model,
+                        since=since,
+                        prompt_version=version,
+                    )
                 )
                 sibling = _deciding(
                     _rows(
@@ -176,6 +193,7 @@ def collect(
                         "sibling",
                         exclude_family=excluded_family,
                         families=families,
+                        prompt_version=version,
                     )
                 )
                 if anchor is None or sibling is None:
@@ -232,15 +250,26 @@ def _collect_choose(cell, subjects, anchor_model, since, weights) -> None:
         return
     key = subjects[0]  # the group's rows live on its first subject (runner._plan_choose)
     qid = cell.question.id
-    forward = _deciding(_rows(key, qid, "adjudicator"))
-    reverse = _deciding(_rows(key, f"{qid}_r", "adjudicator"))
+    version = cell.question.prompt_version
+    forward = _deciding(_rows(key, qid, "adjudicator", prompt_version=version))
+    reverse = _deciding(_rows(key, f"{qid}_r", "adjudicator", prompt_version=version))
     if forward is None or reverse is None or forward.get("sample") not in weights:
+        return
+    if (
+        since is not None
+        and min(str(forward.get("judged_at") or ""), str(reverse.get("judged_at") or "")) < since
+    ):
+        cell.exclude(EXCLUDED_PRECUTOVER)
         return
     if forward.get("value") != reverse.get("value"):
         cell.exclude("adjudicator_order_unstable")
         return
-    anchor_f = _deciding(_rows(key, qid, "anchor", model=anchor_model, since=since))
-    anchor_r = _deciding(_rows(key, f"{qid}_r", "anchor", model=anchor_model, since=since))
+    anchor_f = _deciding(
+        _rows(key, qid, "anchor", model=anchor_model, since=since, prompt_version=version)
+    )
+    anchor_r = _deciding(
+        _rows(key, f"{qid}_r", "anchor", model=anchor_model, since=since, prompt_version=version)
+    )
     if anchor_f is None or anchor_r is None:
         cell.exclude(EXCLUDED_INCOMPLETE)
         return
@@ -475,6 +504,7 @@ def report(
         }
     policy = {
         "task": spec.name,
+        "method": METHOD_VERSION,
         "anchor_model": anchor_model,
         "anchor_since": since,
         "false_accept_cap": cap,
@@ -539,7 +569,9 @@ def write_thresholds(text: str, task_name: str, block: Mapping[str, Any]) -> str
     pattern = re.compile(rf"^(    {re.escape(task_name)}: )(\{{[^#]*\}})([ \t]*(?:#.*)?)$")
     for i in range(tasks + 1, block_end):
         line = lines[i].rstrip("\r\n")
-        if line.strip() and not line.startswith("    "):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith("    "):
             break  # the next key of judging: the tasks block is over
         match = pattern.match(line)
         if match is None:
@@ -647,7 +679,7 @@ class WindowChecks:
             except (KeyError, ValueError, TypeError):
                 evidence = None
             if evidence is None or evidence.digest != adjudicator_row.get("evidence_digest"):
-                out[key] = (_UNAVAILABLE, True)
+                out[key] = (_UNAVAILABLE, False)  # the transcript may be restored later
             else:
                 out[key] = (quote_valid(sibling_row.get("reason"), evidence.text), True)
         return out
