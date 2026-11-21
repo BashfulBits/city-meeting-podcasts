@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Configured-route cap re-measurement design.** Add review/54 §8.14 (L3): the weekly drained
+  provider-catalog run re-measures configured free routes' input and output caps with the
+  review/48 discovery search. A raise is offered from one session. A reduction needs two sessions
+  on different days and files a producer packet-size review issue (#2264). Docs only.
+
 Treat HTTP 200 content-filter refusals as job-specific policy failures. Retry eligible alternatives
 without reusing the refusing route, preserve reported token usage, and surface refusals in the
 LLM budget monitor. Jobs with no permitted route fail with the existing policy terminal reason.
