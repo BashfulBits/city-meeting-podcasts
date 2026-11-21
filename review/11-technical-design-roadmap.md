@@ -660,7 +660,7 @@ or backfill change.
 
 ### Deferred backlog (ongoing) — §6
 #9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
-images · #34 config-via-issue-comments · #40 B2 actual-cost dashboard · #42 **directory** index sharding
+images (**L3**, video-slide approach, [review/61](61-video-slide-chapter-images.md), GH#2707) · #34 config-via-issue-comments · #40 B2 actual-cost dashboard · #42 **directory** index sharding
 (review/02 Change 6; trigger-gated by `review/16` client budgets, distinct from R4 transcript-search
 partitioning) · #44 structured logging · #47 map browser · #48 new-since-visit · #10 agenda-packet chapter
 descriptions · #14 `podcast:person/location` tags · #33 dead-city archival · review/02 Change 5
@@ -1353,6 +1353,13 @@ diarization lane. Sequence after the `diarize` lane lands so the file set is def
 budget, procurement, and contract analysis. It must be source-grounded, auditable, and explicitly
 separate from general civic summarization; it does not provide legal, investment, or procurement
 advice. Define task-specific evaluation and human-review thresholds before promotion.
+**Video slides as timed chapter images (#26, GH#2707) — L3, [review/61](61-video-slide-chapter-images.md).**
+Designed and approved 2026-11-20 at the maintainer's request, on by default for every city;
+promoted out of deferral for implementation without being sequenced into a phase. Replaces the old agenda-PDF page approach: an opt-in `slides` lane streams the meeting video
+through ffmpeg `freezedetect`, keeps one filtered JPEG per static slide on B2, and adds `toc: false`
+slide entries with `img` to the Podcasting 2.0 chapters JSON. Feed-only (`feed_content_hash`); no
+embedded M4A artwork, so no re-encode. A first-runs quality review (review/61 §10) can opt cities
+out.
 **Deleted:** #5 NER (the city's own document search is better ground truth).
 
 ---
