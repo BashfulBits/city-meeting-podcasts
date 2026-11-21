@@ -46,6 +46,8 @@ const JEV_REPLY = {
 
 test("the chat shape is the pre-existing functions, unchanged", () => {
   const chat = apiShapeFor(CHAT);
+  assert.equal(chat.contentFiltered([{ choices: [{ finish_reason: "content_filter" }] }]), true);
+  assert.equal(chat.contentFiltered({ choices: {} }), false);
   const payload = { messages: [{ role: "user", content: "hi" }], max_tokens: 16 };
   assert.deepEqual(chat.buildRequest(payload, CHAT, {}), upstreamRequestForRoute(payload, CHAT, {}));
   const body = { choices: [{ message: { content: "ok" }, finish_reason: "length" }], usage: { prompt_tokens: 3, completion_tokens: 1 } };
@@ -336,5 +338,36 @@ test("only our own started-request deadline is a provider response timeout", asy
   } finally {
     globalThis.fetch = fetch;
     console.info = info;
+  }
+});
+
+test("HTTP 200 content-filter refusals are policy failures for structured and plain requests", async () => {
+  const realFetch = globalThis.fetch;
+  let writes = 0;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    choices: [{ message: { content: "" }, finish_reason: "content_filter" }],
+    usage: { prompt_tokens: 71896, completion_tokens: 0 },
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  try {
+    for (const responseFormat of [undefined, { type: "json_object" }]) {
+      const out = await attemptProviderCall({
+        env: { BEATAPI_API_KEY: "k" }, b2: { putJson: async () => { writes++; } },
+        route: { ...CHAT, input_context_limit: 100000, output_context_limit: 8192 },
+        dispatchLimits: LIMITS,
+        job: { id: "filtered", lease_token: "lease", not_before_at: 0,
+          lease_expires_at: Date.now() + 600_000, input_token_estimate: 71896,
+          payload: { messages: [{ role: "user", content: "x" }], max_tokens: 2048,
+            ...(responseFormat ? { response_format: responseFormat } : {}) },
+          purpose: "chapter-locator" },
+        attemptId: "attempt", idempotencyKey: "idem", maxResponseMs: 60_000,
+      });
+      assert.equal(out.result.failure_class, "content_policy_violation");
+      assert.equal(out.result.outcome, "retryable_error");
+      assert.equal(out.result.observed_input_tokens, 71896);
+      assert.equal(out.result.observed_output_tokens, 0);
+    }
+    assert.equal(writes, 0, "a refusal must not be stored as a successful result");
+  } finally {
+    globalThis.fetch = realFetch;
   }
 });

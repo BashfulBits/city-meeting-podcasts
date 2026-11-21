@@ -11,6 +11,8 @@ that a maintainer can correct in config, and are otherwise only visible as retri
   (``llm_lanes[lane].reasoning``), or drop the model from the lane.
 * ``structured_output_empty`` / ``structured_output_invalid`` -- a 200 without usable JSON: the
   route's structured-output method may be wrong, or the output budget was cut first.
+* ``content_policy_violation`` -- a provider refused a job for content policy. The job
+  excludes that route and may use another permitted route.
 * ``own_tpm`` -- our own token-rate 429s: batches or reservations sized past the route's TPM.
 * ``route_input_limit`` -- requests larger than the route accepts: re-batch or record the ceiling.
 * ``input_over_route_ceiling`` -- queued jobs the Worker failed without calling a provider,
@@ -60,6 +62,7 @@ THRESHOLDS = {
     "output_budget_exhausted": 3,
     "structured_output_empty": 3,
     "structured_output_invalid": 3,
+    "content_policy_violation": 1,
     "own_tpm": 20,
     "route_input_limit": 3,
     "input_over_route_ceiling": 1,
@@ -184,6 +187,11 @@ def _suggestion(failure_class: str, route: Mapping[str, Any], lanes: list[str]) 
         return (
             f"Our own token-rate limit (route tpm {route.get('tpm')}): shrink the lane's batches "
             "or output reservation, or correct the route's `tpm` if the provider allows more."
+        )
+    if failure_class == "content_policy_violation":
+        return (
+            "The provider refused a job for content policy. The job excludes this route and "
+            "can try another permitted route; inspect the terminal reason if none remains."
         )
     if failure_class == "route_input_limit":
         return "Requests exceed what the route accepts: re-batch the lane or record the ceiling."

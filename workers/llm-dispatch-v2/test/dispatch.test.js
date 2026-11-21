@@ -2450,7 +2450,75 @@ test("content_policy_violation excludes route without setting input_rejected_min
   assert.notEqual(second.jobs[0].route_id, claimed.route_id);
 });
 
-test("content_policy_violation on sole allowed route fails terminally", async () => {
+test("HTTP 200 policy refusal retains observed usage and excludes only this job", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("filtered-200", { input_token_estimate: 500 })]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = plan.jobs[0];
+  const t = Date.now();
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [{
+    job_id: claimed.id, lease_token: claimed.lease_token, attempt_id: "filter-200",
+    planned_at: claimed.not_before_at, actual_start_at: t, actual_end_at: t + 100,
+    outcome: "retryable_error", provider_status_code: 200,
+    failure_class: "content_policy_violation", observed_input_tokens: 500,
+    observed_output_tokens: 0,
+  }]);
+  const job = [...sql.exec("SELECT state, size_excluded_routes FROM jobs WHERE id='filtered-200'")][0];
+  assert.equal(job.state, "queued");
+  assert.deepEqual(JSON.parse(job.size_excluded_routes), [claimed.route_id]);
+  const route = [...sql.exec("SELECT settled_usage, blocked_until, tpm_reserved FROM routes WHERE route_id=?",
+    claimed.route_id)][0];
+  assert.equal(route.settled_usage, 500, "a served refusal must retain reported usage");
+  assert.equal(route.tpm_reserved, 500, "the current TPM window settles to observed input");
+  assert.ok(!route.blocked_until, "other jobs may still use this route");
+  const next = await coordinator.claimDispatchWindow(t + 1000, 25);
+  assert.equal(next.jobs[0].id, "filtered-200");
+  assert.notEqual(next.jobs[0].route_id, claimed.route_id);
+});
+
+test("filtered response does not alter a newer TPM reservation window", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("filter-old-window", { input_token_estimate: 500 })]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = plan.jobs[0];
+  const lease = [...sql.exec("SELECT reservation_tpm_window_start FROM jobs WHERE id=?", claimed.id)][0];
+  sql.exec("UPDATE routes SET tpm_window_start=?, tpm_reserved=? WHERE route_id=?",
+    lease.reservation_tpm_window_start + 60000, 1234, claimed.route_id);
+  const t = Date.now();
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [{
+    job_id: claimed.id, lease_token: claimed.lease_token, attempt_id: "old-window-filter",
+    planned_at: claimed.not_before_at, actual_start_at: t, actual_end_at: t + 100,
+    outcome: "retryable_error", provider_status_code: 200,
+    failure_class: "content_policy_violation", observed_input_tokens: 500, observed_output_tokens: 0,
+  }]);
+  const row = [...sql.exec("SELECT tpm_reserved FROM routes WHERE route_id=?", claimed.route_id)][0];
+  assert.equal(row.tpm_reserved, 1234);
+});
+
+test("content filter activates an allowed backup model when primary routes are excluded", async () => {
+  const { coordinator } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("filter-backup", {
+    policy_json: JSON.stringify({
+      allowed_models: ["gemini/gemini-flash-lite"], backup_models: ["mistral/mistral-small"],
+      backup_after_attempts: 5, allowed_route_ids: ["route-a", "route-c"], allow_paid: false,
+    }),
+  })]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = plan.jobs[0];
+  assert.equal(claimed.route_id, "route-a");
+  const t = Date.now();
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [{
+    job_id: claimed.id, lease_token: claimed.lease_token, attempt_id: "filter-backup-attempt",
+    planned_at: claimed.not_before_at, actual_start_at: t, actual_end_at: t + 100,
+    outcome: "retryable_error", provider_status_code: 200,
+    failure_class: "content_policy_violation", observed_input_tokens: 500,
+    observed_output_tokens: 0,
+  }]);
+  const next = await coordinator.claimDispatchWindow(t + 1000, 25);
+  assert.equal(next.jobs[0].route_id, "route-c");
+});
+
+for (const policyStatus of [200, 400]) test(`content policy ${policyStatus} on sole route fails terminally`, async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([
     makeJob("j-policy-sole", {
@@ -2475,7 +2543,7 @@ test("content_policy_violation on sole allowed route fails terminally", async ()
       actual_start_at: t,
       actual_end_at: t + 100,
       outcome: "retryable_error",
-      provider_status_code: 400,
+      provider_status_code: policyStatus,
       failure_class: "content_policy_violation",
     },
   ]);
