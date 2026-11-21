@@ -296,7 +296,7 @@ expiry and crash recovery, and it serialises every request through one object, s
 cannot race. The Python CAS ledger stays for pools that only direct callers use. It is fail-closed
 and tested, and nothing gains from moving it.
 
-Rejected alternatives:
+Rejected alternatives (see §8.15.G: route A there revisits the first):
 
 - *Route every call through the queue.* This removes synchronous inference, which onboarding and
   interactive remedy need. The issue says to keep it.
@@ -334,7 +334,7 @@ The endpoint still checks the row-budget guard like any other write.
 
 Each stage is a separate PR, and each has a flag that turns it off.
 
-1. **Mapping and interim split (no new endpoint).** Publish the §8.15.B table. For each shared pool,
+1. **Mapping and interim split (no new endpoint). Not shipped (maintainer, 2026-11-21): do the full design.** Publish the §8.15.B table. For each shared pool,
    cap the Python ledger at a configured share of the pool (for example 10%), and lower the Worker's
    configured ceiling by that same share. This is safe at once and needs no runtime coupling.
    Rollback: remove the share.
@@ -373,12 +373,40 @@ Each stage is a separate PR, and each has a flag that turns it off.
 - **No double charge.** In shadow mode, window counters are unchanged by direct leases. After
   cutover, the Python ledger records nothing for that pool.
 
-### 8.15.G Open questions for the maintainer
+### 8.15.G Maintainer decisions (2026-11-21)
 
-- Confirm that interactive remedy and onboarding must stay synchronous. If a short queue wait is
-  acceptable, routing them through the queue (rejected above) becomes the simplest fix.
-- Should the interim stage-1 split ship before the mapping step proves a shared key? It is cheap and
-  safe, but it costs a little queued capacity on pools that may turn out to be separate.
+**The design is accepted.** The two open questions were answered:
+
+- **Must interactive remedy and onboarding stay synchronous?** Not strictly. They must not sit in
+  the queue for more than 10 to 30 minutes, and they must finish inside the GitHub Actions job's
+  timeout. Onboarding's limit measurement is adaptive: it chooses the next input or output size to
+  try from the previous result, so its calls are strictly sequential.
+- **Should the interim split (§8.15.E step 1) ship before the mapping step proves a shared key?**
+  No. Do the full design; do not ship the split.
+
+**A priority lane already exists.** The maintainer believed the queue had no priority flag; it
+has one. `LLMRequestPolicy.priority` (0 or 1, default 1) is set at submission, and the v2 scheduler
+orders its queue by `priority ASC, created_at ASC`, so a priority 0 job runs ahead of all backlog
+work. There is deliberately no way to change the priority of a job already queued, and
+`timeout_class: "fast"` selects the short-request lane. Direct callers do not use either today
+because they call the provider themselves.
+
+This changes the choice in §8.15.C. Two routes now meet the maintainer's constraints, and they
+differ in what they cost:
+
+| Route | What it needs | Quota accounting | Risk |
+|---|---|---|---|
+| **A. Queue at priority 0** (interactive remedy, onboarding, and the evaluators submit to the v2 Worker and wait for the result) | No new endpoint. Callers use `queue_only` with `priority=0` and poll. | One ledger already: the Worker's. The double-spend gap closes for those callers by construction. | Round-trip latency per call. Onboarding makes many sequential calls, so each call's pickup-to-result time multiplies. Unmeasured. |
+| **B. Reserve and settle against the Worker** (§8.15.D) | Two Worker endpoints, a second backend in `select_and_reserve`, and the seeding and rollback steps of §8.15.E. | One authority, with direct calls still synchronous. | More surface to build and test; more write cost per call. |
+
+**Recommendation: measure route A first.** Submit a small priority 0 job to the live Worker from a
+workflow, with the routes onboarding uses, and record queue wait and total time for ten sequential
+calls under idle and under backlog. If the sequential round trip is short enough for onboarding's
+whole probe sequence to finish inside its job timeout with margin (the maintainer's 10 to 30 minute
+bound is per call, not for the sequence), route A removes the need for §8.15.D and the seeded
+cutover entirely. If it is not, build route B. Route A also still needs step 1 of §8.15.B (which
+pools are shared) for any caller that keeps calling a provider directly, and §8.15.C's per-pool
+counting if it does.
 
 ## Retained prior design and local prototype notes
 
