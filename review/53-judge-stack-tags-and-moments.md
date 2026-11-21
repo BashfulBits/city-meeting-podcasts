@@ -688,6 +688,46 @@ policy fingerprint, and the evidence (sample sizes, intervals) into the PR descr
 maintainer merges. A threshold change re-projects display from stored judgments without recalling
 any judge (review/42 pattern).
 
+#### PR7 as built, and the first proposal (2026-11-21)
+
+Maintainer decisions (2026-11-21): calibrate **Gemini Decision 1 only**, on judgments since
+2026-11-12 (JEV's are history and are never pooled); the baseline is a **fixed false-accept cap**,
+not "the retired gate's rate" (that gate admitted nothing): the upper 95% Wilson bound of the
+weighted false-accept rate on adjudicated items must be at most 5% (`FALSE_ACCEPT_CAP`), with the
+Kish effective sample size for the weights. Within the cap the fit maximises agreement with the
+adjudicator, preferring the stricter admit. Items whose deciding sibling quote is **not in the
+adjudicator's evidence window** (the 2026-11-09 T2-window finding) are excluded and counted per
+question; so are items whose adjudicator window cannot be rebuilt (no transcript, or the rebuilt
+evidence digest differs from the stored one). A gate level is proposed only if it holds at most half
+of the items the adjudicator cleared (`MAX_FALSE_HOLD`). The thresholds are written under
+`judging.tasks.<task>.thresholds` with the policy fingerprint; **both tasks stay in shadow mode and
+nothing reads the thresholds until graduation**.
+
+First run on production state (contested items weigh 1, the 3% calibration sample weighs 1/0.03):
+
+| Task / question | Contested | Calibration | Excluded | Result |
+|---|---|---|---|---|
+| tag `supported` | 391,390 | 27,732 | 172,659 window unavailable | admit at p >= 0.70 with sibling support, reject at p <= 0.69; agreement 84.7%, false-accept 4.74% (upper 95% 4.97%), 275,306 adjudicated negatives |
+| moment `supported` | 13,543 | 2,795 | 512 window unavailable, 848 no anchor or sibling | admit at p >= 0.95, reject at p <= 0.94; agreement only 23.3%, false-accept 2.52% (upper 4.32%) |
+| moment `publishable` (gate) | 14,314 | 2,602 | 1,325 window unavailable, 272 incomplete | **no threshold**: the lowest flag level that misses no adjudicator flag (0.15) would hold 97% of cleared items. Sibling check: Gemma missed 0 of the flags; Nemotron missed 2,278 |
+| moment `usefulness` (grade) | 27,322 | 2,591 | 685 window unavailable, 1,225 incomplete | within one level of the adjudicator: 83.1% (reported, no threshold) |
+| moment `best` (choose) | 0 | 0 | none | not calibrated: the adjudicator has judged no `best` items yet |
+
+Reading the numbers:
+- The tag threshold is usable as a shadow proposal. Its admit and reject levels are almost the same
+  (0.70 and 0.69), so little is left undecided (97.5% decided).
+- The moment `supported` threshold meets the false-accept cap only by admitting very little, so
+  agreement is poor. Do not graduate moments on it; the anchor needs a better prompt or a second
+  independent reading first.
+- The Gemini anchor alone does not separate flagged from clear on `publishable`. Moment graduation
+  needs a different mechanism for that gate.
+- 31% of the tag items had no rebuildable adjudicator window, so those are excluded rather than
+  guessed. The excluded share is reported so a skew can be spotted; a later pass can reduce it by
+  repairing the evidence builder's digest for older rows.
+- The numbers reproduce with `python -m citypods.judging.calibrate --task <task> --write` against
+  the pulled state (a first run reads each needed transcript once, about an hour; `--window-cache`
+  keeps the results).
+
 ### Graduation (PR8 tags, PR9 moments)
 
 The review/49 rule, applied per task on the same sample of adjudicated items:
