@@ -120,3 +120,18 @@ def test_summary_counts_by_question_role_and_model():
         "supported|anchor|m": 1,
         "supported|sibling|m": 1,
     }
+
+
+def test_an_unknown_workflow_state_aborts_instead_of_counting_as_stopped(monkeypatch):
+    import subprocess
+    import types
+
+    import pytest
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **k: types.SimpleNamespace(returncode=1, stdout="", stderr="boom"),
+    )
+    with pytest.raises(SystemExit, match="could not list judge.yml runs"):
+        clear.running_judge_runs()

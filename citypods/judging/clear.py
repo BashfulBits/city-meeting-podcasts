@@ -225,6 +225,9 @@ def running_judge_runs() -> list[str]:
         text=True,
         check=False,
     )
+    if out.returncode != 0:
+        # An unknown state is not "stopped": a run that is active would push its older copy.
+        raise SystemExit(f"could not list judge.yml runs (gh exit {out.returncode}): {out.stderr}")
     return out.stdout.split()
 
 
@@ -277,6 +280,20 @@ def main(argv: list[str] | None = None) -> int:
                 f"judge.yml has runs in progress ({', '.join(running)}); disable the workflow and "
                 "wait for them to finish first (--skip-run-check to override)"
             )
+    if args.apply:
+        # An archive name is used once: writing it again would replace what an earlier clear put
+        # there, and --restore could then recover only the later rows. Check the bucket as well as
+        # the local copy.
+        pull_state(
+            storage,
+            state_dir,
+            only_prefixes=[f"{archive_dir.as_posix()}/"],
+            apply_tombstones=False,
+            log=log,
+        )
+        existing = state_dir / archive_dir
+        if existing.exists() and any(existing.iterdir()):
+            raise SystemExit(f"archive {args.archive_name!r} already exists; choose a new name")
     if not args.no_pull:
         extra = [str(archive_dir / f"{key}.jsonl.gz") for key in sources] if args.restore else []
         pull_state(
