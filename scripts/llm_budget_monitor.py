@@ -17,13 +17,10 @@ that a maintainer can correct in config, and are otherwise only visible as retri
   because at its learned input ratio they were over every usable route's ``hard_input_ceiling``
   even with its tolerance. The producer re-plans them; a steady count means it sizes batches
   larger than the Worker will send.
-* ``job_unroutable`` -- queued jobs the Worker's bounded ``__unroutable__`` sweep failed because
-  every route configured for their allowed models rejected them on a static, size- or
-  policy-independent-of-live-capacity check (too large for context/output limits or
-  ``hard_input_ceiling`` at the catalog's loose static ratio, or every such route is paid while
-  the job disallows paid). Coarser and rarer than ``input_over_route_ceiling`` (every configured
-  route, not just the ones a learned ratio later tightens). A steady count means a lane is
-  enqueuing work no currently configured route can ever serve.
+* ``job_unroutable`` -- queued jobs failed by the bounded ``__unroutable__`` sweep.
+  Context and paid-route policy, retired routes, or job-specific size, quota, and timeout
+  exclusions can leave no eligible route. The counter alone does not identify the cause;
+  one job can increment counters for multiple configured routes.
 
 It also reads ``usage_today`` (per lane and route, computed by the Worker from rows it already
 writes): output above the job's reservation, output far below it (over-reservation that wastes
@@ -199,15 +196,10 @@ def _suggestion(failure_class: str, route: Mapping[str, Any], lanes: list[str]) 
         )
     if failure_class == "job_unroutable":
         return (
-            "Queued jobs failed every static eligibility check on every route configured for "
-            "their model: too large for `input_context_limit` "
-            f"({route.get('input_context_limit')}) or `output_context_limit` "
-            f"({route.get('output_context_limit')}), over "
-            f"`hard_input_ceiling` ({route.get('hard_input_ceiling')}) at the catalog's static "
-            "ratio, or every such route is paid while the lane sends `allow_paid: false`. Check "
-            "which one applies before changing anything: shrink the lane's batches, add/widen a "
-            "route for this model, or allow paid routes for the lane, in "
-            "`config/provider_limits.yml` / `config/site_config.yml`."
+            "The unroutable sweep found no eligible route. Inspect the job's terminal reason, "
+            "route exclusions, policy, and current catalog to distinguish context or policy "
+            "limits, retired routes, and exhausted size, quota, or timeout recovery. The same "
+            "job can increment multiple route counters; do not add them as distinct jobs."
         )
     return ""
 
