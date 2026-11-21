@@ -723,7 +723,8 @@ Each: problem + 1–3 candidate approaches + rough tradeoffs. Promote to a break
 evaluation scripts) through `citypods/compute/llm_scheduler.py` and the CAS ledger
 `state/llm_budget.json`. Queued work is paced by the v2 dispatch Worker (review/44, 55, 57, 58), so
 R13's original "all LLM traffic" scope no longer holds; whether one accounting authority should
-cover both paths is #2249. Full design in
+cover both paths is #2249 (L2 design in [`review/54` §8.15](54-provider-limit-characterization.md),
+not approved for implementation). Full design in
 [`review/33`](33-llm-quota-cost-scheduler.md), simplified 2026-07-16 from an initial L2 draft, then
 revised again post-implementation (code review + an interface-unification pass, review/33 §13.2). Adds
 the policy layer above R2's LiteLLM adapter and R10's Mistral transport as a stateless selection function
