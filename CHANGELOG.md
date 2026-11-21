@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/53 judge clear workflow.** `judge-clear.yml` runs `citypods.judging.clear` from GitHub
+  Actions (dry run unless `apply`), in judge.yml's `llm-judge` concurrency group so it never runs
+  beside a judge pass. Inputs are the task, the scope (`stale-evidence` or `before` a date), an
+  archive name and `apply`.
+
 - **Review/53 judgment clear archives as plain JSONL.** The state sync uploads only `.json` and
   `.jsonl` files, so the first gzip archives were silently left local. `citypods.judging.clear`
   now writes `<source>.jsonl` and, before any record is pushed, reads every uploaded archive back
