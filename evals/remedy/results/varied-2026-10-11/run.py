@@ -36,6 +36,7 @@ from citypods.compute.llm_policy import (
     estimate_tokens,
 )
 from citypods.compute.llm_policy import ROUTES as LOGICAL_ROUTES
+from citypods.compute.returned_model_identity import returned_model_status
 from citypods.compute.structured import parse_structured_json, register_response_model
 from citypods.config import load_site_config
 from citypods.remedy_evaluation import (
@@ -424,12 +425,20 @@ def main():
                         calls += 1
                         calls_by_candidate[candidate] += 1
                         result = backend.run_immediate(job)
-                    row.update(raw_response=result.output, upstream_model=result.upstream_model)
+                    row.update(
+                        raw_response=result.output,
+                        upstream_model=result.upstream_model,
+                        responding_route_id=result.route_id,
+                    )
                     identity = result.output.get("model")
-                    row["identity_held"] = identity not in {
-                        route.upstream_model,
-                        route.direct_model,
-                    }
+                    identity_status = returned_model_status(
+                        route.route_id, route.upstream_model, route.direct_model, identity
+                    )
+                    row["returned_model_identity"] = identity_status
+                    row["physical_route_matches"] = result.route_id == route.route_id
+                    row["identity_held"] = (
+                        not row["physical_route_matches"] or identity_status == "unknown"
+                    )
                     row["serving_family_held"] = route.provider == "beatapi"
                     answer = parse_structured_json(
                         result.output["choices"][0]["message"]["content"]

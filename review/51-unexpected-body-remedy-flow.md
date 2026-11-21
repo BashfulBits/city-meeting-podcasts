@@ -4723,3 +4723,20 @@ Cleanup verification: a tracked-file-only Git snapshot passed 6,960 offline test
 whole Ruff/format and changelog checks. It regenerated 60 additional-model requests, validated
 all 24 historical jobs, audited all 12 runtime judge payloads and reproduced unchanged quality
 comparisons without local raw files. All 2,477 checked local originals retained identical hashes.
+
+### Returned model identity for route-bound evaluation (#2257)
+
+Route-bound evaluation and route-level P3 admissions share the explicit returned-name registry in
+`citypods/compute/returned_model_identity.py`. A response may match the selected physical route's
+upstream name, its direct model name, or an explicitly reviewed alias for that exact route and
+upstream pair. Unknown names remain held; an alias on another route or for another model does not
+apply. The observed `glm-5.3-flash` short name has not been approved as an alias and remains
+unknown. The caller records the returned-name outcome independently of serving-family holds; an
+accepted name is not proof of which weights the provider served or how it billed the call.
+
+The evaluator binds returned names to the physical route that actually answered, rather than the
+union of all authorized routes. Historical observations are not rewritten. The selected model-bound
+P3 plan keeps its existing contract: it records returned names as provenance without using them as
+an admission gate. This change does not admit a model, alter a production route or quota, or call a
+provider. Follow-up: investigate contradictory serving-family signals and independently review any
+additional alias evidence before widening the registry.

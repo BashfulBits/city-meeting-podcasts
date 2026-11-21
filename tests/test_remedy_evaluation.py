@@ -425,6 +425,7 @@ def test_identical_inputs_across_candidates_and_unknown_returned_model(dataset, 
     assert len(called) == 1
     assert live["results"][0]["status"] == "failed"
     assert live["results"][0]["raw_response"] == {"model": "unadmitted-upstream"}
+    assert live["results"][0]["returned_model_identity"] == "unknown"
     assert all(row["status"] == "unattempted" for row in live["results"][1:])
     assert live["model_observations"] == 1
 
@@ -1452,3 +1453,44 @@ def test_jev_alternative_is_only_bounded_manual_report_evidence():
         evidence | {"task_scope": "other"},
         for_report_only=True,
     ).usable
+
+
+def test_returned_direct_model_is_bound_to_the_route_that_answered(dataset, monkeypatch):
+    from types import SimpleNamespace
+
+    import yaml
+
+    import citypods.compute.llm_policy as policy_module
+    from citypods.compute.base import JobResult
+
+    first = replace(capable_route(), direct_model="first-provider/model")
+    second = replace(capable_route(), route_id="second-route", direct_model="other-provider/model")
+    monkeypatch.setattr(
+        policy_module, "ROUTE_REGISTRY", {first.route_id: first, second.route_id: second}
+    )
+    config = yaml.safe_load((ROOT / "config/remedy.yml").read_text())
+    config["admissions"] = [candidate() | {"physical_route_ids": [first.route_id, second.route_id]}]
+    config = RemedyConfig.model_validate(config)
+    module = cli()
+
+    def complete(job):
+        return JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            output={"model": second.direct_model},
+            route_id=first.route_id,
+            upstream_model=first.upstream_model,
+            reasoning_level="high",
+            request_params_hash=candidate()["request_params_hash"],
+        )
+
+    result = module.run_cases(
+        dataset.manifest,
+        config,
+        "proposer",
+        dry_run=False,
+        max_cases=1,
+        backend=SimpleNamespace(run_immediate=complete),
+    )
+    assert result["results"][0]["status"] == "failed"
+    assert result["results"][0]["returned_model_identity"] == "unknown"
