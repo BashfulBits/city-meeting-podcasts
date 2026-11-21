@@ -1,9 +1,10 @@
 # review/57 — LLM dispatch row efficiency (packed scheduler state)
 
-**Maturity: implemented, inactive until an operator cutover · 2026-10-30.** Maintainer-directed R10
+**Maturity: shipped (#2558, 2026-10-30); the operator cutover has run, and ingress limits were raised
+afterwards in #2606 (2026-11-05).** Originally written 2026-10-30 as implemented, inactive until cutover. Maintainer-directed R10
 operational follow-up to the shipped v2 coordinator ([review/44](44-bounded-bundled-llm-dispatch.md))
 and its read-budget protections ([review/47](47-do-row-read-budget.md)). It changes no provider limit,
-route policy, public protocol or Phase R ordering. The code ships dormant: every ledger stays in its
+route policy, public protocol or Phase R ordering. The code shipped dormant: every ledger stayed in its
 legacy table until the guarded `/v2/packed-state` cutover below is run during a drained global pause.
 
 ## Goal and result

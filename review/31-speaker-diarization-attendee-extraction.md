@@ -1,6 +1,6 @@
 # review/31 — Speaker Diarization, Minimal Attendee Extraction, and Per-Speaker Pages
 
-**Maturity: implementation in progress (R7 revision, 2026-08-22) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
+**Maturity: merged, rollout gated (PR #1331, 2026-08-29; Denton City Council shadow pilot; R7 revision 2026-08-22) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
 ROADMAP R7 (#7 diarization + a minimal #14 attendee slice; per-speaker pages adopted from
 [`review/25`](25-future-features-and-architecture.md) §2.3 #11) · full pull-forward, gating 1.0 ·
 issues not yet cut**

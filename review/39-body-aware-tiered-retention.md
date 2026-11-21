@@ -1,6 +1,7 @@
 # Body-aware tiered retention
 
-**Status: L3 development-ready · implementation in `feat/body-aware-tiered-retention` (2026-07-26)**
+**Status: Shipped** (see CHANGELOG "Body-aware three-tier retention and gradual archive backfill").
+Designed L3 and implemented in `feat/body-aware-tiered-retention` (2026-07-26).
 
 ## Decision and deviation record
 

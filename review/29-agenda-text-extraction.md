@@ -1,6 +1,6 @@
 # review/29 — Agenda Text Extraction
 
-**Maturity: L3 (implementation in progress, GH#1092) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
+**Maturity: Shipped (baseline #920; GH#1092 quality/OCR hardening closed) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
 ROADMAP R3, inserted 2026-07-14, narrowed 2026-07-16**
 
 > **Matured to L3, 2026-07-12** — the maintainer's own stated bar for starting this item ("once R11
