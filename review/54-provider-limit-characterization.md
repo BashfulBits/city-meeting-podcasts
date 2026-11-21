@@ -157,12 +157,22 @@ run.
 ### 8.14.E Relationship to the older configured-route calibration
 
 The review/48 §8.10–8.11 configured-route context calibration (`_measure_context_routes`,
-`context_cap_changes`) stays in place unchanged for its Worker-gated Groq pilot (#2221). Its
-reduction rule ("a success is only a lower bound; reducing a cap requires a parsed rejection") is
+`context_cap_changes`) has never produced a scheduled observation. All three retained weekly
+context-evidence artifacts (2026-10-19, 10-26, 11-16) list no attempted routes; the 11-02 run
+failed and the 11-09 run was cancelled. The cause is timing. The run opens the Worker context
+session near its start, and the session expires 60 minutes later (`deadline_ms: now + 3600000`
+in `coordinator.js`). Discovery and rate sampling for earlier providers come first: on 2026-11-16
+the Groq drain began about 69 minutes after the session opened. `_measure_context_routes` then sees
+`remaining_seconds < 205` and returns without a log line.
+
+§8.14 replaces the scheduled pilot (#2221), because it runs inside each provider's drain on its
+own clock. The implementation PR stops opening the scheduled context session and logs why. The
+Worker authority and the manual context trigger stay for explicit manual runs. Their reduction
+rule ("a success is only a lower bound; reducing a cap requires a parsed rejection") is
 replaced, for offers, by §8.14.C: a single parsed rejection no longer offers a reduction, and it
 needs a second observation on a different day. `context_cap_changes` gains the same two-run,
 different-day check for reductions, so the two paths cannot disagree. Retiring the older path is a
-later cleanup, once §8.14 has covered the pilot route.
+later cleanup.
 
 Review/55 production learning stays the runtime authority between config changes. §8.14 only
 proposes config changes. It shows each route's Worker learned accepted and refused sizes next to
@@ -174,6 +184,7 @@ Files: `reconcile.py` (due-route plan after new-route discovery in the weekly ru
 candidates; seeding from configured caps; issue section), `limits.py`
 (`remeasure_cap_changes`; the reduction rule in `context_cap_changes`), `apply.py` and
 `scripts/provider_catalog_commands.py` (union of offers; PR notes; producer-review issue),
+`scripts/reconcile_provider_routes.py` (no scheduled context session; log the reason),
 `issue.py` (configured-route section and pending-confirmation line), and the weekly job timeout
 in `provider-catalog-reconcile.yml` (300 → 360 minutes). No schedule change.
 
