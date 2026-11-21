@@ -15,6 +15,17 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Chapter locator fallback routing.** Keep the size-selected DeepSeek or MiniMax primary, and
+  allow size-eligible alternatives and Kimi K3.1 Pro as Worker backups after repeated failures or
+  when all primary routes are excluded, including a content-filter refusal. A 6,144-token admission
+  reservation fits Kimi's configured maximum; `route_max` still sends the selected route's own
+  output limit. The Kimi long-meeting probe timed out, so its reliability remains unverified.
+  Queue accounting now conservatively budgets three model indexes instead of one. No prompt or
+  pipeline version changes: completed compatible locator artifacts remain reusable; previously
+  pending jobs retain their old policy until they are re-planned or re-enqueued. The changed lane
+  fingerprint reopens retry-exhausted locator work, without intentionally invalidating completed
+  artifacts.
+
 - **Configured-route cap re-measurement (review/54 §8.14).** The weekly provider-catalog run now
   re-measures due configured free routes' input and output caps inside each provider's drain,
   after new-route discovery (up to 3,600 s and four sessions; the weekly job timeout rises from
