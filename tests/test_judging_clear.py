@@ -97,7 +97,7 @@ def test_apply_archive_and_restore_round_trip(tmp_path):
     ] + [
         {"uid": "u", "subject_id": "s1", "kind": "pending", "row": m} for m in part.removed_pending
     ]
-    path = tmp_path / "archive" / "x" / "src.jsonl.gz"
+    path = tmp_path / "archive" / "x" / "src.jsonl"
     clear.write_archive(path, entries)
     clear.apply_partition(subject, part)
     assert len(ledger.judgments(subject)) == 1 and ledger.pending(subject) == []
@@ -135,3 +135,24 @@ def test_an_unknown_workflow_state_aborts_instead_of_counting_as_stopped(monkeyp
     )
     with pytest.raises(SystemExit, match="could not list judge.yml runs"):
         clear.running_judge_runs()
+
+
+def test_archive_is_a_plain_jsonl_file_the_state_sync_will_upload(tmp_path):
+    from citypods.statesync import _SUFFIXES
+
+    path = tmp_path / "archive" / "x" / "src.jsonl"
+    clear.write_archive(path, [{"a": 1}, {"b": 2}])
+    assert path.suffix in _SUFFIXES
+    assert clear.read_archive(path) == [{"a": 1}, {"b": 2}]
+
+
+def test_verify_uploaded_reports_missing_and_different_copies(tmp_path):
+    (tmp_path / "archive").mkdir()
+    (tmp_path / "archive" / "ok.jsonl").write_bytes(b"1\n")
+    (tmp_path / "archive" / "gone.jsonl").write_bytes(b"2\n")
+    (tmp_path / "archive" / "diff.jsonl").write_bytes(b"3\n")
+    remote = {"state/archive/ok.jsonl": b"1\n", "state/archive/diff.jsonl": b"x\n"}
+    bad = clear.verify_uploaded(
+        remote.get, tmp_path, ["archive/ok.jsonl", "archive/gone.jsonl", "archive/diff.jsonl"]
+    )
+    assert bad == ["archive/gone.jsonl", "archive/diff.jsonl"]

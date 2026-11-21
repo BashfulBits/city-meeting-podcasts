@@ -758,7 +758,7 @@ asked again. `python -m citypods.judging.clear` archives and removes them:
   not asked again; rows whose evidence cannot be rebuilt are kept and counted; `choose` rows are
   skipped (their evidence is the option quotes). `--mode before --before DATE` removes every row of
   the task judged before the date.
-- Rows go to `state/archive/<name>/<source>.jsonl.gz` before they leave the records, and
+- Rows go to `state/archive/<name>/<source>.jsonl` before they leave the records, and
   `--restore <name>` puts them back.
 
 Dry run on production state (2026-11-21), task `moment`:
