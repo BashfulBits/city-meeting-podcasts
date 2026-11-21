@@ -7,8 +7,8 @@ deferred backlog item **#26 chapter images** ([review/01](01-feature-brainstorm.
 [review/11](11-technical-design-roadmap.md) §4 "Deferred backlog" and §6). This document changes
 no code; the slices in §9 may land as one PR, one commit per slice.
 
-**Implemented 2026-11-20** in one PR (PR1–PR4 of §9) on branch
-`feat/2707-video-slide-chapter-images`. Where the code differs from the text below, §13 lists the
+**Implemented 2026-11-20** in one PR (PR1–PR4 of §9),
+[#2754](https://github.com/BashfulBits/city-meeting-podcasts/pull/2754). Where the code differs from the text below, §13 lists the
 difference and the reason; the sections themselves are updated to match the code.
 
 ## 1. Question

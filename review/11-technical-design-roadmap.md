@@ -1355,7 +1355,7 @@ advice. Define task-specific evaluation and human-review thresholds before promo
 **Video slides as timed chapter images (#26, GH#2707) — Shipped 2026-11-20,
 [review/61](61-video-slide-chapter-images.md).** Designed and approved 2026-11-20 at the
 maintainer's request, on by default for every city; promoted out of deferral and implemented in one
-PR without being sequenced into a phase (review/61 §13 lists where the code differs from the
+PR (#2754) without being sequenced into a phase (review/61 §13 lists where the code differs from the
 design). Replaces the old agenda-PDF page approach: a dedicated `slides` lane streams the meeting video
 through ffmpeg `freezedetect`, keeps one filtered JPEG per static slide on B2, and adds `toc: false`
 slide entries with `img` to the Podcasting 2.0 chapters JSON. Feed-only (`feed_content_hash`); no
