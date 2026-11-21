@@ -1985,7 +1985,7 @@ def test_discovery_has_bounded_weekly_and_manual_time_without_extending_ordinary
     assert "github.event_name == 'workflow_dispatch'" in timeout
     assert "inputs.discovery_enabled == true" in timeout
     assert "180 || 120" in timeout
-    assert "&& 300 ||" in timeout
+    assert "&& 360 ||" in timeout  # review/54 §8.14 re-measure
 
 
 def test_p3_daily_worker_is_main_only_minimally_privileged_and_preserves_reports():

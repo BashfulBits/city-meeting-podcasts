@@ -214,6 +214,8 @@ class Report:
     context_changes: list = field(default_factory=list)
     context_attempted_routes: set[str] = field(default_factory=set)
     discovery_sessions: list[dict[str, Any]] = field(default_factory=list)
+    # Review/54 §8.14: one row per configured route/axis the weekly run considered re-measuring.
+    remeasure_sessions: list[dict[str, Any]] = field(default_factory=list)
     # Why every model is unscored (the quality fetch failed); shown at the top of the issue.
     quality_error: str | None = None
     floor_source: str = ""
@@ -316,6 +318,14 @@ MEASURE_FALLBACK_PROVIDERS = 2
 # Time-bound (daily) runs start another size-search session only while at least this much of the
 # budget remains, and never more than this many in one run.
 MIN_SESSION_SECONDS = 600
+# Review/54 §8.14: configured-route cap re-measurement in the weekly full run.
+REMEASURE_SECONDS = 3_600
+REMEASURE_SESSION_CEILING = 4
+# The weekly job times out at 360 minutes; re-measurement stops 15 minutes before that so cleanup
+# and evidence upload still run (the script starts a few minutes into the job).
+REMEASURE_RUN_SECONDS = (360 - 15 - 10) * 60
+# Output reservation for input probes when a configured route has no output cap.
+INPUT_OUTPUT_COUNTERPART_SEED = 16_384
 TIMED_SESSION_CEILING = MAX_ARTIFACT_SESSIONS
 # Stubs saved when nothing will be measured automatically; they are never re-queued.
 STUB_DISCOVERY_REASONS = (
@@ -535,6 +545,9 @@ def reconcile(
     discovery_time_budget_seconds: float | None = None,
     discovery_clock: Callable[[], float] = time.monotonic,
     discovery_sessions_sink: Callable[[list[dict[str, Any]]], None] | None = None,
+    remeasure_time_budget_seconds: float | None = None,
+    remeasure_run_seconds: float | None = None,
+    remeasure_session_ceiling: int = REMEASURE_SESSION_CEILING,
 ) -> Report:
     report = Report(floor=quality.floor, floor_source="pinned reference models")
     new_model_budget = new_model_limit
@@ -588,6 +601,35 @@ def reconcile(
             max_output=MAX_RUN_OUTPUT,
         )
     rechecked_routes: set[str] = set()
+    route_verdicts: dict[str, str] = {}
+    # Review/54 §8.14: configured-route cap re-measurement (weekly full run only).
+    remeasure_due: list[tuple[str, str]] = []
+    remeasure_started: float | None = None
+    remeasured: set[tuple[str, str]] = set()
+    if remeasure_time_budget_seconds is not None:
+        from citypods.provider_catalog.limits import remeasure_review
+
+        remeasure_due = list(
+            remeasure_review(discovery_history, limits, now=rate_now or datetime.now(UTC)).due
+        )
+
+    def remeasure_deadline() -> float | None:
+        """Clock value the next re-measure session must end by, or None when none may start."""
+        if remeasure_time_budget_seconds is None:
+            return None
+        if (
+            remeasure_started is not None
+            and len([s for s in report.remeasure_sessions if s.get("ran")])
+            >= remeasure_session_ceiling
+        ):
+            return None
+        start = remeasure_started if remeasure_started is not None else discovery_clock()
+        ends = [start + remeasure_time_budget_seconds]
+        if remeasure_run_seconds is not None:
+            ends.append(run_started + remeasure_run_seconds)
+        end = min(ends)
+        return end if end - discovery_clock() >= MIN_SESSION_SECONDS else None
+
     structured_checks = dict(previous_state.get("structured_checks") or {})
     canary_memory: dict[str, dict[str, Any]] = dict(previous_state.get("canaries") or {})
     route_checks: dict[str, str] = dict(previous_state.get("route_checks") or {})
@@ -659,6 +701,90 @@ def reconcile(
         for row in (previous_state.get("last_full") or {}).get("candidates") or []
         if isinstance(row, Mapping) and row.get("discovery")
     }
+
+    def remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause) -> None:
+        """Re-measure configured caps inside this provider's drain (review/54 §8.14.A)."""
+        nonlocal remeasure_started
+        from types import SimpleNamespace
+
+        from citypods.provider_catalog.limits import remeasure_current_cap, remeasure_identity
+
+        routes_by_id = {str(r["route_id"]): r for r in routes}
+        for rid, axis in due:
+            route = routes_by_id[rid]
+            row = {"route_id": rid, "axis": axis, "ran": False}
+            report.remeasure_sessions.append(row)
+            try:
+                identity = remeasure_identity(route, limits)
+            except (KeyError, ValueError, TypeError) as exc:
+                row["note"] = f"no measurement identity ({type(exc).__name__})"
+                continue
+            if (identity, axis) in remeasured:
+                row["note"] = "shares a physical route measured earlier in this run"
+                continue
+            if pause.contended:
+                row["note"] = "the provider was not drained; waits for next week"
+                continue
+            if route_verdicts.get(rid) != "proven":
+                row["note"] = (
+                    f"health check this run was {route_verdicts.get(rid, 'not run')}; "
+                    "waits for next week"
+                )
+                continue
+            deadline = remeasure_deadline()
+            if deadline is None:
+                row["note"] = "this run's re-measure budget was spent; waits for next week"
+                continue
+            if remeasure_started is None:
+                remeasure_started = discovery_clock()
+            cap = remeasure_current_cap(route, axis)
+            output = remeasure_current_cap(route, "output")
+            seeds = {"output": output or INPUT_OUTPUT_COUNTERPART_SEED}
+            if axis == "input":
+                seeds["input"] = cap
+            elif cap is not None:
+                seeds["output"] = cap
+            remeasured.add((identity, axis))
+            row["ran"] = True
+            row["cap"] = cap
+            pause.renew()
+            try:
+                record = _discover_candidate_caps(
+                    SimpleNamespace(
+                        provider=provider,
+                        model=str(route["upstream_model"]),
+                        key=rid,
+                        evidence={},
+                    ),
+                    dict((catalog.models or {}).get(str(route["upstream_model"])) or {}),
+                    provider_cfg=cfg,
+                    rules=rules,
+                    pause=pause,
+                    session=session,
+                    today=today,
+                    run_id=discovery_run_id,
+                    receipt_id=None,
+                    history=_history_with_run_sessions(
+                        discovery_history, report.discovery_sessions, identity
+                    ),
+                    shared_budget=None,
+                    selected_axes=(axis,),
+                    sleep=sleep,
+                    deadline=deadline,
+                    fresh_run_budget=True,
+                    account_id=str(route["account_id"]),
+                    seeds=seeds,
+                )
+            except Exception as exc:  # advisory, like new-route discovery
+                row["note"] = f"search stopped safely ({type(exc).__name__})"
+                continue
+            report.discovery_sessions.append(record["artifact"])
+            save_sessions()
+            bracket = next((a for a in record["summary"]["axes"] if a.get("axis") == axis), {})
+            row["admitted"] = bracket.get("admitted")
+            row["refused"] = bracket.get("refused")
+            row["reason"] = record["summary"].get("reason")
+
     for provider in selected:
         rules = all_rules().get(provider)
         cfg = provider_cfgs.get(provider)
@@ -1104,7 +1230,12 @@ def reconcile(
                 for route in provider_routes
                 if route.get("free") is True and route.get("rpd") != 0
             )
-        if not health and not candidates and not context_ready:
+        provider_remeasure = [
+            (rid, axis)
+            for rid, axis in remeasure_due
+            if rid in {str(r["route_id"]) for r in provider_routes}
+        ]
+        if not health and not candidates and not context_ready and not provider_remeasure:
             continue
 
         runner = (
@@ -1230,6 +1361,7 @@ def reconcile(
                 response = canary_fn(rules, cfg, model, api_key, session)
                 result = classify(response, rules)
                 rechecked_routes.add(rid)
+                route_verdicts[rid] = result.verdict
                 if rate_run_id and not pause.contended and result.verdict == "proven":
                     # Duplicate physical model/account routes share capacity; assigning the
                     # header to both would turn one account ceiling into independent budgets.
@@ -1646,6 +1778,11 @@ def reconcile(
                     first=False,
                 )
 
+            if provider_remeasure:
+                remeasure_routes_for_provider(
+                    provider_remeasure, provider, cfg, rules, catalog, pause
+                )
+
             if runner is not None and not pause.contended:
                 eligible = {o.route_id for o in report.rate_observations if o.provider == provider}
                 # Unknown header scope cannot justify spending additional provider quota. Use
@@ -1924,7 +2061,7 @@ def _ended_on_unpaced_429(artifact: Mapping[str, Any]) -> bool:
     return last.get("outcome") == "quota" and not last.get("retry_after_seconds")
 
 
-def _history_with_run_sessions(history, sessions, identity):
+def _history_with_run_sessions(history, sessions, identity=None):
     """Authenticated history plus what this run's earlier sessions measured for the same route.
 
     A session that ended on a 429 resumes from its own bounds instead of probing from scratch.
@@ -1933,7 +2070,7 @@ def _history_with_run_sessions(history, sessions, identity):
 
     rows = list(history or ())
     for artifact in sessions:
-        if (artifact.get("session") or {}).get("identity") != identity:
+        if identity is not None and (artifact.get("session") or {}).get("identity") != identity:
             continue
         for attempt in artifact.get("attempts") or []:
             if attempt.get("observation"):
@@ -2442,8 +2579,14 @@ def _discover_candidate_caps(
     selected_axes=None,
     deadline=None,
     fresh_run_budget=False,
+    account_id=None,
+    seeds=None,
 ):
-    """Run the separate, charged size search only after candidate reachability is proven."""
+    """Run the separate, charged size search only after candidate reachability is proven.
+
+    A configured route (review/54 §8.14) passes its own ``account_id`` and ``seeds`` taken from its
+    configured caps, so the first probe confirms the current cap before the bracket widens.
+    """
     import secrets
     import tempfile
     from pathlib import Path
@@ -2468,7 +2611,8 @@ def _discover_candidate_caps(
     accounts = provider_cfg.get("accounts") or []
     if not accounts or not isinstance(accounts[0], Mapping):
         raise ValueError("candidate has no verified provider account")
-    account_id = str(accounts[0].get("id") or "")
+    if account_id is None:
+        account_id = str(accounts[0].get("id") or "")
     if not account_id or not account_key(provider_cfg, account_id):
         raise ValueError("candidate provider account is unavailable")
     endpoint = chat_url(rules, provider_cfg)
@@ -2506,7 +2650,7 @@ def _discover_candidate_caps(
         "route_id": candidate.key,
     }
     litellm = _litellm_discovery_limits(candidate.provider, candidate.model)
-    seeds = _discovery_starting_points(record, litellm)
+    seeds = {**_discovery_starting_points(record, litellm), **(seeds or {})}
     counterparts = {
         axis: min(INPUT_OUTPUT_COUNTERPART, seeds["output"])
         for axis in ("input", "total_input_heavy")

@@ -1705,6 +1705,8 @@ def test_context_writer_ignores_issue_proof_and_reauthenticates_fresh_main(monke
         return history, (), ()
 
     monkeypatch.setattr(evidence, "verified_context_history", verified)
+    monkeypatch.setattr(commands, "discover_discovery_references", lambda **_kwargs: ())
+    monkeypatch.setattr(commands, "verified_discovery_history", lambda *_a, **_k: ((), (), ()))
     plan = commands.prepare(body, "fresh-main", proposal_kind="context")
     assert plan.base_commit == "fresh-main" and plan.context_changes == changes
     assert (

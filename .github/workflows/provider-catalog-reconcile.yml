@@ -92,9 +92,11 @@ concurrency:
 jobs:
   reconcile:
     runs-on: ubuntu-24.04
-    # Three bounded 90-minute new-route input searches plus catalog checks and cleanup.
+    # Three bounded 90-minute new-route input searches, then up to 60 minutes of configured-route
+    # cap re-measurement (review/54 §8.14), plus catalog checks and cleanup. 360 is the hosted
+    # runner maximum; reconcile.py REMEASURE_RUN_SECONDS stops 15 minutes before it.
     timeout-minutes: >-
-      ${{ github.event_name == 'schedule' && github.event.schedule == '07 10 * * 1' && 300 ||
+      ${{ github.event_name == 'schedule' && github.event.schedule == '07 10 * * 1' && 360 ||
           github.event_name == 'schedule' && github.event.schedule == '27 8 * * *' && 180 ||
           github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true && 180 ||
           github.event_name == 'workflow_dispatch' && inputs.incremental == true && 180 || 120 }}

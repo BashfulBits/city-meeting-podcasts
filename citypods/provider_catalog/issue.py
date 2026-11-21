@@ -649,6 +649,43 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
     return fulfilled
 
 
+def _remeasure_lines(remeasure) -> list[str]:
+    """Configured-route cap re-measurement (review/54 §8.14): offers, pending cuts, waits."""
+    if not isinstance(remeasure, dict):
+        return []
+    details = remeasure.get("details") or {}
+    pending = remeasure.get("pending") or []
+    sessions = remeasure.get("sessions") or []
+    if not (details or pending or sessions):
+        return []
+    lines = ["**Configured route caps**", ""]
+    for detail in details.values():
+        dates = ", ".join(s.get("date", "?") for s in detail.get("sessions") or [])
+        lines.append(
+            f"- `{detail['route_id']}` {detail['field']}: {detail['old']} → {detail['new']} "
+            f"({detail['kind']}; measured {dates})"
+        )
+    for row in pending:
+        lines.append(
+            f"- `{row['route_id']}` {row['axis']}: refused below the current cap "
+            f"({row['cap']}) on {row['date']}; reduction pending confirmation (next weekly run)"
+        )
+    ran = [s for s in sessions if s.get("ran")]
+    waiting = [s for s in sessions if not s.get("ran")]
+    if ran or waiting:
+        lines.append(
+            f"- This run re-measured {len(ran)} route axis/axes; {len(waiting)} wait"
+            + (
+                f" (e.g. `{waiting[0]['route_id']}`: {waiting[0].get('note', 'not run')})"
+                if waiting
+                else ""
+            )
+            + "."
+        )
+    lines.append("")
+    return lines
+
+
 def render_body(
     report: Report, *, run_date: str, previous_body: str = "", fulfilled: set[str] | None = None
 ) -> str:
@@ -744,6 +781,7 @@ def render_body(
                 + (" (tightening greater than 50%)" if change.material else "")
             )
         lines.append("")
+    lines += _remeasure_lines(report.state.get("remeasure"))
     # The decision block must survive truncation whole: the next update reads ticks back from it
     # (checked_decisions), so a cut block would silently reset them. Only the text above it is
     # ever truncated.
