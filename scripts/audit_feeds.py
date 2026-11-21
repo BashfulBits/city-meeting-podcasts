@@ -2125,6 +2125,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {f.severity:5} {f.slug} [{f.check}] {f.message}")
 
     if unexpected_evidence_only:
+        # Evidence collection is fail-closed: a source whose provider could not be fetched
+        # contributed no bundle, so a "0 bundles" result is not proof that nothing was
+        # unexpected (issue #2280: missing provider-proxy secrets silently produced exactly that).
+        unreachable = sorted(f.slug for f in findings if f.check == "unreachable")
+        if unreachable:
+            print(
+                f"unexpected-body evidence: INCOMPLETE; {len(unreachable)} source(s) unreachable: "
+                + ", ".join(unreachable),
+                file=sys.stderr,
+            )
+            return 3
         return 0
 
     if not args.dry_run:

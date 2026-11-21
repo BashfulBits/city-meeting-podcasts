@@ -1744,3 +1744,23 @@ def test_local_decision_comparison_never_loads_config_or_runs_audit(monkeypatch,
     input_path.write_text('{"schema_version":1,"schema_version":1}')
     with pytest.raises(ValueError, match="duplicate"):
         _mod.main(args)
+
+
+def _evidence_run(monkeypatch, tmp_path, findings):
+    monkeypatch.setattr(_mod, "pull_canonical_state", lambda *a, **k: tmp_path)
+    monkeypatch.setattr(_mod, "load_site_config", lambda path: {"state_dir": str(tmp_path)})
+    monkeypatch.setattr(_mod, "load_city_configs", lambda *args: [])
+    monkeypatch.setattr(_mod, "audit_all", lambda cities, **kwargs: findings)
+    return _mod.main(["--dry-run", "--unexpected-body-evidence", str(tmp_path / "evidence.json")])
+
+
+def test_unexpected_body_evidence_fails_closed_on_unreachable_source(monkeypatch, tmp_path, capsys):
+    """Zero bundles from an unreachable provider is not proof of no unexpected bodies (#2280)."""
+    finding = _mod.Finding("down-feed", "unreachable", _mod.ERROR, "403 from provider")
+    assert _evidence_run(monkeypatch, tmp_path, [finding]) == 3
+    assert "INCOMPLETE" in capsys.readouterr().err
+    assert (tmp_path / "evidence.json").exists()
+
+
+def test_unexpected_body_evidence_succeeds_when_all_sources_reachable(monkeypatch, tmp_path):
+    assert _evidence_run(monkeypatch, tmp_path, []) == 0

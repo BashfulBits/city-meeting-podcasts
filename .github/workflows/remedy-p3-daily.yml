@@ -37,6 +37,10 @@ jobs:
         id: p3
         env:
           AUDIO_STORAGE_BACKEND: routing
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+          SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
+          SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
