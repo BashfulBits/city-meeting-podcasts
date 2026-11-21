@@ -94,12 +94,12 @@ def test_one_off_guid_is_pinned_to_exactly_one_feed(provider_guid, owner, feeds)
     assert holders == [owner]
 
 
-def test_tirz_selector_needs_no_body_any_alternative(feeds) -> None:
-    """`body: "TIRZ"` subsumes every longer TIRZ label, so a `body_any` entry would be dead."""
+def test_tirz_selector_matches_acronym_and_official_board_name(feeds) -> None:
     selector = source_body_filter(feeds["pflugerville-tx-tirz-board"].source)
-    assert selector == "TIRZ"
     assert matches("TIRZ Board", selector)
     assert matches("TIRZ Board Meeting", selector)
+    assert matches("Tax Reinvestment Zone No. 1 Board", selector)
+    assert not matches("Tax Reinvestment Zone No. 2 Board", selector)
 
 
 def test_south_dallas_opportunity_fund_special_called_is_recurring_board_alias(feeds) -> None:
