@@ -226,7 +226,9 @@ def choose_due(
     calibration_rate: float,
     families: Mapping[str, str] | None = None,
 ) -> Due | None:
-    """The meeting's ``choose`` question, when the anchor's or the judges' winners disagree."""
+    """The meeting's ``choose`` question, when the anchor's or the judges' winners disagree.
+
+    The sibling's winner is compared when there is one; the anchor's two orders are always."""
     question = next((q for q in spec.questions if q.kind == "choose"), None)
     if question is None or len(subjects) < 2:
         return None
@@ -241,9 +243,13 @@ def choose_due(
         exclude_family=_anchor_family(anchor_model, families),
         families=families,
     )
-    if forward is None or reverse is None or sibling is None:
+    if forward is None or reverse is None:
         return None
-    if forward != reverse or forward != sibling:
+    # Without an independent sibling reading the anchor is still checked against itself: a winner
+    # that changes with the option order is contested, and a hash-chosen share of the rest is
+    # adjudicated as the calibration sample. Waiting for a sibling that never answers (the lane
+    # has no capacity for choose packets) would leave this question with no calibration data.
+    if forward != reverse or (sibling is not None and forward != sibling):
         return Due(question, CONTESTED)
     if in_sample(f"{key.group or key.subject_id}:{question.id}:{CALIBRATION}", calibration_rate):
         return Due(question, CALIBRATION)

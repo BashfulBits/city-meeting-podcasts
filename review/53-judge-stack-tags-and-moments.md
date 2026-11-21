@@ -740,6 +740,49 @@ Reading the numbers:
   rule the cause out, and the stricter cutover rule above already gave better moment numbers. Do not
   clear and re-run adjudication on this evidence; re-run this report as the post-fix sample grows.
 
+#### Recovery: moment judgments asked of a truncated window, and `best` calibration (2026-11-21)
+
+Two findings from the first PR7 run, and the changes that address them.
+
+**Truncated evidence.** Until 2026-11-18 the moment evidence window was cut at the first 400 words
+(review/60 found the quote outside it for 34 of 60 sampled moments; fixed in `1c199e27`,
+`c9f0d559`). The judge stage counts a judgment as present when a row exists for the (subject,
+question, judge model, prompt version, tier), whatever its evidence digest, so those rows were never
+asked again. `python -m citypods.judging.clear` archives and removes them:
+
+- It is a dry run unless `--apply` is given, and `--apply` refuses to run while a `judge.yml` run is
+  in progress (disable the workflow first, or a running job pushes its older copy over the change).
+- The default `--mode stale-evidence` removes a row only when the evidence the current builder
+  produces for that subject and tier has a different digest than the one stored on the row, plus
+  the pending markers asked of the old evidence. Rows whose evidence is unchanged stay valid and are
+  not asked again; rows whose evidence cannot be rebuilt are kept and counted; `choose` rows are
+  skipped (their evidence is the option quotes). `--mode before --before DATE` removes every row of
+  the task judged before the date.
+- Rows go to `state/archive/<name>/<source>.jsonl.gz` before they leave the records, and
+  `--restore <name>` puts them back.
+
+Dry run on production state (2026-11-21), task `moment`:
+
+| Scope | Rows removed | Pending markers removed | Rows kept |
+|---|---|---|---|
+| `stale-evidence` | 10,602 (Gemini anchor 661 per question, JEV 1,309, siblings about 1,170 per question, adjudicators about 390 per question) | 279 | 72,332 (1,297 unverifiable) |
+| `before 2026-11-18` | 78,679 | 1,284 | 4,255 |
+
+About 12% of the Gemini rows asked before the fix saw a different window; the rest are still valid.
+Clearing everything before the date would re-ask roughly 68,000 valid rows, so the default scope is
+the stale-evidence one.
+
+**Why `moment:best` had no calibration data.** `choose_due` required a sibling's winner before a
+meeting's `best` question could be contested or sampled. The anchor answered about 4,800 meetings in
+both option orders, but the ledger holds no Nemotron or Qwen `best` answer, and 1,465 Gemma and 374
+Nemotron `best` markers are still pending (Gemma is the anchor's own family, so its reading never
+counts). With no sibling reading nothing was ever contested or sampled, so the adjudicator never saw
+a `best` item. `choose_due` now also treats a winner that changes with the option order as contested,
+and samples the calibration share of the rest, whether or not a sibling answered. When a sibling does
+answer, its disagreement still contests the group. The calibration report then has `best` data from
+the anchor and the adjudicator alone; sibling coverage on choose packets is a separate capacity
+question.
+
 ### Graduation (PR8 tags, PR9 moments)
 
 The review/49 rule, applied per task on the same sample of adjudicated items:
