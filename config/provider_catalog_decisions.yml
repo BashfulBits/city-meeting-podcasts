@@ -105,4 +105,14 @@ ignored:
     model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
     reason: Maintainer /apply selection
     decided_on: '2026-11-20'
-acknowledged: []
+acknowledged:
+  - provider: beatapi_secondary
+    model_glob: "*"
+    verdict: inconclusive
+    reason: "catalog ReadTimeout on https://api.beatapi.io/v1/models"
+    decided_on: '2026-11-21'
+  - provider: openrouter_decisions
+    model_glob: "*"
+    verdict: inconclusive
+    reason: "catalog HTTP 404 on decisions endpoint outside api_base"
+    decided_on: '2026-11-21'
