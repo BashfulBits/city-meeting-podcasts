@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Treat HTTP 200 content-filter refusals as job-specific policy failures. Retry eligible alternatives
+without reusing the refusing route, preserve reported token usage, and surface refusals in the
+LLM budget monitor. Jobs with no permitted route fail with the existing policy terminal reason.
+
 Fixed misleading unroutable-job monitoring advice: job-specific exclusions and retired routes can
 also exhaust eligibility, and one job may contribute to multiple route counters. Inspect the job
 and catalog before changing route configuration.
