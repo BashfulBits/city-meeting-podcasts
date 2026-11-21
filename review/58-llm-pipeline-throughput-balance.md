@@ -949,6 +949,11 @@ the anchor for 6 hours (#2672).**
   methods.
 - *Not established:* the writer, or whether the line was emitted and then dropped.
 
+A later concurrency check reproduced a separate attribution defect: overlapping async RPCs could
+combine their writes in the first call's `do_row_write_budget` event. RPC-local log tallies now
+retain each cursor's originating context and discard rolled-back counts; the persisted daily budget
+is unchanged. This does not identify the writer of the 6,006-row event or prove its log was lost.
+
 Also noted:
 
 - `r6-moments` costs 5 units per job. Its config comment said 6, which is corrected here.
