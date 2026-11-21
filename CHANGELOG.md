@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **LLM producer fallback.** Run the scheduled fallback when the latest dispatched run failed,
+  even if an older dispatch succeeded within the guard window.
+
 - **Provider catalog: added routes leave the list; `/apply` retries a busy re-check.** A route that
   lands on main no longer lingers in the rolling issue with a lone `ignore` box. The `/apply`
   re-check now retries a rate-limited or timed-out route twice (20 s, 60 s) before deferring it,
