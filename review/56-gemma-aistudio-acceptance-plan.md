@@ -1,6 +1,8 @@
 # Gemma AI Studio acceptance: investigation and delivery plan
 
-**Status: L2 — evidence-backed approach; diagnostic and canary gates below precede tuning.**
+**Status: L2 — evidence-backed approach.** Diagnostics (#2509), the passive report (#2510), bounded
+recovery (#2511, #2512), the complete-request sizing slice (#2513) and Gateway single-attempt
+handling have shipped. The roughly 95% AI Studio coverage goal is still unmeasured.
 Maintainer-directed follow-up to [review/55](55-adaptive-input-token-admission.md), 2026-10-19
 Central (evidence collected through 2026-10-20 01:43 UTC). This document is a plan, not a
 production policy change. No new inference calls were made for this investigation.

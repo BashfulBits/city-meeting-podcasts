@@ -1,6 +1,8 @@
 # 58 — LLM pipeline throughput balance
 
-Status: **L2 — measured, design proposed, awaiting maintainer go-ahead** (2026-11-11).
+Status: **L3 — implemented and deployed** (WP1a to WP6b, WP8, WP8a, WP9 on 2026-11-13; WP7 in #2690 on
+2026-11-14; the stale-recipe locator backfill was dropped, §12.3). Originally measured and proposed
+2026-11-11.
 Evidence: [`evidence/2026-11-11-llm-pipeline-throughput.md`](evidence/2026-11-11-llm-pipeline-throughput.md)
 (queries, sources, data limits, pause log). Window: 2026-11-04 03:31Z to 2026-11-11 03:31Z unless
 stated. Production was read only; no pause or resume was issued.

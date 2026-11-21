@@ -1,6 +1,6 @@
 # R2 Class B usage audit — 2026-10-18
 
-Status: audit complete; R2B-01 fix prepared locally, not deployed. Other findings remain proposals.
+Status: audit complete; the R2B-01 fix merged in PR #2488 (2026-10-19). Other findings remain proposals.
 Code checked: `origin/main` at `1338cfd0`, refreshed before finalizing this report.
 The earlier workflow-failure fix is already merged in PR #2486; these findings remain afterward.
 
