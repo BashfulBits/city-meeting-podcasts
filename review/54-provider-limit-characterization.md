@@ -113,7 +113,9 @@ issue only.
 A reduction is offered only when **two** reduction observations exist for the same identity and
 axis:
 
-- from different weekly runs (`run_id`s) on different UTC calendar days;
+- from different weekly runs (`run_id`s) on different UTC calendar days. Observations carry their
+  session, not their run, so the code requires the two to be more than six hours apart (longer
+  than any reconcile job) as well as on different days;
 - both within the last 28 days, with no verified admission at or above the current cap between or
   after them (an admission resets the pending reduction);
 - with the same count basis and control;
@@ -125,6 +127,10 @@ If the second observation is inconsistent with the first (for example, the first
 refuses 80k, the second admits 39k and refuses 40k), no reduction is offered. The newer
 observation replaces the older one as the pending observation, and the next weekly run must
 confirm it.
+
+A route with no `hard_input_ceiling` is compared with its effective input cap (window minus
+output); a confirmed cut below it creates the ceiling and is still a reduction. The issue and PR
+report each session's measured admitted count separately from the value it proposes.
 
 The offered value is the **larger** of the two candidate values, so the second probe can only
 confirm, never deepen, the cut. Consistency guarantees it is below both refused bounds. It is

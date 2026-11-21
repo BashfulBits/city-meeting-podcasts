@@ -54,11 +54,11 @@ from citypods.provider_catalog.issue import decode_state, find_issue, is_catalog
 from citypods.provider_catalog.limits import (  # noqa: E402
     PRODUCER_REVIEW_LABELS,
     configured_limit_changes,
-    is_reduction,
     merge_context_changes,
     producer_review_body,
     producer_review_title,
     rate_edit_plan,
+    reduced_caps,
     remeasure_notes,
     remeasure_review,
     scope_recent_runs,
@@ -314,6 +314,9 @@ def prepare_context(base_commit, *, selected=()):
     if review is not None:
         notes = remeasure_notes(plan.context_changes, review.details)
         plan = replace(plan, applied=(*plan.applied, *notes))
+    plan = replace(
+        plan, reduced_caps=reduced_caps(plan.context_changes, review.details if review else {})
+    )
     output = apply_config_edits(texts, plan)
     for path in SOURCE_PATHS:
         (ROOT / path).write_text(output[path])
@@ -413,9 +416,7 @@ def file_producer_reviews(plan, *, run_fn=run):
     is written into the PR body instead of blocking the proposal.
     """
     lines = []
-    for change in plan.context_changes:
-        if not is_reduction(change):
-            continue
+    for change in plan.reduced_caps:
         title = producer_review_title(change)
         try:
             found = json.loads(

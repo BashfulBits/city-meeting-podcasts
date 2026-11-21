@@ -245,7 +245,15 @@ def test_pr_notes_list_sessions_for_chosen_changes():
 
 
 def plan_with(*changes):
-    return EditPlan("base", (), context_changes=tuple(changes), proposal_kind="context")
+    from citypods.provider_catalog.limits import reduced_caps
+
+    return EditPlan(
+        "base",
+        (),
+        context_changes=tuple(changes),
+        proposal_kind="context",
+        reduced_caps=reduced_caps(changes, {}),
+    )
 
 
 REDUCTION = ("r", "hard_input_ceiling", 100000, 82000, "a" * 64)
@@ -332,3 +340,46 @@ def test_weekly_script_merges_offers_and_records_pending_state():
     ((rid, field, old, new, _stamp),) = report.context_changes
     assert (rid, field, old, new) == ("r", "hard_input_ceiling", 100000, 80000)
     assert report.state["last_full"]["context_changes"] == report.context_changes
+
+
+def test_sessions_one_job_length_apart_across_midnight_do_not_confirm():
+    # One run spanning UTC midnight cannot supply both observations.
+    late = NOW.replace(hour=23, minute=0) - timedelta(days=2)
+    first = [replace(o, observed_at=late.isoformat()) for o in refused_session("s1", 0)]
+    second = [
+        replace(o, observed_at=(late + timedelta(hours=2)).isoformat())
+        for o in refused_session("s2", 0)
+    ]
+    review = remeasure_review([*first, *second], CONFIG, now=NOW)
+    assert not review.changes and review.pending
+
+
+def test_reduction_details_keep_measured_admissions_apart_from_proposals():
+    history = [
+        obs("s1", 8, "inconclusive", 1, hint=90000),
+        obs("s2", 1, "inconclusive", 1, hint=90000),
+    ]
+    review = remeasure_review(history, CONFIG, now=NOW)
+    (change,) = review.changes
+    sessions = review.details[context_choice(change)]["sessions"]
+    assert all(s["admitted"] is None and s["proposed"] == 85500 for s in sessions)
+    (note,) = remeasure_notes(review.changes, review.details)
+    assert "admitted None" in note and "proposes 85500" in note
+
+
+def test_an_implicit_input_cap_can_be_reduced_and_files_a_review():
+    from citypods.provider_catalog.limits import reduced_caps
+
+    route = {k: v for k, v in ROUTE.items() if k != "hard_input_ceiling"}
+    config = {**CONFIG, "routes": [route]}
+    # Effective cap: 131072 - 8192 = 122880.
+    history = [
+        *refused_session("s1", 8, admitted=100000, refused=110000),
+        *refused_session("s2", 1, admitted=101000, refused=109000),
+    ]
+    review = remeasure_review(history, config, now=NOW)
+    (change,) = review.changes
+    assert change[:4] == ("r", "hard_input_ceiling", None, 101000)
+    assert not is_reduction(change)
+    ((rid, field, old, new),) = reduced_caps(review.changes, review.details)
+    assert (rid, field, old, new) == ("r", "hard_input_ceiling", 122880, 101000)

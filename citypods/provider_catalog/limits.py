@@ -985,6 +985,9 @@ REMEASURE_AXES = ("input", "output")
 REMEASURE_FIELDS = {"input": "hard_input_ceiling", "output": "output_context_limit"}
 # A typed context_length limit is a refusal statement, not a served size: offer below it.
 TYPED_LIMIT_HEADROOM_PERCENT = 95
+# Observations carry their session, not their run. No reconcile job runs longer than the 360-minute
+# weekly timeout, so two sessions this far apart cannot share a run.
+REDUCTION_MIN_SEPARATION = timedelta(hours=6)
 
 
 @dataclass(frozen=True)
@@ -1013,6 +1016,7 @@ class ReductionObservation:
     bound: int
     basis: str | None
     control: str | None
+    admitted: int | None = None
 
     @property
     def day(self):
@@ -1141,7 +1145,13 @@ def reduction_observation(result, cap):
     if candidate <= 0:
         return None
     return ReductionObservation(
-        result.session_id, result.observed_at, candidate, bound, result.basis, result.control
+        result.session_id,
+        result.observed_at,
+        candidate,
+        bound,
+        result.basis,
+        result.control,
+        result.admitted,
     )
 
 
@@ -1174,6 +1184,7 @@ def reduction_state(results, cap, *, now):
         if (
             last is not None
             and last.day != observation.day
+            and observation.observed_at - last.observed_at > REDUCTION_MIN_SEPARATION
             and last.session_id != observation.session_id
             and _comparable(last, observation)
             and reductions_consistent(last, observation)
@@ -1269,7 +1280,9 @@ def remeasure_review(history, config, *, now):
                 continue
             if kind == "raise" and old is not None and value <= old:
                 continue
-            if kind == "reduction" and (old is None or value >= old):
+            # With no hard ceiling the effective input cap is window minus output; a cut below it
+            # creates the ceiling and is still a reduction.
+            if kind == "reduction" and value >= (old if old is not None else cap):
                 continue
             stamp = digest(
                 {
@@ -1302,12 +1315,14 @@ def remeasure_review(history, config, *, now):
                 "field": field,
                 "kind": kind,
                 "old": old,
+                "effective_old": old if old is not None else cap,
                 "new": value,
                 "sessions": [
                     {
                         "date": s.observed_at.date().isoformat(),
-                        "admitted": s.candidate if kind == "reduction" else s.admitted,
+                        "admitted": s.admitted,
                         "refused": s.bound if kind == "reduction" else s.refused,
+                        **({"proposed": s.candidate} if kind == "reduction" else {}),
                         "basis": s.basis,
                     }
                     for s in sessions
@@ -1334,6 +1349,19 @@ def is_reduction(change):
     return old is not None and new < old
 
 
+def reduced_caps(changes, details):
+    """(route, field, effective old, new) for each lowered cap, including an implicit input cap."""
+    rows = []
+    for change in changes:
+        rid, field, old, new, _stamp = change
+        detail = details.get(context_choice(change)) or {}
+        if detail.get("kind") == "reduction":
+            rows.append((rid, field, detail.get("effective_old"), new))
+        elif is_reduction(change):
+            rows.append((rid, field, old, new))
+    return tuple(rows)
+
+
 def remeasure_notes(changes, details):
     """PR lines for chosen re-measured caps: old → new, kind, sessions and count basis."""
     notes = []
@@ -1342,12 +1370,18 @@ def remeasure_notes(changes, details):
         if not detail:
             continue
         sessions = "; ".join(
-            f"{s.get('date')}: admitted {s.get('admitted')}, refused {s.get('refused')}, "
-            f"basis {s.get('basis') or 'unknown'}"
+            f"{s.get('date')}: admitted {s.get('admitted')}, refused {s.get('refused')}"
+            + (f", proposes {s['proposed']}" if "proposed" in s else "")
+            + f", basis {s.get('basis') or 'unknown'}"
             for s in detail.get("sessions") or []
         )
+        old = (
+            detail["old"]
+            if detail["old"] is not None
+            else f"unset (effective {detail.get('effective_old')})"
+        )
         notes.append(
-            f"Re-measured `{detail['route_id']}` {detail['field']}: {detail['old']} → "
+            f"Re-measured `{detail['route_id']}` {detail['field']}: {old} → "
             f"{detail['new']} ({detail['kind']}; {sessions})"
         )
     return tuple(notes)
@@ -1357,13 +1391,13 @@ PRODUCER_REVIEW_LABELS = ("provider-catalog", "area:provider")
 
 
 def producer_review_title(change):
-    rid, field, old, new, _stamp = change
+    rid, field, old, new = change[:4]
     return f"Review producer packet sizes for {rid}: {field} reduced {old} → {new}"
 
 
 def producer_review_body(change):
     """Review/54 §8.14.D checklist: a lowered cap must not leave producers sending old sizes."""
-    rid, field, old, new, _stamp = change
+    rid, field, old, new = change[:4]
     return "\n".join(
         (
             f"`/apply` proposes lowering `{rid}` `{field}` from {old} to {new} after two "

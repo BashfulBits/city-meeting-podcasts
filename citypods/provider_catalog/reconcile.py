@@ -561,14 +561,21 @@ def reconcile(
         session_limit = TIMED_SESSION_CEILING
     run_started = discovery_clock()
 
+    # Configured-route re-measure artifacts (review/54 §8.14) share the evidence stream, not the
+    # new-route session allowance.
+    remeasure_artifacts: list[int] = []
+
+    def new_route_sessions() -> list[dict[str, Any]]:
+        return [row for row in report.discovery_sessions if id(row) not in remeasure_artifacts]
+
     def session_slot_open(provider: str) -> bool:
-        if len(report.discovery_sessions) >= session_limit:
+        if len(new_route_sessions()) >= session_limit:
             return False
         if timed:
             spent = discovery_clock() - run_started
             return spent + MIN_SESSION_SECONDS <= (discovery_time_budget_seconds or 0)
         return not any(
-            row.get("session", {}).get("provider") == provider for row in report.discovery_sessions
+            row.get("session", {}).get("provider") == provider for row in new_route_sessions()
         )
 
     def save_sessions() -> None:
@@ -621,8 +628,8 @@ def reconcile(
             remeasure_started is not None
             and len([s for s in report.remeasure_sessions if s.get("ran")])
             >= remeasure_session_ceiling
-        ):
-            return None
+        ) or len(report.discovery_sessions) >= MAX_ARTIFACT_SESSIONS:
+            return None  # one run's evidence artifact holds at most MAX_ARTIFACT_SESSIONS
         start = remeasure_started if remeasure_started is not None else discovery_clock()
         ends = [start + remeasure_time_budget_seconds]
         if remeasure_run_seconds is not None:
@@ -725,11 +732,10 @@ def reconcile(
             if pause.contended:
                 row["note"] = "the provider was not drained; waits for next week"
                 continue
-            if route_verdicts.get(rid) != "proven":
-                row["note"] = (
-                    f"health check this run was {route_verdicts.get(rid, 'not run')}; "
-                    "waits for next week"
-                )
+            verdict = _physical_verdict(route, routes, route_verdicts)
+            if verdict is not None and verdict != "proven":
+                # Unchecked routes still run: their failures never count as reductions.
+                row["note"] = f"health check this run was {verdict}; waits for next week"
                 continue
             deadline = remeasure_deadline()
             if deadline is None:
@@ -764,9 +770,9 @@ def reconcile(
                     today=today,
                     run_id=discovery_run_id,
                     receipt_id=None,
-                    history=_history_with_run_sessions(
-                        discovery_history, report.discovery_sessions, identity
-                    ),
+                    # Only this run's sessions: an older bracket would resume old bounds instead
+                    # of testing the configured cap first.
+                    history=_history_with_run_sessions((), report.discovery_sessions, identity),
                     shared_budget=None,
                     selected_axes=(axis,),
                     sleep=sleep,
@@ -779,6 +785,7 @@ def reconcile(
                 row["note"] = f"search stopped safely ({type(exc).__name__})"
                 continue
             report.discovery_sessions.append(record["artifact"])
+            remeasure_artifacts.append(id(record["artifact"]))
             save_sessions()
             bracket = next((a for a in record["summary"]["axes"] if a.get("axis") == axis), {})
             row["admitted"] = bracket.get("admitted")
@@ -1459,6 +1466,10 @@ def reconcile(
             api_key = account_key(cfg)
             if not api_key:
                 report.observations.append(f"{provider}: no API key; candidates not checked")
+                if provider_remeasure:
+                    remeasure_routes_for_provider(
+                        provider_remeasure, provider, cfg, rules, catalog, pause
+                    )
                 continue
             quota_waits: dict[str, int] = {}
             resume_queue: list[dict[str, Any]] = []
@@ -2059,6 +2070,21 @@ def _ended_on_unpaced_429(artifact: Mapping[str, Any]) -> bool:
     attempts = artifact.get("attempts") or []
     last = (attempts[-1].get("observation") if attempts else None) or {}
     return last.get("outcome") == "quota" and not last.get("retry_after_seconds")
+
+
+def _physical_verdict(route, routes, verdicts):
+    """This run's health verdict for the route, or for an alias on the same account and model."""
+    if route["route_id"] in verdicts:
+        return verdicts[route["route_id"]]
+    for other in routes:
+        if (
+            other.get("route_id") in verdicts
+            and other.get("provider") == route.get("provider")
+            and str(other.get("account_id")) == str(route.get("account_id"))
+            and other.get("upstream_model") == route.get("upstream_model")
+        ):
+            return verdicts[other["route_id"]]
+    return None
 
 
 def _history_with_run_sessions(history, sessions, identity=None):
