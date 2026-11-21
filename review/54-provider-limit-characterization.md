@@ -10,7 +10,8 @@ with existing recovery. Periodic empirical quota/cap characterization and dispat
 separate future work (except §8.14, approved 2026-11-21, which folds configured-route input/output
 cap re-measurement into the review/48 weekly run). Existing Worker adaptation and
 provider-configured quotas remain the operational baseline. The historic L3 designation below does
-not authorize its implementation or activation now. A fresh bounded L3 contract and prioritization are required before resuming it.
+not authorize its implementation or activation now. A fresh bounded L3 contract and prioritization
+are required before resuming it.
 
 Future scope includes periodic proof/refinement of input/output/combined request caps, RPM/TPM
 measurement, RPD/TPD/monthly evidence, exact model/shared scopes, token/request burst, overflow and
