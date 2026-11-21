@@ -538,7 +538,7 @@ Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](
   Actions runner now; Modal / Kaggle / self-hosted Mac-mini runner / AWS later) so scaling is adapter-only
   — the interface is a **pre-1.0 lock**. See VISION "Compute is pluggable" and `review/11`.
 - **Deferred backlog**: translation (#9), bitrate ladders (#24), chapter
-  images (#26; video-slide design at L2 in [`review/61`](review/61-video-slide-chapter-images.md)), "new since last visit" (#48), full video re-hosting, off-Actions media. Records→managed-SQL
+  images (#26; video-slide design at L3, on by default, in [`review/61`](review/61-video-slide-chapter-images.md)), "new since last visit" (#48), full video re-hosting, off-Actions media. Records→managed-SQL
   (D1/Turso) moves decisively **past 1.0**, merged with the "Interaction seam" dynamic-edge-tier proposal
   (alerts/API/personalization/scaled search) into one initiative designed together when its trigger
   fires — see [`review/11`](review/11-technical-design-roadmap.md) §5.5.

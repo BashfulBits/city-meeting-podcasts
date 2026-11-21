@@ -1,11 +1,11 @@
 # 61 — Video slide extraction as timed chapter images
 
-Status: **L2 — approach chosen 2026-11-20 (maintainer: design first, slide sub-chapters, no M4A
-artwork); awaiting maintainer review before L3.** Tracks
+Status: **L3 — approved 2026-11-20 (maintainer: design first, slide sub-chapters, no M4A
+artwork, on by default for every city).** Tracks
 [GH#2707](https://github.com/BashfulBits/city-meeting-podcasts/issues/2707). Supersedes the
 deferred backlog item **#26 chapter images** ([review/01](01-feature-brainstorm.md),
 [review/11](11-technical-design-roadmap.md) §4 "Deferred backlog" and §6). This document changes
-no code; each slice in §9 lands in its own PR.
+no code; the slices in §9 may land as one PR, one commit per slice.
 
 ## 1. Question
 
@@ -30,7 +30,10 @@ Further defaults this document proposes. The maintainer may overturn any of them
   ephemeral/derivable objects (ARCHITECTURE "Object storage" invariant).
 - **P3** A **dedicated opt-in stage and lane** (`slides`), like R6's `r6_stages()`, not part of
   `enrich_stages()`. Video download is the expensive part and must not lengthen the audio lane.
-- **P4** Off by default. Enabled per city, piloted on one city first (§10).
+- **P4** **On by default** (maintainer decision 2026-11-20, replacing the proposed off-by-default
+  pilot). Every city runs slides unless its config sets `slides.enabled: false`; the site switch
+  `slides.enabled` is the kill switch. The per-run caps in §7 bound cost while the archive drains,
+  and §10 becomes a quality review of the first runs instead of a gate before enabling.
 
 ## 3. Goals and non-goals
 
@@ -124,7 +127,7 @@ so they are missed. A per-city `detect_region` crop could fix it later. It is no
 
 Cross-episode recurrence (the same frame in several meetings of one body, which reliably marks room
 shots and slates) is effective but needs new per-body state. It is held back as an optional slice
-(§9 PR5), triggered only if the pilot's false-positive rate exceeds the §10 gate.
+(§9 PR5), triggered only if the first-runs false-positive rate fails the §10 review.
 
 ### 5.4 Image recipe
 
@@ -208,8 +211,8 @@ version string is unchanged.
   image recipe in a new `citypods/slides.py` (pure where possible). `slides_stages()` returns
   `[SlidesStage()]`.
 - `run.py` appends `slides_stages()` when `site_config.slides.enabled` and phase ≠ `render`, and
-  `LANE_STAGES["slides"] = frozenset({"slides"})`. A city runs the stage only when its own config
-  enables it.
+  `LANE_STAGES["slides"] = frozenset({"slides"})`. A city runs the stage unless its own config
+  sets `slides.enabled: false`.
 - Input fingerprint (dirty check): source identities, `SLIDES_PIPELINE_VERSION`, image recipe,
   detection config, and `timeline_digest` (remap-only path). Gate the per-episode detection on
   `ctx.stop()`; never gate the remap-only path (cheap, idempotent).
@@ -223,7 +226,7 @@ Config (`config/site_config.yml` defaults; per-city override in `config/cities/*
 
 ```yaml
 slides:
-  enabled: false            # site switch; per-city `slides.enabled` must also be true
+  enabled: true             # site kill switch; a city opts out with `slides.enabled: false`
   min_duration_seconds: 15
   noise_db: -50
   edge_trim_seconds: 120
@@ -252,45 +255,45 @@ city fields), merged over the site defaults; PR2 validates types and ranges at l
 | Storage | ≤ 50 × 150 KB = 7.5 MB worst case per episode | ~1 MB typical; 1,000 episodes ≈ 1 GB on B2 |
 | Egress | B2 via the Cloudflare CDN (free egress, as for audio) | Negligible |
 
-The pilot (§10) reports actual numbers into this table before any second city is enabled.
+The first-runs review (§10) records actual numbers in this table.
 
-## 9. Delivery slices (each its own PR)
+## 9. Delivery slices
 
 | PR | Scope | Acceptance |
 |---|---|---|
 | PR1 | `citypods/slides.py`: freeze-output parser, interval filters (edge trim, recurrence, duplicates, cap), dHash, image recipe, served remap helper. No pipeline wiring | Unit tests on captured ffmpeg output and synthetic Pillow images; ruff clean |
-| PR2 | Spike + `SlidesStage`: ffmpeg passes, storage upload, `Episode.slides` block and record round-trip, lane ownership, config validation, run wiring behind `enabled: false`. Spike results (CPU, bytes, wall time, false-positive rate on 5 real episodes per provider) appended to §8 and §10 here | Stage tests with a fake ffmpeg and local storage; record merge keeps the block across lanes; dry run writes nothing |
+| PR2 | Spike + `SlidesStage`: ffmpeg passes, storage upload, `Episode.slides` block and record round-trip, lane ownership, config validation, run wiring (on by default, P4). Spike results (CPU, bytes, wall time, false-positive rate on 5 real episodes per provider) appended to §8 and §10 here | Stage tests with a fake ffmpeg and local storage; record merge keeps the block across lanes; dry run writes nothing |
 | PR3 | Feed: `chapters_json` merge (§6.3), `chapters_url`, `feed_content_hash` | Golden JSON tests; audio-spec-hash invariance test; feed validates (`citypods validate-build`) |
-| PR4 | `slides.yml` workflow, `/admin/status` counters (ready, none-found, rejected by reason, bytes streamed), orphan GC learns `slides/`. Pilot city enabled in the same PR or right after | Workflow dry run; GC test keeps referenced and drops unreferenced `slides/` keys |
-| PR5 (optional) | Cross-episode per-body recurrence denylist | Only if the §10 false-positive gate fails |
+| PR4 | `slides.yml` workflow, `/admin/status` counters (ready, none-found, rejected by reason, bytes streamed), orphan GC learns `slides/`. Enabled for every city by default (P4) | Workflow dry run; GC test keeps referenced and drops unreferenced `slides/` keys |
+| PR5 (optional) | Cross-episode per-body recurrence denylist | Only if the §10 first-runs review fails |
 
 **Backfill story:** a new stage at `version = "1"` with no prior artifacts; nothing is invalidated.
-Enabling a city queues its archive newest-first under the per-run caps. Bumping
+Turning the feature on queues every city's archive newest-first under the per-run caps. Bumping
 `SLIDES_PIPELINE_VERSION` or the image recipe later re-detects a city's episodes gradually; such a
 PR must say so (AGENTS.md "Pipeline-version bumps state their backfill story").
 
-## 10. Pilot and rollout gate
+## 10. First-runs quality review
 
-1. The maintainer picks a pilot city with slide-heavy meetings (planning commission or council
-   work sessions) and one provider type.
-2. Run on the 20 most recent eligible episodes. Hand-label each kept slide as slide or not-slide,
-   and spot-check 5 episodes for missed slides.
-3. Gate to enable a second city: kept-slide precision ≥ 90%, no slate or black frame in the feed,
-   measured CPU and bytes within §8 bounds, and chapters render in at least two apps (for example
-   Podverse and AntennaPod; Apple Podcasts is checked but not gating, because its support for JSON
-   chapter images is not verified).
-4. Precision below 90% → PR5, or tune thresholds, before widening.
+The feature is on for every city from the first deploy (P4), so there is no pilot gate.
+
+1. After the first scheduled runs, sample 20 episodes with ready slides across at least two
+   providers. Hand-label each kept slide as slide or not-slide, and spot-check 5 episodes for
+   missed slides.
+2. Targets: kept-slide precision ≥ 90%, no slate or black frame in the feed, measured CPU and bytes
+   within §8 bounds, and chapters render in at least two apps (for example Podverse and
+   AntennaPod; Apple Podcasts is checked but not a target, because its support for JSON chapter
+   images is not verified).
+3. A city below target is opted out (`slides.enabled: false` in its config) while thresholds are
+   tuned or PR5 lands. A widespread problem uses the site kill switch.
 
 ## 11. Risks, open questions and follow-ups
 
-- **Open (maintainer):** pilot city choice (§10.1).
-- **Open (maintainer):** a separate `slides.yml` workflow (proposed) or a slot inside an existing
-  scheduled workflow.
+- **Decided:** a separate `slides.yml` workflow (§7), approved with this document.
 - **Risk:** some providers' HLS keyframe interval is long (≥ 10 s). Then a 15 s floor sees one or
   two keyframes. PR2 measures; fallback is decoding at `fps=1` without `-skip_frame` for that
   provider (configurable `decode: keyframes | fps1`).
-- **Risk:** camera shots of a still room pass the low-detail filter. Mitigated by the pilot gate and
-  PR5.
+- **Risk:** camera shots of a still room pass the low-detail filter. Mitigated by the §10
+  review, per-city opt-out and PR5.
 - **Risk (unverified):** Apple Podcasts may show chapter images only from embedded M4A chapters,
   not from the JSON sidecar. Accepted under D3; PR4's app check settles it, and M4A artwork is the
   fallback follow-up.
