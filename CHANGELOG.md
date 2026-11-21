@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Route-bound evaluation identity.** Remedy evaluation and route-level P3 admission share the
+  previously approved, physical-route-scoped returned-model alias. Evaluations retain their raw
+  replies and report exact, approved-alias, or unknown identity; a name from a different allowed
+  route cannot validate the route that answered. Model-bound P3 behavior and admissions are
+  unchanged. Unreviewed short names remain held; no media backfill or pipeline version changes.
+
 - **Dispatch row-write attribution.** Concurrent coordinator RPCs now report their own committed
   SQL writes instead of combining them into another call's log. Rollbacks discard their diagnostic
   counts; the persisted daily budget is unchanged. The cause of the historical 6,006-row logging
