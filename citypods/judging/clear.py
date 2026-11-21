@@ -256,10 +256,16 @@ def main(argv: list[str] | None = None) -> int:
     from citypods.config import load_city_configs, load_site_config
     from citypods.judging.tasks import task
     from citypods.judging.texts import build_episode_texts, tag_definitions
-    from citypods.records import load_records, record_to_episode, save_records, source_key
+    from citypods.records import (
+        load_records,
+        protected_blocks_for_lane,
+        record_to_episode,
+        save_records,
+        source_key,
+    )
     from citypods.stages import _read_storage_bytes
     from citypods.state import resolve_state_dir
-    from citypods.statesync import pull_state, push_state
+    from citypods.statesync import pull_state, push_records_merged, push_state
     from citypods.storage import make_storage
 
     def log(message: str) -> None:
@@ -322,7 +328,16 @@ def main(argv: list[str] | None = None) -> int:
             total += restore_entries(read_archive(archive), subjects.get)
             save_records(state_dir, key, records)
             changed.append(f"sources/{key}/episodes.json")
-        push_state(storage, state_dir, only_paths=changed, log=log)
+        pushed = push_records_merged(
+            storage,
+            state_dir,
+            [path.split("/")[1] for path in changed],
+            protected_blocks=protected_blocks_for_lane("judge"),
+            lane="judge",
+            log=log,
+        )
+        if pushed != len(changed):
+            raise SystemExit(f"pushed {pushed} of {len(changed)} sources; re-run --restore")
         print(json.dumps({"restored": total, "sources": len(changed)}))
         return 0
 
@@ -375,14 +390,29 @@ def main(argv: list[str] | None = None) -> int:
         **summarize(all_parts),
     }
     if args.apply:
-        paths = [f"sources/{k}/episodes.json" for k in changed_sources]
-        paths += [str(archive_dir / f"{k}.jsonl.gz") for k in changed_sources]
+        # The archive goes up first: rows must be recoverable before they leave the records.
+        paths = [str(archive_dir / f"{k}.jsonl.gz") for k in changed_sources]
         summary_path = state_dir / archive_dir / "summary.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(summary, indent=2) + "\n")
         push_state(
             storage, state_dir, only_paths=[*paths, str(archive_dir / "summary.json")], log=log
         )
+        # Records go through the foreign-block-preserving push: other lanes may have written their
+        # own blocks to these files since this run pulled them.
+        pushed = push_records_merged(
+            storage,
+            state_dir,
+            changed_sources,
+            protected_blocks=protected_blocks_for_lane("judge"),
+            lane="judge",
+            log=log,
+        )
+        if pushed != len(changed_sources):
+            raise SystemExit(
+                f"archived, but pushed the records of only {pushed} of {len(changed_sources)} "
+                "sources; --restore the archive, then re-run with a new --archive-name"
+            )
     print(json.dumps(summary, indent=2))
     return 0
 
