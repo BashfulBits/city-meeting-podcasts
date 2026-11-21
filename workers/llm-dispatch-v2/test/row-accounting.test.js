@@ -70,6 +70,68 @@ test("each enqueue survives recreation and includes its own accounting write exa
   }
 });
 
+test("overlapping enqueue RPCs log their own committed rows", async () => {
+  const f = fixture();
+  await f.coordinator.stats(Date.now()); // Flush constructor telemetry before measuring.
+  const before = f.read();
+  const logs = [];
+  const previousLog = console.log;
+  console.log = (message, ...args) => {
+    try {
+      const event = JSON.parse(message);
+      if (event.event === "do_row_write_budget") logs.push(event);
+    } catch {
+      previousLog(message, ...args);
+    }
+  };
+  try {
+    await Promise.all([
+      f.coordinator.enqueueBatch([job("overlap-a")]),
+      f.coordinator.enqueueBatch([job("overlap-b")]),
+    ]);
+  } finally {
+    console.log = previousLog;
+  }
+  const enqueue = logs.filter(event => event.rpc_method === "enqueueBatch");
+  assert.equal(enqueue.length, 2);
+  assert.ok(enqueue.every(event => event.rows_written_delta > 0));
+  assert.equal(enqueue[0].rows_written_delta, enqueue[1].rows_written_delta);
+  assert.equal(enqueue.reduce((sum, event) => sum + event.rows_written_delta, 0), f.read() - before);
+});
+
+test("rolled back RPC writes do not leak into a later RPC log", async () => {
+  const f = fixture();
+  await f.coordinator.stats(Date.now());
+  const before = f.read();
+  const logs = [];
+  const previousLog = console.log;
+  console.log = message => {
+    try {
+      const event = JSON.parse(message);
+      if (event.event === "do_row_write_budget") logs.push(event);
+    } catch {
+      // Ignore unrelated test output.
+    }
+  };
+  const persist = f.coordinator._persistRowCount;
+  try {
+    f.coordinator._persistRowCount = function () {
+      persist.call(this);
+      throw new Error("force rollback");
+    };
+    await assert.rejects(f.coordinator.enqueueBatch([job("rolled-back")]), /force rollback/);
+    assert.equal(f.read(), before);
+    f.coordinator._persistRowCount = persist;
+    await f.coordinator.enqueueBatch([job("committed")]);
+  } finally {
+    f.coordinator._persistRowCount = persist;
+    console.log = previousLog;
+  }
+  const enqueue = logs.filter(event => event.rpc_method === "enqueueBatch");
+  assert.equal(enqueue.length, 1);
+  assert.equal(enqueue[0].rows_written_delta, f.read() - before);
+});
+
 test("pause and resume accounting survives recreation without a later claim or enqueue", async () => {
   const f = fixture();
   const before = f.read();

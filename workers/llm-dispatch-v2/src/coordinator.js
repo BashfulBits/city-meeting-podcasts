@@ -3,6 +3,8 @@
  * Backed by SQLite inside Cloudflare Workers.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // Compiled from config/site_config.yml's `llm_lanes` block by scripts/compile_llm_lanes.py,
 // the same block citypods/compute/llm_lanes.py reads, so client and Worker cannot disagree
@@ -477,6 +479,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this.env = withTuning(env);
     this.sql = ctx?.storage?.sql || ctx?.sql;
     this._schemaReady = false;
+    this._rowLogContext = new AsyncLocalStorage();
     // Per model: where the last stuck-head extended read stopped (see claimDispatchWindow). In
     // memory between checkpoints; restored from persisted claim diagnostics after eviction.
     // Checkpointing rides on existing claim accounting, including idle-write coalescing.
@@ -573,7 +576,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._countingSql = {
         exec: (...args) => {
           const cursor = raw.exec(...args);
-          cursors.push(cursor);
+          cursors.push({ cursor, owner: this._rowLogContext.getStore() ?? null });
           return cursor;
         },
         get databaseSize() {
@@ -589,7 +592,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const cursors = this._openCursors;
     if (!cursors || cursors.length === 0) return 0;
     let written = 0;
-    for (const cursor of cursors) {
+    for (const { cursor, owner } of cursors) {
       try {
         for (const _row of cursor) {
           // consume: rowsWritten is final only once the cursor is exhausted
@@ -597,12 +600,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
       } catch {
         // an already-closed cursor has nothing left to read
       }
-      written += Number(cursor?.rowsWritten) || 0;
+      const count = Number(cursor?.rowsWritten) || 0;
+      written += count;
+      this._addLogRows(count, owner);
     }
     cursors.length = 0;
     this._rowsUnflushed = (this._rowsUnflushed || 0) + written;
-    this._rowsSinceLog = (this._rowsSinceLog || 0) + written;
     return written;
+  }
+
+  // Attribute SQL to its originating RPC, even when another RPC drains the cursor. Writes
+  // outside an RPC (such as constructor migrations) remain in the unassigned startup tally.
+  _addLogRows(count, owner = this._rowLogContext.getStore()) {
+    if (owner) owner.rows += count;
+    else this._rowsSinceLog = (this._rowsSinceLog || 0) + count;
   }
 
   /** Rows written but not yet added to scheduler.rows_written_today; reset when persisted. */
@@ -635,6 +646,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._drainRowCount();
     const pendingBefore = this._rowsUnflushed || 0;
     const loggedBefore = this._rowsSinceLog || 0;
+    const logOwner = this._rowLogContext.getStore();
+    const ownerLoggedBefore = logOwner?.rows || 0;
     const previousNow = this._transactionNow;
     this._transactionNow = Date.now();
     // Scheduler-row changes staged by this transaction (_stageSchedulerSet, _activeBundles); they
@@ -662,6 +675,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._openCursors.length = 0;
       this._rowsUnflushed = pendingBefore;
       this._rowsSinceLog = loggedBefore;
+      if (logOwner) logOwner.rows = ownerLoggedBefore;
       throw error;
     } finally {
       this._transactionNow = previousNow;
@@ -774,7 +788,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ...sets.flatMap(({ params }) => params)
     );
     for (const _row of cursor) {} // Finalize the real runtime's billed-row cursor.
-    this._rowsSinceLog = (this._rowsSinceLog || 0) + (Number(cursor.rowsWritten) || 0);
+    this._addLogRows(Number(cursor.rowsWritten) || 0);
   }
 
   /** Persisted billed rows plus writes in the current, still-open synchronous transaction. */
@@ -8827,32 +8841,34 @@ for (const name of Object.getOwnPropertyNames(LLMSchedulerDO.prototype)) {
     value: {
       async [name](...args) {
         this._assertSchemaReady();
-        try {
-          return await original.apply(this, args);
-        } finally {
-          this._drainRowCount();
-          const rowsWritten = this._rowsSinceLog || 0;
-          this._rowsSinceLog = 0;
-          if (rowsWritten > 0) {
-            let rowsWrittenToday = null;
-            try {
-              rowsWrittenToday = this._readRowsWrittenToday();
-            } catch {
-              // Preserve the RPC result if telemetry cannot read the scheduler row.
-            }
+        return this._rowLogContext.run({ rows: 0 }, async () => {
+          try {
+            return await original.apply(this, args);
+          } finally {
             this._drainRowCount();
-            console.log(JSON.stringify({
-              event: "do_row_write_budget",
-              rpc_method: name,
-              rows_written_delta: rowsWritten,
-              rows_written_today: rowsWrittenToday,
-              enqueue_stop: this._enqueueRowStop(),
-              claim_stop: this._claimRowStop(),
-              optional_stop: this._optionalRowStop(),
-              account_safe_stop: this._accountRowsStop(),
-            }));
+            const rowsWritten = this._rowLogContext.getStore().rows + (this._rowsSinceLog || 0);
+            this._rowsSinceLog = 0;
+            if (rowsWritten > 0) {
+              let rowsWrittenToday = null;
+              try {
+                rowsWrittenToday = this._readRowsWrittenToday();
+              } catch {
+                // Preserve the RPC result if telemetry cannot read the scheduler row.
+              }
+              this._drainRowCount();
+              console.log(JSON.stringify({
+                event: "do_row_write_budget",
+                rpc_method: name,
+                rows_written_delta: rowsWritten,
+                rows_written_today: rowsWrittenToday,
+                enqueue_stop: this._enqueueRowStop(),
+                claim_stop: this._claimRowStop(),
+                optional_stop: this._optionalRowStop(),
+                account_safe_stop: this._accountRowsStop(),
+              }));
+            }
           }
-        }
+        });
       },
     }[name],
   });
