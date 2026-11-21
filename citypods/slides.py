@@ -43,6 +43,14 @@ _JPEG_QUALITY_STEP = 8
 _JPEG_MIN_QUALITY = 58
 _ANALYSIS_WIDTH = 320
 _DUPLICATE_HAMMING = 6
+# Two near-identical consecutive frames merge into one slide only when the gap between them is at
+# most this long (a cursor wiggle or a brief cut away). A slide shown again much later stays two
+# slides, so the chapters keep the artwork reset for the video in between.
+_MERGE_MAX_GAP_SECONDS = 30.0
+# Conservative stand-ins when ffprobe reports no duration or bit rate, so an unknown source still
+# counts against the per-run byte cap instead of reserving zero bytes.
+_FALLBACK_DURATION_SECONDS = 4 * 3600
+_FALLBACK_BIT_RATE = 8_000_000
 _EDGE_PIXEL_THRESHOLD = 40
 # ffmpeg protocols a remote video read may use. Same set as the audio lane minus ``file`` so a
 # hostile HLS manifest cannot point a segment at a local path (SECURITY.md, ffmpeg whitelist).
@@ -398,12 +406,16 @@ def slide_key(uid: str, data: bytes) -> str:
 
 @dataclass
 class Candidate:
-    """A captured static interval with its frame metrics, before selection."""
+    """A captured static interval with its frame metrics, before selection.
+
+    The stage keeps only the encoded JPEG (``data``, at most ``max_image_kb``), never the decoded
+    native-resolution frame, so the candidates of a long meeting stay small in memory."""
 
     source_id: str
     interval: Interval
     metrics: FrameMetrics
     image: Image.Image | None = None
+    data: bytes | None = None
 
 
 def select_slides(
@@ -413,7 +425,8 @@ def select_slides(
 
     Returns ``(kept, rejected_by_reason, capped)``. A frame whose hash recurs in at least
     ``max_recurrence`` intervals is a slate or room shot, not a slide. Consecutive near-identical
-    frames in the same source merge into one slide spanning both intervals."""
+    frames in the same source merge into one slide spanning both intervals when the gap between
+    them is at most ``_MERGE_MAX_GAP_SECONDS``."""
     rejected: dict[str, int] = {}
     ordered = sorted(candidates, key=lambda c: (c.source_id, c.interval.start))
     recurring: set[int] = set()
@@ -434,6 +447,7 @@ def select_slides(
         if (
             previous is not None
             and previous.source_id == candidate.source_id
+            and candidate.interval.start - previous.interval.end <= _MERGE_MAX_GAP_SECONDS
             and hamming(previous.metrics.dhash, candidate.metrics.dhash) <= _DUPLICATE_HAMMING
         ):
             previous.interval = Interval(previous.interval.start, candidate.interval.end)
@@ -609,9 +623,11 @@ class ProbeResult:
 
     @property
     def estimated_bytes(self) -> int:
-        if self.duration is None or self.bit_rate is None:
-            return 0
-        return int(self.duration * self.bit_rate / 8)
+        """Bytes a full read streams. A missing duration or bit rate uses a conservative
+        fallback, never zero, so the per-run byte cap still applies."""
+        duration = self.duration or _FALLBACK_DURATION_SECONDS
+        bit_rate = self.bit_rate or _FALLBACK_BIT_RATE
+        return int(duration * bit_rate / 8)
 
 
 def parse_probe(stdout: str) -> ProbeResult:
@@ -661,8 +677,8 @@ class SlidesRunBudget:
             return True
 
     def admit_bytes(self, estimated: int) -> bool:
-        """Reserve ``estimated`` streamed bytes. The first source of a run is always admitted so a
-        single oversized meeting cannot block the lane forever."""
+        """Reserve ``estimated`` streamed bytes (one episode's total). The first reservation of a
+        run is always admitted so a single oversized meeting cannot block the lane forever."""
         with self._lock:
             if self.bytes and self.bytes + estimated > self.max_bytes:
                 return False

@@ -224,7 +224,9 @@ def test_parse_probe():
     assert probe.estimated_bytes == 900_000_000
     assert sl.parse_probe('{"streams": [], "format": {}}').has_video is False
     assert sl.parse_probe("not json") == sl.ProbeResult(None, None, False)
-    assert sl.parse_probe('{"format": {"duration": "x"}}').estimated_bytes == 0
+    # Unknown duration / bit rate: a conservative fallback, never a zero-byte reservation.
+    assert sl.parse_probe('{"format": {"duration": "x"}}').estimated_bytes == 4 * 3600 * 1_000_000
+    assert sl.ProbeResult(100.0, None, True).estimated_bytes == 100_000_000
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +313,16 @@ def test_select_slides_merges_consecutive_duplicates():
     assert [(c.interval.start, c.interval.end) for c in kept] == [(100, 160), (200, 230)]
     assert rejected == {"duplicate": 1}
     assert capped is False
+
+
+def test_select_slides_keeps_a_slide_shown_again_much_later_separate():
+    kept, rejected, _ = sl.select_slides(
+        [_candidate(1, 300, 330), _candidate(1, 900, 930)],
+        max_recurrence=3,
+        max_slides=50,
+    )
+    assert [(c.interval.start, c.interval.end) for c in kept] == [(300, 330), (900, 930)]
+    assert rejected == {}
 
 
 def test_select_slides_drops_recurring_frames():
@@ -714,3 +726,37 @@ def test_slides_lane_owns_only_its_block():
     assert "slides" not in protected
     assert {"audio", "transcript", "moments", "judging"} <= protected
     assert "slides" in protected_blocks_for_lane("audio")
+
+
+def test_stage_rejects_non_https_sources_before_probing(monkeypatch):
+    from citypods.security import SecurityError, validate_source_url
+
+    monkeypatch.setattr(
+        "citypods.stages.validate_source_url",
+        lambda url, resolve=True: validate_source_url(url, resolve=False),
+    )
+    fake = _FakeFfmpeg(freeze_text="", frames={})
+    ep = _episode(video_url="ftp://127.0.0.1/private.mp4")
+    stats = SlidesStage(run=fake).process(_Provider(), _city(), [ep], _ctx(_Storage()))
+    assert fake.calls == []
+    assert ep.slides["status"] == "failed"
+    assert ep.slides["reason"] == SecurityError.__name__
+    assert stats.errors
+
+
+def test_stage_reserves_a_multi_source_episode_before_any_detection():
+    sources = [
+        SourceMedia("s0", "swagit", "https://video.example.com/a.mp4", "direct", 3600.0, None),
+        SourceMedia("s1", "swagit", "https://video.example.com/b.mp4", "direct", 3600.0, None),
+    ]
+    fake = _FakeFfmpeg(freeze_text="", frames={})
+    ctx = _ctx(_Storage(), slides_config={"max_video_gb_per_run": 1.0})
+    first = _episode(guid="a", uid="a")
+    second = _episode(guid="b", uid="b", sources=sources)
+    SlidesStage(run=fake).process(_Provider(), _city(), [first, second], ctx)
+    assert first.slides["status"] == "none-found"
+    assert second.slides == {}
+    # Each source alone would fit (0.45 + 0.45 GB) but the episode total does not, so the
+    # second episode is probed to size it and never streamed through detection.
+    detect_calls = [c for c in fake.calls if "-vf" in c]
+    assert len(detect_calls) == 1

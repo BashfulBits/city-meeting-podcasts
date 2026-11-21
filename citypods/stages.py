@@ -1900,6 +1900,10 @@ def slides_eligible(ep: Episode) -> bool:
     return bool(ep.video_url or ep.sources)
 
 
+# Guards the lazy creation of ``ctx.slides_budget`` so concurrent workers share one run budget.
+_SLIDES_BUDGET_LOCK = threading.Lock()
+
+
 def _slides_sources(provider, city: City, ep: Episode) -> list[tuple[str, str]]:
     """``(source_id, playable_url)`` per source, resolved like R6's ``_moment_source``."""
     if ep.sources and len(ep.sources) > 1:
@@ -1938,11 +1942,13 @@ class SlidesStage:
         except sl.SlidesConfigError as exc:
             stats.errors.append(f"{city.slug}: {exc}")
             return stats
-        budget = ctx.slides_budget
-        if budget is None:
-            # Run caps are site-wide: build them from the site block, never one city's override.
-            site_config = sl.effective_config(ctx.slides_config, None)
-            budget = ctx.slides_budget = sl.SlidesRunBudget.from_config(site_config)
+        with _SLIDES_BUDGET_LOCK:
+            budget = ctx.slides_budget
+            if budget is None:
+                # Run caps are site-wide: build them from the site block, never one city's
+                # override. Created once under the lock so every worker shares the same caps.
+                site_config = sl.effective_config(ctx.slides_config, None)
+                budget = ctx.slides_budget = sl.SlidesRunBudget.from_config(site_config)
         for ep in episodes:
             if not config["enabled"]:
                 stats.quality("city-disabled")
@@ -2009,16 +2015,21 @@ class SlidesStage:
                 if isinstance(ch, dict) and ch.get("start") is not None
             ]
             first_chapter = min(starts) if starts else None
+        # Probe every source first and reserve the episode's whole estimate at once, so a deferral
+        # happens before any detection work and the next run does not repeat a half-done episode.
+        videos = []
         for source_id, url in sources:
-            if url.startswith(("http://", "https://")):
-                validate_source_url(url, resolve=True)
+            # Every source, whatever its scheme: the gate rejects anything but public https.
+            validate_source_url(url, resolve=True)
             probe = sl.parse_probe(self._run_text(sl.probe_command(probe_binary, url), 60))
-            if not probe.has_video:
-                continue
+            if probe.has_video:
+                videos.append((source_id, url, probe))
+        if videos:
             saw_video = True
-            if not budget.admit_bytes(probe.estimated_bytes):
+            streamed = sum(probe.estimated_bytes for _, _, probe in videos)
+            if not budget.admit_bytes(streamed):
                 return "byte-budget"
-            streamed += probe.estimated_bytes
+        for source_id, url, probe in videos:
             timeout = (probe.duration or 4 * 3600) * 1.0 + 600
             with HOST_LIMITER.slot(url):
                 text = self._run_text(sl.detect_command(binary, url, config), timeout)
@@ -2049,7 +2060,10 @@ class SlidesStage:
                 if reason is not None:
                     rejected[reason] = rejected.get(reason, 0) + 1
                     continue
-                candidates.append(sl.Candidate(source_id, interval, metrics, image))
+                # Keep the small encoded JPEG, not the decoded native-resolution frame.
+                data = sl.encode_slide(image, max_kb=int(config["max_image_kb"]))
+                del image
+                candidates.append(sl.Candidate(source_id, interval, metrics, data=data))
         kept, selection_rejects, over_cap = sl.select_slides(
             candidates,
             max_recurrence=int(config["max_recurrence"]),
@@ -2062,8 +2076,8 @@ class SlidesStage:
         uid = ep.uid or ep.guid
         with tempfile.TemporaryDirectory() as temporary:
             for index, candidate in enumerate(kept):
-                assert candidate.image is not None
-                data = sl.encode_slide(candidate.image, max_kb=int(config["max_image_kb"]))
+                assert candidate.data is not None
+                data = candidate.data
                 key = sl.slide_key(uid, data)
                 if not ctx.storage.exists(key):
                     path = Path(temporary) / f"{index}.jpg"

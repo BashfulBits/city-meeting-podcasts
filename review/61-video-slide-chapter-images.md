@@ -334,7 +334,7 @@ The feature is on for every city from the first deploy (P4), so there is no pilo
 - **Config location.** The override is a `slides:` block in the feed file (`config/feeds/*.yml`),
   kept in `City.extra`, not a new `City.slides` field or `config/cities/`.
 - **Low-detail filter.** Pillow `FIND_EDGES` instead of OpenCV Canny, default `0.004`.
-- **SSRF and protocols.** Every remote source passes `validate_source_url` before ffmpeg runs, and
+- **SSRF and protocols.** Every source, whatever its scheme, passes `validate_source_url` before ffmpeg runs, and
   ffmpeg gets `-protocol_whitelist crypto,data,http,https,tcp,tls` (the audio lane's list without
   `file`), so HLS is accepted as in the audio lane. A rejected URL is a failure that retries
   twice, not a terminal `no-video`.
@@ -342,3 +342,11 @@ The feature is on for every city from the first deploy (P4), so there is no pilo
   quality outcome by status, deferrals by `stop` / `run-cap` / `byte-budget`). A dedicated
   `/admin/status` panel is not part of this change.
 - **Capture budget.** Pass 2 captures at most `2 × max_slides_per_episode` frames per episode.
+- **Episode-level byte reservation.** The stage probes every source of an episode first and reserves
+  the episode's whole estimate in one `admit_bytes` call, so a byte-budget deferral happens before
+  any detection and the next run never repeats half an episode. A probe with no duration or bit
+  rate counts as 4 h at 8 Mbit/s, never zero.
+- **Bounded candidate memory.** Each accepted frame is encoded to the final JPEG at once and only
+  those bytes are kept until selection, never the decoded native-resolution frame.
+- **Merge gap.** Consecutive near-identical frames merge only when at most 30 s apart; a slide
+  shown again later stays two slides so the chapters keep the artwork reset in between.
