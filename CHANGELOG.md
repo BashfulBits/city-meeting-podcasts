@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Unified quota authority design (#2249).** Add review/54 §8.15 (L2, design only): the direct
+  Python CAS ledger and the v2 Durable Object ledger can spend the same provider allowance
+  without seeing each other. It records the code inventory, a read-only mapping step (key
+  fingerprints, ledger use, retired-bucket references, per-pool counters), a recommendation to
+  make the Durable Object the single authority for shared pools via reserve/settle endpoints, a
+  staged migration with seeding and rollback, and the tests that would prove the allowance
+  cannot be exceeded. No code, quota or bucket changes.
+
 - **Review/53 PR7 judge calibration report.** `python -m citypods.judging.calibrate --task <task>`
   fits each judged question from the adjudicated set (contested items plus the 3% calibration
   sample, weighted to the population) on Gemini Decision 1 anchor judgments since 2026-11-12. For
