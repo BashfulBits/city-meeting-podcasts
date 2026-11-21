@@ -42,15 +42,15 @@ RATIOS = {
 }
 LIVE = {"remedy:p3"}
 # At DO_ROWS_ENQUEUE_STOP 90,000: the live pool (100 remedy jobs x 18 rows) comes off the top,
-# then k = (88,500 - 1,800) / 2,565 = 33.80 jobs per ratio point for the other lanes.
+# then k = (88,500 - 1,800) / 2,595 = 33.41 jobs per ratio point for the other lanes.
 RESERVED_JOBS = {
-    "chapter-agenda": 338,
-    "chapter-locator": 338,
-    "topic-tags:tagger": 1352,
-    "r6-moments": 338,
-    "judge:anchor": 676,
-    "judge:sibling": 1014,
-    "judge:adjudicator": 338,
+    "chapter-agenda": 334,
+    "chapter-locator": 334,
+    "topic-tags:tagger": 1336,
+    "r6-moments": 334,
+    "judge:anchor": 668,
+    "judge:sibling": 1002,
+    "judge:adjudicator": 334,
     "remedy:p3": 100,
 }
 
@@ -83,10 +83,10 @@ class TestCommittedSplit:
 
     def test_reservations_split_the_row_cap(self):
         lanes = _lanes()
-        assert jobs_per_ratio_point(lanes, _budget()) == pytest.approx(33.801, abs=0.001)
+        assert jobs_per_ratio_point(lanes, _budget()) == pytest.approx(33.410, abs=0.001)
         assert {p: _jobs(lane) for p, lane in lanes.items()} == RESERVED_JOBS
-        assert sum(RESERVED_JOBS.values()) == 4_494
-        assert sum(lane.reserved_write_units for lane in lanes.values()) == 23_046
+        assert sum(RESERVED_JOBS.values()) == 4_442
+        assert sum(lane.reserved_write_units for lane in lanes.values()) == 23_446
         rows = _rows(lanes, _budget())
         assert ROW_CAP - 50 < rows <= ROW_CAP
 
@@ -106,7 +106,7 @@ class TestCommittedSplit:
     def test_live_lane_gets_the_whole_pool_and_can_borrow(self):
         remedy = _lanes()["remedy:p3"]
         assert _jobs(remedy) == SITE["llm_lane_budget"]["live_reservation_jobs"] == 100
-        assert remedy.daily_write_units == 23_046
+        assert remedy.daily_write_units == 23_446
         assert remedy.max_queued_jobs == 200
 
     def test_load_lanes_matches_the_split(self):
@@ -191,9 +191,9 @@ class TestLivePool:
         lanes = _lanes(block)
         budget = _budget()
         assert live_reservation_rows(lanes, budget) == 0
-        # k = 88,500 / 2,565 rows per ratio point with no pool taken off.
-        assert jobs_per_ratio_point(lanes, budget) == pytest.approx(34.503, abs=0.001)
-        assert _jobs(lanes["topic-tags:tagger"]) == 1380
+        # k = 88,500 / 2,595 rows per ratio point with no pool taken off.
+        assert jobs_per_ratio_point(lanes, budget) == pytest.approx(34.104, abs=0.001)
+        assert _jobs(lanes["topic-tags:tagger"]) == 1364
 
     def test_live_lanes_with_only_zero_ratios_fail(self):
         block = copy.deepcopy(SITE["llm_lanes"])
@@ -218,8 +218,8 @@ class TestCompileGuards:
             unit_budget=TUNING["MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY"],
             job_budget=TUNING["MAX_JOBS_PER_UTC_DAY"],
         )
-        assert totals["jobs"] == 4_494
-        assert totals["units"] == 23_046
+        assert totals["jobs"] == 4_442
+        assert totals["units"] == 23_446
 
     def test_units_past_the_ingress_guard_fail_the_compile(self):
         from scripts import compile_llm_lanes

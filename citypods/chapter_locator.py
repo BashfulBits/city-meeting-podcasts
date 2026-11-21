@@ -32,12 +32,11 @@ NEMOTRON_LOCATOR_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
 # Production uses the baseline prompt. DeepSeek V4 Flash is the preferred route for packets in its
 # empirically verified fit band; MiniMax M3.1 Flash handles larger packets up to
-# LOCATOR_OVERFLOW_MAX_INPUT_TOKENS (review/58 WP8). Keep these in the lane registry and select one
-# per request so the Worker reserves only that model's pool.
+# LOCATOR_OVERFLOW_MAX_INPUT_TOKENS (review/58 WP8). Select one primary per request; other lane
+# models are failure-triggered backups, not normally active.
 #
-# THIS STRING IS PART OF THE RECIPE HASH (see `stages.py`'s `chapter_locator` recipe), so changing
-# the configured model re-queues every locator artifact in the catalog -- a deliberate backfill
-# whose story the PR and CHANGELOG must state per AGENTS.md, not a config tweak.
+# The primary model is part of each job's recipe hash. Completed results from accepted prior lane
+# lists remain reusable via the explicit policy-fingerprint check in stages.py.
 # `tests/test_llm_lanes.py` pins the primary (DeepSeek) route.
 #
 # The `_LOCATOR_MODEL_BANDS` ladder below is a SEPARATE concern: it picks a fallback candidate set
@@ -75,6 +74,9 @@ DEEPSEEK_FREE_CONTEXT_TOKENS = 200_000
 NEMOTRON_CONTEXT_TOKENS = 1_000_000
 GEMINI_CONTEXT_TOKENS = 1_048_576
 LOCATOR_OUTPUT_TOKEN_RESERVE = 20_000
+# Admission reservation shared by all locator candidates. The Worker sends route_max instead:
+# 6,144 is Kimi K3.1's configured route limit, not a cap on other models' responses.
+LOCATOR_DISPATCH_OUTPUT_RESERVATION = 6_144
 # Research-only shadow selection bands. Production uses the explicit empirically-derived split
 # below; this ladder remains for old shadow/evaluation callers.
 _LOCATOR_MODEL_BANDS: tuple[tuple[int, tuple[str, ...]], ...] = (
@@ -727,7 +729,7 @@ def build_production_locator_request(
         model=models[0],
         models=models,
         input_tokens=input_tokens,
-        max_output_tokens=locator_max_output_tokens(models[0]),
+        max_output_tokens=LOCATOR_DISPATCH_OUTPUT_RESERVATION,
     )
 
 

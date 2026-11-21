@@ -380,8 +380,7 @@ def test_production_locator_pins_small_packets_to_v4_flash_alone():
 
     assert request.models == (PRODUCTION_LOCATOR_MODEL,)
     assert request.model == PRODUCTION_LOCATOR_MODEL
-    # The V4 Flash band keeps the full output reserve it has always sent.
-    assert request.max_output_tokens == LOCATOR_OUTPUT_TOKEN_RESERVE
+    assert request.max_output_tokens == chapter_locator.LOCATOR_DISPATCH_OUTPUT_RESERVATION
 
 
 def test_overflow_cap_is_derived_from_the_minimax_route():
@@ -469,7 +468,20 @@ def test_minimax_request_output_fits_its_route():
     (route,) = ROUTE_CANDIDATES[MINIMAX_LOCATOR_MODEL]
     assert route.route_id == "nvidia_minimaxai_minimax_m3_1_flash"
     assert route.output_context_limit == 12_800
-    assert request.max_output_tokens == route.output_context_limit
+    assert request.max_output_tokens == chapter_locator.LOCATOR_DISPATCH_OUTPUT_RESERVATION
+    assert request.max_output_tokens <= route.output_context_limit
+
+
+def test_locator_reservation_fits_all_configured_models():
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
+
+    reservation = chapter_locator.LOCATOR_DISPATCH_OUTPUT_RESERVATION
+    for model in lane_for("chapter-locator").models:
+        assert any(
+            route.output_context_limit >= reservation
+            for route in ROUTE_CANDIDATES[canonical_model(model)]
+        )
+    assert reservation == 6_144
 
 
 def test_production_locator_holds_packets_above_the_cap_unbuilt(monkeypatch):
