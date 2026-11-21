@@ -81,6 +81,15 @@ jobs:
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
           B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          # Canonical state's manifest is a coordination object on R2. Without these the router
+          # degrades to B2 only, reads a stale 425-object B2 manifest with no sources/ entries, and
+          # the audit runs against empty records (false unexpected-body and backlog findings, #2280).
+          AUDIO_STORAGE_BACKEND: routing
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           EVENT_NAME: ${{ github.event_name }}
           GIT_REF: ${{ github.ref }}
           TIMELINE_DIAGNOSTICS_INPUT: ${{ inputs.timeline_diagnostics }}
