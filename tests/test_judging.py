@@ -1760,6 +1760,57 @@ def test_a_meetings_choose_question_is_contested_when_the_winner_flips_with_orde
     assert all(len(i.subjects) == 2 and i.options for i in group)
 
 
+def _choose_group(forward, reverse, sibling=None):
+    from citypods.judging import ledger
+    from citypods.judging.tasks import Subject
+
+    store: dict = {}
+    subjects = [Subject("moment", f"s{i}", "ep", "g", None, {}, store) for i in range(2)]
+    key = subjects[0]
+
+    def row(qid, role, model, value):
+        return {
+            "subject_id": key.subject_id,
+            "question_id": qid,
+            "judge_model": model,
+            "judge_role": role,
+            "context_tier": "T1",
+            "value": value,
+            "prompt_version": "1",
+            "evidence_digest": f"{qid}{role}",
+            "judged_at": "2026-11-20T00:00:00Z",
+            "sample": "routine",
+        }
+
+    anchor = "gemini/gemini-decision-1"
+    ledger.append_judgment(key, row("best", "anchor", anchor, forward))
+    ledger.append_judgment(key, row("best_r", "anchor", anchor, reverse))
+    if sibling is not None:
+        ledger.append_judgment(key, row("best", "sibling", "qwen/qwen3.8-27b", sibling))
+    return subjects, anchor
+
+
+def test_choose_is_due_without_a_sibling_when_the_anchor_flips_or_the_group_is_sampled():
+    from citypods.judging.adjudication import CALIBRATION, CONTESTED, choose_due
+
+    spec = task("moment")
+    families = {"gemini/gemini-decision-1": "google", "qwen/qwen3.8-27b": "qwen"}
+    flips, anchor = _choose_group("s0", "s1")
+    due = choose_due(flips, spec, anchor_model=anchor, calibration_rate=0.0, families=families)
+    assert due is not None and due.sample == CONTESTED
+    steady, anchor = _choose_group("s0", "s0")
+    assert (
+        choose_due(steady, spec, anchor_model=anchor, calibration_rate=0.0, families=families)
+        is None
+    )
+    sampled = choose_due(steady, spec, anchor_model=anchor, calibration_rate=1.0, families=families)
+    assert sampled is not None and sampled.sample == CALIBRATION
+    # A sibling that disagrees still contests the group, as before.
+    split, anchor = _choose_group("s0", "s0", sibling="s1")
+    due = choose_due(split, spec, anchor_model=anchor, calibration_rate=0.0, families=families)
+    assert due is not None and due.sample == CONTESTED
+
+
 def test_adjudication_is_off_without_an_adjudicator_lane():
     ep = _episode()
     dispatch = _judged_contested(ep, adjudicator=None)
