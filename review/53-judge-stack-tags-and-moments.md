@@ -740,6 +740,33 @@ Reading the numbers:
   rule the cause out, and the stricter cutover rule above already gave better moment numbers. Do not
   clear and re-run adjudication on this evidence; re-run this report as the post-fix sample grows.
 
+#### Checking another anchor at tested thresholds (2026-11-21)
+
+The thresholds above are the anchor's, fitted on Gemini Decision 1. Another anchor (the retired JEV,
+a Cloud Run endpoint, a new free route) is not assumed to share them. `python -m
+citypods.judging.calibrate --task <task> --evaluate --anchor-model <model> --since <date> --until
+<date>` scores that model over its own era at the levels already in `judging.tasks.<task>.thresholds`
+and reports agreement, the false-accept upper bound and an `accepted` verdict (the same fixed 5%
+cap); `--record DIR` stores the result. Run without `--evaluate`, the same command fits that model's
+own thresholds. Nothing is written to the site config in either case. The recorded results are in
+`evals/judge/acceptance/`.
+
+First use, task `tag`, JEV (`typesafe/jev-1.13`) over its own era (adjudications before 2026-11-12):
+
+| Check | Thresholds | Agreement | False-accept | Upper 95% | Result |
+|---|---|---|---|---|---|
+| Gemini's thresholds applied to JEV | admit 0.70, reject 0.69 | 83.0% | 6.87% | 7.57% | **not accepted** (cap 5%) |
+| JEV's own fit | admit 0.79, reject 0.78 | 83.8% | 2.66% | 3.12% | within the cap |
+
+Both rest on 61,350 adjudicated items (58,023 contested, 3,327 calibration), 44,392 of them
+negatives; 172,352 adjudicated items in that era were excluded because the adjudicator's evidence
+window could not be rebuilt, so they say nothing either way. So the old JEV tag judgments can count
+at JEV's own levels (0.79 and 0.78), not at Gemini's; no re-run of that content is needed for tags.
+Graduation therefore needs thresholds per anchor model: a consumer must read the block for the model
+that produced the row, and a row from an anchor without an accepted block is treated as unjudged.
+That keying belongs to the PR8 and PR9 consensus code and is not built here. A new decide-model
+endpoint is admitted the same way: evaluate it over its own era first, then fit if it falls short.
+
 ### Graduation (PR8 tags, PR9 moments)
 
 The review/49 rule, applied per task on the same sample of adjudicated items:

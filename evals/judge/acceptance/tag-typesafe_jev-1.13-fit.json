@@ -1,0 +1,44 @@
+{
+  "task": "tag",
+  "policy": {
+    "task": "tag",
+    "method": "2",
+    "anchor_model": "typesafe/jev-1.13",
+    "anchor_since": "",
+    "false_accept_cap": 0.05,
+    "calibration_sample_rate": 0.03,
+    "anchor_family": [
+      "typesafe/jev-1.13"
+    ],
+    "questions": {
+      "supported": [
+        "validate",
+        "1"
+      ]
+    }
+  },
+  "policy_fingerprint": "f77a7525c3d9f9ec",
+  "questions": {
+    "supported": {
+      "kind": "validate",
+      "prompt_version": "1",
+      "items": {
+        "contested": 58023,
+        "calibration": 3327
+      },
+      "excluded": {
+        "adjudicated_after_anchor_window": 358079,
+        "adjudicator_window_unavailable": 172352
+      },
+      "proposal": {
+        "t_admit": 0.79,
+        "t_reject": 0.78,
+        "agreement": 0.8376,
+        "decided_share": 0.9966,
+        "false_accept_rate": 0.0266,
+        "false_accept_upper95": 0.0312,
+        "adjudicated_negatives": 44392
+      }
+    }
+  }
+}

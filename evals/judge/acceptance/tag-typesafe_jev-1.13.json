@@ -1,0 +1,37 @@
+{
+  "task": "tag",
+  "anchor_model": "typesafe/jev-1.13",
+  "since": null,
+  "until": "2026-11-12",
+  "thresholds": {
+    "policy_fingerprint": "a2c0d17a7c00cac7",
+    "anchor_model": "gemini/gemini-decision-1",
+    "false_accept_cap": 0.05,
+    "supported": {
+      "t_admit": 0.7,
+      "t_reject": 0.69
+    }
+  },
+  "questions": {
+    "supported": {
+      "kind": "validate",
+      "items": 61350,
+      "excluded": {
+        "adjudicated_after_anchor_window": 358079,
+        "adjudicator_window_unavailable": 172352
+      },
+      "scored": {
+        "t_admit": 0.7,
+        "t_reject": 0.69,
+        "agreement": 0.8297,
+        "decided_share": 0.993,
+        "false_accept_rate": 0.0687,
+        "false_accept_upper95": 0.0757,
+        "adjudicated_negatives": 44392
+      },
+      "accepted": false
+    }
+  },
+  "accepted": false,
+  "cap": 0.05
+}
