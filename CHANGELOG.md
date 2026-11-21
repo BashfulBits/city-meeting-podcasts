@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Quota-pool design decisions (#2249).** Record the maintainer's answers in review/54 §8.15.G:
+  the design is accepted, the interim split will not ship, and interactive callers must finish
+  within 10 to 30 minutes per call rather than be strictly synchronous. Correct the design: the v2
+  queue already has a priority 0 lane, so routing interactive calls through it is a second route
+  next to reserve/settle, and a latency measurement decides between them.
+
 - **Review/53 judge recovery tool and `best` calibration.** `python -m citypods.judging.clear`
   archives and removes stored judgments so the planner asks for them again: by default only rows
   asked of evidence that differs from what the current builder produces (the truncated moment
