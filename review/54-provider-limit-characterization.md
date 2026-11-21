@@ -1,14 +1,16 @@
 # Provider limit revalidation and burst/refill characterization
 
-**Status: §8.14 (configured-route input/output cap re-measurement) is L3, approved 2026-11-21; the rest of this document stays Deferred, L2.** Tracking issue: [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
+**Status: §8.14 (configured-route input/output cap re-measurement) is L3, approved 2026-11-21;
+the rest of this document stays Deferred, L2.** Tracking issue:
+[#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
 
 **Maintainer scope correction — 2026-10-11.** Review/48 remains new-route discovery,
 maintainer-approved additions, bounded discovery-time request-cap searches and dead-route removal
 with existing recovery. Periodic empirical quota/cap characterization and dispatcher redesign are
 separate future work (except §8.14, approved 2026-11-21, which folds configured-route input/output
-cap re-measurement into the review/48 weekly run). Existing Worker adaptation and provider-configured quotas remain the
-operational baseline. The historic L3 designation below does not authorize its implementation or
-activation now. A fresh bounded L3 contract and prioritization are required before resuming it.
+cap re-measurement into the review/48 weekly run). Existing Worker adaptation and
+provider-configured quotas remain the operational baseline. The historic L3 designation below does
+not authorize its implementation or activation now. A fresh bounded L3 contract and prioritization are required before resuming it.
 
 Future scope includes periodic proof/refinement of input/output/combined request caps, RPM/TPM
 measurement, RPD/TPD/monthly evidence, exact model/shared scopes, token/request burst, overflow and
@@ -123,8 +125,9 @@ run.
   The digest covers the identity, the contributing session IDs and observations, the clipping
   inputs and the value. A new `remeasure_cap_changes(discovery_history, config, now=...)` in
   `limits.py` returns the same tuple shape as `context_cap_changes`. `reconcile` and
-  `/apply` (`scripts/provider_catalog_commands.py`) take the union of both, so `parse_context_choice`,
-  `context_edit_plan`, the input-plus-output window check and the stale-tick rules apply unchanged.
+  `/apply` (`scripts/provider_catalog_commands.py`) take the union of both, so
+  `parse_context_choice`, `context_edit_plan`, the input-plus-output window check and the
+  stale-tick rules apply unchanged.
   If both functions offer the same route and field, the re-measure offer wins and the older one is
   dropped.
 - **PR notes.** The `/apply` PR lists each changed cap with old → new, raise or reduction, the
@@ -132,8 +135,8 @@ run.
   the two contributing observations. When the change also moves `observed_on`, the PR updates it.
 - **Producer-review issue.** When `/apply` opens a PR that **reduces** any cap, it also files one
   GitHub issue per reduced route, linked from the PR body. Title: `Review producer packet sizes
-  for <route_id>: <field> reduced <old> → <new>`. Labels: `provider-catalog` and `area:provider`. The body is a
-  fixed checklist:
+  for <route_id>: <field> reduced <old> → <new>`. Labels: `provider-catalog` and
+  `area:provider`. The body is a fixed checklist:
   - the compiled limits (`scripts/compile_llm_limits.py` → `citypods/compute/llm_routes.json`,
     `workers/llm-dispatch-v2/src/dispatch_limits.json`) carry the new value after merge and deploy;
   - any hard-coded Worker caps for the route (`CONTEXT_INPUT_CEILINGS` in `coordinator.js`) are
@@ -141,8 +144,8 @@ run.
   - each producer that sizes packets from the route's caps (tags, moments, chapter locator,
     judging runner, deferred LLM work) sizes from the compiled value, not a cached or constant
     size, and existing queued packets above the new value are re-split or drained;
-  - Worker refusal and learned-ceiling counts (review/55) for the route over the following week show no
-    rise in over-size refusals.
+  - Worker refusal and learned-ceiling counts (review/55) for the route over the following week
+    show no rise in over-size refusals.
 
   The issue is filed by the `/apply` job (it already has `issues: write`) with the workflow
   token. If filing fails, the PR body
