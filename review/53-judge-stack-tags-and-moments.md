@@ -760,6 +760,12 @@ asked again. `python -m citypods.judging.clear` archives and removes them:
   the task judged before the date.
 - Rows go to `state/archive/<name>/<source>.jsonl` before they leave the records, and
   `--restore <name>` puts them back.
+- Run it from the **LLM judge clear** workflow (`judge-clear.yml`, dispatch with `apply` to change
+  anything). It shares judge.yml's `llm-judge` concurrency group, so GitHub runs it alone. A first
+  attempt from a laptop failed on every upload to Backblaze (a malformed response to each PUT), and
+  the state sync uploads only `.json` and `.jsonl` files, so a runner is the supported place; the
+  tool reads every archive back from storage and stops before any record is pushed if one is
+  missing.
 
 Dry run on production state (2026-11-21), task `moment`:
 
