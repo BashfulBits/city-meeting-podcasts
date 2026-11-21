@@ -15,6 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/48 provider catalog decisions.** Acknowledged recurring inconclusive anomalies
+  for BeatAPI secondary catalog timeout and OpenRouter decisions endpoint (Refs #2554).
+
 - Feed-health audit (#2280): `audit.yml` now configures the R2 routing backend. Without it the audit
   restored a stale 425-object B2 manifest with no `sources/` entries, so it ran against empty
   records and reported false `unexpected-body` findings (#1623) and wrong backlog inferences. A
