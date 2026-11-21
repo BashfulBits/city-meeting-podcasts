@@ -2,7 +2,8 @@
 
 **Status: §8.14 (configured-route input/output cap re-measurement) is implemented (approved L3
 2026-11-21; first live run is the next Monday weekly run); the rest of this document stays
-Deferred, L2.** Tracking issue:
+Deferred, L2; §8.15 (one quota authority, #2249) is an L2 design
+only.** Tracking issue:
 [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
 
 **Maintainer scope correction — 2026-10-11.** Review/48 remains new-route discovery,
@@ -279,6 +280,14 @@ Before choosing an authority, find out which keys are really shared:
 The output is a table of physical pools, each with its direct callers and queued routes. Only a pool
 that appears on both sides needs the rest of this design.
 
+**Counters are per quota pool, not per key or route.** Two credentials in one organisation can share
+a quota (Groq, review/54 §8.13), and one credential can serve several routes. The authority must
+therefore count each pool once, under the reviewed `quota_identity` (provider, scope, window), and
+route every reserve for that pool, direct or queued, to the same counter. Step 1 must confirm that
+the Worker's Durable Object routing and provider windows already aggregate by that identity. If they
+count per route or per key object, a shared pool is still double-spent and step 3 is blocked until
+that is fixed.
+
 ### 8.15.C Choosing the authority
 
 **Recommendation: the v2 Durable Object becomes the one ledger for every shared pool.** It already
@@ -308,7 +317,10 @@ The Worker would gain two authenticated endpoints. Both use the existing bearer 
   same 20-minute horizon (`LLM_RESERVATION_TTL_SECONDS`).
 - `POST /v2/settle {lease_id, actual_requests, actual_input, actual_output, status}` corrects the
   charge to actual usage, as the Python ledger does today. A 429 status feeds the same back-off a
-  queued job's 429 would. A lease that is never settled expires and frees its estimate.
+  queued job's 429 would. A lease that is never settled expires. If the caller marked the lease `dispatched` (set just before
+  the provider call), expiry does not free the estimate: it stays charged to the pool's windows until
+  those windows roll over or a reconciliation settles it, because the provider may have counted the
+  request. Only a lease that was never dispatched frees its estimate.
 
 On the Python side, `select_and_reserve` gets a second backend. When a direct call's route belongs
 to a shared pool, the backend calls `/v2/reserve` instead of the CAS ledger. If the Worker cannot be
@@ -330,11 +342,18 @@ Each stage is a separate PR, and each has a flag that turns it off.
    `shadow: true`. The Worker records the lease but charges no window. The Python ledger stays
    authoritative. Measure what the Worker would have refused, and confirm that leases settle and
    expire correctly. No double charge occurs, because shadow leases charge nothing.
-3. **Cut over one pool.** Under a per-pool flag `direct_quota_authority: worker`, the Worker lease
-   is charged for real and the Python ledger is skipped for that pool. The stage-1 share is removed
-   for that pool in the same change, so the allowance is counted once. Rollback: flip the flag. An
-   in-flight lease settles or expires within 20 minutes, and the Python ledger resumes. A rollback
-   can spend at most one 20-minute lease horizon of estimate twice; the stage-1 share covers that.
+3. **Cut over one pool.** Under a per-pool flag `direct_quota_authority: worker`:
+   - **Seed first.** Before the flag is on, import the Python ledger's current-window counters for
+     the pool into the Worker (requests, tokens, daily usage, and unsettled reservations). Until the
+     seed is confirmed, the stage-1 split stays in force, so the Worker never admits against
+     allowance the direct side already spent today.
+   - **Then switch.** The Worker lease is charged for real, the Python ledger is skipped for that
+     pool, and the stage-1 split is removed in the same change, so the allowance is counted once.
+   - **Rollback.** Restore the split first, then flip the flag. Seed the Python ledger with the
+     Worker's current-window counters for the pool (including leases still charged), so the two
+     ledgers start the pool's remaining allowance from the same figure. An in-flight lease settles or
+     expires as in §8.15.D. Without these two steps the ledgers could overlap beyond one lease
+     horizon.
 4. **The remaining shared pools,** one at a time.
 
 ### 8.15.F Tests that prove it
@@ -342,8 +361,13 @@ Each stage is a separate PR, and each has a flag that turns it off.
 - **Concurrency.** A Worker unit test interleaves N simulated direct leases with queued jobs on one
   route. Totals never exceed RPM, TPM or RPD at any instant. Run it under the DO test harness,
   which serialises like production.
-- **Crash recovery.** A lease that is never settled frees its estimate at expiry. A settle after
-  expiry is a no-op, not a negative balance.
+- **Crash recovery.** A lease that was never dispatched frees its estimate at expiry. A dispatched
+  but unsettled lease stays charged until the window rolls. A settle after expiry is a no-op, not a
+  negative balance.
+- **Cutover and rollback.** After the seed, the Worker's remaining allowance equals the Python
+  ledger's remaining allowance for the pool. After a rollback, the Python ledger's remaining
+  allowance equals the Worker's.
+- **Shared pool.** Two routes on different keys of one organisation draw from one counter.
 - **Fail-closed.** With the Worker unreachable, a direct call on a shared pool defers. A direct call
   on a direct-only pool still uses the CAS ledger.
 - **No double charge.** In shadow mode, window counters are unchanged by direct leases. After
