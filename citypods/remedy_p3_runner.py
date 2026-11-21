@@ -46,6 +46,9 @@ from citypods.compute.llm_policy import (
     ROUTE_REGISTRY,
     LLMRequestPolicy,
 )
+from citypods.compute.returned_model_identity import (
+    accepted_returned_models as _accepted_returned_models,
+)
 from citypods.compute.structured import register_response_model
 from citypods.judging.backends import Evidence, Item, JevBackend, Packet
 from citypods.judging.tasks import QuestionSpec, Subject
@@ -87,16 +90,6 @@ P3_CONCISE_PROMPT_VERSION = "p3-unexpected-body-concise-v2"
 # reached 13,455 completion tokens (DeepSeek) and 10,322 (GLM Flash); the earlier 8,192 would have
 # truncated them. Sol and DeepSeek allow exactly 16,384 on their routes.
 P3_CHAT_MAX_OUTPUT_TOKENS = 16_384
-
-# Route-level (project-evidence) admissions only: the returned-model IDs that exact requested ID
-# and physical route may report. Model-bound admissions do not check returned model identity.
-P3_RETURNED_MODEL_ALIASES = {
-    ("orcarouter_zai_glm_5_3_flash_free", "z-ai/glm-5.3-flash-free"): ("zai-org/glm-5.3-flash",),
-}
-
-
-def _accepted_returned_models(route_id: str, requested: str) -> tuple[str, ...]:
-    return (requested, *P3_RETURNED_MODEL_ALIASES.get((route_id, requested), ()))
 
 
 class P3ChatResponse(BaseModel):

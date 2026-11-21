@@ -14,6 +14,7 @@ from pathlib import Path
 
 import yaml
 
+from citypods.compute.returned_model_identity import returned_model_status
 from citypods.remedy_evaluation import (
     EVALUATION_MODES,
     Manifest,
@@ -268,7 +269,15 @@ def run_cases(
                 request_params_hash=result.request_params_hash,
             )
             returned = result.output.get("model")
-            routes = [ROUTE_REGISTRY[r] for r in entry["physical_route_ids"]]
+            route = ROUTE_REGISTRY.get(result.route_id)
+            identity = (
+                returned_model_status(
+                    route.route_id, route.upstream_model, route.direct_model, returned
+                )
+                if route is not None
+                else "unknown"
+            )
+            row["returned_model_identity"] = identity
             expected_level = (
                 None if entry["reasoning_level"] == "provider-default" else entry["reasoning_level"]
             )
@@ -277,8 +286,7 @@ def run_cases(
                 or result.upstream_model != entry["upstream_model"]
                 or result.reasoning_level != expected_level
                 or result.request_params_hash != entry["request_params_hash"]
-                or returned
-                not in {r.upstream_model for r in routes} | {r.direct_model for r in routes}
+                or identity == "unknown"
             ):
                 raise ValueError("unknown/mismatched returned physical model or effort")
             answer = parse_structured_json(result.output["choices"][0]["message"]["content"])

@@ -12,6 +12,7 @@ from pathlib import Path
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 from citypods.compute.llm_policy import ROUTE_REGISTRY, LLMRequestPolicy
+from citypods.compute.returned_model_identity import returned_model_status
 from citypods.compute.structured import parse_structured_json, register_response_model
 from citypods.config import load_site_config
 from citypods.remedy_evaluation import (
@@ -140,7 +141,11 @@ def main():
                     reasoning_level=result.reasoning_level,
                 )
                 returned = result.output.get("model")
-                if returned not in {route.upstream_model, route.direct_model}:
+                identity = returned_model_status(
+                    route.route_id, route.upstream_model, route.direct_model, returned
+                )
+                row["returned_model_identity"] = identity
+                if result.route_id != route.route_id or identity == "unknown":
                     raise ValueError("Returned model identity mismatch")
                 answer = parse_structured_json(result.output["choices"][0]["message"]["content"])
                 parsed = validate_answer(
