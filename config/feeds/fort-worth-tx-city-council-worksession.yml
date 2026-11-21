@@ -5,6 +5,10 @@ source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "City Council Worksession"
   body_includes:
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&clip_id=6445"
+      body: "Special Called Work Session Meeting"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=6445"
+      body: "Special Called Work Session Meeting"
     - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&clip_id=6331"
       body: "Work Session"
     - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=6331"
