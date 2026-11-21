@@ -10,6 +10,11 @@ The input-first profile reports provider-counted passing values separately from 
 size estimates. Its 0.5% tolerance is an estimate target, not a provider-verified refusal bracket.
 The resumable `test again` contract applies to new-route discovery under its L3 implementation.
 
+**Amended 2026-11-21:** the weekly full run also re-measures the input and output caps of configured
+free routes, reusing the §8.13 search inside the same drain. Raises come from one session; a
+reduction needs two sessions on different days and files a producer-review issue. Contract:
+[review/54 §8.14](54-provider-limit-characterization.md). Other review/54 work stays Deferred.
+
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
 `config/provider_catalog_decisions.yml`. Prerequisite shipped: the v2 dispatch pause (#1848).

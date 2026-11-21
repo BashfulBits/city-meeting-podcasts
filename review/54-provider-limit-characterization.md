@@ -1,11 +1,12 @@
 # Provider limit revalidation and burst/refill characterization
 
-**Status: Deferred, L2.** Tracking issue: [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
+**Status: §8.14 (configured-route input/output cap re-measurement) is L3, approved 2026-11-21; the rest of this document stays Deferred, L2.** Tracking issue: [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
 
 **Maintainer scope correction — 2026-10-11.** Review/48 remains new-route discovery,
 maintainer-approved additions, bounded discovery-time request-cap searches and dead-route removal
 with existing recovery. Periodic empirical quota/cap characterization and dispatcher redesign are
-separate future work. Existing Worker adaptation and provider-configured quotas remain the
+separate future work (except §8.14, approved 2026-11-21, which folds configured-route input/output
+cap re-measurement into the review/48 weekly run). Existing Worker adaptation and provider-configured quotas remain the
 operational baseline. The historic L3 designation below does not authorize its implementation or
 activation now. A fresh bounded L3 contract and prioritization are required before resuming it.
 
@@ -23,6 +24,173 @@ when they are at/below TPM. Preserve unknown versus provider-declared, empirical
 operationally configured values. A provider-canonical mismatch triggers an independent source
 re-check, not silent replacement. Daily/monthly exhaustion may bound limits with complete scoped
 period accounting; no deliberate daily/monthly exhaustion experiment is planned.
+
+## 8.14 Configured-route input/output cap re-measurement — L3, approved 2026-11-21
+
+**Maintainer direction (2026-11-21).** Fold one part of this document into the review/48 weekly run:
+re-measuring the input and output caps of routes that are already configured. The weekly full run
+already drains each provider and runs the review/48 §8.13 discovery search on new routes, so it can
+re-measure configured routes too. Everything else here stays Deferred: RPM/TPM/RPD measurement,
+burst and refill, quota pools, automatic Worker ceilings and dispatcher changes. A cap may go
+**down** from its previously measured value only on consistent evidence from two probes on
+different days. Every reduction files a GitHub issue to review what producers send to that route.
+
+**Why.** Configured caps are measured once, when a route is added, and are not checked again.
+Providers change limits quietly. A raised limit wastes capacity. A lowered one makes
+over-sized calls fail until the Worker learns the new size (review/55). Jobs have also stalled when
+a cap was reduced but the producer kept building packets for the old size, so a reduction must
+never be silent.
+
+### 8.14.A What runs, and when
+
+- **Run.** Only the weekly full run (Monday 10:07 UTC), after new-route discovery, inside the same
+  per-provider drain (v2 dispatch pause). The daily incremental and manual runs do not re-measure
+  configured routes. Undrained proofs share the route with production traffic, which makes 429s
+  and timeouts ambiguous.
+- **Which routes.** Configured routes with `free: true`, `rpd != 0`, and a current provider
+  account. One route per `discovery_identity(provider, account_id, upstream_model, endpoint)`:
+  routes that share an identity share a measurement. Each axis is due when it has no
+  authenticated discovery session within `REMEASURE_INTERVAL_DAYS` (28), or when §8.14.C holds a
+  pending reduction for it. Pending confirmations go first, then the oldest last measurement, then
+  routes on the lanes with the most traffic.
+- **Budget.** Configured-route sessions share the weekly run's existing clock with discovery.
+  New-route discovery runs first. Re-measurement uses at most `REMEASURE_SECONDS` (3,600 s) and
+  `REMEASURE_SESSION_CEILING` (4) sessions per run, one session per provider at a time. A session
+  starts only if `MIN_SESSION_SECONDS` (600) remain. The clock is also capped by the job:
+  re-measurement stops 15 minutes before the weekly job's timeout, so cleanup and evidence upload
+  still run. The weekly job timeout goes from 300 to 360 minutes, GitHub's hosted-runner maximum,
+  because three 90-minute new-route searches already use most of 300. Routes left over wait for
+  next week. Their `measure_note` says so in the issue.
+- **Search.** Reuse `_discover_candidate_caps` with a synthetic candidate built from the route
+  (`provider`, `upstream_model`, `key = route_id`, catalog record from the live catalog when listed,
+  otherwise an empty record). The search is seeded from the configured caps, not the 500k default:
+  input starts at `hard_input_ceiling` (or `input_context_limit` minus `output_context_limit`), and
+  output starts at `output_context_limit`. The first probe confirms the current cap and the bracket
+  then widens upward. Everything else is unchanged from §8.13: 0.5% bracket width, typed
+  `context_length` hints, the 600 s input time budget, 429 backoff, outage retries, the
+  per-session journal and `discovery_sessions_sink`.
+- **Evidence.** Sessions go to the same authenticated discovery history (90-day window) under the
+  route's discovery identity. The issue's configured-route section shows the result for each due
+  axis: the current cap, the admitted and refused counts, the status, and any pending
+  confirmation.
+
+### 8.14.B Raising a cap
+
+A raise is offered when one drained session's bracket has a verified admitted value above the
+current cap. "Verified" means the §8.13 rules: provider-counted, compatible count basis and
+control, and the existing two-success contract within the session. The offered value is the
+admitted value, clipped exactly as `context_cap_changes` clips today:
+`min(admitted, input_context_limit − output_context_limit)` for input, `min(admitted,
+input_context_limit)` for output. A combined-reserved basis subtracts production output. A raise
+never needs a second day, because the admitted size was actually served. An admitted value
+counts as a raise only when it clears the current cap by more than the bracket width. Smaller
+differences are noise, and no offer is made.
+
+### 8.14.C Lowering a cap: two probes on different days
+
+The reference is the current configured value (`hard_input_ceiling` or `output_context_limit`),
+treated as the previously measured maximum. A **reduction observation** is a drained session
+that, on that axis, ends with either of these:
+
+1. A verified refused bound at or below the current cap: an `outcome == "refused"` coordinate
+   with an accepted count basis.
+2. A typed provider `context_length` refusal whose stated limit is below the current cap.
+
+Each observation proposes the session's verified admitted value (or, for case 2, the typed limit
+minus the §8.13 headroom) as its candidate value. Timeouts, slow successes
+(`input_too_slow_for_deadline`), outages, 429s, connection resets and unparsed 400s are **not**
+reduction observations. A slow route is a time problem, not a size limit, and is shown in the
+issue only.
+
+A reduction is offered only when **two** reduction observations exist for the same identity and
+axis:
+
+- from different weekly runs (`run_id`s) on different UTC calendar days;
+- both within the last 28 days, with no verified admission at or above the current cap between or
+  after them (an admission resets the pending reduction);
+- with the same count basis and control.
+
+The offered value is the **larger** of the two candidate values, so the second probe can only
+confirm, never deepen, the cut. It is clipped as in §8.14.B. With weekly runs this means a
+reduction is offered one week after it is first seen. The first observation shows in the issue as
+`reduction pending confirmation (next weekly run)` and moves that route to the front of the next
+run.
+
+### 8.14.D Offers, `/apply` and the producer-review issue
+
+- **Offers.** Raises and confirmed reductions use the existing context choice syntax and path:
+  `"<rid>: set (hard_input_ceiling|output_context_limit) from <old> to <new> (context <digest>)"`.
+  The digest covers the identity, the contributing session IDs and observations, the clipping
+  inputs and the value. A new `remeasure_cap_changes(discovery_history, config, now=...)` in
+  `limits.py` returns the same tuple shape as `context_cap_changes`. `reconcile` and
+  `/apply` (`scripts/provider_catalog_commands.py`) take the union of both, so `parse_context_choice`,
+  `context_edit_plan`, the input-plus-output window check and the stale-tick rules apply unchanged.
+  If both functions offer the same route and field, the re-measure offer wins and the older one is
+  dropped.
+- **PR notes.** The `/apply` PR lists each changed cap with old → new, raise or reduction, the
+  session dates, the admitted and refused counts and the count basis. Each reduction also lists
+  the two contributing observations. When the change also moves `observed_on`, the PR updates it.
+- **Producer-review issue.** When `/apply` opens a PR that **reduces** any cap, it also files one
+  GitHub issue per reduced route, linked from the PR body. Title: `Review producer packet sizes
+  for <route_id>: <field> reduced <old> → <new>`. Labels: `provider-catalog` and `area:provider`. The body is a
+  fixed checklist:
+  - the compiled limits (`scripts/compile_llm_limits.py` → `citypods/compute/llm_routes.json`,
+    `workers/llm-dispatch-v2/src/dispatch_limits.json`) carry the new value after merge and deploy;
+  - any hard-coded Worker caps for the route (`CONTEXT_INPUT_CEILINGS` in `coordinator.js`) are
+    at or below the new value;
+  - each producer that sizes packets from the route's caps (tags, moments, chapter locator,
+    judging runner, deferred LLM work) sizes from the compiled value, not a cached or constant
+    size, and existing queued packets above the new value are re-split or drained;
+  - Worker refusal and learned-ceiling counts (review/55) for the route over the following week show no
+    rise in over-size refusals.
+
+  The issue is filed by the `/apply` job (it already has `issues: write`) with the workflow
+  token. If filing fails, the PR body
+  says so, and the PR is still opened, so the reduction remains visible for review.
+- **No auto-merge.** As today, nothing edits config, merges or deploys on its own. The maintainer
+  merges the `/apply` PR.
+
+### 8.14.E Relationship to the older configured-route calibration
+
+The review/48 §8.10–8.11 configured-route context calibration (`_measure_context_routes`,
+`context_cap_changes`) stays in place unchanged for its Worker-gated Groq pilot (#2221). Its
+reduction rule ("a success is only a lower bound; reducing a cap requires a parsed rejection") is
+replaced, for offers, by §8.14.C: a single parsed rejection no longer offers a reduction, and it
+needs a second observation on a different day. `context_cap_changes` gains the same two-run,
+different-day check for reductions, so the two paths cannot disagree. Retiring the older path is a
+later cleanup, once §8.14 has covered the pilot route.
+
+Review/55 production learning stays the runtime authority between config changes. §8.14 only
+proposes config changes. It shows each route's Worker learned accepted and refused sizes next to
+the probe result when the coordinator exposes them, but does not use them as evidence for an offer.
+
+### 8.14.F Plan and acceptance
+
+Files: `reconcile.py` (due-route plan after new-route discovery in the weekly run; synthetic
+candidates; seeding from configured caps; issue section), `limits.py`
+(`remeasure_cap_changes`; the reduction rule in `context_cap_changes`), `apply.py` and
+`scripts/provider_catalog_commands.py` (union of offers; PR notes; producer-review issue),
+`issue.py` (configured-route section and pending-confirmation line), and the weekly job timeout
+in `provider-catalog-reconcile.yml` (300 → 360 minutes). No schedule change.
+
+Tests:
+- A raise is offered from one session.
+- A reduction is not offered from one session. It is offered after two runs on different days,
+  at the larger value.
+- Two sessions on the same day do not confirm a reduction.
+- An admission at or above the cap resets a pending reduction.
+- Timeouts, slow successes, 429s and outages never count as reduction observations.
+- The older `context_cap_changes` path needs two runs on different days to reduce.
+- The re-measure offer wins over a duplicate from the older path.
+- The weekly run measures due routes only after new-route discovery, within `REMEASURE_SECONDS`.
+  Daily and manual runs never measure configured routes.
+- `/apply` files one producer-review issue per reduced route and none for raises. A filing
+  failure is noted in the PR body.
+- Seeds start at the configured cap.
+
+Rollout: ship the code; the next Monday run measures up to four due routes. Read the first issue
+before ticking anything. Raise `REMEASURE_SESSION_CEILING` only after a full weekly run stays
+inside its job timeout.
 
 ## Retained prior design and local prototype notes
 
