@@ -1,7 +1,7 @@
 """Archive and clear stored judgments so the planner asks for them again (review/53 recovery).
 
 ``python -m citypods.judging.clear --task moment --mode stale-evidence`` is a dry run that counts
-what would go. ``--apply`` archives the rows (``state/archive/<name>/<source>.jsonl.gz``), removes
+what would go. ``--apply`` archives the rows (``state/archive/<name>/<source>.jsonl``), removes
 them from the episodes' ``judging`` blocks and pushes the changed records. ``--restore <name>`` puts
 an archive back. Nothing else is touched: producer candidates, other tasks and the audit state stay.
 
@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import gzip
 import json
 import sys
 from collections import Counter
@@ -173,15 +172,29 @@ def summarize(parts: Iterable[tuple[Subject, Partition]]) -> dict[str, Any]:
 
 
 def write_archive(path: Path, entries: Sequence[Mapping[str, Any]]) -> None:
+    """One JSON object per line. The state sync uploads only ``.json`` and ``.jsonl`` files
+    (``statesync._SUFFIXES``), so an archive in any other format would silently stay local."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(path, "wt", encoding="utf-8") as handle:
+    with path.open("w", encoding="utf-8") as handle:
         for entry in entries:
             handle.write(json.dumps(entry, sort_keys=True) + "\n")
 
 
 def read_archive(path: Path) -> list[dict]:
-    with gzip.open(path, "rt", encoding="utf-8") as handle:
+    with path.open(encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
+
+
+def verify_uploaded(
+    read_remote: Callable[[str], bytes | None], state_dir: Path, rels: Sequence[str]
+):
+    """Names of archive files whose uploaded copy is missing or differs from the local file."""
+    bad = []
+    for rel in rels:
+        remote = read_remote(f"state/{rel}")
+        if remote is None or remote != (state_dir / rel).read_bytes():
+            bad.append(rel)
+    return bad
 
 
 def restore_entries(
@@ -301,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
         if existing.exists() and any(existing.iterdir()):
             raise SystemExit(f"archive {args.archive_name!r} already exists; choose a new name")
     if not args.no_pull:
-        extra = [str(archive_dir / f"{key}.jsonl.gz") for key in sources] if args.restore else []
+        extra = [str(archive_dir / f"{key}.jsonl") for key in sources] if args.restore else []
         pull_state(
             storage, state_dir, only_paths=record_paths + extra, apply_tombstones=False, log=log
         )
@@ -320,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         changed: list[str] = []
         total = 0
         for key in sources:
-            archive = state_dir / archive_dir / f"{key}.jsonl.gz"
+            archive = state_dir / archive_dir / f"{key}.jsonl"
             if not archive.exists():
                 continue
             records, episodes = load(key)
@@ -377,7 +390,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.apply:
                     apply_partition(subject, part)
         if args.apply and archived:
-            write_archive(state_dir / archive_dir / f"{key}.jsonl.gz", archived)
+            write_archive(state_dir / archive_dir / f"{key}.jsonl", archived)
             save_records(state_dir, key, records)
             changed_sources.append(key)
         log(f"{key}: {len(episodes)} episodes, {len(archived)} entries to archive")
@@ -391,13 +404,16 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.apply:
         # The archive goes up first: rows must be recoverable before they leave the records.
-        paths = [str(archive_dir / f"{k}.jsonl.gz") for k in changed_sources]
+        paths = [str(archive_dir / f"{k}.jsonl") for k in changed_sources]
         summary_path = state_dir / archive_dir / "summary.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(summary, indent=2) + "\n")
-        push_state(
-            storage, state_dir, only_paths=[*paths, str(archive_dir / "summary.json")], log=log
-        )
+        uploads = [*paths, str(archive_dir / "summary.json")]
+        push_state(storage, state_dir, only_paths=uploads, log=log)
+        # Never remove a row until its archive is readable back from storage.
+        missing = verify_uploaded(lambda key: _read_storage_bytes(storage, key), state_dir, uploads)
+        if missing:
+            raise SystemExit(f"archive not in storage, records not changed remotely: {missing}")
         # Records go through the foreign-block-preserving push: other lanes may have written their
         # own blocks to these files since this run pulled them.
         pushed = push_records_merged(
