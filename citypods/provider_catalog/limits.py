@@ -1078,13 +1078,38 @@ def remeasure_current_cap(route, axis):
     return None
 
 
-def session_axis_results(history, identity, axis):
-    """Per-session verified brackets for one identity and axis, oldest first."""
+def remeasure_parser_version(route):
+    """The discovery parser version current rules record for the route's provider, or None."""
+    from citypods.provider_catalog.registry import rules_for
+    from citypods.provider_catalog.rules import general_discovery_rules
+
+    try:
+        return general_discovery_rules(rules_for(route["provider"])).discovery_parser_version
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def session_axis_results(history, identity, axis, parser_version=None):
+    """Per-session verified brackets for one identity and axis, oldest first.
+
+    With ``parser_version``, only observations from the current parser and fixture count, as for
+    new-route discovery.
+    """
     from citypods.provider_catalog.discovery import Bracket
 
     sessions = defaultdict(list)
     for item in history:
-        if item.request.identity == identity and item.request.axis == axis:
+        if (
+            item.request.identity == identity
+            and item.request.axis == axis
+            and (
+                parser_version is None
+                or (
+                    item.request.parser_version == parser_version
+                    and item.request.fixture_version == "discovery-v1"
+                )
+            )
+        ):
             sessions[item.request.session_id].append(item)
     rows = []
     for session_id, items in sessions.items():
@@ -1237,9 +1262,10 @@ def remeasure_review(history, config, *, now):
         except (KeyError, ValueError, TypeError):
             continue
         for axis in REMEASURE_AXES:
-            key = (identity, axis)
+            parser_version = remeasure_parser_version(route)
+            key = (identity, axis, parser_version)
             if key not in results_cache:
-                results_cache[key] = session_axis_results(history, identity, axis)
+                results_cache[key] = session_axis_results(history, identity, axis, parser_version)
             results = results_cache[key]
             cap = remeasure_current_cap(route, axis)
             if axis == "input" and cap is None:
@@ -1349,8 +1375,9 @@ def is_reduction(change):
     return old is not None and new < old
 
 
-def reduced_caps(changes, details):
+def reduced_caps(changes, details, routes=()):
     """(route, field, effective old, new) for each lowered cap, including an implicit input cap."""
+    by_id = {r.get("route_id"): r for r in routes if isinstance(r, Mapping)}
     rows = []
     for change in changes:
         rid, field, old, new, _stamp = change
@@ -1359,6 +1386,11 @@ def reduced_caps(changes, details):
             rows.append((rid, field, detail.get("effective_old"), new))
         elif is_reduction(change):
             rows.append((rid, field, old, new))
+        elif old is None and field == "hard_input_ceiling" and rid in by_id:
+            # The older calibration path can create a ceiling below the implicit window cap.
+            effective = remeasure_current_cap(by_id[rid], "input")
+            if effective is not None and new < effective:
+                rows.append((rid, field, effective, new))
     return tuple(rows)
 
 

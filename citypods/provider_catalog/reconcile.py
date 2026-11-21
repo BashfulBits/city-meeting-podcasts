@@ -734,8 +734,13 @@ def reconcile(
                 continue
             verdict = _physical_verdict(route, routes, route_verdicts)
             if verdict is not None and verdict != "proven":
-                # Unchecked routes still run: their failures never count as reductions.
                 row["note"] = f"health check this run was {verdict}; waits for next week"
+                continue
+            if verdict is None and route.get("rpd") is not None:
+                # A scarce route the health path deferred (daily quota unknown or spent) is not
+                # probed; an unlimited-RPD route that was not checked still runs, and its
+                # failures never count as reductions.
+                row["note"] = "daily quota not confirmed this run; waits for next week"
                 continue
             deadline = remeasure_deadline()
             if deadline is None:

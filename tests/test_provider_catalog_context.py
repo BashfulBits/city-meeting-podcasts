@@ -1709,6 +1709,8 @@ def test_context_writer_ignores_issue_proof_and_reauthenticates_fresh_main(monke
     monkeypatch.setattr(commands, "verified_discovery_history", lambda *_a, **_k: ((), (), ()))
     plan = commands.prepare(body, "fresh-main", proposal_kind="context")
     assert plan.base_commit == "fresh-main" and plan.context_changes == changes
+    # Creating a ceiling below the implicit 10000 - 2000 cap files a producer review (§8.14.D).
+    assert plan.reduced_caps == (("r", "hard_input_ceiling", 8000, 900),)
     assert (
         load_config((tmp_path / SOURCE_PATHS[0]).read_text())["routes"][0]["hard_input_ceiling"]
         == 900

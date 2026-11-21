@@ -49,6 +49,7 @@ CONFIG = {
 @pytest.fixture(autouse=True)
 def fixed_identity(monkeypatch):
     monkeypatch.setattr(limits_module, "remeasure_identity", lambda route, config: "id")
+    monkeypatch.setattr(limits_module, "remeasure_parser_version", lambda route: "p")
 
 
 _attempts = iter(range(1_000_000))
@@ -383,3 +384,11 @@ def test_an_implicit_input_cap_can_be_reduced_and_files_a_review():
     assert not is_reduction(change)
     ((rid, field, old, new),) = reduced_caps(review.changes, review.details)
     assert (rid, field, old, new) == ("r", "hard_input_ceiling", 122880, 101000)
+
+
+def test_observations_from_another_parser_version_are_ignored():
+    history = [
+        replace(o, request=replace(o.request, parser_version="old"))
+        for o in [obs("s1", 2, "admitted", 115000), obs("s1", 2, "admitted", 120000)]
+    ]
+    assert not remeasure_cap_changes(history, CONFIG, now=NOW)

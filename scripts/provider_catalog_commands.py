@@ -315,7 +315,10 @@ def prepare_context(base_commit, *, selected=()):
         notes = remeasure_notes(plan.context_changes, review.details)
         plan = replace(plan, applied=(*plan.applied, *notes))
     plan = replace(
-        plan, reduced_caps=reduced_caps(plan.context_changes, review.details if review else {})
+        plan,
+        reduced_caps=reduced_caps(
+            plan.context_changes, review.details if review else {}, limits.get("routes") or ()
+        ),
     )
     output = apply_config_edits(texts, plan)
     for path in SOURCE_PATHS:
