@@ -152,6 +152,10 @@ class Episode:
     # The selected admitted quote and rendered social-video artifact are projections of the
     # candidate ledger, not replacements for official episode text.
     moment_video_clip: dict = field(default_factory=dict)
+    # review/61: static presentation slides detected in the meeting video, stored in source time
+    # ({"status", "recipe", "detect_fingerprint", "items": [...], ...}). Owned only by the `slides`
+    # lane; merged into the chapters JSON at render time and never into the M4A chapter atoms.
+    slides: dict = field(default_factory=dict)
     # Versioned catalog taxonomy output.  ``tags_spec_hash`` prevents an enabled LLM path from
     # repeating the same inference when its inputs and taxonomy have not changed.
     tags: list[dict] = field(default_factory=list)

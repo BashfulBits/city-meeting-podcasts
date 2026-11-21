@@ -58,6 +58,11 @@ TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues
 
 ## Recently shipped (summary)
 
+- **Video slide chapter images (#26, GH#2707):** a new `slides` lane finds static presentation
+  slides in meeting video and publishes them as timed Podcasting 2.0 chapter images. On by
+  default for every city; feed-only, no audio re-encode. See
+  [`review/61`](review/61-video-slide-chapter-images.md).
+
 - **review/51 P0 historical baseline complete:** all 680 reviewed title patterns dispositioned;
   current rule replay and deployed feed/search/archive visibility verified. Six evidence questions
   explicitly remain open. See [final report](review/evidence/p0-completion-2026-10-09.md).
@@ -537,8 +542,7 @@ Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](
 - **Compute scaling**: heavy inference runs behind a **pluggable execution-backend interface** (free
   Actions runner now; Modal / Kaggle / self-hosted Mac-mini runner / AWS later) so scaling is adapter-only
   — the interface is a **pre-1.0 lock**. See VISION "Compute is pluggable" and `review/11`.
-- **Deferred backlog**: translation (#9), bitrate ladders (#24), chapter
-  images (#26; video-slide design at L3, on by default, in [`review/61`](review/61-video-slide-chapter-images.md)), "new since last visit" (#48), full video re-hosting, off-Actions media. Records→managed-SQL
+- **Deferred backlog**: translation (#9), bitrate ladders (#24), "new since last visit" (#48), full video re-hosting, off-Actions media. Records→managed-SQL
   (D1/Turso) moves decisively **past 1.0**, merged with the "Interaction seam" dynamic-edge-tier proposal
   (alerts/API/personalization/scaled search) into one initiative designed together when its trigger
   fires — see [`review/11`](review/11-technical-design-roadmap.md) §5.5.

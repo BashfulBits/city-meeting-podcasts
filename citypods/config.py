@@ -444,6 +444,14 @@ def _build_city(
         aux_provider.validate(aux_source)
         validate_city_sources(aux_provider_name, aux_source, _get("city_website"))
 
+    if "slides" in raw:
+        # review/61: a per-feed `slides` override; fail the load on a malformed block.
+        from citypods.slides import SlidesConfigError, effective_config
+
+        try:
+            effective_config(None, raw["slides"])
+        except SlidesConfigError as exc:
+            raise ValueError(f"{source_file.name}: {exc}") from exc
     known = (
         set(REQUIRED_CITY_KEYS)
         | set(PRESENT_BUT_MAY_BE_BLANK)

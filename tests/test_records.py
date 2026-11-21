@@ -1703,6 +1703,7 @@ def test_protected_blocks_for_lane():
             "generated_chapters_spec_hash",
             "judging",
             "moments",
+            "slides",
         }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
@@ -1728,6 +1729,7 @@ def test_protected_blocks_for_lane():
             "generated_chapters_spec_hash",
             "judging",
             "moments",
+            "slides",
         }
     )
     assert protected_blocks_for_lane("align") == frozenset(
@@ -1753,6 +1755,7 @@ def test_protected_blocks_for_lane():
             "generated_chapters_spec_hash",
             "judging",
             "moments",
+            "slides",
         }
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
@@ -1779,6 +1782,7 @@ def test_protected_blocks_for_lane():
             "generated_chapters_spec_hash",
             "judging",
             "moments",
+            "slides",
         }
     )
     assert protected_blocks_for_lane("speaker-identity") == frozenset(
@@ -1805,6 +1809,7 @@ def test_protected_blocks_for_lane():
             "generated_chapters",
             "generated_chapters_spec_hash",
             "judging",
+            "slides",
         }
     )
     assert protected_blocks_for_lane("tag") == frozenset(
@@ -1825,6 +1830,7 @@ def test_protected_blocks_for_lane():
             "generated_chapters_spec_hash",
             "judging",
             "moments",
+            "slides",
         }
     )
     # review/53: the judge lane owns only its judging block and preserves every other artifact.

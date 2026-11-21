@@ -99,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             "chapter-locator",
             "chapter",
             "judge",
+            "slides",
         ],
         help="work class to run: 'audio' materializes audio only; 'transcribe' runs fresh ASR "
         "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only; "
@@ -106,7 +107,8 @@ def main(argv: list[str] | None = None) -> int:
         "'diarize' runs native speaker diarization over hosted audio; 'speaker-identity' projects "
         "identities and queues private review candidates. "
         "'chapter-agenda' extracts agenda candidates; 'chapter-locator' locates them in the "
-        "complete timed transcript; 'chapter' runs both chapter lanes. Default runs the full "
+        "complete timed transcript; 'chapter' runs both chapter lanes; "
+        "'slides' detects video slides as chapter images. Default runs the full "
         "enrich (audio + transcript). The sharded workflows pin one lane "
         "so the two ASR models never co-load.",
     )

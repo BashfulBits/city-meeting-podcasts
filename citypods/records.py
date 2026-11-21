@@ -566,6 +566,7 @@ def feed_content_hash(
             e.summary,
             e.moment_pullquote_candidates,
             e.moment_video_clip,
+            e.slides,
             e.tags,
             e.transcript_hosted_url,
             e.transcript_synced,
@@ -1248,6 +1249,11 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
                     for field in ("key", "poster_key", "captions_key"):
                         if clip.get(field):
                             keys.add(clip[field])
+            slides = rec.get("slides") or {}
+            if isinstance(slides, dict):
+                for item in slides.get("items") or []:
+                    if isinstance(item, dict) and isinstance(item.get("key"), str):
+                        keys.add(item["key"])
             provider_transcript = rec.get("provider_transcript") or {}
             if isinstance(provider_transcript, dict):
                 for slot in ("known_good", "candidate"):
@@ -1313,6 +1319,7 @@ def episode_to_record(ep: Episode) -> dict:
         )
         else None,
         "judging": ep.judging or None,
+        "slides": ep.slides or None,
         "tags": ep.tags or None,
         "chapter_tags": ep.chapter_tags or None,
         "llm_tag_candidates": ep.llm_tag_candidates or None,
@@ -1650,6 +1657,7 @@ def record_to_episode(rec: dict) -> Episode:
         summary=rec.get("summary") or "",
         **_moments_fields_from_rec(rec),
         judging=rec.get("judging") if isinstance(rec.get("judging"), dict) else {},
+        slides=rec.get("slides") if isinstance(rec.get("slides"), dict) else {},
         tags=rec.get("tags") if isinstance(rec.get("tags"), list) else [],
         chapter_tags=rec.get("chapter_tags") if isinstance(rec.get("chapter_tags"), list) else [],
         llm_tag_candidates=(
@@ -1830,6 +1838,7 @@ ARTIFACT_BLOCKS: frozenset[str] = frozenset(
         "generated_chapters_spec_hash",
         "moments",
         "judging",
+        "slides",
     }
 )
 PLANNING_FIELDS: frozenset[str] = frozenset(
@@ -1874,6 +1883,8 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     # review/53: judgments live in their own block so the judge lane never rewrites the tag or
     # moment candidates the tag/moments lanes own (and rebuild), and they never touch judgments.
     "judge": frozenset({"judging"}),
+    # review/61: the slides lane writes only its own block.
+    "slides": frozenset({"slides"}),
     "chapter-agenda": frozenset({"generated_agenda_candidates"}),
     "chapter-locator": frozenset(
         {"generated_agenda_candidates", "generated_chapters", "generated_chapters_spec_hash"}
@@ -1898,6 +1909,7 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-admission", "video-clips"}),
     "judge": frozenset({"judge"}),
+    "slides": frozenset({"slides"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
     "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
@@ -2392,6 +2404,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
             "generated_chapters_spec_hash", ep.generated_chapters_spec_hash
         )
         ep.judging = rec.get("judging") if isinstance(rec.get("judging"), dict) else ep.judging
+        ep.slides = rec.get("slides") if isinstance(rec.get("slides"), dict) else ep.slides
         ep.tags = rec.get("tags") or ep.tags
         ep.chapter_tags = rec.get("chapter_tags") or ep.chapter_tags
         ep.llm_tag_candidates = rec.get("llm_tag_candidates") or ep.llm_tag_candidates

@@ -326,6 +326,10 @@ class StageContext:
     # one pass across all sources); filled from the lanes' max_dispatches_per_run on first use.
     judge_run_caps: dict = field(default_factory=dict)
     judge_run_caps_lock: threading.Lock = field(default_factory=threading.Lock)
+    # review/61: the site `slides` block (city overrides come from ``city.extra["slides"]``) and
+    # the per-run episode/streamed-byte caps shared by every slides worker thread.
+    slides_config: dict = field(default_factory=dict)
+    slides_budget: object | None = None
     moment_evaluation_config: dict = field(default_factory=dict)
     moment_max_dispatches: int | None = None
     moment_dispatches: int = 0
@@ -697,6 +701,7 @@ _STAGE_EMPTY_OK = frozenset(
         "moments",
         "moment-admission",
         "video-clips",
+        "slides",
     }
 )
 
@@ -719,6 +724,8 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
         ).hexdigest()
     if name == "video-clips":
         return (ep.moment_video_clip or {}).get("key") or (ep.moment_video_clip or {}).get("status")
+    if name == "slides":
+        return (ep.slides or {}).get("status")
     if name == "chapter_agenda":
         artifact = ep.generated_agenda_candidates or {}
         return artifact.get("artifact_key") or artifact.get("recipe") or artifact.get("status")
@@ -864,6 +871,16 @@ def stage_input_fingerprint(
         }
     elif name == "moment-admission":
         payload = {**common, "candidates": ep.moment_pullquote_candidates}
+    elif name == "slides":
+        from citypods.slides import SLIDES_RECIPE
+
+        payload = {
+            **common,
+            "video": ep.video_url,
+            "sources": [source.ref for source in ep.sources],
+            "recipe": SLIDES_RECIPE,
+            "city_config": city.extra.get("slides"),
+        }
     elif name == "video-clips":
         payload = {
             **common,
@@ -913,6 +930,8 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
         return bool(ep.moments_llm_recipe_hash or ep.moment_pullquote_candidates)
     if name == "video-clips":
         return bool(ep.moment_video_clip)
+    if name == "slides":
+        return (ep.slides or {}).get("status") in {"ready", "none-found", "no-video"}
     if name == "chapter_agenda":
         return (ep.generated_agenda_candidates or {}).get("status") in {
             "completed",
@@ -1868,6 +1887,221 @@ class VideoClipsStage:
             else:
                 stats.quality(clip.get("reason") or "video-unavailable")
         return stats
+
+
+SLIDES_MAX_ATTEMPTS = 3
+
+
+def slides_eligible(ep: Episode) -> bool:
+    """Whether the slides lane should look at ``ep``: published media with a video source."""
+    availability = ep.media_availability
+    if availability is not None and availability.is_withheld():
+        return False
+    return bool(ep.video_url or ep.sources)
+
+
+def _slides_sources(provider, city: City, ep: Episode) -> list[tuple[str, str]]:
+    """``(source_id, playable_url)`` per source, resolved like R6's ``_moment_source``."""
+    if ep.sources and len(ep.sources) > 1:
+        return [(source.id, source.ref) for source in ep.sources]
+    source_id = ep.sources[0].id if ep.sources else "s0"
+    return [(source_id, provider.resolve_media_url(ep, city.source))]
+
+
+class SlidesStage:
+    """review/61: detect static presentation slides in the meeting video, store one JPEG per slide
+    (content-addressed under ``slides/<uid>/``) and record them in source time on ``ep.slides``.
+
+    Feed-only: the block merges into the chapters JSON at render time (``feeds.chapters_json``)
+    and never into the M4A chapter atoms, so it cannot change ``audio_spec_hash``. Runs only in the
+    ``slides`` lane. Detection is restartable per episode and gated on ``ctx.stop``; the per-run
+    episode and streamed-byte caps live on ``ctx.slides_budget``."""
+
+    name = "slides"
+    version = "1"
+
+    def __init__(self, run: Callable[..., Any] | None = None) -> None:
+        import subprocess
+
+        self._run = run or subprocess.run
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods import slides as sl
+
+        stats = StageStats(self.name)
+        if ctx.storage is None or ctx.dry_run:
+            return stats
+        try:
+            config = sl.effective_config(ctx.slides_config, city.extra.get("slides"))
+        except sl.SlidesConfigError as exc:
+            stats.errors.append(f"{city.slug}: {exc}")
+            return stats
+        budget = ctx.slides_budget
+        if budget is None:
+            # Run caps are site-wide: build them from the site block, never one city's override.
+            site_config = sl.effective_config(ctx.slides_config, None)
+            budget = ctx.slides_budget = sl.SlidesRunBudget.from_config(site_config)
+        for ep in episodes:
+            if not config["enabled"]:
+                stats.quality("city-disabled")
+                continue
+            if not slides_eligible(ep):
+                stats.quality("ineligible")
+                continue
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("stop")
+                continue
+            if not budget.admit_episode():
+                stats.defer("run-cap")
+                continue
+            try:
+                outcome = self._detect(provider, city, ep, ctx, config, budget)
+            except Exception as exc:  # noqa: BLE001 - one episode's media must not stop the lane.
+                attempts = int((ep.slides or {}).get("attempts") or 0) + 1
+                ep.slides = {
+                    "status": "failed",
+                    "recipe": sl.SLIDES_RECIPE,
+                    "attempts": attempts,
+                    "reason": type(exc).__name__,
+                }
+                if attempts < SLIDES_MAX_ATTEMPTS:
+                    stats.errors.append(f"slides {ep.uid}: {type(exc).__name__}: {exc}")
+                else:
+                    stats.quality("failed")
+                continue
+            if outcome == "byte-budget":
+                stats.defer("byte-budget")
+                continue
+            stats.ran += 1
+            stats.quality(str((ep.slides or {}).get("status") or "unknown"))
+            stats.bytes_written += int((ep.slides or {}).get("bytes_written") or 0)
+        return stats
+
+    def _run_text(self, command: list[str], timeout: float) -> str:
+        completed = self._run(command, check=True, capture_output=True, text=True, timeout=timeout)
+        return completed.stdout or ""
+
+    def _run_bytes(self, command: list[str], timeout: float) -> bytes:
+        completed = self._run(command, check=True, capture_output=True, timeout=timeout)
+        return completed.stdout or b""
+
+    def _detect(self, provider, city, ep, ctx, config, budget) -> str:
+        from citypods import slides as sl
+        from citypods.http import HOST_LIMITER
+
+        binary = str(getattr(ctx.ffmpeg, "binary", "ffmpeg"))
+        probe_binary = _ffprobe_binary(ctx)
+        sources = _slides_sources(provider, city, ep)
+        candidates: list[sl.Candidate] = []
+        rejected: dict[str, int] = {}
+        streamed = 0
+        saw_video = False
+        capture_limit = int(config["max_slides_per_episode"]) * 2
+        captured = 0
+        capped = False
+        first_chapter = None
+        if len(sources) == 1:
+            starts = [
+                float(ch["start"])
+                for ch in (ep.source_chapters or ep.chapters or [])
+                if isinstance(ch, dict) and ch.get("start") is not None
+            ]
+            first_chapter = min(starts) if starts else None
+        for source_id, url in sources:
+            if url.startswith(("http://", "https://")):
+                validate_source_url(url, resolve=True)
+            probe = sl.parse_probe(self._run_text(sl.probe_command(probe_binary, url), 60))
+            if not probe.has_video:
+                continue
+            saw_video = True
+            if not budget.admit_bytes(probe.estimated_bytes):
+                return "byte-budget"
+            streamed += probe.estimated_bytes
+            timeout = (probe.duration or 4 * 3600) * 1.0 + 600
+            with HOST_LIMITER.slot(url):
+                text = self._run_text(sl.detect_command(binary, url, config), timeout)
+            intervals = sl.parse_freeze_intervals(text, probe.duration)
+            intervals, trimmed = sl.edge_trim(
+                intervals,
+                duration=probe.duration,
+                edge_seconds=float(config["edge_trim_seconds"]),
+                first_chapter_start=first_chapter,
+            )
+            if trimmed:
+                rejected["edge_trim"] = rejected.get("edge_trim", 0) + trimmed
+            for interval in intervals:
+                if captured >= capture_limit:
+                    capped = True
+                    break
+                captured += 1
+                with HOST_LIMITER.slot(url):
+                    frame = self._run_bytes(
+                        sl.capture_command(binary, url, sl.settle_time(interval)), 120
+                    )
+                image = sl.decode_png(frame)
+                if image is None:
+                    rejected["capture"] = rejected.get("capture", 0) + 1
+                    continue
+                metrics = sl.frame_metrics(image)
+                reason = sl.pixel_rejection(metrics, config)
+                if reason is not None:
+                    rejected[reason] = rejected.get(reason, 0) + 1
+                    continue
+                candidates.append(sl.Candidate(source_id, interval, metrics, image))
+        kept, selection_rejects, over_cap = sl.select_slides(
+            candidates,
+            max_recurrence=int(config["max_recurrence"]),
+            max_slides=int(config["max_slides_per_episode"]),
+        )
+        for reason, count in selection_rejects.items():
+            rejected[reason] = rejected.get(reason, 0) + count
+        items: list[dict] = []
+        written = 0
+        uid = ep.uid or ep.guid
+        with tempfile.TemporaryDirectory() as temporary:
+            for index, candidate in enumerate(kept):
+                assert candidate.image is not None
+                data = sl.encode_slide(candidate.image, max_kb=int(config["max_image_kb"]))
+                key = sl.slide_key(uid, data)
+                if not ctx.storage.exists(key):
+                    path = Path(temporary) / f"{index}.jpg"
+                    path.write_bytes(data)
+                    url = ctx.storage.put_file(key, path, "image/jpeg")
+                    written += len(data)
+                else:
+                    url = ctx.storage.public_url(key)
+                validate_source_url(url, resolve=False)
+                items.append(
+                    {
+                        "source_id": candidate.source_id,
+                        "source_start": round(candidate.interval.start, 3),
+                        "source_end": round(candidate.interval.end, 3),
+                        "key": key,
+                        "url": url,
+                        "dhash": sl.dhash_hex(candidate.metrics.dhash),
+                        "bytes": len(data),
+                    }
+                )
+        if not saw_video:
+            status = "no-video"
+        else:
+            status = "ready" if items else "none-found"
+        ep.slides = {
+            "status": status,
+            "recipe": sl.SLIDES_RECIPE,
+            "detect_fingerprint": hashlib.sha256(
+                json.dumps(sl.detection_fingerprint(config), sort_keys=True).encode()
+            ).hexdigest()[:24],
+            "items": items,
+            "rejected": rejected,
+            "capped": bool(capped or over_cap),
+            "streamed_bytes_estimate": streamed,
+            "bytes_written": written,
+            "detected_at": datetime.now(UTC).isoformat(),
+        }
+        return status
 
 
 class TagsStage(LLMProducerStage):
@@ -9934,6 +10168,11 @@ def r6_stages() -> list[EnrichmentStage]:
     return [MomentsStage(), MomentAdmissionStage(), VideoClipsStage()]
 
 
+def slides_stages() -> list[EnrichmentStage]:
+    """review/61: the slides lane's only stage. Never part of ``enrich_stages()``."""
+    return [SlidesStage()]
+
+
 def r7_stages() -> list[EnrichmentStage]:
     """R7 is opt-in while its per-body identity calibration warms up."""
     return [NativeDiarizeStage(), SpeakerIdentityStage()]
@@ -9971,6 +10210,8 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
     # review/53: the judge stack runs in its own lane and only reads persisted candidates.
     "judge": frozenset({"judge"}),
+    # review/61: video slide detection reads records and writes only the `slides` block.
+    "slides": frozenset({"slides"}),
 }
 
 

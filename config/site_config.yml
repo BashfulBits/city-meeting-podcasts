@@ -371,6 +371,18 @@ moments:
   # Routes and the per-run dispatch cap live in `llm_lanes["r6-moments"]`; the stage still filters
   # that allowlist by meeting family before dispatching.
   timeout_seconds: 90
+# review/61 video slides as timed chapter images. On by default for every city (maintainer
+# decision 2026-11-20); a city opts out with `slides: {enabled: false}` in its config, and
+# `enabled: false` here is the site kill switch. Thresholds and caps: citypods/slides.py DEFAULTS.
+slides:
+  enabled: true
+  min_duration_seconds: 15
+  noise_db: -50
+  edge_trim_seconds: 120
+  max_slides_per_episode: 50
+  max_image_kb: 150
+  max_episodes_per_run: 20
+  max_video_gb_per_run: 40
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "26 */4 * * *"            # production deploy cadence (also set in workflow)
@@ -508,6 +520,9 @@ defaults:
   # catch-up pass that collects thousands of answers (11,688 on 2026-10-16) spent the old 76.5m
   # window before it could plan and submit anything. The step timeout (165m) still bounds the run.
   judge_run_time_budget_minutes: 120
+  # Slides lane budget (review/61): 150m x 0.85 = 127.5m before new detections stop, inside
+  # slides.yml's 165m step timeout. Each started episode streams its video once (~1-3 GB).
+  slides_run_time_budget_minutes: 150
   # Queue-only LLM lanes rely on Cloudflare Dispatch v2 daily and global ceilings for pacing
   # and quota enforcement, without client-side per-run limits.
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
