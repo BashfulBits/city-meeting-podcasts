@@ -7,6 +7,8 @@ source:
   # "TIRZ Board". Selectors match by normalized substring, so "TIRZ" already covers any longer
   # label containing it; a "TIRZ Board" entry under body_any would be dead config.
   body: "TIRZ"
+  body_any:
+    - "Tax Reinvestment Zone No. 1 Board"
 podcast_title: "Pflugerville: TIRZ Board"
 podcast_author: "City of Pflugerville, TX"
 podcast_email: ""
