@@ -1,0 +1,88 @@
+name: Video slide chapter images
+
+# review/61 (GH#2707): find long static frames (presentation slides) in meeting video and store
+# them as content-addressed JPEGs under B2 `slides/<uid>/`. The feed renders them as timed
+# Podcasting 2.0 chapter images; nothing here touches audio. Each run is bounded by
+# `slides.max_episodes_per_run` and `slides.max_video_gb_per_run` (config/site_config.yml) and
+# by the lane's wall-clock budget, so the archive drains newest-first over many runs.
+on:
+  schedule:
+    # Every four hours, on a minute no other workflow uses.
+    - cron: "44 2-22/4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  # Own group: the lane writes only its `slides` block and stage status (lane-scoped push).
+  group: slides
+  cancel-in-progress: false
+
+jobs:
+  slides:
+    # Match the pinned FFmpeg bundle's Ubuntu noble codec/TLS ABI.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Cache static ffmpeg
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-static-linux64-7.1.5-v2
+
+      - name: Install verified static ffmpeg
+        timeout-minutes: 10
+        # Self-built (scripts/build_ffmpeg_static.sh), vendored to our own B2 bucket -- not an
+        # upstream/mirror host. FFMPEG_URL built from the B2 secret rather than hardcoded so it's
+        # not duplicated across the workflows that pin ffmpeg (review/22).
+        env:
+          FFMPEG_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
+        run: |
+          bash scripts/ci/install_ffmpeg_libs.sh
+          timeout 300 python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          "${FFMPEG_DIR}/bin/ffmpeg" -version >/dev/null
+          "${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null
+          echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
+
+      - name: Extract slide chapter images
+        # A step timeout below the job's, so an overrun fails red and is not reported as a grey
+        # "cancelled" (see moments.yml). The lane's own wall-clock budget
+        # (slides_run_time_budget_minutes) stops starting new episodes well before this.
+        timeout-minutes: 165
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
+          SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+        run: python -m citypods.cli enrich --lane slides

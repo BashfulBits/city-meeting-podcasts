@@ -24,10 +24,11 @@ Safe by default:
   * only deletes objects older than ``--min-age-days`` (default 7) so an object written by a
     build that hasn't yet persisted its record isn't reaped out from under it;
   * refuses to run if no records are found (would look like everything is orphaned);
-  * only ever reaps *managed artifacts* — content-addressed audio (``*.m4a``) and transcripts
-    (``transcripts/…``). Non-artifact infrastructure (the durable ``state/`` snapshot, the
-    ``models/`` ASR-weight mirror, ``clips/``, or any future prefix) is allow-listed out and
-    never touched — see ``is_managed_artifact``.
+  * only ever reaps *managed artifacts* — content-addressed audio (``*.m4a``), transcripts
+    (``transcripts/…``) and slide images (``slides/…/*.jpg``, review/61). Non-artifact
+    infrastructure (the durable ``state/`` snapshot, the ``models/`` ASR-weight mirror,
+    ``clips/``, or any future prefix) is allow-listed out and never touched — see
+    ``is_managed_artifact``.
 
 With ``--out DIR`` it writes a machine-readable report for the scheduled workflow:
 ``orphans.tsv`` (every candidate key + size + city), ``summary.json``, ``issue-body.md`` (a
@@ -73,6 +74,7 @@ _OTHER = "(other)"
 #   * AUDIO       — ``<provider>/<source_key>/<uid>-<spec>.m4a`` (and the legacy slug-keyed
 #                   ``<slug>/<digest>.m4a`` predating the source-key rename) — always ``.m4a``;
 #   * TRANSCRIPTS — ``transcripts/<source_key>/<uid>-<spec>.<fmt>``, incl. the ASR word JSON.
+#   * SLIDES — ``slides/<uid>/<sha>.jpg`` video slide chapter images (review/61).
 # Everything else in the bucket is infrastructure that must NEVER be reaped: the durable
 # ``state/`` snapshot and the ``models/`` ASR-weight mirror (written by
 # ``scripts/prepare_whisper.py``, depended on by the ASR workers — a stray ``--apply`` that
@@ -84,6 +86,9 @@ _OTHER = "(other)"
 # script — it simply isn't a recognized artifact, so it's skipped.
 _TRANSCRIPT_PREFIX = "transcripts/"
 _CLIPS_PREFIX = "clips/"
+# review/61 video slides: content-addressed ``slides/<uid>/<sha>.jpg``, live while a record's
+# ``slides.items`` references them (``referenced_audio_keys``).
+_SLIDES_PREFIX = "slides/"
 
 
 def is_managed_artifact(key: str) -> bool:
@@ -94,6 +99,8 @@ def is_managed_artifact(key: str) -> bool:
     """
     if key.startswith(_TRANSCRIPT_PREFIX):
         return True
+    if key.startswith(_SLIDES_PREFIX):
+        return key.endswith(".jpg")
     return key.endswith(".m4a") and not key.startswith(_CLIPS_PREFIX)
 
 

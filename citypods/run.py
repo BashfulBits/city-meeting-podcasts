@@ -171,6 +171,7 @@ from citypods.stages import (
     render_stages,
     run_judge_across_sources,
     run_stages,
+    slides_stages,
     stage_is_dirty,
 )
 from citypods.state import (
@@ -218,6 +219,7 @@ _RECORD_BACKED_LANES = frozenset(
         "chapter-locator",
         "chapter",
         "judge",
+        "slides",
     }
 )
 
@@ -2105,6 +2107,13 @@ def _run_enrich_global_queue(
                         accepted_routes=accepted_routes,
                     )
                 ]
+    elif ctx.lane == "slides":
+        from citypods.stages import slides_eligible
+
+        for state in prepared.values():
+            state["candidate_episodes"] = [
+                ep for ep in state["candidate_episodes"] if slides_eligible(ep)
+            ]
     elif ctx.lane == "chapter-agenda":
         from citypods.stages import episode_needs_chapter_agenda
 
@@ -3024,6 +3033,7 @@ def _build_impl(
             "chapter-locator",
             "chapter",
             "judge",
+            "slides",
         }
     )
     if source:
@@ -3312,6 +3322,10 @@ def _build_impl(
         stages = [ChapterBoundaryLocatorStage()]
     elif lane == "chapter":
         stages = [AgendaChapterCandidatesStage(), ChapterBoundaryLocatorStage()]
+    elif lane == "slides":
+        # review/61: on by default; `slides.enabled: false` in site_config is the kill switch.
+        slides_site = site_config.get("slides") or {}
+        stages = slides_stages() if slides_site.get("enabled", True) is not False else []
 
     # A time-bounded phase processes recordings (encode, chapter scrape) until a shared ``stop``
     # predicate goes True: the wall-clock window is spent, or a newer Build & Deploy run is queued
@@ -3408,6 +3422,19 @@ def _build_impl(
             stop = StopSignal(superseded=_newer_run_queued)
             print(f"budget: {lane} Worker-admission-bounded (+ yield if superseded)")
             tag_llm_deadline = None
+        elif lane == "slides":
+            # review/61: each episode streams its video once; the window bounds how many start.
+            slides_window_min = float(defaults.get("slides_run_time_budget_minutes", 150))
+            slides_deadline_secs = slides_window_min * 60 * safety
+            slides_elapsed = time.monotonic() - enrich_phase_start
+            remaining_secs = max(0.0, slides_deadline_secs - slides_elapsed)
+            deadline = (time.monotonic() + remaining_secs) if slides_window_min > 0 else None
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            if slides_window_min > 0:
+                print(
+                    f"budget: {lane} window {slides_window_min:.0f}m × {safety} "
+                    "(+ yield if superseded)"
+                )
         elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
             # Chapter jobs are queued rather than held on a runner. The wall-clock stop bounds
             # this producer pass only; accepted Worker jobs remain durable and drain afterward.
@@ -3587,6 +3614,7 @@ def _build_impl(
         judge_run_caps=judge_closed_caps,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
         moment_evaluation_config=dict(moments_config),
+        slides_config=dict(site_config.get("slides") or {}),
         moment_max_dispatches=moment_max_dispatches,
         speaker_registry_path=state_dir
         / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
@@ -3729,7 +3757,7 @@ def _build_impl(
                 time_bounded
                 and not dry_run
                 and storage is not None
-                and lane not in ("audio", "tag", "moments", "judge")
+                and lane not in ("audio", "tag", "moments", "judge", "slides")
                 and not getattr(compute_backend, "isolates_inference", False)
             ):
                 _try_preload_asr_model(defaults, lane=lane)
@@ -4200,6 +4228,8 @@ def _build_impl(
                         budget_key, JUDGE_RUN_TIME_BUDGET_MINUTES if lane == "judge" else 240
                     )
                 )
+            elif lane == "slides":
+                _history_window_min = float(defaults.get("slides_run_time_budget_minutes", 150))
             elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
                 _history_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             _window = _history_window_min * 60 * _history_safety

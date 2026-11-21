@@ -349,7 +349,7 @@ silence-trim · #21 loudness · #23 host-all · #122 concat · clips service · 
 `<podcast:transcript>` · #124 status dashboard/admin (#49 partial) · #29 SSRF gate · #35 projection ·
 #36 run-history · #37 endpoint contracts · #38 retry/backoff · #43 alias validation · review/02 Change 8
 provider capabilities · resource/agenda links + `content:encoded` + `<podcast:chapters>` · durable state
-sync · #20 video enclosures (partial).
+sync · #20 video enclosures (partial) · #26 video slide chapter images (review/61, GH#2707).
 
 ### Phase H — Hardening & Efficiency · breakout [`review/12`](12-hardening-and-efficiency.md)
 
@@ -659,8 +659,7 @@ or backfill change.
 | Work distribution & sharding for distributed ASR workers | new (Infra) | L2 · Stage 1/Stage 2 substrate shipped as **H17** (closed); the remaining §6 step 4 in-Actions migration is now tracked as **H19** (its trigger fired — H14b/H14c are live); [`review/18`](18-work-distribution-sharding.md) |
 
 ### Deferred backlog (ongoing) — §6
-#9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
-images (**L3**, video-slide approach, [review/61](61-video-slide-chapter-images.md), GH#2707) · #34 config-via-issue-comments · #40 B2 actual-cost dashboard · #42 **directory** index sharding
+#9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #34 config-via-issue-comments · #40 B2 actual-cost dashboard · #42 **directory** index sharding
 (review/02 Change 6; trigger-gated by `review/16` client budgets, distinct from R4 transcript-search
 partitioning) · #44 structured logging · #47 map browser · #48 new-since-visit · #10 agenda-packet chapter
 descriptions · #14 `podcast:person/location` tags · #33 dead-city archival · review/02 Change 5
@@ -1353,9 +1352,11 @@ diarization lane. Sequence after the `diarize` lane lands so the file set is def
 budget, procurement, and contract analysis. It must be source-grounded, auditable, and explicitly
 separate from general civic summarization; it does not provide legal, investment, or procurement
 advice. Define task-specific evaluation and human-review thresholds before promotion.
-**Video slides as timed chapter images (#26, GH#2707) — L3, [review/61](61-video-slide-chapter-images.md).**
-Designed and approved 2026-11-20 at the maintainer's request, on by default for every city;
-promoted out of deferral for implementation without being sequenced into a phase. Replaces the old agenda-PDF page approach: an opt-in `slides` lane streams the meeting video
+**Video slides as timed chapter images (#26, GH#2707) — Shipped 2026-11-20,
+[review/61](61-video-slide-chapter-images.md).** Designed and approved 2026-11-20 at the
+maintainer's request, on by default for every city; promoted out of deferral and implemented in one
+PR (#2754) without being sequenced into a phase (review/61 §13 lists where the code differs from the
+design). Replaces the old agenda-PDF page approach: a dedicated `slides` lane streams the meeting video
 through ffmpeg `freezedetect`, keeps one filtered JPEG per static slide on B2, and adds `toc: false`
 slide entries with `img` to the Podcasting 2.0 chapters JSON. Feed-only (`feed_content_hash`); no
 embedded M4A artwork, so no re-encode. A first-runs quality review (review/61 §10) can opt cities

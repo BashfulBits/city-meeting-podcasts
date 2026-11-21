@@ -9,6 +9,7 @@ from citypods.chapters import episode_public_chapters
 from citypods.durations import episode_served_duration_seconds, episode_source_duration_seconds
 from citypods.models import City, Episode
 from citypods.render import get_env
+from citypods.slides import chapters_with_slides, episode_served_slides
 from citypods.stages import TRANSCRIPT_MIME  # single source for transcript MIME types
 
 # Podcasting 2.0 chapters media type (a JSON sidecar referenced per item). This surfaces
@@ -164,14 +165,22 @@ def episode_notes_html(ep: Episode) -> str:
 
 def chapters_json(ep: Episode, *, include_generated: bool = False) -> str:
     """Render an episode's chapters as a Podcasting 2.0 chapters document (the JSON a
-    ``<podcast:chapters>`` URL points to)."""
-    chapters = [
-        {"startTime": round(float(c["start"])), "title": str(c.get("title") or "")}
-        for c in sorted(
-            episode_public_chapters(ep, include_generated=include_generated),
-            key=lambda c: float(c.get("start", 0)),
-        )
-    ]
+    ``<podcast:chapters>`` URL points to).
+
+    Video slides (review/61) merge in as ``img`` on a matching agenda chapter or as extra
+    ``"toc": false`` entries; an episode without slides renders exactly as before."""
+    public = sorted(
+        episode_public_chapters(ep, include_generated=include_generated),
+        key=lambda c: float(c.get("start", 0)),
+    )
+    slides = episode_served_slides(ep)
+    if slides:
+        chapters = chapters_with_slides(public, slides)
+    else:
+        chapters = [
+            {"startTime": round(float(c["start"])), "title": str(c.get("title") or "")}
+            for c in public
+        ]
     return json.dumps({"version": "1.2.0", "chapters": chapters}, indent=2) + "\n"
 
 
@@ -180,7 +189,11 @@ def chapters_url(
 ) -> str | None:
     """Public URL of an episode's chapters JSON sidecar, or None when it has no chapters.
     Hosted alongside the feed under ``docs/<slug>/chapters/<uid>.json`` (see run.py)."""
-    if not episode_public_chapters(ep, include_generated=include_generated) or not ep.uid:
+    if not ep.uid:
+        return None
+    if not episode_public_chapters(ep, include_generated=include_generated) and not (
+        episode_served_slides(ep)
+    ):
         return None
     return f"{base_url.rstrip('/')}/{city.slug}/chapters/{ep.uid}.json"
 

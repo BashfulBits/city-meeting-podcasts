@@ -7,6 +7,10 @@ deferred backlog item **#26 chapter images** ([review/01](01-feature-brainstorm.
 [review/11](11-technical-design-roadmap.md) §4 "Deferred backlog" and §6). This document changes
 no code; the slices in §9 may land as one PR, one commit per slice.
 
+**Implemented 2026-11-20** in one PR (PR1–PR4 of §9),
+[#2754](https://github.com/BashfulBits/city-meeting-podcasts/pull/2754). Where the code differs from the text below, §13 lists the
+difference and the reason; the sections themselves are updated to match the code.
+
 ## 1. Question
 
 Meetings often show slides, site plans, zoning maps and budget charts. Listeners hear "as you can
@@ -115,9 +119,9 @@ Pass 2 runs at most `max_slides_per_episode + slack` times (slack absorbs filter
 
 | Filter | Rule (defaults) | Catches |
 |---|---|---|
-| Edge trim | Drop intervals that start in the first or end in the last `edge_trim_seconds: 120` of the source **and** fall outside every agenda chapter | Pre-meeting holding slates, "meeting will begin shortly" cards, end slates |
+| Edge trim | Drop intervals that start in the first `edge_trim_seconds: 120` of the source **before** the first agenda chapter (single-source episodes), or start in the last `edge_trim_seconds` | Pre-meeting holding slates, "meeting will begin shortly" cards, end slates |
 | Flat frame | Luma standard deviation < `min_luma_stddev: 8` (Pillow `ImageStat`) | Black, blue or blank screens |
-| Low detail | Edge density < `min_edge_density` (OpenCV Canny on 320 px gray; default set in the PR2 spike) | Empty-room and empty-dais camera shots, which are soft compared with slide text and lines |
+| Low detail | Edge density < `min_edge_density: 0.004` (share of pixels ≥ 40 after Pillow `FIND_EDGES` on 320 px gray). Real slides measured 0.2 to 0.3 | Empty-room and empty-dais camera shots, which are soft compared with slide text and lines |
 | In-episode recurrence | Perceptual hash (64-bit dHash) recurs in ≥ `max_recurrence: 3` disjoint intervals | Slates and logo cards shown between items |
 | City denylist | dHash within Hamming 6 of any `slides.exclude_dhashes` entry in the city config | Known per-city slates the other rules miss |
 | Consecutive duplicate | dHash within Hamming 6 of the previous kept slide → merge intervals | A slide re-detected after a brief cursor move |
@@ -148,9 +152,10 @@ For identity episodes, served time equals source time. Slides whose served span 
 `min_duration_seconds / 2` after mapping are dropped (mostly cut by silence trims). Slides use the
 same clock as `episode_served_chapters`, so agenda chapters and slides always agree.
 
-The block stores **both** source and served times plus the `timeline_digest` they were mapped with.
-A timeline-only change re-maps the stored source intervals (cheap, no network). Only a source,
-recipe or detection-config change re-runs detection.
+The block stores **source times only**. Served times are computed at render time
+(`slides.episode_served_slides`), so a timeline change needs no stage run at all. A slide whose
+start and end both fall in cut spans is dropped. Only a source, recipe or detection-config change
+re-runs detection.
 
 ### 6.2 Storage key and record block
 
@@ -164,19 +169,24 @@ recipe or detection-config change re-runs detection.
 {
   "status": "ready" | "none-found" | "no-video" | "failed",
   "recipe": "<SLIDES_PIPELINE_VERSION>:<SLIDES_IMAGE_RECIPE>",
-  "detect_fingerprint": "<sha of thresholds + source identities>",
-  "timeline_digest": "<digest used for served times>",
+  "detect_fingerprint": "<sha of the detection config>",
   "items": [
     {"source_id": "s0", "source_start": 812.0, "source_end": 905.0,
-     "start": 640.0, "end": 733.0, "key": "slides/<uid>/<hash>.jpg",
-     "url": "https://…/slides/<uid>/<hash>.jpg", "dhash": "f0e1…", "bytes": 84213}
+     "key": "slides/<uid>/<hash>.jpg", "url": "https://…/slides/<uid>/<hash>.jpg",
+     "dhash": "f0e1…", "bytes": 84213}
   ],
   "rejected": {"edge_trim": 2, "flat": 1, "low_detail": 4, "recurrence": 3},
-  "capped": false
+  "capped": false,
+  "streamed_bytes_estimate": 270000000,
+  "bytes_written": 168426,
+  "detected_at": "2026-11-20T12:00:00+00:00"
 }
 ```
 
-- `none-found` is a terminal complete-empty result (GH#1013 envelope), not a failure.
+- `none-found` and `no-video` are terminal complete results (GH#1013 envelope), not failures.
+- `failed` carries `attempts` and `reason`. The stage reports an error (so the episode stays
+  dirty and retries) for the first two failures; the third is recorded as a quality outcome and
+  the episode is left alone until its inputs change.
 
 ### 6.3 Chapters JSON merge (feed-only)
 
@@ -210,19 +220,20 @@ version string is unchanged.
 - `SlidesStage` (`name = "slides"`, `version = "1"`) in `citypods/stages.py`; detection, filters and
   image recipe in a new `citypods/slides.py` (pure where possible). `slides_stages()` returns
   `[SlidesStage()]`.
-- `run.py` appends `slides_stages()` when `site_config.slides.enabled` and phase ≠ `render`, and
-  `LANE_STAGES["slides"] = frozenset({"slides"})`. A city runs the stage unless its own config
-  sets `slides.enabled: false`.
-- Input fingerprint (dirty check): source identities, `SLIDES_PIPELINE_VERSION`, image recipe,
-  detection config, and `timeline_digest` (remap-only path). Gate the per-episode detection on
-  `ctx.stop()`; never gate the remap-only path (cheap, idempotent).
-- Eligible episodes: `media_availability` not withheld, video present (`video_url` or video-capable
-  source), and the episode's audio or timeline already planned (so served times exist). Order:
-  the existing workqueue `recency` policy, newest first.
+- `run.py` runs `slides_stages()` only in `enrich --lane slides`, and only while
+  `site_config.slides.enabled` is not false; `LANE_STAGES["slides"] = frozenset({"slides"})`.
+  A city runs the stage unless its own config sets `slides.enabled: false`.
+- Input fingerprint (dirty check): video URL, source refs, `SLIDES_RECIPE`
+  (`SLIDES_PIPELINE_VERSION` + image recipe) and the city's `slides` override. Per-episode
+  detection is gated on `ctx.stop()` and the shared per-run caps (`SlidesRunBudget`).
+- Eligible episodes: `media_availability` not withheld and a video present (`video_url` or
+  sources). Served times are computed at render, so audio need not be planned first. Order: the
+  lane's normal newest-first candidate order.
 - Workflow `slides.yml` (PR4): scheduled a few times a day, `concurrency` per lane, bounded by the
   wall-clock stop budget and `max_episodes_per_run`.
 
-Config (`config/site_config.yml` defaults; per-city override in `config/cities/*.yml`):
+Config (`config/site_config.yml` defaults; per-feed override as a `slides:` block in
+`config/feeds/*.yml`):
 
 ```yaml
 slides:
@@ -231,7 +242,7 @@ slides:
   noise_db: -50
   edge_trim_seconds: 120
   min_luma_stddev: 8
-  min_edge_density: null    # set from the PR2 spike
+  min_edge_density: 0.004
   max_recurrence: 3
   max_slides_per_episode: 50
   max_image_kb: 150
@@ -240,8 +251,9 @@ slides:
   exclude_dhashes: []       # per-city only
 ```
 
-Per-city values become a new `City.slides: dict` field (`citypods/models.py`, parsed with the other
-city fields), merged over the site defaults; PR2 validates types and ranges at load time.
+Per-feed values stay in `City.extra["slides"]` (the loader's home for unknown feed keys) and are
+merged over the site defaults by `slides.effective_config`. `config.py` validates types and
+ranges at load time, so a bad block fails config loading rather than a run.
 
 ## 8. Guardrails and expected cost (estimates; PR2 measures)
 
@@ -256,6 +268,12 @@ city fields), merged over the site defaults; PR2 validates types and ranges at l
 | Egress | B2 via the Cloudflare CDN (free egress, as for audio) | Negligible |
 
 The first-runs review (§10) records actual numbers in this table.
+
+**Measured during implementation (2026-11-20, one Swagit MP4, local Mac):** keyframe-only
+detection over 1,500 s of a 640×360, 0.83 Mb/s Addison Planning & Zoning meeting took 25 s
+(≈ 0.017× real time). It found five static intervals of 35 to 95 s; all five were real staff
+report slides and all passed the pixel filters (luma σ 49 to 56, edge density 0.21 to 0.32). A
+2.5 h meeting at that bit rate streams about 0.9 GB.
 
 ## 9. Delivery slices
 
@@ -307,3 +325,28 @@ The feature is on for every city from the first deploy (P4), so there is no pilo
 - `audio_spec_hash` inputs.
 - `enrich_stages()`, `render_stages()` and `default_stages()` membership (slides are opt-in, §7).
 - The R2 ephemeral prefix list in `storage/routing.py` (slides are not on R2, P2).
+
+## 13. Implementation notes (differences from the original text)
+
+- **Served times at render.** The block stores only source times; `episode_served_slides`
+  computes served times on every render with the chapters clock. That removes the stored served
+  times, the stored `timeline_digest` and the remap-only stage path from §6.1 and §7.
+- **Config location.** The override is a `slides:` block in the feed file (`config/feeds/*.yml`),
+  kept in `City.extra`, not a new `City.slides` field or `config/cities/`.
+- **Low-detail filter.** Pillow `FIND_EDGES` instead of OpenCV Canny, default `0.004`.
+- **SSRF and protocols.** Every source, whatever its scheme, passes `validate_source_url` before ffmpeg runs, and
+  ffmpeg gets `-protocol_whitelist crypto,data,http,https,tcp,tls` (the audio lane's list without
+  `file`), so HLS is accepted as in the audio lane. A rejected URL is a failure that retries
+  twice, not a terminal `no-video`.
+- **Status counters.** Outcomes reach the run log through the generic stage counters (ran,
+  quality outcome by status, deferrals by `stop` / `run-cap` / `byte-budget`). A dedicated
+  `/admin/status` panel is not part of this change.
+- **Capture budget.** Pass 2 captures at most `2 × max_slides_per_episode` frames per episode.
+- **Episode-level byte reservation.** The stage probes every source of an episode first and reserves
+  the episode's whole estimate in one `admit_bytes` call, so a byte-budget deferral happens before
+  any detection and the next run never repeats half an episode. A probe with no duration or bit
+  rate counts as 4 h at 8 Mbit/s, never zero.
+- **Bounded candidate memory.** Each accepted frame is encoded to the final JPEG at once and only
+  those bytes are kept until selection, never the decoded native-resolution frame.
+- **Merge gap.** Consecutive near-identical frames merge only when at most 30 s apart; a slide
+  shown again later stays two slides so the chapters keep the artwork reset in between.
