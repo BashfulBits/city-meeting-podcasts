@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Configured-route cap re-measurement (review/54 §8.14).** The weekly provider-catalog run now
+  re-measures due configured free routes' input and output caps inside each provider's drain,
+  after new-route discovery (up to 3,600 s and four sessions; the weekly job timeout rises from
+  300 to 360 minutes). One session raises a cap. A reduction needs consistent refusals on two
+  different days, and the older configured-route calibration now needs the same. `/apply` lists the
+  session evidence and files a producer packet-size review issue for each reduced route. The
+  scheduled Worker context session, which never ran (#2221), is no longer opened (#2264).
+
 - **Configured-route cap re-measurement design.** Add review/54 §8.14 (L3): the weekly drained
   provider-catalog run re-measures configured free routes' input and output caps with the
   review/48 discovery search. A raise is offered from one session. A reduction needs two sessions
