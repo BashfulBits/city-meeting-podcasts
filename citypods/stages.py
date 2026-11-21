@@ -10016,13 +10016,14 @@ def _locator_policy_fingerprint(models: Sequence[str]) -> str:
 
 def _current_prompt_policy_fingerprints() -> frozenset[str]:
     """Retry-policy fingerprints of every lane model list used under the current prompt and routing
-    versions: the lane now, and the two earlier ones (V4 Flash with Kimi K3 until 2026-10-15, then
-    with V4.1 until review/58 WP8). A stored policy outside this set proves nothing."""
+    versions: the lane now, and its earlier Kimi K3, V4.1, and MiniMax model lists. A stored
+    policy outside this set proves nothing."""
     from citypods.chapter_jobs import LOCATOR_MODELS
     from citypods.chapter_locator import (
         DEEPSEEK_FREE_LOCATOR_MODEL,
         DEEPSEEK_V41_LOCATOR_MODEL,
         KIMI_LOCATOR_MODEL,
+        MINIMAX_LOCATOR_MODEL,
     )
 
     return frozenset(
@@ -10031,6 +10032,7 @@ def _current_prompt_policy_fingerprints() -> frozenset[str]:
             tuple(LOCATOR_MODELS),
             (DEEPSEEK_FREE_LOCATOR_MODEL, KIMI_LOCATOR_MODEL),
             (DEEPSEEK_FREE_LOCATOR_MODEL, DEEPSEEK_V41_LOCATOR_MODEL),
+            (DEEPSEEK_FREE_LOCATOR_MODEL, MINIMAX_LOCATOR_MODEL),
         )
     )
 

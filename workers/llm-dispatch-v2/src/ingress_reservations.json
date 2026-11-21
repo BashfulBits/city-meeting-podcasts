@@ -3,12 +3,12 @@
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
   "global_write_budget": 38400,
-  "reserved_total": 23046,
+  "reserved_total": 23446,
   "reservations": {
     "chapter-agenda": {
-      "reserved_write_units": 2028,
-      "daily_write_units": 23046,
-      "max_queued_jobs": 676,
+      "reserved_write_units": 2004,
+      "daily_write_units": 23446,
+      "max_queued_jobs": 668,
       "models": [
         "nvidia/nemotron-3-ultra-550b-a55b:free",
         "tencent/hy3",
@@ -26,23 +26,28 @@
       "write_units_per_job": 6
     },
     "chapter-locator": {
-      "reserved_write_units": 1352,
-      "daily_write_units": 23046,
-      "max_queued_jobs": 676,
+      "reserved_write_units": 2004,
+      "daily_write_units": 23446,
+      "max_queued_jobs": 668,
       "models": [
         "deepseek/deepseek-v4-flash",
-        "minimaxai/minimax-m3.1-flash"
+        "minimaxai/minimax-m3.1-flash",
+        "moonshotai/kimi-k3.1-pro"
       ],
-      "backup_models": [],
-      "backup_after_attempts": null,
-      "dispatch_shape": "per_model",
+      "backup_models": [
+        "deepseek/deepseek-v4-flash",
+        "minimaxai/minimax-m3.1-flash",
+        "moonshotai/kimi-k3.1-pro"
+      ],
+      "backup_after_attempts": 12,
+      "dispatch_shape": "pooled",
       "reasoning": {},
-      "write_units_per_job": 4
+      "write_units_per_job": 6
     },
     "judge:adjudicator": {
-      "reserved_write_units": 1352,
-      "daily_write_units": 23046,
-      "max_queued_jobs": 676,
+      "reserved_write_units": 1336,
+      "daily_write_units": 23446,
+      "max_queued_jobs": 668,
       "models": [
         "zai/glm-5.3-flash",
         "deepseek/deepseek-v4.1-flash"
@@ -56,9 +61,9 @@
       "write_units_per_job": 4
     },
     "judge:anchor": {
-      "reserved_write_units": 2704,
-      "daily_write_units": 23046,
-      "max_queued_jobs": 1352,
+      "reserved_write_units": 2672,
+      "daily_write_units": 23446,
+      "max_queued_jobs": 1336,
       "models": [
         "gemini/gemini-decision-1",
         "perplexity/pplx-decider-v1.3"
@@ -70,9 +75,9 @@
       "write_units_per_job": 4
     },
     "judge:sibling": {
-      "reserved_write_units": 4056,
-      "daily_write_units": 23046,
-      "max_queued_jobs": 2028,
+      "reserved_write_units": 4008,
+      "daily_write_units": 23446,
+      "max_queued_jobs": 2004,
       "models": [
         "openrouter/nvidia/nemotron-3.5-super-vl:free",
         "qwen/qwen3.8-27b"
@@ -84,9 +89,9 @@
       "write_units_per_job": 4
     },
     "r6-moments": {
-      "reserved_write_units": 1690,
-      "daily_write_units": 23046,
-      "max_queued_jobs": 676,
+      "reserved_write_units": 1670,
+      "daily_write_units": 23446,
+      "max_queued_jobs": 668,
       "models": [
         "zai/glm-5.3-flash",
         "deepseek/deepseek-v4-flash"
@@ -105,7 +110,7 @@
     },
     "remedy:p3": {
       "reserved_write_units": 400,
-      "daily_write_units": 23046,
+      "daily_write_units": 23446,
       "max_queued_jobs": 200,
       "models": [
         "openai/gpt-6.1-sol",
@@ -120,9 +125,9 @@
       "write_units_per_job": 4
     },
     "topic-tags:tagger": {
-      "reserved_write_units": 9464,
-      "daily_write_units": 23046,
-      "max_queued_jobs": 2704,
+      "reserved_write_units": 9352,
+      "daily_write_units": 23446,
+      "max_queued_jobs": 2672,
       "models": [
         "gemini/gemini-3.5-flash-lite",
         "openrouter/nvidia/nemotron-3.5-super-vl:free",

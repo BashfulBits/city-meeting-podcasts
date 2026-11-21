@@ -421,6 +421,13 @@ packet/goldens, raw answer key, scorer, and matched-cohort outputs are committed
 `evals/chapter-locator/manual-review-v2/`. This production recipe change intentionally reprocesses
 existing generated locator artifacts gradually within the lane budget.
 
+**Current locator routing (2026-11-21).** Superseding that historical model split, DeepSeek V4
+Flash remains primary through 76,000 estimated input tokens and MiniMax M3.1 Flash is primary
+above it, subject to its configured input cap. Size-eligible alternatives and Kimi K3.1 Pro are
+failure-triggered backups, with pooled queue accounting; see [review/58](58-llm-pipeline-throughput-balance.md)
+for the decision and the limited live probe evidence. Existing completed results remain reusable;
+the updated retry-policy fingerprint reopens retry-exhausted work.
+
 ### Phase R — Research-Tool Surface (toward 1.0)
 
 | **Bounded audio integrity audits** | [GH#1024](https://github.com/BashfulBits/city-meeting-podcasts/issues/1024) (child of [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)) | L3 | **Implemented in the first 1.0 efficiency tranche.** Audio records now persist the verified immutable key/spec marker, invalidated by a key/spec mismatch or a storage-backend generation/epoch change. Matching trusted pointers bypass routine prefix LIST/HEAD/GET work; a small dirty set uses direct existence probes and larger batches retain one bounded source LIST fallback. `scripts/audit_audio_integrity.py` and `audio-integrity.yml` rotate through 32 stable UID partitions, sweeping every trusted pointer in the day's partition (concurrent HEAD checks, no per-run item cap, so the full catalog is swept monthly regardless of size) under a wall-clock budget that skips remaining sources rather than failing the run; it clears missing pointers and the Audio completion marker and lets ordinary Audio repair them without changing episode identity. Legacy/changed/repair pointers remain fail-closed. No audio pipeline-version bump or byte backfill is required. |

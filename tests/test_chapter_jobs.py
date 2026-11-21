@@ -150,17 +150,19 @@ def test_locator_job_keeps_all_units_and_uses_gemini_lite():
     )
     assert job.task == "agenda-chapter-locate"
     assert job.inputs["llm_policy"].allowed_models == ("deepseek/deepseek-v4-flash",)
+    assert job.inputs["llm_policy"].backup_models == (
+        "minimaxai/minimax-m3.1-flash",
+        "moonshotai/kimi-k3.1-pro",
+    )
+    assert job.inputs["llm_policy"].backup_after_attempts == 12
     assert job.inputs["llm_policy"].queue_only is True
     assert job.inputs["llm_policy"].deadline_at is None
     material = json.loads(job.inputs["messages"][1]["content"])
     assert len(material["transcript_units"]) == 1
-    # select_locator_models() already reserves LOCATOR_OUTPUT_TOKEN_RESERVE tokens of output room
-    # when fitting a request into a route's context window; the dispatched request must actually
-    # request that much, not the bare 1024-token LiteLLMBackend default.
-    from citypods.chapter_locator import LOCATOR_OUTPUT_TOKEN_RESERVE
+    from citypods.chapter_locator import LOCATOR_DISPATCH_OUTPUT_RESERVATION
 
-    assert job.inputs["max_tokens"] == LOCATOR_OUTPUT_TOKEN_RESERVE
-    assert job.inputs["max_tokens"] > 1024
+    assert job.inputs["max_tokens"] == LOCATOR_DISPATCH_OUTPUT_RESERVATION
+    assert job.inputs["max_tokens_mode"] == "route_max"
 
 
 def test_locator_job_recipe_changes_with_unit_annotations():

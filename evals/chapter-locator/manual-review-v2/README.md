@@ -10,6 +10,25 @@ The packet contains 381 boundary cases. A median response time is prefilled for 
 the remaining cases have no confidently matched response to use as a suggestion. Existing human
 labels were carried forward, including the composite marker for `P-1BB8ED7`.
 
+## Reduced output reservation probe (2026-11-21)
+
+The 12-meeting long-context MiniMax evaluation below returned valid responses for all 12 meetings
+after two repairs, at a 12,800-token output cap. That is not proof that every meeting fits a
+smaller cap. On one of those meetings (`3fd0769f51ca1f05`, 124,134 estimated input tokens,
+26 agenda items, 4,140 word units), a fresh baseline-prompt MiniMax call with `max_tokens=6144`
+finished normally in 85 seconds, producing 20 structurally valid anchors and 1,196 completion
+tokens. This was not a new human quality assessment; missing anchors do not establish why items
+were omitted. Its provider reported 169,608 input tokens and no separate reasoning content.
+
+The same packet and cap sent to NVIDIA Kimi K3.1 Pro returned a gateway 504 after 302 seconds,
+with no completion or usage reported. This does not validate Kimi's locator quality, output needs,
+or reliability on long inputs. Each call ran once with its route paused and drained; both pauses
+were cleared. No retry was attempted. Raw telemetry remains local and can contain meeting text.
+
+The older DeepSeek V4.1 default-thinking development arm used up to 15,764 completion tokens,
+including 14,729 reasoning tokens on that call; it is a different model and cohort. These results
+do not establish the largest possible chapter list that fits 6,144, 12,800, or 16,384 tokens.
+
 ## Run the review page
 
 From the repository root:

@@ -909,15 +909,14 @@ def test_v41_left_the_lane_but_its_completed_results_stay_reusable():
 
 
 def test_v4_flash_band_job_is_unchanged_by_wp8():
-    """A <=76k packet keeps its model, output reserve and routing version, so neither its accepted
-    results nor its pending submissions go stale (the recipe hash parts are unchanged)."""
+    """A <=76k packet keeps its primary model and routing version, preserving its recipe hash."""
     ep = _make_episode("ep-recipe")
     agenda = AgendaCandidatesArtifact.from_dict(ep.generated_agenda_candidates)
     units, _ = build_locator_units(words_data=None, vtt_data=SAMPLE_VTT)
     job = build_locator_job(episode_uid=ep.uid, agenda=agenda, transcript_hash="t", units=units)
     assert LOCATOR_ROUTING_VERSION == "size-split-v1"
     assert job.inputs["llm_policy"].allowed_models == ("deepseek/deepseek-v4-flash",)
-    assert job.inputs["max_tokens"] == 20_000
+    assert job.inputs["max_tokens"] == 6_144
 
 
 def _shrink_bands(monkeypatch, *, v4_max: int, cap: int) -> None:
@@ -946,7 +945,8 @@ def test_locator_stage_sends_overflow_band_to_minimax(tmp_path, monkeypatch):
 
     (job,) = backend.submitted_jobs
     assert job.inputs["llm_policy"].allowed_models == (MINIMAX_LOCATOR_MODEL,)
-    assert job.inputs["max_tokens"] == 12_800
+    assert job.inputs["max_tokens"] == 6_144
+    assert job.inputs["llm_policy"].backup_models == ("moonshotai/kimi-k3.1-pro",)
     assert job.inputs["max_tokens_mode"] == "route_max"
 
 
@@ -1571,3 +1571,10 @@ def test_agenda_blocked_reasons_fold_into_quality_counts():
         "agenda-rejected-placeholder-or-low-quality-html": 3,
         "agenda-extraction-retry-exhausted": 1,
     }
+
+
+def test_previous_minimax_lane_fingerprint_remains_current():
+    from citypods.stages import _current_prompt_policy_fingerprints, _locator_policy_fingerprint
+
+    previous_models = ["deepseek/deepseek-v4-flash", "minimaxai/minimax-m3.1-flash"]
+    assert _locator_policy_fingerprint(previous_models) in _current_prompt_policy_fingerprints()

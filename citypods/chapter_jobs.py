@@ -37,6 +37,7 @@ from citypods.chapter_titles import (
 )
 from citypods.compute.base import InferenceJob, JobResult
 from citypods.compute.llm import TASK_VERSIONS
+from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
 
 # chapter_locator.py is the single source of truth for the production locator model name.
@@ -343,14 +344,19 @@ def build_locator_job(
         inputs={
             "messages": messages,
             "structured_output": LOCATOR_CONTRACT,
-            # The output reserve (LOCATOR_OUTPUT_TOKEN_RESERVE), clamped to the selected model's
-            # largest route output limit (12,800 for MiniMax M3.1 Flash) so the Worker has a
-            # route to index the job on; the bare LiteLLMBackend default (1024) starved
-            # multi-anchor responses mid-JSON well before that reserve was ever exercised.
+            # Admission must fit every candidate; route_max sends the selected route's limit.
             "max_tokens": request.max_output_tokens,
             "max_tokens_mode": "route_max",
             "llm_policy": LLMRequestPolicy(
                 allowed_models=request.models,
+                # DeepSeek is the primary only within its empirically safe input band; do not
+                # send larger MiniMax-band packets back to it as a backup.
+                backup_models=tuple(
+                    model
+                    for model in LOCATOR_MODELS
+                    if model not in request.models and model != PRODUCTION_LOCATOR_MODEL
+                ),
+                backup_after_attempts=lane_for("chapter-locator").backup_after_attempts,
                 purpose="chapter-locator",
                 queue_only=True,
             ),
