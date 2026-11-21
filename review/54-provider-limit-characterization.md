@@ -82,9 +82,13 @@ never be silent.
 A raise is offered when one drained session's bracket has a verified admitted value above the
 current cap. "Verified" means the §8.13 rules: provider-counted, compatible count basis and
 control, and the existing two-success contract within the session. The offered value is the
-admitted value, clipped exactly as `context_cap_changes` clips today:
-`min(admitted, input_context_limit − output_context_limit)` for input, `min(admitted,
-input_context_limit)` for output. A combined-reserved basis subtracts production output. A raise
+admitted value, clipped so the route's input and output caps together still fit its window:
+`min(admitted, input_context_limit − output_context_limit)` for input, and
+`min(admitted, input_context_limit − hard_input_ceiling)` for output (or `input_context_limit`
+when `hard_input_ceiling` is unset). This is tighter than `context_cap_changes`, which clips
+output to the whole window and relies on `context_edit_plan` to catch only a pair chosen together.
+A single output raise could otherwise push input plus output past the window. A
+combined-reserved basis subtracts production output. A raise
 never needs a second day, because the admitted size was actually served. An admitted value
 counts as a raise only when it clears the current cap by more than the bracket width. Smaller
 differences are noise, and no offer is made.
@@ -111,11 +115,20 @@ axis:
 - from different weekly runs (`run_id`s) on different UTC calendar days;
 - both within the last 28 days, with no verified admission at or above the current cap between or
   after them (an admission resets the pending reduction);
-- with the same count basis and control.
+- with the same count basis and control;
+- consistent with each other: each observation's candidate value is below the other's refused
+  bound (`max(candidates) < min(refused bounds)`, with a typed limit counting as its refused
+  bound).
+
+If the second observation is inconsistent with the first (for example, the first admits 79k and
+refuses 80k, the second admits 39k and refuses 40k), no reduction is offered. The newer
+observation replaces the older one as the pending observation, and the next weekly run must
+confirm it.
 
 The offered value is the **larger** of the two candidate values, so the second probe can only
-confirm, never deepen, the cut. It is clipped as in §8.14.B. With weekly runs this means a
-reduction is offered one week after it is first seen. The first observation shows in the issue as
+confirm, never deepen, the cut. Consistency guarantees it is below both refused bounds. It is
+clipped as in §8.14.B. With weekly runs this means a reduction is offered one week after it is
+first seen. The first observation shows in the issue as
 `reduction pending confirmation (next weekly run)` and moves that route to the front of the next
 run.
 
@@ -191,7 +204,9 @@ in `provider-catalog-reconcile.yml` (300 → 360 minutes). No schedule change.
 Tests:
 - A raise is offered from one session.
 - A reduction is not offered from one session. It is offered after two runs on different days,
-  at the larger value.
+  at the larger value. Two inconsistent observations offer nothing, and the newer one becomes
+  pending.
+- An output raise is clipped to `input_context_limit − hard_input_ceiling`.
 - Two sessions on the same day do not confirm a reduction.
 - An admission at or above the cap resets a pending reduction.
 - Timeouts, slow successes, 429s and outages never count as reduction observations.

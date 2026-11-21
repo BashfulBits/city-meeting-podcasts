@@ -2046,7 +2046,9 @@ and finite execution escape bounds still apply. Existing runtime adaptations rem
 For the reviewed route addition, authenticated input admissions map to `hard_input_ceiling`; the
 operational context window covers the provider claim or measured input plus actual generated output,
 with the original claim/source retained for review. Two compatible admissions from distinct
-successful runs are required before `/apply` offers that cap. Implementation is tracked by #2271.
+successful runs are required before `/apply` offers that cap (superseded by the 2026-10-14
+decision below: one successful authenticated discovery run supplies the cap evidence).
+Implementation is tracked by #2271.
 Explicit quota-pool/schema enforcement needs a separate bounded design; periodic empirical
 quota/cap revalidation, overflow/refill and broader pacing redesign are Deferred under
 [review/54](54-provider-limit-characterization.md), tracked by #2264. Previous review/48 §8.12 L3
