@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 57,
+    "routes_count": 59,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -3124,6 +3124,102 @@
       "structured_output_schema_strip_keys": [],
       "request_params": null,
       "reasoning_controls": null
+    },
+    "kilo_particle_ai_particle_1_free": {
+      "route_id": "kilo_particle_ai_particle_1_free",
+      "stream_response": null,
+      "ai_gateway_max_attempts": null,
+      "model": "particle-ai/particle-1",
+      "provider": "kilo",
+      "upstream_model": "particle-ai/particle-1:free",
+      "input_context_limit": 1048576,
+      "output_context_limit": 131072,
+      "hard_input_ceiling": 967844,
+      "hard_input_ceiling_tolerance": null,
+      "response_timeout_seconds": 720,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": null,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "tpm_window_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": null,
+      "tier": null,
+      "api_shape": null,
+      "request_path": null,
+      "api_base": null,
+      "ai_gateway_slug": null,
+      "ai_gateway_chat_path": null,
+      "chat_path": null,
+      "yields_to": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
+    },
+    "openrouter_inclusionai_ling_3_2_flash_free": {
+      "route_id": "openrouter_inclusionai_ling_3_2_flash_free",
+      "stream_response": null,
+      "ai_gateway_max_attempts": null,
+      "model": "inclusionai/ling-3.2-flash",
+      "provider": "openrouter",
+      "upstream_model": "inclusionai/ling-3.2-flash:free",
+      "input_context_limit": 1048576,
+      "output_context_limit": 262144,
+      "hard_input_ceiling": 677462,
+      "hard_input_ceiling_tolerance": null,
+      "response_timeout_seconds": 720,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": null,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "tpm_window_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": null,
+      "tier": null,
+      "api_shape": null,
+      "request_path": null,
+      "api_base": null,
+      "ai_gateway_slug": null,
+      "ai_gateway_chat_path": null,
+      "chat_path": null,
+      "yields_to": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
     }
   },
   "model_routes_map": {
@@ -3240,13 +3336,17 @@
       "nvidia_mistralai_mistral_large_4_1t_a52b"
     ],
     "particle-ai/particle-1": [
-      "openrouter_particle_ai_particle_1_free"
+      "openrouter_particle_ai_particle_1_free",
+      "kilo_particle_ai_particle_1_free"
     ],
     "hy4-flash": [
       "beatapi_hy4_flash_free"
     ],
     "moonshotai/kimi-k3.1-pro": [
       "nvidia_moonshotai_kimi_k3_1_pro"
+    ],
+    "inclusionai/ling-3.2-flash": [
+      "openrouter_inclusionai_ling_3_2_flash_free"
     ]
   },
   "model_aliases": {
@@ -3352,7 +3452,10 @@
     "hy4-flash-free": "hy4-flash",
     "beatapi/hy4-flash-free": "hy4-flash",
     "moonshotai/kimi-k3.1-pro": "moonshotai/kimi-k3.1-pro",
-    "nvidia/moonshotai/kimi-k3.1-pro": "moonshotai/kimi-k3.1-pro"
+    "nvidia/moonshotai/kimi-k3.1-pro": "moonshotai/kimi-k3.1-pro",
+    "kilo/particle-ai/particle-1:free": "particle-ai/particle-1",
+    "inclusionai/ling-3.2-flash:free": "inclusionai/ling-3.2-flash",
+    "openrouter/inclusionai/ling-3.2-flash:free": "inclusionai/ling-3.2-flash"
   },
   "model_routing": {
     "gemini/gemini-3.7-flash": [
