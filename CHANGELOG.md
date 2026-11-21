@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Review/51 P3 daily evidence collection (#2280): `remedy-p3-daily.yml` now passes the Granicus
+  and Swagit proxy secrets that the feed audit uses, and `audit_feeds.py
+  --unexpected-body-evidence` exits non-zero (after writing the file) when any source is
+  unreachable. Previously unreachable providers were dropped silently and every run reported
+  "0 findings" without ever seeing a source.
+
 - **Quota-pool design decisions (#2249).** Record the maintainer's answers in review/54 §8.15.G:
   the design is accepted, the interim split will not ship, and interactive callers must finish
   within 10 to 30 minutes per call rather than be strictly synchronous. Correct the design: the v2
