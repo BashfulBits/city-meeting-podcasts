@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Video slide chapter images design.** Add `review/61` (L3, on by default) for extracting static
+  presentation slides from meeting video as timed Podcasting 2.0 chapter images (GH#2707,
+  supersedes deferred #26). Docs only; no code or pipeline change.
+
 - **LLM producer fallback.** Run the scheduled fallback when the latest dispatched run failed,
   even if an older dispatch succeeded within the guard window.
 
