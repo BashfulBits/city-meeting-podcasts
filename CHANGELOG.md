@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/53 PR7 judge calibration report.** `python -m citypods.judging.calibrate --task <task>`
+  fits each judged question from the adjudicated set (contested items plus the 3% calibration
+  sample, weighted to the population) on Gemini Decision 1 anchor judgments since 2026-11-12. For
+  `validate`, it picks the admit/reject pair with the highest agreement whose upper 95% bound on
+  the weighted false-accept rate is at most 5%. For `gate`, it picks the anchor flag level that
+  misses no adjudicator flag. `grade` and `choose` agreement are reported. Items whose deciding
+  sibling quote lies outside the adjudicator's evidence window are excluded and counted.
+  `--write` stores the proposal under `judging.tasks.<task>.thresholds`; tasks stay in shadow mode.
+
 - **Chapter locator fallback routing.** Keep the size-selected DeepSeek or MiniMax primary, and
   allow size-eligible alternatives and Kimi K3.1 Pro as Worker backups after repeated failures or
   when all primary routes are excluded, including a content-filter refusal. A 6,144-token admission
