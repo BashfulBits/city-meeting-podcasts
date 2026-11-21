@@ -877,6 +877,10 @@ def context_cap_changes(history, config, *, now):
         ):
             # A success is only a lower bound; reducing a cap requires a parsed rejection.
             continue
+        if old is not None and value < old and not _rejections_on_two_days(retained, old):
+            # Review/54 §8.14.C: one rejection is not enough to lower a cap; a second run on a
+            # different UTC day must also be refused below it.
+            continue
         stamp = digest(
             {
                 "identity": identity,
@@ -960,4 +964,490 @@ def context_edit_plan(changes, config, *, selected=(), deferred=(), history=(), 
             ),
             *(f"{c}: current verified context offer unavailable" for c in missing),
         ),
+    )
+
+
+def _rejections_on_two_days(observations, cap):
+    """Parsed rejections below ``cap`` from at least two runs on two distinct UTC days."""
+    rejected = [
+        o
+        for o in observations
+        if getattr(o, "reported_ceiling", None) is not None and o.reported_ceiling < cap
+    ]
+    days = {datetime.fromisoformat(o.observed_at).astimezone(UTC).date() for o in rejected}
+    return len(days) >= 2 and len({o.run_id for o in rejected}) >= 2
+
+
+# Review/54 §8.14: the weekly full run re-measures configured routes' input/output caps.
+REMEASURE_INTERVAL_DAYS = 28
+REDUCTION_WINDOW_DAYS = 28
+REMEASURE_AXES = ("input", "output")
+REMEASURE_FIELDS = {"input": "hard_input_ceiling", "output": "output_context_limit"}
+# A typed context_length limit is a refusal statement, not a served size: offer below it.
+TYPED_LIMIT_HEADROOM_PERCENT = 95
+# Observations carry their session, not their run. No reconcile job runs longer than the 360-minute
+# weekly timeout, so two sessions this far apart cannot share a run.
+REDUCTION_MIN_SEPARATION = timedelta(hours=6)
+
+
+@dataclass(frozen=True)
+class SessionAxisResult:
+    """One discovery session's verified bracket on one axis of one identity."""
+
+    session_id: str
+    observed_at: datetime
+    admitted: int | None
+    refused: int | None
+    hint: int | None
+    basis: str | None
+    control: str | None
+    admissions: tuple[int, ...]
+
+    @property
+    def day(self):
+        return self.observed_at.date()
+
+
+@dataclass(frozen=True)
+class ReductionObservation:
+    session_id: str
+    observed_at: datetime
+    candidate: int
+    bound: int
+    basis: str | None
+    control: str | None
+    admitted: int | None = None
+
+    @property
+    def day(self):
+        return self.observed_at.date()
+
+
+@dataclass(frozen=True)
+class RemeasureReview:
+    """Offers in the `/apply` context-choice tuple shape plus what the issue and PR explain."""
+
+    changes: tuple
+    details: Mapping[str, Mapping]
+    pending: tuple
+    due: tuple
+
+
+def remeasure_identity(route, config):
+    """The discovery identity a configured route is measured under (its own account)."""
+    from citypods.provider_catalog.discovery import discovery_identity
+    from citypods.provider_catalog.probe import chat_url
+    from citypods.provider_catalog.registry import rules_for
+    from citypods.provider_catalog.rules import general_discovery_rules
+
+    cfg = (config.get("providers") or {})[route["provider"]]
+    rules = general_discovery_rules(rules_for(route["provider"]))
+    return discovery_identity(
+        route["provider"], str(route["account_id"]), route["upstream_model"], chat_url(rules, cfg)
+    )
+
+
+def remeasure_eligible(route, config):
+    """Free, enabled chat routes with a configured account and a known context window."""
+    cfg = (config.get("providers") or {}).get(route.get("provider"))
+    if not isinstance(cfg, Mapping):
+        return False
+    accounts = {str(a.get("id")) for a in cfg.get("accounts") or [] if isinstance(a, Mapping)}
+    window = route.get("input_context_limit")
+    return (
+        route.get("free") is True
+        and route.get("rpd") != 0
+        and route_speaks_chat(route)
+        and str(route.get("account_id")) in accounts
+        and type(window) is int
+        and window > 0
+    )
+
+
+def remeasure_current_cap(route, axis):
+    """The configured cap a re-measurement compares against (None when the route has none)."""
+    window = route.get("input_context_limit")
+    output = route.get("output_context_limit")
+    if axis == "output":
+        return output if type(output) is int and output > 0 else None
+    ceiling = route.get("hard_input_ceiling")
+    if type(ceiling) is int and ceiling > 0:
+        return ceiling
+    if type(window) is int and type(output) is int and 0 < output < window:
+        return window - output
+    return None
+
+
+def remeasure_parser_version(route):
+    """The discovery parser version current rules record for the route's provider, or None."""
+    from citypods.provider_catalog.registry import rules_for
+    from citypods.provider_catalog.rules import general_discovery_rules
+
+    try:
+        return general_discovery_rules(rules_for(route["provider"])).discovery_parser_version
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def session_axis_results(history, identity, axis, parser_version=None):
+    """Per-session verified brackets for one identity and axis, oldest first.
+
+    With ``parser_version``, only observations from the current parser and fixture count, as for
+    new-route discovery.
+    """
+    from citypods.provider_catalog.discovery import Bracket
+
+    sessions = defaultdict(list)
+    for item in history:
+        if (
+            item.request.identity == identity
+            and item.request.axis == axis
+            and (
+                parser_version is None
+                or (
+                    item.request.parser_version == parser_version
+                    and item.request.fixture_version == "discovery-v1"
+                )
+            )
+        ):
+            sessions[item.request.session_id].append(item)
+    rows = []
+    for session_id, items in sessions.items():
+        items.sort(key=lambda o: (o.observed_at, o.request.attempt_id))
+        bracket = Bracket(axis, 1)
+        for item in items:
+            if item.outcome == "admitted" and not item.verified:
+                continue  # an unverified success is not a served size
+            bracket.observe(item)
+        accepted = bracket.basis
+        admissions = tuple(
+            sorted(
+                item.coordinate
+                for item in items
+                if item.outcome == "admitted"
+                and item.verified
+                and item.coordinate is not None
+                and item.count_basis == accepted
+            )
+        )
+        hints = [i.target_limit_hint for i in items if i.target_limit_hint]
+        stamps = [datetime.fromisoformat(i.observed_at).astimezone(UTC) for i in items]
+        rows.append(
+            SessionAxisResult(
+                session_id=session_id,
+                observed_at=max(stamps),
+                admitted=bracket.lower,
+                refused=bracket.upper,
+                hint=min(hints) if hints else None,
+                basis=bracket.basis,
+                control=bracket.control,
+                admissions=admissions,
+            )
+        )
+    return sorted(rows, key=lambda r: (r.observed_at, r.session_id))
+
+
+def reduction_observation(result, cap):
+    """A session that, on this axis, was refused at or below ``cap`` (§8.14.C), else None.
+
+    Timeouts, slow successes, 429s and outages never reach the bracket or the typed hint, so they
+    can never count here.
+    """
+    if cap is None:
+        return None
+    bounds = []
+    if result.refused is not None and result.refused <= cap:
+        bounds.append(result.refused)
+    if result.hint is not None and result.hint < cap:
+        bounds.append(result.hint)
+    if not bounds:
+        return None
+    bound = min(bounds)
+    if result.admitted is not None and result.admitted < bound:
+        candidate = result.admitted
+    else:
+        candidate = bound * TYPED_LIMIT_HEADROOM_PERCENT // 100
+    if candidate <= 0:
+        return None
+    return ReductionObservation(
+        result.session_id,
+        result.observed_at,
+        candidate,
+        bound,
+        result.basis,
+        result.control,
+        result.admitted,
+    )
+
+
+def _comparable(first, second):
+    """Same count basis and control, where both sessions recorded one."""
+    return all(
+        a is None or b is None or a == b
+        for a, b in ((first.basis, second.basis), (first.control, second.control))
+    )
+
+
+def reductions_consistent(first, second):
+    """Each candidate lies below the other's refused bound (§8.14.C)."""
+    return max(first.candidate, second.candidate) < min(first.bound, second.bound)
+
+
+def reduction_state(results, cap, *, now):
+    """(confirmed pair or None, pending observation or None) within the reduction window."""
+    since = now - timedelta(days=REDUCTION_WINDOW_DAYS)
+    last, confirmed = None, None
+    for result in results:
+        if not since <= result.observed_at <= now:
+            continue
+        if cap is not None and any(size >= cap for size in result.admissions):
+            last, confirmed = None, None  # a served size at the cap resets a pending reduction
+            continue
+        observation = reduction_observation(result, cap)
+        if observation is None:
+            continue
+        if (
+            last is not None
+            and last.day != observation.day
+            and observation.observed_at - last.observed_at > REDUCTION_MIN_SEPARATION
+            and last.session_id != observation.session_id
+            and _comparable(last, observation)
+            and reductions_consistent(last, observation)
+        ):
+            confirmed = (last, observation)
+        else:
+            confirmed = None  # inconsistent: the newer observation becomes the pending one
+        last = observation
+    return confirmed, (None if confirmed else last)
+
+
+def _clip_remeasured(route, axis, value):
+    """Keep input plus output inside the route's window (§8.14.B)."""
+    window = route.get("input_context_limit")
+    if type(window) is not int or window <= 0:
+        return None
+    if axis == "input":
+        output = route.get("output_context_limit")
+        if type(output) is not int or output <= 0 or output >= window:
+            return None
+        return min(value, window - output)
+    ceiling = route.get("hard_input_ceiling")
+    if type(ceiling) is int and 0 < ceiling < window:
+        return min(value, window - ceiling)
+    return min(value, window)
+
+
+def _raise_value(result, cap):
+    """Two verified served sizes beyond the cap by more than the bracket width, else None."""
+    if cap is None:
+        above = list(result.admissions)
+    else:
+        width = max(1, -(-cap // 200))
+        above = [size for size in result.admissions if size > cap + width]
+    return max(above) if len(above) >= 2 else None
+
+
+def remeasure_review(history, config, *, now):
+    """Raises from one session, reductions from two consistent sessions on different days."""
+    from citypods.provider_catalog.evidence import digest
+
+    routes = [r for r in config.get("routes") or [] if isinstance(r, Mapping)]
+    changes, details, pending, due = [], {}, [], []
+    results_cache = {}
+    for route in routes:
+        if not remeasure_eligible(route, config):
+            continue
+        try:
+            identity = remeasure_identity(route, config)
+        except (KeyError, ValueError, TypeError):
+            continue
+        for axis in REMEASURE_AXES:
+            parser_version = remeasure_parser_version(route)
+            key = (identity, axis, parser_version)
+            if key not in results_cache:
+                results_cache[key] = session_axis_results(history, identity, axis, parser_version)
+            results = results_cache[key]
+            cap = remeasure_current_cap(route, axis)
+            if axis == "input" and cap is None:
+                continue
+            field = REMEASURE_FIELDS[axis]
+            recent = [
+                r
+                for r in results
+                if now - timedelta(days=REMEASURE_INTERVAL_DAYS) <= r.observed_at <= now
+            ]
+            confirmed, waiting = reduction_state(results, cap, now=now)
+            if waiting is not None:
+                pending.append((route["route_id"], axis, cap, waiting))
+            last = max(recent, key=lambda r: r.observed_at) if recent else None
+            due.append(
+                (
+                    0 if waiting is not None else 1,
+                    last.observed_at.isoformat() if last else "",
+                    route["route_id"],
+                    axis,
+                    not recent or waiting is not None,
+                )
+            )
+            kind, value, sessions = None, None, ()
+            if confirmed is not None:
+                kind = "reduction"
+                value = max(o.candidate for o in confirmed)
+                sessions = confirmed
+            elif last is not None and (raised := _raise_value(last, cap)) is not None:
+                kind, value, sessions = "raise", raised, (last,)
+            if kind is None:
+                continue
+            value = _clip_remeasured(route, axis, value)
+            old = route.get(field)
+            if old is not None and (type(old) is not int or old <= 0):
+                continue
+            if value is None or value <= 0 or value == old:
+                continue
+            if kind == "raise" and old is not None and value <= old:
+                continue
+            # With no hard ceiling the effective input cap is window minus output; a cut below it
+            # creates the ceiling and is still a reduction.
+            if kind == "reduction" and value >= (old if old is not None else cap):
+                continue
+            stamp = digest(
+                {
+                    "identity": identity,
+                    "axis": axis,
+                    "kind": kind,
+                    "sessions": [
+                        {
+                            "session_id": s.session_id,
+                            "observed_at": s.observed_at.isoformat(),
+                            **(
+                                {"candidate": s.candidate, "bound": s.bound}
+                                if kind == "reduction"
+                                else {"admitted": s.admitted, "refused": s.refused}
+                            ),
+                        }
+                        for s in sessions
+                    ],
+                    "window": route.get("input_context_limit"),
+                    "opposite": route.get(
+                        "output_context_limit" if axis == "input" else "hard_input_ceiling"
+                    ),
+                    "value": value,
+                }
+            )
+            change = (route["route_id"], field, old, value, stamp)
+            changes.append(change)
+            details[context_choice(change)] = {
+                "route_id": route["route_id"],
+                "field": field,
+                "kind": kind,
+                "old": old,
+                "effective_old": old if old is not None else cap,
+                "new": value,
+                "sessions": [
+                    {
+                        "date": s.observed_at.date().isoformat(),
+                        "admitted": s.admitted,
+                        "refused": s.bound if kind == "reduction" else s.refused,
+                        **({"proposed": s.candidate} if kind == "reduction" else {}),
+                        "basis": s.basis,
+                    }
+                    for s in sessions
+                ],
+            }
+    due_rows = tuple(
+        (rid, axis) for _p, _t, rid, axis, needed in sorted(due, key=lambda r: r[:3]) if needed
+    )
+    return RemeasureReview(tuple(sorted(changes)), details, tuple(pending), due_rows)
+
+
+def remeasure_cap_changes(history, config, *, now):
+    return remeasure_review(history, config, now=now).changes
+
+
+def merge_context_changes(older, remeasured):
+    """Union of offers; the re-measure offer wins a route/field both paths offer (§8.14.D)."""
+    taken = {(c[0], c[1]) for c in remeasured}
+    return tuple(sorted((*remeasured, *(c for c in older if (c[0], c[1]) not in taken))))
+
+
+def is_reduction(change):
+    _rid, _field, old, new, _stamp = change
+    return old is not None and new < old
+
+
+def reduced_caps(changes, details, routes=()):
+    """(route, field, effective old, new) for each lowered cap, including an implicit input cap."""
+    by_id = {r.get("route_id"): r for r in routes if isinstance(r, Mapping)}
+    rows = []
+    for change in changes:
+        rid, field, old, new, _stamp = change
+        detail = details.get(context_choice(change)) or {}
+        if detail.get("kind") == "reduction":
+            rows.append((rid, field, detail.get("effective_old"), new))
+        elif is_reduction(change):
+            rows.append((rid, field, old, new))
+        elif old is None and field == "hard_input_ceiling" and rid in by_id:
+            # The older calibration path can create a ceiling below the implicit window cap.
+            effective = remeasure_current_cap(by_id[rid], "input")
+            if effective is not None and new < effective:
+                rows.append((rid, field, effective, new))
+    return tuple(rows)
+
+
+def remeasure_notes(changes, details):
+    """PR lines for chosen re-measured caps: old → new, kind, sessions and count basis."""
+    notes = []
+    for change in changes:
+        detail = details.get(context_choice(change))
+        if not detail:
+            continue
+        sessions = "; ".join(
+            f"{s.get('date')}: admitted {s.get('admitted')}, refused {s.get('refused')}"
+            + (f", proposes {s['proposed']}" if "proposed" in s else "")
+            + f", basis {s.get('basis') or 'unknown'}"
+            for s in detail.get("sessions") or []
+        )
+        old = (
+            detail["old"]
+            if detail["old"] is not None
+            else f"unset (effective {detail.get('effective_old')})"
+        )
+        notes.append(
+            f"Re-measured `{detail['route_id']}` {detail['field']}: {old} → "
+            f"{detail['new']} ({detail['kind']}; {sessions})"
+        )
+    return tuple(notes)
+
+
+PRODUCER_REVIEW_LABELS = ("provider-catalog", "area:provider")
+
+
+def producer_review_title(change):
+    rid, field, old, new = change[:4]
+    return f"Review producer packet sizes for {rid}: {field} reduced {old} → {new}"
+
+
+def producer_review_body(change):
+    """Review/54 §8.14.D checklist: a lowered cap must not leave producers sending old sizes."""
+    rid, field, old, new = change[:4]
+    return "\n".join(
+        (
+            f"`/apply` proposes lowering `{rid}` `{field}` from {old} to {new} after two "
+            "consistent re-measurements on different days (review/54 §8.14.C).",
+            "",
+            "Jobs have stalled when a cap was reduced but producers kept building packets for "
+            "the old size. Before closing, confirm:",
+            "",
+            "- [ ] The compiled limits (`scripts/compile_llm_limits.py` → "
+            "`citypods/compute/llm_routes.json`, "
+            "`workers/llm-dispatch-v2/src/dispatch_limits.json`) carry the new value "
+            "after merge and deploy.",
+            "- [ ] Hard-coded Worker caps for the route (`CONTEXT_INPUT_CEILINGS` in "
+            "`coordinator.js`) are at or below the new value.",
+            "- [ ] Each producer that sizes packets from the route's caps (tags, moments, chapter "
+            "locator, judging runner, deferred LLM work) sizes from the compiled value, not a "
+            "cached or constant size; queued packets above the new value are re-split or drained.",
+            "- [ ] Worker refusal and learned-ceiling counts (review/55) for the route over the "
+            "following week show no rise in over-size refusals.",
+        )
     )

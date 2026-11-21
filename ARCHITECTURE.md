@@ -318,8 +318,21 @@ proposed at least as large as both the published context claim and the admitted 
 generated output. YAML comments and the PR retain the claim and source for comparison. Estimated
 refusals are not promoted to caps, and missing provider/catalog and LiteLLM output-context values
 defer the addition for maintainer input. A cap offer also requires compatible admitted-input
-evidence from one successful authenticated discovery run; onboarding does not re-probe the route
-weekly. The issue and addition PR retain the evidence provenance for maintainer review.
+evidence from one successful authenticated discovery run. The issue and addition PR retain the
+evidence provenance for maintainer review.
+
+Configured routes are re-measured by the weekly full run (review/54 §8.14). After a provider's
+new-route discovery, inside the same drain, `remeasure_review` (`provider_catalog/limits.py`)
+selects free configured routes whose input or output axis has no authenticated discovery session in
+28 days or has a pending reduction. Each due axis runs one `_discover_candidate_caps` session seeded
+at the configured cap, one per physical identity, within 3,600 s and four sessions per run, ending
+15 minutes before the 360-minute job timeout. One session with verified admissions above the cap
+offers a raise. A reduction needs two consistent refusals below the cap from different runs on
+different UTC days within 28 days; a served size at the cap resets it. Timeouts, 429s, outages and
+slow successes never count. Offers use the context choice syntax and win over a duplicate from the
+older configured-route calibration, which now also needs two days to reduce. `/apply` unions both
+paths, writes the session evidence into the PR, and files one producer packet-size review issue per
+reduced route. The scheduled Worker context session is no longer opened; the manual one remains.
 Discovery output can opt into a documented minimum-generation parameter for a verified
 endpoint/model combination. The NVIDIA-hosted Nemotron Lightning deployment is the initial opt-in;
 other NVIDIA models and alternate hosts remain excluded. Probe history records prompt/minimum

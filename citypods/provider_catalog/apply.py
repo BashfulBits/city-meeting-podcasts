@@ -75,6 +75,9 @@ class EditPlan:
     # Scope, provider, target, metric, old/new scalar and authenticated target digest.
     rate_changes: tuple = ()
     context_changes: tuple = ()
+    # Review/54 §8.14: (route ID, field, effective old, new) for each lowered cap; each gets a
+    # producer packet-size review issue.
+    reduced_caps: tuple = ()
     # route ID, exact account, repeated verdict, HTTP status, and independent check timestamp.
     removal_confirmations: tuple[tuple[str, str, str, int, str], ...] = ()
     # Route ID and safe, review-visible input-cap evidence notes for YAML and PR text.

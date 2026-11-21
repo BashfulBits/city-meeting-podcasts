@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -52,8 +52,15 @@ from citypods.provider_catalog.evidence import (  # noqa: E402
 )
 from citypods.provider_catalog.issue import decode_state, find_issue, is_catalog_issue  # noqa: E402
 from citypods.provider_catalog.limits import (  # noqa: E402
+    PRODUCER_REVIEW_LABELS,
     configured_limit_changes,
+    merge_context_changes,
+    producer_review_body,
+    producer_review_title,
     rate_edit_plan,
+    reduced_caps,
+    remeasure_notes,
+    remeasure_review,
     scope_recent_runs,
 )
 from citypods.provider_catalog.quality import QualityIndex, fetch_quality_index  # noqa: E402
@@ -285,6 +292,14 @@ def prepare_context(base_commit, *, selected=()):
     )
     if deferred:
         raise ValueError("context history unavailable; no cap changes prepared")
+    # Review/54 §8.14 re-measure offers come from authenticated discovery history. If that history
+    # is incomplete, only those offers are withheld (a ticked one is then reported unavailable).
+    discovery_history, _runs, discovery_gaps = verified_discovery_history(
+        discover_discovery_references(repository=repository, now=now),
+        repository=repository,
+        now=now,
+    )
+    review = None if discovery_gaps else remeasure_review(discovery_history, limits, now=now)
     config = ApplyConfig(
         limits,
         parse_site_lanes(load_config(texts[SOURCE_PATHS[1]]), tuning_path=TUNING_PATH),
@@ -292,8 +307,19 @@ def prepare_context(base_commit, *, selected=()):
         base_commit,
         now.date(),
     )
-    changes = context_cap_changes(history, limits, now=now)
+    changes = merge_context_changes(
+        context_cap_changes(history, limits, now=now), review.changes if review else ()
+    )
     plan = context_edit_plan(changes, config, selected=selected, history=history, now=now)
+    if review is not None:
+        notes = remeasure_notes(plan.context_changes, review.details)
+        plan = replace(plan, applied=(*plan.applied, *notes))
+    plan = replace(
+        plan,
+        reduced_caps=reduced_caps(
+            plan.context_changes, review.details if review else {}, limits.get("routes") or ()
+        ),
+    )
     output = apply_config_edits(texts, plan)
     for path in SOURCE_PATHS:
         (ROOT / path).write_text(output[path])
@@ -383,6 +409,48 @@ def validate(run_fn=run):
             "tests/test_provider_catalog_context.py",
         ]
     )
+
+
+def file_producer_reviews(plan, *, run_fn=run):
+    """One producer-review issue per reduced cap (review/54 §8.14.D), linked from the PR body.
+
+    Filed before publication so the PR names it; an open issue with the same title is reused, so a
+    rebuilt or repeated `/apply` neither duplicates it nor changes the proposed body. A failure
+    is written into the PR body instead of blocking the proposal.
+    """
+    lines = []
+    for change in plan.reduced_caps:
+        title = producer_review_title(change)
+        try:
+            found = json.loads(
+                run_fn(
+                    [
+                        "gh",
+                        "issue",
+                        "list",
+                        "--state",
+                        "open",
+                        "--search",
+                        f'"{title}" in:title',
+                        "--json",
+                        "title,url",
+                    ]
+                )
+            )
+            url = next((row["url"] for row in found if row.get("title") == title), None)
+            if url is None:
+                command = ["gh", "issue", "create", "--title", title]
+                command += ["--body", producer_review_body(change)]
+                for label in PRODUCER_REVIEW_LABELS:
+                    command += ["--label", label]
+                url = run_fn(command).strip()
+            lines.append(f"Producer review for `{change[0]}` {change[1]}: {url}")
+        except (subprocess.CalledProcessError, OSError, ValueError, KeyError, TypeError) as exc:
+            lines.append(
+                f"Producer review issue for `{change[0]}` {change[1]} could not be filed "
+                f"({type(exc).__name__}); file it by hand: {title}"
+            )
+    return replace(plan, applied=(*plan.applied, *lines)) if lines else plan
 
 
 def publish(plan, *, run_fn=run):
@@ -679,6 +747,8 @@ def main(argv=None):
                     run(["git", "reset", "--hard", base])
                     plan = prepare(body, base, proposal_kind=kind)
                     validate()
+                    if kind == "context":
+                        plan = file_producer_reviews(plan)
                     current = json.loads(
                         run(
                             [

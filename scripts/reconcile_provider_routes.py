@@ -74,6 +74,8 @@ from citypods.provider_catalog.limits import (  # noqa: E402
 )
 from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
+    REMEASURE_RUN_SECONDS,
+    REMEASURE_SECONDS,
     NoDispatchControl,
     backtest_discovery,
     backtest_summary,
@@ -84,6 +86,8 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
 # time remains (two hours), across providers and several per provider, so a backlog clears in
 # days rather than weeks. The workflow's 180-minute job timeout leaves room for the catalog checks.
 DAILY_DISCOVERY_SECONDS = 7_200
+# The weekly job's clock starts a few minutes before this process; re-measurement budgets from here.
+SCRIPT_STARTED = time.monotonic()
 LIMITS_PATH = REPO_ROOT / "config" / "provider_limits.yml"
 PAUSE_SECONDS = 1200
 # The Worker abandons a call after 720 s, and NVIDIA's judge calls routinely hang that long
@@ -161,6 +165,34 @@ def evidence_report(limits: Mapping[str, Any], providers: set[str], control: Any
     for candidate in report.candidates:
         print(f"{candidate.key}: proven; JSON method {candidate.structured_output_method}")
     return 0
+
+
+def _apply_remeasure_review(report, discovery_history, limits):
+    """Offer review/54 §8.14 cap changes from history plus this run's sessions; record state."""
+    from citypods.provider_catalog.limits import merge_context_changes, remeasure_review
+    from citypods.provider_catalog.reconcile import _history_with_run_sessions
+
+    review = remeasure_review(
+        _history_with_run_sessions(discovery_history, report.discovery_sessions),
+        limits,
+        now=datetime.now(UTC),
+    )
+    report.context_changes = list(merge_context_changes(report.context_changes, review.changes))
+    report.state.setdefault("last_full", {})["context_changes"] = list(report.context_changes)
+    report.state["remeasure"] = {
+        "details": review.details,
+        "pending": [
+            {
+                "route_id": rid,
+                "axis": axis,
+                "cap": cap,
+                "date": observation.day.isoformat(),
+                "candidate": observation.candidate,
+            }
+            for rid, axis, cap, observation in review.pending
+        ],
+        "sessions": list(report.remeasure_sessions),
+    }
 
 
 def _carry_rate_state(report, previous_state):
@@ -688,63 +720,11 @@ def main(argv: list[str] | None = None) -> int:
             or os.environ.get("GITHUB_EVENT_SCHEDULE") != "07 10 * * 1"
         ):
             parser.error("context evidence is weekly scheduled main only")
-        if isinstance(control, WorkerDispatchControl):
-            from citypods.compute.llm_dispatch_pause import Selection
-            from citypods.provider_catalog.evidence import (
-                _context_catalog_digest,
-                discover_context_references,
-                verified_context_history,
-            )
-
-            try:
-                context_status = control.client.context_status(Selection("global"))
-                if context_status["enabled"]:
-                    compiled = json.loads(
-                        (REPO_ROOT / "workers/llm-dispatch-v2/src/dispatch_limits.json").read_text()
-                    )
-                    if _context_catalog_digest(compiled) != context_status["catalog_digest"]:
-                        raise ValueError("deployed context catalog differs from this checkout")
-                    now = datetime.now(UTC)
-                    references = discover_context_references(
-                        repository=os.environ["GITHUB_REPOSITORY"], now=now
-                    )
-                    history, _accepted, gaps = verified_context_history(
-                        references, limits, repository=os.environ["GITHUB_REPOSITORY"], now=now
-                    )
-                    if gaps:
-                        raise ValueError("context history unavailable")
-                    opened = control.client.start_context(
-                        os.environ["GITHUB_RUN_ID"], context_status["catalog_digest"]
-                    )
-                    context_run = {
-                        "run_id": opened.run_id,
-                        "head_sha": os.environ["GITHUB_SHA"],
-                        "deadline_ms": opened.deadline_ms,
-                        "catalog_digest": context_status["catalog_digest"],
-                        "readiness": context_status["routes"],
-                        "history": history,
-                        "rotation": dict(
-                            (previous_state.get("context_v1") or {}).get("rotation") or {}
-                        ),
-                        "budget": {
-                            "remaining_input": opened.remaining_input,
-                            "remaining_output": opened.remaining_output,
-                            "remaining_requests": opened.remaining_requests,
-                        },
-                    }
-            except (
-                DispatchPauseError,
-                ValueError,
-                TypeError,
-                KeyError,
-                AttributeError,
-                OSError,
-                RuntimeError,
-                subprocess.CalledProcessError,
-                zipfile.BadZipFile,
-                zlib.error,
-            ):
-                print("context calibration deferred: authority/history unavailable")
+        # Review/54 §8.14 replaced the scheduled context pilot (#2221): its Worker session expired
+        # 60 minutes after opening, before the run reached the provider, so it never measured.
+        # Configured caps are re-measured inside each provider's drain instead. The manual context
+        # trigger keeps its own path (manual_context_canary).
+        print("context calibration: scheduled session not opened (review/54 §8.14 re-measures)")
     session = requests.Session()
     quality = fetch_quality_index(session)
     # AA entries the maintainer accepted as a model's match (ticked under Decisions) apply now.
@@ -808,6 +788,16 @@ def main(argv: list[str] | None = None) -> int:
                 + "\n"
             )
 
+    weekly_full = (
+        os.environ.get("GITHUB_EVENT_NAME") == "schedule"
+        and os.environ.get("GITHUB_EVENT_SCHEDULE") == "07 10 * * 1"
+        and not args.due_only
+        and not args.incremental
+        and not args.provider
+    )
+    remeasure = weekly_full and bool(args.discovery_evidence) and not discovery_history_gaps
+    if weekly_full and not remeasure:
+        print("configured-route re-measure skipped: authenticated discovery history unavailable")
     report = reconcile(
         limits,
         load_lanes(),
@@ -836,6 +826,10 @@ def main(argv: list[str] | None = None) -> int:
         discovery_receipt_ids=retry_receipts,
         retry_candidate_keys=set(retry_receipts) if retry_receipts else None,
         candidate_keys={args.discovery_candidate} if args.discovery_candidate else None,
+        remeasure_time_budget_seconds=REMEASURE_SECONDS if remeasure else None,
+        remeasure_run_seconds=(
+            REMEASURE_RUN_SECONDS - (time.monotonic() - SCRIPT_STARTED) if remeasure else None
+        ),
     )
     report.observations.extend(discovery_history_gaps)
     _carry_rate_state(report, previous_state)
@@ -919,6 +913,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         report.state["last_full"]["context_changes"] = list(report.context_changes)
+    if remeasure:
+        _apply_remeasure_review(report, discovery_history, limits)
+    elif previous_state.get("remeasure"):
+        report.state["remeasure"] = previous_state["remeasure"]
     if args.discovery_evidence and report.discovery_sessions:
         # An evidence envelope that fails its own schema must not also lose the run's state and
         # issue update (2026-11-03: a 4th daily session tripped the old 3-session cap here).

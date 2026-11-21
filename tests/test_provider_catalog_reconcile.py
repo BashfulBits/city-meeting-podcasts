@@ -3138,3 +3138,109 @@ def test_an_unscored_candidate_shows_its_closest_aa_entry_as_information():
     body = render_body(Report(candidates=[candidate]), run_date="2026-10-08")
     assert "AA **unscored** (closest AA entry: Muse Glimmer, 6.3)" in body
     assert "AA match" not in body
+
+
+def test_weekly_run_remeasures_configured_caps_after_discovery_and_daily_never(monkeypatch):
+    """Review/54 §8.14.A: drained re-measurement follows new-route discovery, seeded at the cap."""
+    import citypods.provider_catalog.reconcile as module
+
+    calls = []
+
+    def discover(candidate, *_args, **kwargs):
+        calls.append(
+            (candidate.key, kwargs.get("seeds"), kwargs["selected_axes"], candidate.provider)
+        )
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    common = dict(
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+    )
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+        **common,
+    )
+    configured = {r["route_id"]: r for r in limits["routes"]}
+    remeasured = [c for c in calls if c[0] in configured]
+    assert remeasured, report.remeasure_sessions
+    # Within each provider's drain, new-route discovery runs before configured routes.
+    for provider in {c[3] for c in calls}:
+        rows = [key in configured for key, *_rest, p in calls if p == provider]
+        assert rows == sorted(rows)
+    from citypods.provider_catalog.limits import remeasure_current_cap
+
+    for key, seeds, (axis,), _provider in remeasured:
+        assert seeds[axis] == remeasure_current_cap(configured[key], axis)
+    assert all(s.get("ran") or s.get("note") for s in report.remeasure_sessions)
+
+    calls.clear()
+    daily = reconcile(limits, LANES, NO_DECISIONS, QUALITY_K9_UNSCORED, {}, **common)
+    assert not [c for c in calls if c[0] in configured]
+    assert not daily.remeasure_sessions
+
+
+def test_remeasure_stops_when_its_own_time_budget_is_spent(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    now = [0.0]
+    remeasured = []
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    configured = {r["route_id"] for r in limits["routes"]}
+
+    def discover(candidate, *_args, **kwargs):
+        if candidate.key in configured:
+            remeasured.append(kwargs["deadline"])
+            now[0] += 2_000
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: now[0],
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+    )
+    # 0 s and 2,000 s start; at 4,000 s the 3,600 s budget is spent.
+    assert remeasured == [3_600, 3_600]
+    assert any("budget" in (s.get("note") or "") for s in report.remeasure_sessions)
