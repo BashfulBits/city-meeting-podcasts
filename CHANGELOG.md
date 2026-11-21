@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Review/53 judgment clear pushes through the merged record push.** `citypods.judging.clear`
+  now writes the changed records with `push_records_merged` (the judge lane's protected blocks),
+  so a block another lane wrote since the pull is kept, and the archive is uploaded before the
+  records change.
+
 - Review/51 P3 daily evidence collection (#2280): `remedy-p3-daily.yml` now passes the Granicus
   and Swagit proxy secrets that the feed audit uses, and `audit_feeds.py
   --unexpected-body-evidence` exits non-zero (after writing the file) when any source is
