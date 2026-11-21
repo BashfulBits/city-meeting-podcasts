@@ -8061,7 +8061,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // Deliberately excludes own_rpm / own_rpd / own_tpm (those rejections are proof we DID
           // reach our limit, so the counters are correct and must stand) and unknown_429 (we
           // cannot show it was not ours, so we stay conservative and keep the charge).
+          // A 2xx content filter reports a served response and can consume input tokens, unlike
+          // an explicit policy 4xx. Settle observed usage (or the reservation if unknown).
           const nonConsuming = !isResponseTimeout &&
+            !(isContentPolicyViolation && status >= 200 && status < 300) &&
             (isPromptCap || NON_CONSUMING_FAILURE_CLASSES.has(result.failure_class || ""));
           const settledUsage = nonConsuming ? 0 : (observedTotal ?? reservation);
           // A success folds release, settle-to-actual and the backoff reset into ONE routes
@@ -8088,11 +8091,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 )
               : "[]";
             const tpdRelease = nonConsuming ? reservation : observedTotal != null ? reservation - observedTotal : 0;
+            const filterWindowDelta = isContentPolicyViolation && !nonConsuming &&
+              Number(servedRoute?.tpm) > 0 && reservation <= Number(servedRoute.tpm)
+              ? servedDelta : 0;
             this._mutateRoute(job.lease_route_id, row => {
               row.provisional_reservation = Math.max(0, row.provisional_reservation - reservation);
               row.settled_usage += settledUsage;
               row.tpd_used = Math.max(0, row.tpd_used - tpdRelease);
               row.full_token_budget += servedDelta;
+              if (row.tpm_window_start === job.reservation_tpm_window_start) {
+                row.tpm_reserved = Math.max(0, row.tpm_reserved - filterWindowDelta);
+              }
               if (inputLedger) row.input_window_json = inputWindowJson;
             }, () => sql.exec(
               `UPDATE routes SET
@@ -8100,12 +8109,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
                  settled_usage = settled_usage + ?,
                  tpd_used = MAX(0, tpd_used - ?),
                  full_token_budget = full_token_budget + ?,
+                 tpm_reserved = CASE WHEN tpm_window_start = ? THEN MAX(0, tpm_reserved - ?)
+                                     ELSE tpm_reserved END,
                  input_window_json = CASE WHEN ? THEN ? ELSE input_window_json END
                WHERE route_id = ?`,
               reservation,
               settledUsage,
               tpdRelease,
               servedDelta,
+              job.reservation_tpm_window_start,
+              filterWindowDelta,
               inputLedger ? 1 : 0, inputWindowJson,
               job.lease_route_id
             ));

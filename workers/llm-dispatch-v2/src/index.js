@@ -991,7 +991,8 @@ function logGemmaAttempt({
   const cachedInput = Number.isFinite(reportedCached) && reportedCached >= 0 &&
     Number.isFinite(usage?.input) && reportedCached <= usage.input ? reportedCached : null;
   const problem = response?.ok
-    ? shape.emptyCompletion(response.status, response.body) ? "empty_completion"
+    ? shape.contentFiltered?.(response.body) ? "content_policy_violation"
+      : shape.emptyCompletion(response.status, response.body) ? "empty_completion"
       : shape.lengthTruncated(response.body) ? "output_budget_exhausted"
         : shape.replyProblem(job.payload, response.body)
     : null;
@@ -1113,6 +1114,22 @@ export async function attemptProviderCall({ env, b2, route, dispatchLimits, job,
   // Every reply check below is the route's API shape's (chat today; JEV's systemone, review/53).
   const shape = apiShapeFor(route);
   const observedTokens = (body) => shape.observedTokens(body);
+
+  // HTTP success can still carry a content-filter refusal. Exclude this route for the job
+  // before checking for empty structured output, including on unstructured requests.
+  if (response.ok && shape.contentFiltered?.(response.body)) {
+    const usage = observedTokens(response.body);
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+        observed_input_tokens: usage.input,
+        observed_output_tokens: usage.output,
+        provider_status_code: response.status,
+        gateway_correlation_id: response.correlationId,
+        failure_class: "content_policy_violation",
+      },
+    };
+  }
 
   if (shape.emptyCompletion(response.status, response.body)) {
     // A 2xx carrying no completion. Never settle this as success: doing so stores a non-answer as

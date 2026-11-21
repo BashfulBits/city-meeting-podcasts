@@ -45,6 +45,11 @@ const chat = {
   replyProblem: (payload, body) => (isStructuredPayload(payload) ? structuredReplyProblem(body) : null),
   observedTokens: (body) => chatObservedTokens(body),
   lengthTruncated: (body) => body?.choices?.[0]?.finish_reason === "length",
+  contentFiltered: (rawBody) => {
+    const body = normalizeProviderBody(rawBody);
+    return Array.isArray(body?.choices) &&
+      body.choices.some(choice => choice?.finish_reason === "content_filter");
+  },
 };
 
 function systemoneQuestions(payload) {

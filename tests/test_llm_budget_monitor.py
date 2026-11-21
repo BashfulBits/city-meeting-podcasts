@@ -147,3 +147,12 @@ def test_the_stats_request_names_only_the_classes_the_report_acts_on(monkeypatch
     monkeypatch.setattr(mon.requests, "get", fake_get)
     mon.fetch_stats("https://dispatch.example.com", "token")
     assert seen["failure_class"].split(",") == sorted(mon.THRESHOLDS)
+
+
+def test_content_policy_refusals_are_reported_with_route_specific_advice():
+    report, [finding] = mon.build_report(
+        [_row("gemma", "content_policy_violation", 1)], ROUTES, LANES
+    )
+    assert "`content_policy_violation`" in report
+    assert "another permitted route" in finding["suggestion"]
+    assert "terminal reason" in finding["suggestion"]
