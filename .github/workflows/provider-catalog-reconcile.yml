@@ -2,6 +2,7 @@ name: Provider catalog reconciliation
 run-name: >-
   ${{ github.event.schedule == '07 10 * * 1' && 'Provider catalog reconciliation (weekly-full)' ||
       github.event.schedule == '27 8 * * *' && 'Provider catalog reconciliation (daily-incremental)' ||
+      inputs.weekly_full == true && 'Provider catalog reconciliation (weekly-full, manual)' ||
       'Provider catalog reconciliation (manual)' }}
 
 # review/48 Slice 1: observe and propose only. Lists every provider's catalog, health-checks the
@@ -20,6 +21,11 @@ on:
     inputs:
       due_only:
         description: "Only re-run checks deferred until a daily-quota reset"
+        required: false
+        default: false
+        type: boolean
+      weekly_full:
+        description: "Weekly full path by hand: new-route discovery and configured-route cap re-measure (not with the other modes; spends real provider quota)"
         required: false
         default: false
         type: boolean
@@ -98,6 +104,7 @@ jobs:
     timeout-minutes: >-
       ${{ github.event_name == 'schedule' && github.event.schedule == '07 10 * * 1' && 360 ||
           github.event_name == 'schedule' && github.event.schedule == '27 8 * * *' && 180 ||
+          github.event_name == 'workflow_dispatch' && inputs.weekly_full == true && 360 ||
           github.event_name == 'workflow_dispatch' && inputs.discovery_enabled == true && 180 ||
           github.event_name == 'workflow_dispatch' && inputs.incremental == true && 180 || 120 }}
     permissions:
@@ -130,6 +137,7 @@ jobs:
           DUE_ONLY: ${{ github.event.schedule == '27 8 * * *' || inputs.due_only == true || inputs.incremental == true }}
           INCREMENTAL: ${{ github.event.schedule == '27 8 * * *' || inputs.incremental == true }}
           DISCOVERY_ENABLED: ${{ inputs.discovery_enabled == true }}
+          WEEKLY_FULL: ${{ inputs.weekly_full == true }}
           DISCOVERY_CANDIDATE: ${{ inputs.discovery_candidate }}
           DISCOVERY_AXIS: ${{ inputs.discovery_axis }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
@@ -166,6 +174,14 @@ jobs:
           fi
           if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$GITHUB_EVENT_SCHEDULE" = "07 10 * * 1" ]; then
             args+=(--context-evidence provider-catalog-context-evidence.json)
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$WEEKLY_FULL" = "true" ]; then
+            if [ "$DUE_ONLY" = "true" ] || [ "$INCREMENTAL" = "true" ] \
+              || [ "$DISCOVERY_ENABLED" = "true" ] || [ "$CONTEXT_CANARY" = "true" ]; then
+              echo "weekly_full cannot be combined with another mode" >&2
+              exit 1
+            fi
+            args+=(--weekly-full --discovery-evidence provider-catalog-discovery-evidence.json)
           fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$DISCOVERY_ENABLED" = "true" ]; then
             args+=(--discovery-enabled --discovery-evidence provider-catalog-discovery-evidence.json)
@@ -224,7 +240,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Retain scheduled request-cap discovery evidence
-        if: always() && (github.event_name == 'schedule' || (inputs.incremental == true && inputs.discovery_enabled != true))
+        if: always() && (github.event_name == 'schedule' || inputs.weekly_full == true || (inputs.incremental == true && inputs.discovery_enabled != true))
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: provider-catalog-discovery-evidence-${{ github.run_id }}

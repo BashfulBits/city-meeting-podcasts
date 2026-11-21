@@ -392,3 +392,70 @@ def test_observations_from_another_parser_version_are_ignored():
         for o in [obs("s1", 2, "admitted", 115000), obs("s1", 2, "admitted", 120000)]
     ]
     assert not remeasure_cap_changes(history, CONFIG, now=NOW)
+
+
+MANUAL_WEEKLY_ENV = {
+    "GITHUB_EVENT_NAME": "workflow_dispatch",
+    "GITHUB_REF": "refs/heads/main",
+    "GITHUB_REPOSITORY": "owner/repo",
+    "GITHUB_RUN_ID": "100",
+    "GITHUB_SHA": "a" * 40,
+}
+
+
+def _manual_weekly_script(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from citypods.provider_catalog.reconcile import Report
+    from scripts import reconcile_provider_routes as script
+
+    for key, value in MANUAL_WEEKLY_ENV.items():
+        monkeypatch.setenv(key, value)
+    control = script.WorkerDispatchControl(SimpleNamespace())
+    monkeypatch.setattr(script, "_control", lambda _no_pause: control)
+    monkeypatch.setattr(script, "discover_discovery_references", lambda **_kwargs: ())
+    monkeypatch.setattr(
+        script, "verified_discovery_history", lambda *_args, **_kwargs: ((), (), ())
+    )
+    monkeypatch.setattr(script, "fetch_quality_index", lambda _session: None)
+    seen = {}
+
+    def reconcile(*_args, **kwargs):
+        seen.update(kwargs)
+        return Report(state={"last_full": {}})
+
+    monkeypatch.setattr(script, "reconcile", reconcile)
+    monkeypatch.setattr(script, "backtest_discovery", lambda *_args, **_kwargs: [])
+    return script, seen, str(tmp_path / "evidence.json")
+
+
+def test_a_manual_weekly_dispatch_remeasures_configured_routes(monkeypatch, tmp_path):
+    script, seen, evidence = _manual_weekly_script(monkeypatch, tmp_path)
+    assert script.main(["--weekly-full", "--discovery-evidence", evidence]) == 0
+    assert seen["remeasure_time_budget_seconds"]
+    assert seen["remeasure_run_seconds"] and not seen["due_only"]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [["--due-only"], ["--incremental"], ["--provider", "groq"], ["--rate-evidence", "r.json"]],
+)
+def test_manual_weekly_refuses_other_modes_and_missing_evidence(monkeypatch, tmp_path, extra):
+    script, _seen, evidence = _manual_weekly_script(monkeypatch, tmp_path)
+    for args in (["--weekly-full", *extra, "--discovery-evidence", evidence], ["--weekly-full"]):
+        with pytest.raises(SystemExit) as exc:
+            script.main(args)
+        assert exc.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("event", "ref"),
+    [("schedule", "refs/heads/main"), ("workflow_dispatch", "refs/heads/feature")],
+)
+def test_manual_weekly_is_only_for_a_manual_main_dispatch(monkeypatch, tmp_path, event, ref):
+    script, _seen, evidence = _manual_weekly_script(monkeypatch, tmp_path)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", event)
+    monkeypatch.setenv("GITHUB_REF", ref)
+    with pytest.raises(SystemExit) as exc:
+        script.main(["--weekly-full", "--discovery-evidence", evidence])
+    assert exc.value.code == 2

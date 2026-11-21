@@ -1986,6 +1986,14 @@ def test_discovery_has_bounded_weekly_and_manual_time_without_extending_ordinary
     assert "inputs.discovery_enabled == true" in timeout
     assert "180 || 120" in timeout
     assert "&& 360 ||" in timeout  # review/54 §8.14 re-measure
+    # The manual weekly path gets the same runner-maximum budget the scheduled one does.
+    assert "inputs.weekly_full == true && 360" in timeout
+    inputs = (
+        workflow[True]["workflow_dispatch"]["inputs"]
+        if True in workflow
+        else workflow["on"]["workflow_dispatch"]["inputs"]
+    )
+    assert inputs["weekly_full"]["type"] == "boolean" and inputs["weekly_full"]["default"] is False
 
 
 def test_p3_daily_worker_is_main_only_minimally_privileged_and_preserves_reports():
