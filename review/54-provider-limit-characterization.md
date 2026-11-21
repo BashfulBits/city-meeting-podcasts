@@ -2,7 +2,8 @@
 
 **Status: §8.14 (configured-route input/output cap re-measurement) is implemented (approved L3
 2026-11-21; first live run is the next Monday weekly run); the rest of this document stays
-Deferred, L2.** Tracking issue:
+Deferred, L2; §8.15 (one quota authority, #2249) is an L2 design
+only.** Tracking issue:
 [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
 
 **Maintainer scope correction — 2026-10-11.** Review/48 remains new-route discovery,
@@ -228,6 +229,156 @@ Tests:
 Rollout: ship the code; the next Monday run measures up to four due routes. Read the first issue
 before ticking anything. Raise `REMEASURE_SESSION_CEILING` only after a full weekly run stays
 inside its job timeout.
+
+## 8.15 One quota authority for direct and queued calls (#2249) — L2 design, 2026-11-21
+
+**Status: design only.** Nothing here is approved for implementation. It does not authorise a
+production migration, a bucket deletion, a quota increase or a route activation. It records what the
+code does today, the risk, and a staged plan for the maintainer to accept or change. It belongs to
+the quota-pool work this document defers. §8.14 does not depend on it.
+
+### 8.15.A What the code does today
+
+Two ledgers can spend the same provider allowance, and neither sees the other's calls.
+
+| Path | Who calls it | Where the reservation is made |
+|---|---|---|
+| Direct | A policy with `require_direct=True`: interactive unexpected-body classification (`citypods/audit_remedy.py`), city onboarding (`citypods/discovery/classify.py`), the remedy evaluator (`scripts/eval_remedy.py`, see [review/51](51-unexpected-body-remedy-flow.md)). Also any `LLMBackend` in `mode: direct`. | `select_and_reserve` in `citypods/compute/llm_scheduler.py`, against the CAS ledger `state/llm_budget.json` (`citypods/compute/llm_budget.py`) in the R2 coordination bucket. The ledger is settled to actual usage afterwards. |
+| Queued (v2) | Everything else in dispatch mode, and every `queue_only` policy. | No reservation is made on the runner (`_enqueue_durable_policy_job`). The `llm-dispatch-v2` Durable Object paces and reserves per route and provider in its own SQLite state (`pacing.js`, `coordinator.js`). |
+
+Both paths name provider keys the same way. The Worker's compiled routes give an `api_key_env` of
+`GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY`, `GROQ_API_KEY` and so on. The direct workflows
+(`remedy-unexpected-bodies.yml`, `city-discovery.yml`, `llm-deferred-sweep.yml`) pass GitHub
+secrets with the same names. A matching name is not proof of the same key. The Worker secret and
+the GitHub secret are set separately, and the repository cannot compare their values. So the
+issue's framing holds: this is a coordination gap to verify, not a shown overrun.
+
+**Why it may not have hurt yet.** Direct traffic looks small and occasional: onboarding a city, a
+remedy batch, an evaluation run. Queued traffic is paced under the lane ceilings of review/58 §12.4.
+Both statements are to be verified in §8.15.B.
+The gap matters when both are near a ceiling at the same moment. For example, a remedy batch might
+run on the Gemini key while the judge anchor lane is draining. Then each ledger believes it holds
+the whole daily allowance.
+
+### 8.15.B Step 1: establish the physical mapping (read-only)
+
+Before choosing an authority, find out which keys are really shared:
+
+1. **Key fingerprints, not values.** Record `sha256(key)[:12]` for each `api_key_env` on both sides.
+   The Worker writes it to `/v2/stats` (a new field, no secret material). A one-off workflow step
+   prints it from the GitHub secret. The same fingerprint means the same credential. Most providers
+   pool quota by key or project, so a shared key means a shared pool. Where documentation says the
+   pool is per organisation (Groq, review/54 §8.13), different keys in one organisation also share
+   it. That fact comes from the reviewed `quota_identity` configuration, never from the key.
+2. **Deployed ledger use.** List which live workflows actually reach `select_and_reserve`, and how
+   often, from `state/llm_budget.json` route counters over 28 days. Then compare those counts with
+   the Worker's per-route daily usage for the same days.
+3. **Retired-bucket references.** Audit local wrappers, CI and docs for the retired
+   `citypods-llm-dispatch` bucket. `citypods-spike` is the sole remaining R2 bucket and holds the
+   quota ledger. Keep it: Worker payloads moved to B2, but the coordination objects did not.
+
+The output is a table of physical pools, each with its direct callers and queued routes. Only a pool
+that appears on both sides needs the rest of this design.
+
+**Counters are per quota pool, not per key or route.** Two credentials in one organisation can share
+a quota (Groq, review/54 §8.13), and one credential can serve several routes. The authority must
+therefore count each pool once, under the reviewed `quota_identity` (provider, scope, window), and
+route every reserve for that pool, direct or queued, to the same counter. Step 1 must confirm that
+the Worker's Durable Object routing and provider windows already aggregate by that identity. If they
+count per route or per key object, a shared pool is still double-spent and step 3 is blocked until
+that is fixed.
+
+### 8.15.C Choosing the authority
+
+**Recommendation: the v2 Durable Object becomes the one ledger for every shared pool.** It already
+holds per-route and per-provider windows. It settles to actual usage. It handles 429 back-off, lease
+expiry and crash recovery, and it serialises every request through one object, so two callers
+cannot race. The Python CAS ledger stays for pools that only direct callers use. It is fail-closed
+and tested, and nothing gains from moving it.
+
+Rejected alternatives:
+
+- *Route every call through the queue.* This removes synchronous inference, which onboarding and
+  interactive remedy need. The issue says to keep it.
+- *Make the Python ledger the authority and have the Worker read it.* The Worker would need a CAS
+  round trip to R2 on every dispatch. That is slower and adds a cross-store failure mode to the hot
+  path.
+- *Split each pool's allowance between the two ledgers.* This is simple and needs no new endpoint,
+  but it wastes the share the idle side does not use. It is acceptable as an interim stage (stage 1
+  below) because it is safe.
+
+### 8.15.D The synchronous reservation interface
+
+The Worker would gain two authenticated endpoints. Both use the existing bearer token.
+
+- `POST /v2/reserve {route, provider, requests, input_tokens, output_tokens, ttl_s}` returns
+  `{lease_id, not_before}` or a typed refusal (`over_limit` with `retry_at`, or `unknown_route`).
+  The lease is charged to the same route and provider windows as a queued job, and it expires on the
+  same 20-minute horizon (`LLM_RESERVATION_TTL_SECONDS`).
+- `POST /v2/settle {lease_id, actual_requests, actual_input, actual_output, status}` corrects the
+  charge to actual usage, as the Python ledger does today. A 429 status feeds the same back-off a
+  queued job's 429 would. A lease that is never settled expires. If the caller marked the lease `dispatched` (set just before
+  the provider call), expiry does not free the estimate: it stays charged to the pool's windows until
+  those windows roll over or a reconciliation settles it, because the provider may have counted the
+  request. Only a lease that was never dispatched frees its estimate.
+
+On the Python side, `select_and_reserve` gets a second backend. When a direct call's route belongs
+to a shared pool, the backend calls `/v2/reserve` instead of the CAS ledger. If the Worker cannot be
+reached or refuses, the call fails closed (deferred), never sent unreserved.
+
+**Write cost.** Each direct call costs one reserve write and one settle write, against the account's
+DO row budget (review/57, review/58 WP4). Direct volume is assumed to be in the tens per day (to be measured in step 2 of §8.15.B), which would be negligible.
+The endpoint still checks the row-budget guard like any other write.
+
+### 8.15.E Staged migration and rollback
+
+Each stage is a separate PR, and each has a flag that turns it off.
+
+1. **Mapping and interim split (no new endpoint).** Publish the §8.15.B table. For each shared pool,
+   cap the Python ledger at a configured share of the pool (for example 10%), and lower the Worker's
+   configured ceiling by that same share. This is safe at once and needs no runtime coupling.
+   Rollback: remove the share.
+2. **Shadow reservations.** Direct calls also call `/v2/reserve` and `/v2/settle` with
+   `shadow: true`. The Worker records the lease but charges no window. The Python ledger stays
+   authoritative. Measure what the Worker would have refused, and confirm that leases settle and
+   expire correctly. No double charge occurs, because shadow leases charge nothing.
+3. **Cut over one pool.** Under a per-pool flag `direct_quota_authority: worker`:
+   - **Seed first.** Before the flag is on, import the Python ledger's current-window counters for
+     the pool into the Worker (requests, tokens, daily usage, and unsettled reservations). Until the
+     seed is confirmed, the stage-1 split stays in force, so the Worker never admits against
+     allowance the direct side already spent today.
+   - **Then switch.** The Worker lease is charged for real, the Python ledger is skipped for that
+     pool, and the stage-1 split is removed in the same change, so the allowance is counted once.
+   - **Rollback.** Restore the split first, then flip the flag. Seed the Python ledger with the
+     Worker's current-window counters for the pool (including leases still charged), so the two
+     ledgers start the pool's remaining allowance from the same figure. An in-flight lease settles or
+     expires as in §8.15.D. Without these two steps the ledgers could overlap beyond one lease
+     horizon.
+4. **The remaining shared pools,** one at a time.
+
+### 8.15.F Tests that prove it
+
+- **Concurrency.** A Worker unit test interleaves N simulated direct leases with queued jobs on one
+  route. Totals never exceed RPM, TPM or RPD at any instant. Run it under the DO test harness,
+  which serialises like production.
+- **Crash recovery.** A lease that was never dispatched frees its estimate at expiry. A dispatched
+  but unsettled lease stays charged until the window rolls. A settle after expiry is a no-op, not a
+  negative balance.
+- **Cutover and rollback.** After the seed, the Worker's remaining allowance equals the Python
+  ledger's remaining allowance for the pool. After a rollback, the Python ledger's remaining
+  allowance equals the Worker's.
+- **Shared pool.** Two routes on different keys of one organisation draw from one counter.
+- **Fail-closed.** With the Worker unreachable, a direct call on a shared pool defers. A direct call
+  on a direct-only pool still uses the CAS ledger.
+- **No double charge.** In shadow mode, window counters are unchanged by direct leases. After
+  cutover, the Python ledger records nothing for that pool.
+
+### 8.15.G Open questions for the maintainer
+
+- Confirm that interactive remedy and onboarding must stay synchronous. If a short queue wait is
+  acceptable, routing them through the queue (rejected above) becomes the simplest fix.
+- Should the interim stage-1 split ship before the mapping step proves a shared key? It is cheap and
+  safe, but it costs a little queued capacity on pools that may turn out to be separate.
 
 ## Retained prior design and local prototype notes
 
