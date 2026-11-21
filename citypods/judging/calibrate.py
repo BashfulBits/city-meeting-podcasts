@@ -58,6 +58,7 @@ EXCLUDED_WINDOW = "sibling_quote_outside_adjudicator_window"
 EXCLUDED_UNCHECKED = "adjudicator_window_unavailable"
 EXCLUDED_INCOMPLETE = "missing_anchor_or_sibling"
 EXCLUDED_PRECUTOVER = "adjudicated_before_anchor_cutover"
+EXCLUDED_AFTER_WINDOW = "adjudicated_after_anchor_window"
 # Re-asks of an answered question and human-verified probes are not the routine answer.
 NON_ROUTINE_SAMPLES = frozenset({"stability", "probe"})
 
@@ -110,6 +111,7 @@ def _rows(
     exclude_family: str | None = None,
     families: Mapping[str, str] | None = None,
     since: str | None = None,
+    until: str | None = None,
     prompt_version: str | None = None,
 ) -> list[dict]:
     """Usable rows of one role, oldest tier first and newest last within a tier.
@@ -128,6 +130,7 @@ def _rows(
             and family_of(str(row.get("judge_model") or ""), families) == exclude_family
         )
         and (since is None or str(row.get("judged_at") or "") >= since)
+        and (until is None or str(row.get("judged_at") or "") < until)
         and row.get("sample") not in NON_ROUTINE_SAMPLES
         and (prompt_version is None or row.get("prompt_version") in (None, prompt_version))
         and row.get("context_tier") in TIERS
@@ -148,10 +151,14 @@ def collect(
     calibration_rate: float,
     anchor_model: str = ANCHOR_MODEL,
     since: str | None = ANCHOR_SINCE,
+    until: str | None = None,
     families: Mapping[str, str] | None = None,
     window_check: WindowCheck | None = None,
 ) -> dict[str, QuestionData]:
-    """The weighted adjudicated items per question; ``subjects_by_group`` is one meeting each."""
+    """The weighted adjudicated items per question; ``subjects_by_group`` is one meeting each.
+
+    ``since``/``until`` bound the anchor's era: its rows and the adjudications that sampled its
+    population. A retired anchor is evaluated with ``since=None, until=<its last day>``."""
     if not 0 < calibration_rate <= 1:
         raise ValueError("calibration_rate must be in (0, 1]")
     data = {q.id: QuestionData(q) for q in spec.questions}
@@ -161,7 +168,7 @@ def collect(
         for question in spec.questions:
             cell = data[question.id]
             if question.kind == "choose":
-                _collect_choose(cell, subjects, anchor_model, since, weights)
+                _collect_choose(cell, subjects, anchor_model, since, until, weights)
                 continue
             for subject in subjects:
                 version = question.prompt_version
@@ -169,6 +176,9 @@ def collect(
                     _rows(subject, question.id, "adjudicator", prompt_version=version)
                 )
                 if adjudicator is None or adjudicator.get("sample") not in weights:
+                    continue
+                if until is not None and str(adjudicator.get("judged_at") or "") >= until:
+                    cell.exclude(EXCLUDED_AFTER_WINDOW)
                     continue
                 if since is not None and str(adjudicator.get("judged_at") or "") < since:
                     # Chosen under the previous anchor: a contested item by that anchor's
@@ -183,6 +193,7 @@ def collect(
                         "anchor",
                         model=anchor_model,
                         since=since,
+                        until=until,
                         prompt_version=version,
                     )
                 )
@@ -245,7 +256,7 @@ def settle_deferred(data: Mapping[str, QuestionData], results: Mapping[Any, bool
         cell.deferred.clear()
 
 
-def _collect_choose(cell, subjects, anchor_model, since, weights) -> None:
+def _collect_choose(cell, subjects, anchor_model, since, until, weights) -> None:
     if len(subjects) < 2:
         return
     key = subjects[0]  # the group's rows live on its first subject (runner._plan_choose)
@@ -255,20 +266,32 @@ def _collect_choose(cell, subjects, anchor_model, since, weights) -> None:
     reverse = _deciding(_rows(key, f"{qid}_r", "adjudicator", prompt_version=version))
     if forward is None or reverse is None or forward.get("sample") not in weights:
         return
-    if (
-        since is not None
-        and min(str(forward.get("judged_at") or ""), str(reverse.get("judged_at") or "")) < since
-    ):
+    earliest = min(str(forward.get("judged_at") or ""), str(reverse.get("judged_at") or ""))
+    latest = max(str(forward.get("judged_at") or ""), str(reverse.get("judged_at") or ""))
+    if until is not None and latest >= until:
+        cell.exclude(EXCLUDED_AFTER_WINDOW)
+        return
+    if since is not None and earliest < since:
         cell.exclude(EXCLUDED_PRECUTOVER)
         return
     if forward.get("value") != reverse.get("value"):
         cell.exclude("adjudicator_order_unstable")
         return
     anchor_f = _deciding(
-        _rows(key, qid, "anchor", model=anchor_model, since=since, prompt_version=version)
+        _rows(
+            key, qid, "anchor", model=anchor_model, since=since, until=until, prompt_version=version
+        )
     )
     anchor_r = _deciding(
-        _rows(key, f"{qid}_r", "anchor", model=anchor_model, since=since, prompt_version=version)
+        _rows(
+            key,
+            f"{qid}_r",
+            "anchor",
+            model=anchor_model,
+            since=since,
+            until=until,
+            prompt_version=version,
+        )
     )
     if anchor_f is None or anchor_r is None:
         cell.exclude(EXCLUDED_INCOMPLETE)
@@ -522,6 +545,66 @@ def report(
         "policy": policy,
         "policy_fingerprint": fingerprint(policy),
         "questions": questions,
+    }
+
+
+def evaluate(
+    data: Mapping[str, QuestionData],
+    block: Mapping[str, Any],
+    *,
+    cap: float = FALSE_ACCEPT_CAP,
+) -> dict[str, Any]:
+    """Score the adjudicated items at thresholds that were fitted elsewhere.
+
+    ``block`` is a ``judging.tasks.<task>.thresholds`` mapping. This is how a different anchor (a
+    retired one, a Cloud Run endpoint, a new free route) is checked against thresholds already
+    tested on another: ``collect`` with that anchor's own era, then ``evaluate`` at the same levels.
+    ``accepted`` is true only where every threshold-bearing question is within its bound."""
+    questions: dict[str, Any] = {}
+    for question_id, cell in data.items():
+        kind = cell.question.kind
+        values = block.get(question_id) if isinstance(block.get(question_id), Mapping) else None
+        entry: dict[str, Any] = {
+            "kind": kind,
+            "items": len(cell.items),
+            "excluded": dict(sorted(cell.excluded.items())),
+        }
+        if kind == "validate" and values:
+            scored = _rounded(_score(_aggregate(cell.items), values["t_admit"], values["t_reject"]))
+            entry["scored"] = scored
+            entry["accepted"] = (
+                scored["agreement"] is not None and scored["false_accept_upper95"] <= cap
+            )
+        elif kind == "gate" and values:
+            entry.update(_gate_at(cell.items, float(values["flag_at"])))
+        elif kind == "grade":
+            entry.update(fit_grade(cell.items))
+        elif kind == "choose":
+            entry.update(fit_choose(cell.items))
+        questions[question_id] = entry
+    decided = [q["accepted"] for q in questions.values() if "accepted" in q]
+    return {"questions": questions, "accepted": bool(decided) and all(decided), "cap": cap}
+
+
+def _gate_at(items: Sequence[Item], flag_at: float) -> dict[str, Any]:
+    """Missed flags and false holds of the anchor at a given flag level."""
+    flagged = clear = missed = 0.0
+    held = 0.0
+    for item in items:
+        truth, p = _verdict(item.adjudicator), _number(item.anchor)
+        if truth is None or p is None:
+            continue
+        if truth:
+            flagged += item.weight
+            missed += item.weight * (p < flag_at)
+        else:
+            clear += item.weight
+            held += item.weight * (p >= flag_at)
+    return {
+        "flag_at": flag_at,
+        "missed_flag_share": missed / flagged if flagged else None,
+        "false_hold_rate": held / clear if clear else None,
+        "accepted": bool(flagged) and missed == 0,
     }
 
 
@@ -789,7 +872,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config-dir", default="config")
     parser.add_argument("--output-dir", default="public")
     parser.add_argument("--anchor-model", default=ANCHOR_MODEL)
-    parser.add_argument("--since", default=ANCHOR_SINCE, help="first anchor judgment date counted")
+    parser.add_argument(
+        "--since",
+        default=ANCHOR_SINCE,
+        help="first anchor judgment date counted; pass '' for no lower bound",
+    )
+    parser.add_argument("--until", help="stop counting at this date (a retired anchor's last day)")
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="score this anchor at the thresholds already in site config; fit and write nothing",
+    )
+    parser.add_argument(
+        "--record", type=Path, help="with --evaluate, write the result JSON into this directory"
+    )
     parser.add_argument("--false-accept-cap", type=float, default=FALSE_ACCEPT_CAP)
     parser.add_argument("--window-cache", type=Path, help="JSON file of window-check results")
     parser.add_argument(
@@ -839,11 +935,32 @@ def main(argv: list[str] | None = None) -> int:
         spec,
         calibration_rate=rate,
         anchor_model=args.anchor_model,
-        since=args.since,
+        since=args.since or None,
+        until=args.until,
         families=families,
         window_check=checks,
     )
     settle_deferred(data, checks.run(args.window_cache, legacy=args.legacy_window_cache))
+    if args.evaluate:
+        block = ((site.get("judging") or {}).get("tasks", {}).get(spec.name) or {}).get(
+            "thresholds"
+        )
+        if not isinstance(block, dict):
+            raise SystemExit(f"judging.tasks.{spec.name}.thresholds is not set in the site config")
+        outcome = {
+            "task": spec.name,
+            "anchor_model": args.anchor_model,
+            "since": args.since or None,
+            "until": args.until,
+            "thresholds": block,
+            **evaluate(data, block, cap=args.false_accept_cap),
+        }
+        print(json.dumps(outcome, indent=2))
+        if args.record:
+            args.record.mkdir(parents=True, exist_ok=True)
+            name = f"{spec.name}-{args.anchor_model.replace('/', '_')}.json"
+            write_atomically(args.record / name, json.dumps(outcome, indent=2) + "\n")
+        return 0
     result = report(
         data,
         spec,
@@ -870,6 +987,7 @@ __all__ = [
     "Item",
     "QuestionData",
     "collect",
+    "evaluate",
     "fit_choose",
     "fit_gate",
     "fit_grade",
