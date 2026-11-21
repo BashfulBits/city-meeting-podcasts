@@ -7,6 +7,23 @@ Evidence: [`evidence/2026-11-11-llm-pipeline-throughput.md`](evidence/2026-11-11
 (queries, sources, data limits, pause log). Window: 2026-11-04 03:31Z to 2026-11-11 03:31Z unless
 stated. Production was read only; no pause or resume was issued.
 
+### Locator backup decision (2026-11-21)
+
+The maintainer approved replacing the one-model queue accounting with conservative pooled
+accounting so a size-selected primary can fall back to eligible alternatives or Kimi K3.1 Pro
+after repeated failures or when its routes are excluded. DeepSeek is not a backup above its
+76,000-token safe input band. The reservation rises from
+four to six ingress units per job; the compiler redistributes the fixed account budget. This
+trades some queue capacity for recovery and preserves existing size bands. The queued output
+reservation is 6,144, Kimi's configured route limit; `route_max` still dispatches each route at
+its own limit. Actual usage can exceed the initial reservation until settlement, so transient
+token pacing is less conservative than with a 20,000-token reservation. A 26-item long-meeting
+MiniMax probe used 1,196 completion tokens and finished at
+that cap; Kimi's matching probe timed out. Neither proves quality or output sufficiency across
+the catalog. See `evals/chapter-locator/manual-review-v2/README.md` for the evidence and limits.
+Existing completed artifacts remain reusable; pending jobs keep the old policy until re-planned
+or re-enqueued, and the changed policy fingerprint reopens retry-exhausted work.
+
 ## 1. Summary
 
 The dispatcher is the binding stage, and it is bound by how it holds slots, not by any quota.

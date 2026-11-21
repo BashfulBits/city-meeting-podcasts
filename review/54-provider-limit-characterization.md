@@ -1,7 +1,8 @@
 # Provider limit revalidation and burst/refill characterization
 
-**Status: §8.14 (configured-route input/output cap re-measurement) is L3, approved 2026-11-21;
-the rest of this document stays Deferred, L2.** Tracking issue:
+**Status: §8.14 (configured-route input/output cap re-measurement) is implemented (approved L3
+2026-11-21; first live run is the next Monday weekly run); the rest of this document stays
+Deferred, L2.** Tracking issue:
 [#2264](https://github.com/BashfulBits/city-meeting-podcasts/issues/2264).
 
 **Maintainer scope correction — 2026-10-11.** Review/48 remains new-route discovery,
@@ -28,7 +29,7 @@ operationally configured values. A provider-canonical mismatch triggers an indep
 re-check, not silent replacement. Daily/monthly exhaustion may bound limits with complete scoped
 period accounting; no deliberate daily/monthly exhaustion experiment is planned.
 
-## 8.14 Configured-route input/output cap re-measurement — L3, approved 2026-11-21
+## 8.14 Configured-route input/output cap re-measurement — implemented 2026-11-21
 
 **Maintainer direction (2026-11-21).** Fold one part of this document into the review/48 weekly run:
 re-measuring the input and output caps of routes that are already configured. The weekly full run
@@ -112,7 +113,9 @@ issue only.
 A reduction is offered only when **two** reduction observations exist for the same identity and
 axis:
 
-- from different weekly runs (`run_id`s) on different UTC calendar days;
+- from different weekly runs (`run_id`s) on different UTC calendar days. Observations carry their
+  session, not their run, so the code requires the two to be more than six hours apart (longer
+  than any reconcile job) as well as on different days;
 - both within the last 28 days, with no verified admission at or above the current cap between or
   after them (an admission resets the pending reduction);
 - with the same count basis and control;
@@ -124,6 +127,10 @@ If the second observation is inconsistent with the first (for example, the first
 refuses 80k, the second admits 39k and refuses 40k), no reduction is offered. The newer
 observation replaces the older one as the pending observation, and the next weekly run must
 confirm it.
+
+A route with no `hard_input_ceiling` is compared with its effective input cap (window minus
+output); a confirmed cut below it creates the ceiling and is still a reduction. The issue and PR
+report each session's measured admitted count separately from the value it proposes.
 
 The offered value is the **larger** of the two candidate values, so the second probe can only
 confirm, never deepen, the cut. Consistency guarantees it is below both refused bounds. It is

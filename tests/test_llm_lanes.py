@@ -414,7 +414,11 @@ class TestRecipeAffectingModelPins:
         from citypods.chapter_locator import DEEPSEEK_V41_LOCATOR_MODEL, MINIMAX_LOCATOR_MODEL
 
         locator = lane_for("chapter-locator").models
-        assert locator == ("deepseek/deepseek-v4-flash", "minimaxai/minimax-m3.1-flash")
+        assert locator == (
+            "deepseek/deepseek-v4-flash",
+            "minimaxai/minimax-m3.1-flash",
+            "moonshotai/kimi-k3.1-pro",
+        )
         assert LOCATOR_MODELS == locator
         assert MINIMAX_LOCATOR_MODEL in locator
         assert DEEPSEEK_V41_LOCATOR_MODEL not in locator

@@ -402,6 +402,33 @@ test("primary route in size_excluded_routes unlocks declared backup", () => {
   assert.deepEqual(routesEligibleFor(job, catalog).map((route) => route.route_id), ["b"]);
 });
 
+test("locator refusal unlocks size-eligible backups in the configured catalog", () => {
+  const primary = "deepseek/deepseek-v4-flash";
+  const policy = {
+    allowed_models: [primary],
+    backup_models: ["minimaxai/minimax-m3.1-flash", "moonshotai/kimi-k3.1-pro"],
+    backup_after_attempts: 12,
+    allow_paid: false,
+  };
+  const job = {
+    policy_json: policy,
+    attempts: 1,
+    input_token_estimate: 50000,
+    max_output_token_estimate: 6144,
+    size_excluded_routes: JSON.stringify(DISPATCH_LIMITS.model_routes_map[primary]),
+  };
+  const routes = routesEligibleFor(job, DISPATCH_LIMITS).map((route) => route.route_id);
+  assert.ok(routes.includes("nvidia_minimaxai_minimax_m3_1_flash"));
+  assert.ok(routes.includes("nvidia_moonshotai_kimi_k3_1_pro"));
+
+  // Beyond Kimi's configured hard input ceiling, structural admission must reject it even
+  // after the primary is excluded. Provider tokenization may lower its practical ceiling.
+  job.input_token_estimate = 968000;
+  assert.ok(!routesEligibleFor(job, DISPATCH_LIMITS).some(
+    (route) => route.route_id === "nvidia_moonshotai_kimi_k3_1_pro"
+  ));
+});
+
 test("unpinned primary route does not suppress backup when pinned primary is excluded", () => {
   const { catalog, policy, job } = structuralFixture();
   catalog.model_routes_map.primary.push("unpinned");

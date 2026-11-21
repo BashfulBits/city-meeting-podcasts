@@ -4,6 +4,10 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Dallas Housing Finance Corporation"
+lifecycle:
+  status: dormant
+  reason: "Standing corporation inactive in Swagit provider feed; latest recording in view 113 was June 9, 2026 despite ongoing meetings (latest November 10, 2026 on Legistar)."
+  evidence_url: "https://cityofdallas.legistar.com/Calendar.aspx"
 podcast_title: "Dallas: Dallas Housing Finance Corporation"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

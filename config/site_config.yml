@@ -167,16 +167,23 @@ llm_lanes:
     # Production selection is size-aware in citypods/chapter_locator.py. DeepSeek V4 Flash is the
     # stable recipe model for packets up to 76,000 internal estimated input tokens. This
     # empirically-derived cutoff stays below the largest accepted V4 packet (76,546) and above the
-    # largest observed rejected boundary (81,301). Packets from 76,001 to 500,000 estimated tokens
-    # (LOCATOR_OVERFLOW_MAX_INPUT_TOKENS) go to MiniMax M3.1 Flash (review/58 WP8, 2026-11-11);
+    # largest observed rejected boundary (81,301). Larger packets up to the route-derived
+    # LOCATOR_OVERFLOW_MAX_INPUT_TOKENS go to MiniMax M3.1 Flash (review/58 WP8, 2026-11-11);
     # larger packets are held as deferred and not submitted (GH#2651). DeepSeek V4.1 Flash left
     # this lane in WP8 (about 5% of its NVIDIA calls succeeded); judge:adjudicator still uses it.
     # GLM 5.3 Flash is documented as optional small-context capacity and is not wired in.
+    # A job starts on its size-selected primary. Size-eligible backups activate after repeated
+    # failures or immediately if every primary route is structurally excluded (including a
+    # content-filter refusal). Pooled accounting conservatively budgets all three model indexes.
     models:
-      [deepseek/deepseek-v4-flash, minimaxai/minimax-m3.1-flash]
-    # Each request is pinned to its size band: V4 Flash alone (one model index) or, above 76,000
-    # tokens, MiniMax M3.1 Flash alone (one model index). Kimi K3 was retired upstream 2026-10-15.
-    dispatch_shape: per_model
+      - deepseek/deepseek-v4-flash
+      - minimaxai/minimax-m3.1-flash
+      - moonshotai/kimi-k3.1-pro
+    backup_models:
+      - deepseek/deepseek-v4-flash
+      - minimaxai/minimax-m3.1-flash
+      - moonshotai/kimi-k3.1-pro
+    backup_after_attempts: 12
     # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
     # One job per meeting with a completed agenda (7.6% of meetings); second feeder.
     reservation_ratio: 10
@@ -322,6 +329,7 @@ llm_families:
   "zai/glm-4.7-flash": zai
   "zai/glm-5.3-flash": zai
   "moonshotai/kimi-k3": moonshot
+  "moonshotai/kimi-k3.1-pro": moonshot
   "minimaxai/minimax-m3.1-flash": minimax
   "kilo/stepfun/step-3.7-flash:free": stepfun
   "nvidia/nemotron-3-ultra-550b-a55b:free": nvidia

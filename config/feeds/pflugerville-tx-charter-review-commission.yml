@@ -4,6 +4,10 @@ provider: granicus
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
   body: "Charter Review Commission"
+lifecycle:
+  status: dormant
+  reason: "The 2026 Charter Review Commission completed its report and work; the city charter provides for future review commissions."
+  evidence_url: "https://pflugerville.legistar.com/View.ashx?GUID=60D57F00-55F8-4451-81CB-2B17B9FD7FFC&ID=15475399&M=F"
 podcast_title: "Pflugerville: Charter Review Commission"
 podcast_author: "City of Pflugerville, TX"
 podcast_email: ""
