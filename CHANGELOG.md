@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+Fixed misleading unroutable-job monitoring advice: job-specific exclusions and retired routes can
+also exhaust eligibility, and one job may contribute to multiple route counters. Inspect the job
+and catalog before changing route configuration.
+
 - **Route-bound evaluation identity.** Remedy evaluation and route-level P3 admission share the
   previously approved, physical-route-scoped returned-model alias. Evaluations retain their raw
   replies and report exact, approved-alias, or unknown identity; a name from a different allowed
