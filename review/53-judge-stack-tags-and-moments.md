@@ -698,35 +698,47 @@ Kish effective sample size for the weights. Within the cap the fit maximises agr
 adjudicator, preferring the stricter admit. Items whose deciding sibling quote is **not in the
 adjudicator's evidence window** (the 2026-11-09 T2-window finding) are excluded and counted per
 question; so are items whose adjudicator window cannot be rebuilt (no transcript, or the rebuilt
-evidence digest differs from the stored one). A gate level is proposed only if it holds at most half
-of the items the adjudicator cleared (`MAX_FALSE_HOLD`). The thresholds are written under
-`judging.tasks.<task>.thresholds` with the policy fingerprint; **both tasks stay in shadow mode and
-nothing reads the thresholds until graduation**.
+evidence digest differs from the stored one). **Contested** adjudications made before the cutover
+are excluded too: those items were picked by the previous anchor's disagreements, so they would bias
+a Gemini fit. The calibration sample is picked by hash, not by any anchor, so it stays. A gate level
+is proposed only if it holds at most half of the items the adjudicator cleared (`MAX_FALSE_HOLD`);
+otherwise the candidate level is reported as a diagnostic with no proposal. The thresholds are
+written under `judging.tasks.<task>.thresholds` with the policy fingerprint (task, anchor, cutover,
+cap, sample rate, the anchor's family members and the question prompt versions). **Both tasks stay in
+shadow mode and nothing reads the thresholds until graduation.**
 
 First run on production state (contested items weigh 1, the 3% calibration sample weighs 1/0.03):
 
 | Task / question | Contested | Calibration | Excluded | Result |
 |---|---|---|---|---|
-| tag `supported` | 391,390 | 27,732 | 172,659 window unavailable | admit at p >= 0.70 with sibling support, reject at p <= 0.69; agreement 84.7%, false-accept 4.74% (upper 95% 4.97%), 275,306 adjudicated negatives |
-| moment `supported` | 13,543 | 2,795 | 512 window unavailable, 848 no anchor or sibling | admit at p >= 0.95, reject at p <= 0.94; agreement only 23.3%, false-accept 2.52% (upper 4.32%) |
-| moment `publishable` (gate) | 14,314 | 2,602 | 1,325 window unavailable, 272 incomplete | **no threshold**: the lowest flag level that misses no adjudicator flag (0.15) would hold 97% of cleared items. Sibling check: Gemma missed 0 of the flags; Nemotron missed 2,278 |
-| moment `usefulness` (grade) | 27,322 | 2,591 | 685 window unavailable, 1,225 incomplete | within one level of the adjudicator: 83.1% (reported, no threshold) |
+| tag `supported` | 333,367 | 27,732 | 225,578 contested before the cutover; 5,104 window unavailable | admit at p >= 0.68 with sibling support, reject at p <= 0.67; agreement 85.2%, 97.4% decided; false-accept 4.73% (upper 95% 4.97%) over 233,275 adjudicated negatives |
+| moment `supported` | 7,373 | 2,795 | 7,170 before the cutover; 360 no anchor or sibling | admit at p >= 0.90 with sibling support, reject at p <= 0.85; agreement 61.6%, 83.1% decided; false-accept 2.18% (upper 95% 4.84%) over 1,540 negatives |
+| moment `publishable` (gate) | 6,549 | 2,602 | 9,265 before the cutover; 97 incomplete | **no threshold**: the highest level that still holds every flagged item is 0.16, and it would hold 96.8% of the cleared items. Sibling check: Gemma missed 0 of the flags; Nemotron missed 619 |
+| moment `usefulness` (grade) | 21,662 | 2,591 | 7,349 before the cutover; 208 incomplete; 13 window unavailable | within one level of the adjudicator 83.5% (reported, no threshold) |
 | moment `best` (choose) | 0 | 0 | none | not calibrated: the adjudicator has judged no `best` items yet |
 
 Reading the numbers:
-- The tag threshold is usable as a shadow proposal. Its admit and reject levels are almost the same
-  (0.70 and 0.69), so little is left undecided (97.5% decided).
-- The moment `supported` threshold meets the false-accept cap only by admitting very little, so
-  agreement is poor. Do not graduate moments on it; the anchor needs a better prompt or a second
-  independent reading first.
-- The Gemini anchor alone does not separate flagged from clear on `publishable`. Moment graduation
+- The tag threshold is usable as a shadow proposal: admit and reject sit one hundredth apart, so
+  97.4% of items are decided.
+- The moment `supported` threshold is weaker: it leaves 17% undecided and agrees 62% of the time
+  overall. The cap holds, but graduation needs the anchor prompt improved or a second independent
+  reading before moments rely on it.
+- The Gemini anchor alone does not separate flagged from clear on `publishable`; moment graduation
   needs a different mechanism for that gate.
-- 31% of the tag items had no rebuildable adjudicator window, so those are excluded rather than
-  guessed. The excluded share is reported so a skew can be spotted; a later pass can reduce it by
-  repairing the evidence builder's digest for older rows.
-- The numbers reproduce with `python -m citypods.judging.calibrate --task <task> --write` against
-  the pulled state (a first run reads each needed transcript once, about an hour; `--window-cache`
-  keeps the results).
+- A first run drops a large block of window-unavailable items if the cutover filter is not applied
+  first (172,659 of the tag items): they were old-anchor rows. The remaining 5,104 are reported so a
+  skew can be spotted.
+- **Is the weak moment result an old evidence-window artifact?** Until 2026-11-18 the moment
+  evidence window was cut at the first 400 words, and review/60 found the quote outside it for 34
+  of 60 sampled moments (fixed in `1c199e27`, `c9f0d559`). The cutover to Gemini was 2026-11-12, so
+  six days of judgments may have seen truncated evidence. A fit restricted to judgments from
+  2026-11-18 (`--since 2026-11-18`) did not improve: `supported` had no pair under the cap, with only
+  51 calibration items (each weighing about 33); `publishable` still held 99.7% of cleared items;
+  `usefulness` agreed 65%. That sample is too small to confirm or rule the cause out. Do not clear
+  and re-run adjudication on this evidence; re-run this report once the post-fix sample is larger.
+- Reproduce with `python -m citypods.judging.calibrate --task <task> --write` against the pulled
+  state. A first run reads each needed transcript once (about an hour); `--window-cache` keeps the
+  results, keyed by the quote and evidence, and never caches a failed read.
 
 ### Graduation (PR8 tags, PR9 moments)
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import yaml
 
 from citypods.judging import calibrate
@@ -337,15 +339,111 @@ def test_same_evidence_digest_needs_no_window_check_and_deferred_checks_settle()
     assert cell.deferred == []
 
 
-def test_a_gate_level_that_holds_most_clear_items_is_not_proposed():
-    result = {
-        "policy_fingerprint": "f",
-        "policy": {"anchor_model": ANCHOR, "false_accept_cap": 0.05},
-        "questions": {
-            "publishable": {
-                "kind": "gate",
-                "proposal": {"flag_at": 0.15, "false_hold_rate": 0.97, "adjudicator_flags": 9},
-            }
-        },
-    }
-    assert "publishable" not in calibrate.thresholds(result)
+def test_a_gate_level_that_holds_most_clear_items_is_a_diagnostic_not_a_proposal():
+    items = [_item(0.15, True, True)] + [_item(0.2, False, False) for _ in range(9)]
+    fit = calibrate.fit_gate(items)
+    assert fit["proposal"] is None
+    assert fit["candidate"]["flag_at"] == 0.15 and fit["candidate"]["false_hold_rate"] == 1.0
+
+
+def test_gate_counts_false_holds_at_the_floored_level_that_is_exported():
+    # The lowest flag is 0.629; the exported level is 0.62, which also holds the 0.625 clear item.
+    items = (
+        [_item(0.629, True, True)]
+        + [_item(0.625, False, False)]
+        + [_item(0.01, False, False) for _ in range(5)]
+    )
+    fit = calibrate.fit_gate(items)
+    assert fit["proposal"]["flag_at"] == 0.62
+    assert fit["proposal"]["false_hold_rate"] == round(1 / 6, 4)
+
+
+def test_the_cap_uses_the_unrounded_bound_and_ranking_uses_unrounded_agreement():
+    # 72 unit negatives and one of weight 1.2 with no false accepts: upper bound 0.0500175.
+    negatives = [_item(0.1, False, False) for _ in range(72)]
+    negatives.append(_item(0.1, False, False, weight=1.2))
+    assert calibrate.fit_validate(negatives, cap=0.05)["proposal"] is None
+    # Agreement differences below the fourth decimal still rank pairs.
+    many = [_item(0.1, False, False) for _ in range(25_000)] + [_item(0.9, True, True)]
+    assert calibrate.fit_validate(many, cap=0.5)["proposal"]["t_admit"] == 0.9
+
+
+def test_contested_adjudications_from_before_the_cutover_are_left_out():
+    def rows(at):
+        return [
+            _row("supported", "anchor", ANCHOR, 0.9),
+            _row("supported", "sibling", "qwen/qwen3.8-27b", True),
+            _row("supported", "adjudicator", "adj", True, sample="contested", at=at),
+            _row("supported", "adjudicator", "adj2", True, sample="calibration", at=at),
+        ]
+
+    old = _subject("old", rows("2026-11-10T00:00:00Z")[:3])
+    old_cal = _subject("oldcal", [rows("2026-11-10T00:00:00Z")[i] for i in (0, 1, 3)])
+    new = _subject("new", rows("2026-11-15T00:00:00Z")[:3])
+    data = calibrate.collect(
+        [[old, old_cal, new]], _spec(VALIDATE), calibration_rate=0.03, families=FAMILIES
+    )
+    cell = data["supported"]
+    assert sorted(i.subject_id for i in cell.items) == ["new", "oldcal"]
+    assert cell.excluded == {calibrate.EXCLUDED_PRECUTOVER: 1}
+
+
+def test_write_thresholds_handles_comments_and_stays_inside_judging_tasks():
+    text = """\
+judging:
+  tasks:
+    tag: {mode: shadow}  # keep in shadow
+other:
+  tasks:
+    tag: {mode: live}
+"""
+    out = calibrate.write_thresholds(text, "tag", {"policy_fingerprint": "x"})
+    assert "# keep in shadow" in out
+    loaded = yaml.safe_load(out)
+    assert loaded["judging"]["tasks"]["tag"]["thresholds"] == {"policy_fingerprint": "x"}
+    assert loaded["other"]["tasks"]["tag"] == {"mode": "live"}
+    block_style = "judging:\n  tasks:\n    tag:\n      mode: shadow\nother:\n  x: 1\n"
+    try:
+        calibrate.write_thresholds(block_style + "    tag: {mode: live}\n", "tag", {})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("an entry outside judging.tasks must not be edited")
+
+
+def test_the_family_policy_is_part_of_the_fingerprint():
+    spec = _spec(VALIDATE)
+    data = {q.id: calibrate.QuestionData(q) for q in spec.questions}
+    one = calibrate.report(data, spec, calibration_rate=0.03, families=FAMILIES)
+    moved = {**FAMILIES, "qwen/qwen3.8-27b": "google"}
+    two = calibrate.report(data, spec, calibration_rate=0.03, families=moved)
+    assert one["policy_fingerprint"] != two["policy_fingerprint"]
+    assert (
+        one["policy_fingerprint"]
+        == calibrate.report(data, spec, calibration_rate=0.03, families=dict(FAMILIES))[
+            "policy_fingerprint"
+        ]
+    )
+
+
+def test_window_cache_keys_the_quote_and_does_not_cache_read_failures(tmp_path):
+    def sibling(reason):
+        return {"question_id": "supported", "reason": reason, "evidence_digest": "d1"}
+
+    adjudicator = {"evidence_digest": "d2", "context_tier": "T2"}
+    subject = Subject("t", "s", "ep", None, "p", {})
+    first = calibrate._check_key(subject, sibling("quote a"), adjudicator)
+    assert first == calibrate._check_key(subject, sibling("quote a"), adjudicator)
+    assert first != calibrate._check_key(subject, sibling("quote b"), adjudicator)
+
+    checks = calibrate.WindowChecks(None, {}, _spec(VALIDATE))
+    cache = tmp_path / "cache.json"
+    checks.pending["ep"] = [(first, subject, sibling("quote a"), adjudicator)]
+    checks.episodes["ep"] = type("E", (), {"transcript_key": "k"})()
+    checks.storage = None  # the read fails: the verdict is not cached
+    assert checks.run(cache) == {first: None}
+    assert json.loads(cache.read_text())["r"] == {}
+    # A cached verdict for another quote is not a hit for this one.
+    cache.write_text(json.dumps({"v": 2, "r": {checks._name(("s", "supported", "other")): True}}))
+    checks.pending["ep"] = [(first, subject, sibling("quote a"), adjudicator)]
+    assert checks.run(cache) == {first: None}

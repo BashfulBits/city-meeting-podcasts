@@ -55,6 +55,7 @@ MAX_FALSE_HOLD = 0.5
 EXCLUDED_WINDOW = "sibling_quote_outside_adjudicator_window"
 EXCLUDED_UNCHECKED = "adjudicator_window_unavailable"
 EXCLUDED_INCOMPLETE = "missing_anchor_or_sibling"
+EXCLUDED_PRECUTOVER = "contested_before_anchor_cutover"
 
 # (subject, sibling row, adjudicator row) -> whether the sibling's quote is in the adjudicator's
 # evidence; None when that evidence cannot be rebuilt.
@@ -155,6 +156,15 @@ def collect(
             for subject in subjects:
                 adjudicator = _deciding(_rows(subject, question.id, "adjudicator"))
                 if adjudicator is None or adjudicator.get("sample") not in weights:
+                    continue
+                if (
+                    adjudicator["sample"] == CONTESTED
+                    and since is not None
+                    and str(adjudicator.get("judged_at") or "") < since
+                ):
+                    # Contested under the previous anchor: the item was picked by its
+                    # disagreement, not by this anchor's, so it would bias this fit.
+                    cell.exclude(EXCLUDED_PRECUTOVER)
                     continue
                 anchor = _deciding(
                     _rows(subject, question.id, "anchor", model=anchor_model, since=since)
@@ -323,16 +333,26 @@ def _score(cells: Sequence[tuple], t_admit: float, t_reject: float) -> dict:
     return {
         "t_admit": t_admit,
         "t_reject": t_reject,
-        "agreement": round(agree / total, 4) if total else None,
-        "decided_share": round(decided / total, 4) if total else None,
-        "false_accept_rate": round(rate, 4) if negative_weight else None,
-        "false_accept_upper95": round(wilson_upper(rate, n_eff), 4),
+        "agreement": agree / total if total else None,
+        "decided_share": decided / total if total else None,
+        "false_accept_rate": rate if negative_weight else None,
+        "false_accept_upper95": wilson_upper(rate, n_eff),
         "adjudicated_negatives": negatives,
     }
 
 
+def _rounded(scored: Mapping[str, Any]) -> dict:
+    """The reported form; decisions (the cap, the ranking) use the unrounded values."""
+    return {
+        key: round(value, 4)
+        if isinstance(value, float) and key.startswith(("a", "d", "f"))
+        else value
+        for key, value in scored.items()
+    }
+
+
 def score_validate(items: Sequence[Item], t_admit: float, t_reject: float) -> dict:
-    return _score(_aggregate(items), t_admit, t_reject)
+    return _rounded(_score(_aggregate(items), t_admit, t_reject))
 
 
 def fit_validate(items: Sequence[Item], cap: float = FALSE_ACCEPT_CAP) -> dict:
@@ -351,22 +371,19 @@ def fit_validate(items: Sequence[Item], cap: float = FALSE_ACCEPT_CAP) -> dict:
                 best = (key, scored)
     if best is None:
         return {"proposal": None, "reason": f"no pair keeps the false-accept upper bound <= {cap}"}
-    return {"proposal": best[1]}
+    return {"proposal": _rounded(best[1])}
 
 
 def fit_gate(items: Sequence[Item]) -> dict:
-    """The anchor's highest flag level that misses no adjudicator flag, and its false holds."""
+    """The anchor's highest flag level that misses no adjudicator flag, and its false holds.
+
+    The level is floored to the 0.01 grid first, and the false holds are counted at that level.
+    A level that would hold more than ``MAX_FALSE_HOLD`` of the cleared items is reported as a
+    diagnostic with no proposal: the anchor does not separate flagged from clear."""
     labelled = [(i, _verdict(i.adjudicator)) for i in items]
     flagged = [i for i, truth in labelled if truth is True]
     clear = [i for i, truth in labelled if truth is False]
     probabilities = [_number(i.anchor) for i in flagged]
-    if any(p is None for p in probabilities):
-        return {"proposal": None, "reason": "an adjudicator flag has no anchor probability"}
-    flag_at = min(probabilities, default=None)
-    clear_weight = sum(i.weight for i in clear)
-    held = sum(
-        i.weight for i in clear if flag_at is not None and (_number(i.anchor) or 0.0) >= flag_at
-    )
     siblings: dict[str, dict[str, float]] = {}
     for item, truth in labelled:
         vote = _verdict(item.sibling)
@@ -375,21 +392,30 @@ def fit_gate(items: Sequence[Item]) -> dict:
         cell = siblings.setdefault(str(item.sibling_model), {"missed": 0, "false_holds": 0.0})
         cell["missed"] += truth and not vote
         cell["false_holds"] += item.weight if (vote and not truth) else 0.0
-    return {
-        "proposal": None
-        if flag_at is None
-        else {
-            # The level is floored to the grid so a reading equal to the lowest flag still holds.
-            "flag_at": math.floor(flag_at * 100) / 100,
-            "false_hold_rate": round(held / clear_weight, 4) if clear_weight else None,
-            "adjudicator_flags": len(flagged),
-        },
-        **({"reason": "the adjudicator flagged nothing"} if flag_at is None else {}),
+    out: dict[str, Any] = {
+        "proposal": None,
         "siblings": {
             model: {"missed": int(c["missed"]), "false_hold_weight": round(c["false_holds"], 2)}
             for model, c in sorted(siblings.items())
         },
     }
+    if any(p is None for p in probabilities):
+        return {**out, "reason": "an adjudicator flag has no anchor probability"}
+    if not probabilities:
+        return {**out, "reason": "the adjudicator flagged nothing"}
+    flag_at = math.floor(min(probabilities) * 100 + 1e-9) / 100
+    clear_weight = sum(i.weight for i in clear)
+    held = sum(i.weight for i in clear if (_number(i.anchor) or 0.0) >= flag_at)
+    rate = held / clear_weight if clear_weight else None
+    candidate = {"flag_at": flag_at, "false_hold_rate": rate, "adjudicator_flags": len(flagged)}
+    if rate is not None and rate > MAX_FALSE_HOLD:
+        return {
+            **out,
+            "candidate": _rounded(candidate),
+            "reason": f"the lowest level that keeps every flag holds more than {MAX_FALSE_HOLD:.0%}"
+            " of the cleared items",
+        }
+    return {**out, "proposal": _rounded(candidate)}
 
 
 def fit_grade(items: Sequence[Item]) -> dict:
@@ -428,6 +454,7 @@ def report(
     since: str | None = ANCHOR_SINCE,
     calibration_rate: float,
     cap: float = FALSE_ACCEPT_CAP,
+    families: Mapping[str, str] | None = None,
 ) -> dict:
     questions = {}
     for question_id, cell in data.items():
@@ -452,6 +479,12 @@ def report(
         "anchor_since": since,
         "false_accept_cap": cap,
         "calibration_sample_rate": calibration_rate,
+        # Who counts as an independent sibling: the anchor's own family never does.
+        "anchor_family": (
+            sorted(m for m, f in families.items() if f == family_of(anchor_model, families))
+            if families is not None
+            else None
+        ),
         "questions": {q: (v["kind"], v["prompt_version"]) for q, v in questions.items()},
     }
     return {
@@ -479,7 +512,7 @@ def thresholds(result: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if cell["kind"] == "validate":
             out[question_id] = {"t_admit": proposal["t_admit"], "t_reject": proposal["t_reject"]}
-        elif cell["kind"] == "gate" and (proposal["false_hold_rate"] or 0.0) <= MAX_FALSE_HOLD:
+        elif cell["kind"] == "gate":
             out[question_id] = {"flag_at": proposal["flag_at"]}
     return out
 
@@ -487,32 +520,83 @@ def thresholds(result: Mapping[str, Any]) -> dict[str, Any]:
 def write_thresholds(text: str, task_name: str, block: Mapping[str, Any]) -> str:
     """Set ``judging.tasks.<task>.thresholds`` in the site config text, keeping its comments.
 
-    The task line is a one-line flow mapping (``    tag: {mode: shadow}``); its other keys keep
-    their values and order."""
+    The task line must be a one-line flow mapping (``    tag: {mode: shadow}``, optionally with a
+    trailing comment) inside the ``judging:`` ``tasks:`` block; its other keys keep their values
+    and order. Anything else is refused without touching another key."""
     import yaml
 
-    pattern = re.compile(rf"^(    {re.escape(task_name)}: )(\{{.*\}})[ \t]*$", re.M)
-    matches = list(pattern.finditer(text))
-    judging_at = text.find("\njudging:\n")
-    tasks_at = text.find("\n  tasks:\n", judging_at)
-    matches = [m for m in matches if judging_at >= 0 and tasks_at >= 0 and m.start() > tasks_at]
-    if not matches:
-        raise ValueError(f"judging.tasks.{task_name} is not a one-line mapping in the site config")
-    match = matches[0]
-    current = yaml.safe_load(match.group(2))
-    if not isinstance(current, dict):
-        raise ValueError(f"judging.tasks.{task_name} is not a mapping")
-    current = {k: v for k, v in current.items() if k != "thresholds"}
-    current["thresholds"] = dict(block)
-    flow = yaml.safe_dump(current, default_flow_style=True, sort_keys=False, width=10_000).strip()
-    updated = text[: match.start()] + match.group(1) + flow + text[match.end() :]
-    loaded = yaml.safe_load(updated)
-    if loaded["judging"]["tasks"][task_name] != current:
-        raise ValueError("the edited site config does not read back as written")
-    return updated
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines) if line.rstrip() == "judging:"), None)
+    if start is None:
+        raise ValueError("no top-level judging block in the site config")
+    block_end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i][:1] not in {" ", "\n", "#", "\r"}),
+        len(lines),
+    )
+    tasks = next((i for i in range(start + 1, block_end) if lines[i].rstrip() == "  tasks:"), None)
+    if tasks is None:
+        raise ValueError("no judging.tasks block in the site config")
+    pattern = re.compile(rf"^(    {re.escape(task_name)}: )(\{{[^#]*\}})([ \t]*(?:#.*)?)$")
+    for i in range(tasks + 1, block_end):
+        line = lines[i].rstrip("\r\n")
+        if line.strip() and not line.startswith("    "):
+            break  # the next key of judging: the tasks block is over
+        match = pattern.match(line)
+        if match is None:
+            continue
+        current = yaml.safe_load(match.group(2))
+        if not isinstance(current, dict):
+            break
+        current = {k: v for k, v in current.items() if k != "thresholds"}
+        current["thresholds"] = dict(block)
+        flow = yaml.safe_dump(
+            current, default_flow_style=True, sort_keys=False, width=10_000
+        ).strip()
+        newline = lines[i][len(line) :]
+        lines[i] = f"{match.group(1)}{flow}{match.group(3)}{newline}"
+        updated = "".join(lines)
+        if yaml.safe_load(updated)["judging"]["tasks"][task_name] != current:
+            raise ValueError("the edited site config does not read back as written")
+        return updated
+    raise ValueError(f"judging.tasks.{task_name} is not a one-line mapping in the site config")
+
+
+def write_atomically(path: Path, text: str) -> None:
+    """Replace ``path`` only after the whole new text is on disk beside it."""
+    import os
+    import tempfile
+
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+        os.replace(name, path)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
 
 
 # Production wiring: stored episodes and their transcripts.
+
+
+_UNAVAILABLE = "unavailable"  # cached verdict: the adjudicator's evidence cannot be rebuilt
+
+
+def _check_key(subject: Subject, sibling_row: Mapping[str, Any], adjudicator_row: Mapping) -> tuple:
+    """Identity of one window check: the quote checked and the evidence it is checked against."""
+    signature = json.dumps(
+        [
+            sibling_row.get("reason"),
+            sibling_row.get("evidence_digest"),
+            adjudicator_row.get("evidence_digest"),
+            adjudicator_row.get("context_tier"),
+        ]
+    )
+    return (
+        subject.subject_id,
+        sibling_row.get("question_id"),
+        hashlib.sha256(signature.encode()).hexdigest()[:16],
+    )
 
 
 class WindowChecks:
@@ -520,7 +604,8 @@ class WindowChecks:
     transcript once and several at a time.
 
     The rebuilt evidence must match the adjudicator row's stored digest; anything else (no
-    transcript, a changed transcript, a tier the builder cannot produce) is ``None``."""
+    transcript, a changed transcript, a tier the builder cannot produce) is ``None``. A transcript
+    that cannot be read is also ``None`` for this run but is never cached: a later run retries."""
 
     def __init__(self, storage, definitions, spec: TaskSpec, *, workers: int = 16, log=None):
         self.storage = storage
@@ -535,61 +620,87 @@ class WindowChecks:
         episode = _EPISODES.get(subject.episode_uid)
         if episode is None or not getattr(episode, "transcript_key", None):
             return None
-        key = (subject.subject_id, sibling_row.get("question_id"))
+        key = _check_key(subject, sibling_row, adjudicator_row)
         self.episodes[subject.episode_uid] = episode
         self.pending.setdefault(subject.episode_uid, []).append(
             (key, subject, dict(sibling_row), dict(adjudicator_row))
         )
         return Deferred(key)
 
-    def _episode(self, uid: str) -> dict[Any, bool | None]:
+    def _episode(self, uid: str) -> dict[Any, tuple[Any, bool]]:
+        """``{key: (verdict, cacheable)}`` for one episode's pending checks."""
         from citypods.judging.quotes import quote_valid
         from citypods.judging.texts import build_episode_texts
         from citypods.stages import _read_storage_bytes
 
         episode = self.episodes[uid]
-        out: dict[Any, bool | None] = {}
+        out: dict[Any, tuple[Any, bool]] = {}
         try:
             raw = _read_storage_bytes(self.storage, episode.transcript_key)
             texts = build_episode_texts(episode, raw, self.definitions)
         except Exception as exc:  # noqa: BLE001 - one unreadable transcript excludes its items
             self.log(f"transcript {uid}: {type(exc).__name__}: {exc}")
-            return {key: None for key, *_ in self.pending[uid]}
+            return {key: (None, False) for key, *_ in self.pending[uid]}
         for key, subject, sibling_row, adjudicator_row in self.pending[uid]:
             try:
                 evidence = self.spec.evidence(subject, adjudicator_row.get("context_tier"), texts)
             except (KeyError, ValueError, TypeError):
                 evidence = None
             if evidence is None or evidence.digest != adjudicator_row.get("evidence_digest"):
-                out[key] = None
+                out[key] = (_UNAVAILABLE, True)
             else:
-                out[key] = quote_valid(sibling_row.get("reason"), evidence.text)
+                out[key] = (quote_valid(sibling_row.get("reason"), evidence.text), True)
         return out
 
-    def run(self, cache: Path | None = None) -> dict[Any, bool | None]:
-        """Run the deferred checks; with ``cache``, reuse and save results as a JSON file."""
+    @staticmethod
+    def _name(key: tuple) -> str:
+        return "\x1f".join(str(part) for part in key)
+
+    def _load(self, cache: Path | None, legacy: bool) -> dict[str, Any]:
+        if cache is None or not cache.exists():
+            return {}
+        data = json.loads(cache.read_text())
+        if isinstance(data, dict) and data.get("v") == 2:
+            return dict(data["r"])
+        if not legacy:
+            return {}
+        # Version 1 keyed by (subject, question) only and cached None for "unavailable". Safe to
+        # reuse only against the same pulled state it was computed from; the caller says so.
+        return {name: (_UNAVAILABLE if value is None else value) for name, value in data.items()}
+
+    def run(self, cache: Path | None = None, *, legacy: bool = False) -> dict[Any, bool | None]:
+        """Run the deferred checks; with ``cache``, reuse and save verdicts as a JSON file.
+
+        ``legacy`` also reads a version 1 cache file (same pulled state only)."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
+        saved = self._load(cache, legacy)
         results: dict[Any, bool | None] = {}
-        saved: dict[str, bool | None] = {}
-        if cache is not None and cache.exists():
-            saved = json.loads(cache.read_text())
-            for uid in list(self.pending):
-                keys = [f"{k[0]}\x1f{k[1]}" for k, *_ in self.pending[uid]]
-                if all(k in saved for k in keys):
-                    for (key, *_), name in zip(self.pending.pop(uid), keys, strict=True):
-                        results[key] = saved[name]
+
+        def cached(key: tuple) -> Any:
+            name = self._name(key)
+            if name in saved:
+                return saved[name]
+            return saved.get(self._name(key[:2])) if legacy else None
+
+        for uid in list(self.pending):
+            hits = [(key, cached(key)) for key, *_ in self.pending[uid]]
+            if all(value is not None for _, value in hits):
+                self.pending.pop(uid)
+                results.update({key: (None if v == _UNAVAILABLE else v) for key, v in hits})
         total = len(self.pending)
         self.log(f"window checks: {sum(map(len, self.pending.values()))} items in {total} episodes")
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             futures = [pool.submit(self._episode, uid) for uid in self.pending]
             for done, future in enumerate(as_completed(futures), 1):
-                results.update(future.result())
+                for key, (value, cacheable) in future.result().items():
+                    results[key] = None if value == _UNAVAILABLE else value
+                    if cacheable:
+                        saved[self._name(key)] = value
                 if done % 100 == 0 or done == total:
                     self.log(f"window checks: {done}/{total} episodes read")
         if cache is not None:
-            saved.update({f"{k[0]}\x1f{k[1]}": v for k, v in results.items()})
-            cache.write_text(json.dumps(saved))
+            write_atomically(cache, json.dumps({"v": 2, "r": saved}))
         return results
 
 
@@ -649,6 +760,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--since", default=ANCHOR_SINCE, help="first anchor judgment date counted")
     parser.add_argument("--false-accept-cap", type=float, default=FALSE_ACCEPT_CAP)
     parser.add_argument("--window-cache", type=Path, help="JSON file of window-check results")
+    parser.add_argument(
+        "--legacy-window-cache",
+        action="store_true",
+        help="also reuse a version 1 cache file (only against the state it was made from)",
+    )
     parser.add_argument("--no-pull", action="store_true", help="use the local state as it is")
     parser.add_argument("--write", action="store_true", help="write thresholds into site config")
     parser.add_argument("--markdown", type=Path, help="also write the PR evidence table here")
@@ -684,6 +800,7 @@ def main(argv: list[str] | None = None) -> int:
             log=log,
         )
     rate = float((site.get("judging") or {}).get("calibration_sample_rate", 0.03))
+    families = load_families()
     checks = WindowChecks(storage, tag_definitions(), spec, log=log)
     data = collect(
         _groups(site, state_dir, args.config_dir, spec),
@@ -691,10 +808,10 @@ def main(argv: list[str] | None = None) -> int:
         calibration_rate=rate,
         anchor_model=args.anchor_model,
         since=args.since,
-        families=load_families(),
+        families=families,
         window_check=checks,
     )
-    settle_deferred(data, checks.run(args.window_cache))
+    settle_deferred(data, checks.run(args.window_cache, legacy=args.legacy_window_cache))
     result = report(
         data,
         spec,
@@ -702,13 +819,14 @@ def main(argv: list[str] | None = None) -> int:
         since=args.since,
         calibration_rate=rate,
         cap=args.false_accept_cap,
+        families=families,
     )
     print(json.dumps(result, indent=2))
     if args.markdown:
         args.markdown.write_text(markdown(result))
     if args.write:
         path = Path(args.site_config)
-        path.write_text(write_thresholds(path.read_text(), spec.name, thresholds(result)))
+        write_atomically(path, write_thresholds(path.read_text(), spec.name, thresholds(result)))
     return 0
 
 
