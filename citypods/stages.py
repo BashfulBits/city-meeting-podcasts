@@ -1134,7 +1134,7 @@ class MomentsStage(LLMProducerStage):
     """Extract grounded R6 moments and apply the manual/calibrated admission policy."""
 
     name = "moments"
-    version = "3"
+    version = "2"
 
     def telemetry_purposes(self, ctx):
         return ("r6-moments",) if ctx.moment_backend is not None and ctx.storage is not None else ()
