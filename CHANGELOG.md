@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Manual weekly-full provider catalog run.** The reconciliation workflow takes a `weekly_full`
+  dispatch input that runs the weekly path by hand from main: new-route discovery and the
+  configured-route cap re-measure (review/54 §8.14), with the weekly 360-minute budget and
+  discovery evidence retained. It refuses to combine with the due-only, incremental, discovery or
+  context-canary modes, and does not take the scheduled rate sample. It spends real provider quota
+  and updates the same rolling issue as the scheduled run.
+
 - **Review/48 provider catalog decisions.** Acknowledged recurring inconclusive anomalies
   for BeatAPI secondary catalog timeout and OpenRouter decisions endpoint (Refs #2554).
 
