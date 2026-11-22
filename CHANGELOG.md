@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Feed-health audit (#2779): agendas the publisher itself reports as unpublished (Granicus
+  "This agenda is not currently published", served for older meetings that never had one) now get
+  the `agenda-not-published` reason and no longer count toward the `agenda-quality` finding. Earlier
+  assessments are recognised by the page's document hash. On production records this drops the
+  issue from 60 feeds and about 2,650 rejected agendas to 13 feeds and 34.
+
 - Feed-health audit (#2280): a consolidated issue whose hidden state block would push the body past
   GitHub's 65,536-character limit now sheds state detail (long examples, then rows) instead of
   failing `createIssue` and turning the whole audit run red. This surfaced once the audit began
