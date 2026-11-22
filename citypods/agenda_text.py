@@ -1513,6 +1513,7 @@ def _follows_heading(text: str, start: int) -> bool:
 
 
 _WRAP_STOP_WORDS = frozenset({"also", "staff", "city", "others", "guests", "excused", "none"})
+_NO_ATTENDANCE_RE = re.compile(r"^(?:none|n/a|no\s+one|nobody|vacant)\.?$", re.I)
 
 
 _SURNAME_LIST_START_RE = re.compile(r"^[A-Z][A-Za-z'\u2019-]+(?:,|\s+and\b)")
@@ -1567,8 +1568,11 @@ def _ends_a_sentence(line: str) -> bool:
 
 def _names_after_heading(
     text: str, end: int, *, wrapped: bool = False, previous: str = ""
-) -> str | None:
+) -> tuple[str, int] | None:
     """Names a heading like ``PRESENT:`` leaves for the lines below it.
+
+    Returns ``(names, end_offset)`` -- the names and where the last line used ends in ``text``, so
+    the row's evidence can show them -- or None when the list is cut off and must be rejected.
 
     Only a single heading followed by its own names qualifies. Minutes that print every heading
     first ("PRESENT:", "ABSENT:", then one line of names per heading) put the names in an order
@@ -1583,14 +1587,22 @@ def _names_after_heading(
     if clipped:
         lines = lines[:-1]  # the last line was cut mid-way and could be a half-read name
     ended = False
+    consumed_end = end
+    cursor = end + len(lines[0]) + 1
     for line in lines[1 : 1 + _MAX_ROSTER_CONTINUATION_LINES + 2]:
+        line_end = cursor + len(line)
+        cursor = line_end + 1
         # Minutes with printed line numbers number every line ("11 Alice Smith").
         stripped = _PRINTED_LINE_NUMBER_RE.sub("", line.strip())
         if not stripped:
             ended = True
             break
-        if _ROSTER_BLOCK_STOP_RE.match(line.strip()) or _SECTION_HEADING_RE.search(stripped):
-            ended = True
+        if (
+            _ROSTER_BLOCK_STOP_RE.match(line.strip())
+            or _SECTION_HEADING_RE.search(stripped)
+            or _NO_ATTENDANCE_RE.match(stripped)
+        ):
+            ended = True  # "None" says nobody is listed, so the next line is not a name
             break
         # A change from mixed case to ALL CAPS is a new section, not another member.
         if stripped.isupper() and any(any(c.islower() for c in earlier) for earlier in names):
@@ -1614,6 +1626,7 @@ def _names_after_heading(
             joined += joiner
         joined += stripped
         names.append(stripped)
+        consumed_end = line_end
         if _ends_a_sentence(stripped):
             ended = True
             break
@@ -1621,7 +1634,7 @@ def _names_after_heading(
         # Ran out of lines without reaching an end. If the text was clipped, the list may go on.
         if clipped and not ended:
             return None
-    return joined
+    return joined, consumed_end
 
 
 _PLURAL_ROSTER_TITLE_RE = re.compile(
@@ -1669,6 +1682,9 @@ _PRESIDER_RE = re.compile(
 )
 _PRESIDER_TITLE_WORDS = frozenset(
     {"mayor", "chair", "chairman", "chairwoman", "chairperson", "vice", "commissioner"}
+)
+_ENCLOSING_NON_MEMBER_LABEL_RE = re.compile(
+    r"\b(?:guests?|visitors?|audience|public|others?|staff|applicants?|speakers?)\s*:\s*$", re.I
 )
 _QUALIFIED_ATTENDANCE_RE = re.compile(
     r"(?P<qualifier>[A-Z][A-Za-z ]{2,40}?)\s+in\s+attendance(?:\s+include)?\s*:?\s+"
@@ -1804,7 +1820,10 @@ def _prose_roster_rows(names_text: str, status: str, section: str | None, eviden
     return rows
 
 
-_CALL_TO_ORDER_RE = re.compile(r"\bto\s+order\b", re.I)
+# A call-to-order heading or convening statement, not any "to order" ("a motion to order supplies").
+_CALL_TO_ORDER_RE = re.compile(
+    r"\bcall(?:ed)?\s+(?:(?:the\s+)?(?:[A-Za-z]+\s+){0,3})?to\s+order\b", re.I
+)
 _PROSE_WINDOW_BEFORE = 400
 _PROSE_WINDOW_AFTER = 2500
 
@@ -1881,6 +1900,8 @@ def _parse_prose_attendance(text: str) -> list[dict]:
         if sentence is not None and _qualifier_words(sentence) & _PRESIDER_TITLE_WORDS:
             rows += _prose_roster_rows(sentence, "present", None, presider.group(0))
     for match in _QUALIFIED_ATTENDANCE_RE.finditer(flat):
+        if _ENCLOSING_NON_MEMBER_LABEL_RE.search(flat[max(0, match.start() - 60) : match.start()]):
+            continue  # "Guests: Commissioners in attendance: ..." -- the list is the guests'
         qualifier = match.group("qualifier")
         words = _qualifier_words(qualifier)
         if words & (_ROSTER_STAFF_WORDS | _ROSTER_EXCLUDED_WORDS):
@@ -1910,28 +1931,30 @@ def parse_roster(text: str) -> list[dict]:
         status = match.group("status").lower()
         section = _roster_section(qualifier)
         names_text = match.group("names").strip()
+        evidence_end = match.end()
         if names_text and section != "staff" and not _ends_a_sentence(names_text):
             # A long attendance line wraps ("... and Council Members Keely" / "Briggs, Jesse
             # Davis"): without the second line the member is kept as a bare first name.
-            wrapped_names = _names_after_heading(
-                text, match.end(), wrapped=True, previous=names_text
-            )
-            if wrapped_names is None:
+            wrapped = _names_after_heading(text, match.end(), wrapped=True, previous=names_text)
+            if wrapped is None:
                 continue
-            names_text = f"{names_text} {wrapped_names}".strip()
+            names_text = f"{names_text} {wrapped[0]}".strip()
+            evidence_end = max(evidence_end, wrapped[1])
         if not names_text and section != "staff" and not _follows_heading(text, match.start()):
             # Staff blocks are "Name, Title; Name, Title" runs whose titles cannot be told from
             # names here, so only member headings read the lines below them.
             below = _names_after_heading(text, match.end())
             if below is None:
                 continue
-            names_text = below
+            names_text, evidence_end = below
         names_text = _PLURAL_ROSTER_TITLE_RE.sub(" ", _INLINE_LABEL_RE.sub(" ", names_text))
         for raw_name in _ATTENDANCE_SPLIT_RE.split(names_text):
             name = _clean_roster_name(raw_name)
             if not name:
                 continue
-            row = {"name": name, "status": status, "evidence": match.group(0)[:500]}
+            # Evidence is the heading plus any continuation lines the names came from.
+            evidence = text[match.start() : evidence_end][:500]
+            row = {"name": name, "status": status, "evidence": evidence}
             if section:
                 row["section"] = section
             result.append(row)
