@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Replace raw invisible Unicode characters with explicit escape sequences.** Converted literal
+  zero-width spaces (`\u200b`) in `availability_digest.py`, `test_availability_digest.py`, and
+  `check_endpoints.py` to explicit `\u200b` escapes, replaced literal `\uFEFF` in
+  `structured_output.js` with explicit `\uFEFF`, and removed an invisible zero-width space in
+  `review/05-endpoint-contract-tests.md`. This clears Renovate's hidden Unicode security warning.
+
 - Feed-health audit (#2779): agendas the publisher itself reports as unpublished (Granicus
   "This agenda is not currently published", served for older meetings that never had one) now get
   the `agenda-not-published` reason and no longer count toward the `agenda-quality` finding. Earlier
