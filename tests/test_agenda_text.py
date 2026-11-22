@@ -1239,3 +1239,37 @@ def test_roster_rejects_a_vertical_list_cut_off_by_the_lookahead_limit():
     assert parse_roster(clipped) == []
     short = "PRESENT:\nAlice Smith\nBob Jones\n"
     assert _names(parse_roster(short)) == ["Alice Smith", "Bob Jones"]
+
+
+def test_roster_splits_an_ampersand_between_wrapped_names():
+    assert _names(parse_roster("PRESENT: Alice Smith &\nBob Jones\nABSENT: None\n")) == [
+        "Alice Smith",
+        "Bob Jones",
+    ]
+
+
+def test_prose_roster_does_not_infer_membership_from_presence_alone():
+    visitors = (
+        "Chair Ann Lee called the meeting to order. Jane Doe and Bob Roe were present to give "
+        "public comment."
+    )
+    assert _names(parse_roster(visitors)) == ["Ann Lee"]
+    untitled = "Chair Ann Lee called the meeting to order. Jane Doe and Bob Roe were in attendance."
+    assert _names(parse_roster(untitled)) == ["Ann Lee"]
+    members = (
+        "Chair Ann Lee called the meeting to order. Commissioners Jane Doe and Bob Roe were "
+        "present."
+    )
+    assert _names(parse_roster(members)) == ["Jane Doe", "Bob Roe", "Ann Lee"]
+
+
+def test_roster_keeps_reading_after_a_members_initial():
+    text = "PRESENT: Council Member Robert J.\nSmith, Alice Brown\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Robert J. Smith", "Alice Brown"]
+
+
+def test_roster_rejects_the_whole_heading_when_a_wrapped_list_is_truncated():
+    from citypods.agenda_text import _MAX_ROSTER_CONTINUATION_LINES
+
+    lines = [f"Member{chr(65 + i)} Person," for i in range(_MAX_ROSTER_CONTINUATION_LINES + 2)]
+    assert parse_roster("PRESENT: Alice Smith,\n" + "\n".join(lines) + "\n") == []
