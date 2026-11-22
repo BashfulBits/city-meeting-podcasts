@@ -1275,6 +1275,7 @@ def test_roster_rejects_the_whole_heading_when_a_wrapped_list_is_truncated():
     assert parse_roster("PRESENT: Alice Smith,\n" + "\n".join(lines) + "\n") == []
 
 
+<<<<<<< HEAD
 def test_minutes_ocr_runs_when_the_only_selectable_text_is_a_repeated_page_header(monkeypatch):
     import citypods.agenda_text as agenda_text
 
@@ -1300,3 +1301,64 @@ def test_minutes_text_sparseness_uses_pages_and_repeated_lines():
     assert minutes_text_is_sparse(real, 40)  # a page or two of text spread over 40 pages
     assert minutes_text_is_sparse("City Council Minutes\n" * 20 + "x" * 10)
     assert minutes_text_is_sparse("City Council Minutes\nPage 1")
+=======
+def test_roster_stops_a_vertical_list_at_a_standalone_none():
+    assert parse_roster("PRESENT:\nNone\nMotion Carried\n") == []
+    assert _names(parse_roster("PRESENT:\nAlice Smith\nNone\nMotion Carried\n")) == ["Alice Smith"]
+    assert _names(parse_roster("PRESENT:\nAlice Smith\nBob Jones\n")) == [
+        "Alice Smith",
+        "Bob Jones",
+    ]
+
+
+def test_roster_evidence_for_a_vertical_list_includes_the_source_lines():
+    rows = parse_roster("PRESENT:\nAlice Smith\nBob Jones\nPUBLIC COMMENT\n")
+    assert all("Alice Smith" in row["evidence"] and "Bob Jones" in row["evidence"] for row in rows)
+    assert all("PUBLIC COMMENT" not in row["evidence"] for row in rows)
+    inline = parse_roster("PRESENT: Alice Smith, Bob Jones\nABSENT: None\n")
+    assert inline[0]["evidence"] == "PRESENT: Alice Smith, Bob Jones"
+
+
+def test_prose_window_anchors_on_a_real_call_to_order():
+    front = "A motion to order supplies was filed. " + "Background item text. " * 150
+    text = (
+        front
+        + "Chair Ann Lee called the meeting to order at 7:00pm. Commissioners Bob Roe and Cy Poe "
+        "were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Bob Roe", "Cy Poe", "Ann Lee"]
+    heading = "Call to Order1. Chair Ann Lee opened it. Commissioners Bob Roe were in attendance."
+    assert "Bob Roe" in _names(parse_roster(heading))
+
+
+def test_prose_roster_checks_a_guest_label_that_encloses_a_qualified_list():
+    text = (
+        "Chair Ann Lee called the meeting to order. Guests: Commissioners in attendance: Jane "
+        "Doe and Bob Roe."
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee"]
+    plain = (
+        "Chair Ann Lee called the meeting to order. Commissioners in attendance: Jane Doe and "
+        "Bob Roe."
+    )
+    assert sorted(_names(parse_roster(plain))) == ["Ann Lee", "Bob Roe", "Jane Doe"]
+>>>>>>> feat/roster-prose-attendance
+
+
+def test_minutes_ocr_keeps_a_native_roster_the_scan_body_missed(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text, "extract_document", lambda *a, **k: ("PRESENT: Mayor Ann Lee, Bob Roe", [])
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "Minutes of the regular meeting. " * 30, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "ocr"
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe"]
+    assert "Minutes of the regular meeting." in text
