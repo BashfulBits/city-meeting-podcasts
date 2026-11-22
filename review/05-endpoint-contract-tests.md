@@ -18,7 +18,7 @@ inventories every external endpoint and proposes a layered test/monitor strategy
 | Swagit | `/videos/ID/download` | GET (no-redirect) | 302 → presigned MP4 | `swagit.resolve_media_url` |
 | CivicPlus | `RSSFeed.aspx?ModID=92&CID=…` | GET/HEAD | RSS `<item>` with `<link>` watch page (`?VID=`) | `civicplus.parse_civicmedia_feed` |
 | CivicPlus | watch page `?VID=` | GET | contains `tikiliveapi.com/embed?…videoId=` | `civicplus._find_embed_url` (`EMBED_RE`) |
-| CivicPlus | `tikiliveapi.com/embed?…` | GET | contains `…​.m3u8` | `civicplus._find_hls_url` (`M3U8_RE`) |
+| CivicPlus | `tikiliveapi.com/embed?…` | GET | contains `….m3u8` | `civicplus._find_hls_url` (`M3U8_RE`) |
 | CivicClerk | `/v1/Events?$filter=hasMedia…` | GET | OData JSON: `value[]` with `mediaSourcePathMp4` (abs), `publishedFiles[]`, `startDateTime` | `civicclerk.parse_events` |
 | CivicClerk | `/v1/EventsMedia/{id}` | GET | `eventBookmarks[]{markerTimeStart,markerTitle}`, `transcriptionUrl`/`closedCaptionUrl` | `civicclerk.parse_bookmarks` |
 | CivicClerk | `/v1/Meetings/GetMeetingFileStream(fileId=…)` | (synthesized link) | PDF stream | `civicclerk._file_stream_url` |

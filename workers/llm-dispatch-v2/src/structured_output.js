@@ -119,7 +119,7 @@ function assistantText(body) {
 export function structuredReplyProblem(body) {
   const raw = assistantText(body);
   if (raw === null || raw.trim() === "") return "structured_output_empty";
-  let text = raw.replace(/^﻿/, "").replace(THOUGHT_BLOCK_RE, "").trim();
+  let text = raw.replace(/^\uFEFF/, "").replace(THOUGHT_BLOCK_RE, "").trim();
   if (text === "") return "structured_output_empty";
   const fenceStart = text.indexOf("```");
   if (fenceStart >= 0) {

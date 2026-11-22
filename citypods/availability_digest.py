@@ -203,7 +203,7 @@ def _escape_issue_cell(text: str) -> str:
     own syntax, and an ``@mention``-shaped title would trigger a GitHub notification."""
     text = " ".join(text.split())  # collapse newlines/CR/tabs so the row can't split
     text = text.replace("|", "\\|").replace("`", "\\`")
-    return text.replace("@", "@​")  # zero-width space defuses @mention parsing
+    return text.replace("@", "@\u200b")  # zero-width space defuses @mention parsing
 
 
 def render_issue_body(evidence: list[dict], *, run_url: str | None = None) -> str:
