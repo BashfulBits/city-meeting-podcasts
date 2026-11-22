@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Granicus proxy fallback and stderr diagnostics for video slides.** Wire Cloudflare Worker
+  media proxy fallback into `SlidesStage` for video probe, detection, and frame capture when
+  Granicus returns HTTP 403 Forbidden to GitHub Actions runners. Include redacted stderr in
+  subprocess error logs and reset failed attempts on dirty slide records so that previously failed
+  episodes are retried. Add `scripts/reset_slides_backoff.py` for targeted state recovery.
+
 - **Concurrent configured-route re-measurement (review/54 §8.14.G).** The weekly run re-measures
   up to three providers at once, each in its own dispatch pause and HTTP session, after the
   provider loop; routes of one provider stay sequential because they share its quota. Starting a

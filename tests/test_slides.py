@@ -760,3 +760,136 @@ def test_stage_reserves_a_multi_source_episode_before_any_detection():
     # second episode is probed to size it and never streamed through detection.
     detect_calls = [c for c in fake.calls if "-vf" in c]
     assert len(detect_calls) == 1
+
+
+def test_probe_command_includes_dash_i():
+    cmd = sl.probe_command("ffprobe", "https://v.example.com/a.mp4")
+    assert "-i" in cmd
+    assert cmd[cmd.index("-i") + 1] == "https://v.example.com/a.mp4"
+
+
+def test_stage_fallback_to_granicus_proxy_on_403(monkeypatch):
+    granicus_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "https://worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret-token")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda _url: None)
+
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(list(command))
+        if granicus_url in command:
+            raise subprocess.CalledProcessError(1, command, stderr=b"Server returned 403 Forbidden")
+        if command[0].endswith("ffprobe"):
+            out = json.dumps(
+                {
+                    "streams": [{"codec_type": "video"}],
+                    "format": {"duration": "3600", "bit_rate": "1000000"},
+                }
+            )
+            return SimpleNamespace(stdout=out)
+        if "-vf" in command:
+            return SimpleNamespace(stdout="")
+        return SimpleNamespace(stdout=b"")
+
+    telemetry = SimpleNamespace(
+        direct_fetches=[],
+        worker_fallbacks=[],
+        record_direct_fetch=lambda urls, outcome: telemetry.direct_fetches.append((urls, outcome)),
+        record_worker_fallback=lambda urls, outcome: telemetry.worker_fallbacks.append(
+            (urls, outcome)
+        ),
+    )
+    ctx = _ctx(_Storage(), transport_telemetry=telemetry)
+    ep = _episode(video_url=granicus_url)
+    stats = SlidesStage(run=fake_run).process(_Provider(), _city(), [ep], ctx)
+    assert stats.errors == []
+    assert ep.slides["status"] == "none-found"
+    assert len(telemetry.direct_fetches) >= 1
+    assert telemetry.direct_fetches[0] == ((granicus_url,), "403")
+    assert len(telemetry.worker_fallbacks) >= 1
+    assert telemetry.worker_fallbacks[0] == ((granicus_url,), "success")
+    from urllib.parse import urlsplit
+
+    proxy_calls = [
+        c
+        for c in calls
+        if any(
+            isinstance(arg, str)
+            and arg.startswith("https://")
+            and urlsplit(arg).netloc == "worker.example"
+            for arg in c
+        )
+    ]
+    assert len(proxy_calls) >= 1
+    assert "-headers" in proxy_calls[0]
+
+
+def test_stage_subprocess_error_includes_stderr_and_redacts_worker(monkeypatch):
+    granicus_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "https://worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret-token")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda _url: None)
+
+    def fake_run(command, **kwargs):
+        if granicus_url in command:
+            raise subprocess.CalledProcessError(1, command, stderr=b"Server returned 403 Forbidden")
+        raise subprocess.CalledProcessError(
+            1, command, stderr=b"worker failed: https://worker.example/v1/archive/arlingtontx"
+        )
+
+    ep = _episode(video_url=granicus_url)
+    stats = SlidesStage(run=fake_run).process(_Provider(), _city(), [ep], _ctx(_Storage()))
+    assert len(stats.errors) == 1
+    err_text = stats.errors[0]
+    assert "stderr=" in err_text
+    assert "worker failed:" in err_text
+    assert "secret-token" not in err_text
+    assert "https://worker.example" not in err_text
+
+
+def test_stage_resets_attempts_after_reaching_max_attempts():
+    fake = _FakeFfmpeg(freeze_text="", frames={})
+    ep = _episode()
+    ep.slides = {
+        "status": "failed",
+        "recipe": sl.SLIDES_RECIPE,
+        "attempts": 3,
+        "reason": "CalledProcessError",
+    }
+    stats = SlidesStage(run=fake).process(_Provider(), _city(), [ep], _ctx(_Storage()))
+    assert ep.slides["status"] == "none-found"
+    assert stats.ran == 1
+
+
+def test_stage_is_dirty_revisits_failed_slides():
+    from citypods.stages import stage_is_dirty
+
+    stage = SlidesStage()
+    ep = _episode()
+    city = _city()
+    ep.slides = {"status": "failed", "attempts": 2}
+    ep.stage_completion = {
+        "slides": {
+            "state": "complete",
+            "version": stage.version,
+            "input_fingerprint": "xyz",
+            "output": "failed",
+        }
+    }
+    assert stage_is_dirty(stage, ep, city) is True
+
+    # Terminal failure after proxy recovery does not stay dirty forever
+    ep.slides = {
+        "status": "failed",
+        "attempts": 3,
+        "reason": "CalledProcessError",
+        "proxy_recovered": True,
+    }
+    assert stage_is_dirty(stage, ep, city) is False

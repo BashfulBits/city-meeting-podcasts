@@ -350,3 +350,8 @@ The feature is on for every city from the first deploy (P4), so there is no pilo
   those bytes are kept until selection, never the decoded native-resolution frame.
 - **Merge gap.** Consecutive near-identical frames merge only when at most 30 s apart; a slide
   shown again later stays two slides so the chapters keep the artwork reset in between.
+- **Granicus proxy fallback and stderr diagnostics.** When direct media access to Granicus
+  archive video returns HTTP 403 on GitHub Actions runners, `SlidesStage` automatically falls
+  back to the authenticated Cloudflare Worker media proxy for probe, detection, and frame capture.
+  Subprocess failure logs include tail stderr diagnostics with secret tokens and worker endpoints
+  redacted, and episodes reaching maximum failure attempts reset to allow automatic retry.
