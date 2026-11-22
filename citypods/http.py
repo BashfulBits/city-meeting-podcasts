@@ -414,9 +414,25 @@ def _viewer_target(requested_url: str, final_url: str | None) -> str | None:
     if target.scheme != "https" or not target.hostname:
         return None
     requested_host = (urlsplit(requested_url).hostname or "").lower()
-    if target.hostname.lower() != requested_host:
+    if not _same_document_origin(requested_host, target.hostname.lower()):
         return None
     return targets[0]
+
+
+_GRANICUS_SUFFIX = ".granicus.com"
+
+
+def _same_document_origin(requested_host: str, target_host: str) -> bool:
+    """Whether a viewer-wrapped document may be fetched from ``target_host``.
+
+    The same host always qualifies. Granicus also publishes a customer's documents from a sibling
+    host (``MinutesViewer.php`` on ``city.granicus.com`` wraps a PDF on ``legistar1.granicus.com``),
+    so two hosts under granicus.com qualify too. Anything else is refused, and the guarded session
+    still validates the fetch itself.
+    """
+    if target_host == requested_host:
+        return True
+    return requested_host.endswith(_GRANICUS_SUFFIX) and target_host.endswith(_GRANICUS_SUFFIX)
 
 
 _CONTENT_RANGE_TOTAL_RE = re.compile(r"bytes\s+\d+-\d+/(\d+)")

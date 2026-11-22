@@ -2705,3 +2705,48 @@ def test_admit_r6_dispatch_unbounded_when_moment_max_dispatches_is_none(tmp_path
         assert result == "admitted"
     assert ctx.moment_dispatches == 50
     assert "rollout-dispatch-cap" not in stats.defer_reasons
+
+
+class _MinutesTextStorage:
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    def exists(self, key):
+        return True
+
+    def get_file(self, key, local_path):
+        import pathlib
+
+        pathlib.Path(local_path).write_bytes(json.dumps(self.payload).encode())
+        return True
+
+
+def _minutes_ctx(storage):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(storage=storage)
+
+
+def _minutes_episode():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(links={"minutes_text_artifact_key": "documents/x/minutes-text"})
+
+
+def test_stored_minutes_text_returns_the_real_document():
+    from citypods.stages import _stored_minutes_text
+
+    text = "City Council Meeting MINUTES. Present: Mayor Smith, Council Member Jones. " * 20
+    ctx = _minutes_ctx(_MinutesTextStorage({"text": text}))
+    assert _stored_minutes_text(ctx, _minutes_episode()) == text
+
+
+def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetched():
+    from citypods.stages import _stored_minutes_text
+
+    for shell in (
+        "3804_M_City_Council_Minutes_-_Final.pdf\nLoading…",
+        "DocumentViewer.php\nLoading…",
+    ):
+        ctx = _minutes_ctx(_MinutesTextStorage({"text": shell}))
+        assert _stored_minutes_text(ctx, _minutes_episode()) is None
