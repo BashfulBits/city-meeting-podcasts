@@ -522,3 +522,47 @@ def test_the_issue_reports_session_cost_and_why_axes_waited():
     assert "Sessions took 12 min in all (median 360 s, longest 600 s), 11 provider calls" in text
     assert "1 confirmed a known bracket" in text
     assert "2 health check this run was inconclusive; 1 daily quota not confirmed this run" in text
+
+
+def test_only_the_daily_incremental_run_gets_the_daily_slice(monkeypatch, tmp_path):
+    script, seen, evidence = _manual_weekly_script(monkeypatch, tmp_path)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    monkeypatch.setenv("GITHUB_EVENT_SCHEDULE", "27 8 * * *")
+    from types import SimpleNamespace
+
+    control = script.WorkerDispatchControl(
+        SimpleNamespace(availability_failures=lambda: {"route_failures": []})
+    )
+    monkeypatch.setattr(script, "_control", lambda _no_pause: control)
+    monkeypatch.setattr(script, "discover_discovery_retry_receipts", lambda **_kwargs: ((), ()))
+    assert script.main(["--due-only", "--incremental", "--discovery-evidence", evidence]) == 0
+    assert seen["remeasure_daily_rpd_share"] == 0.10
+    assert seen["remeasure_session_ceiling"] == script.REMEASURE_DAILY_SESSION_CEILING
+    assert seen["remeasure_time_budget_seconds"] == script.REMEASURE_DAILY_SECONDS
+    assert seen["remeasure_workers"] == script.REMEASURE_WORKERS
+    # A plain due-only run (no incremental checks) gets no slice.
+    seen.clear()
+    assert script.main(["--due-only"]) == 0
+    assert "remeasure_daily_rpd_share" not in seen
+    assert seen.get("remeasure_time_budget_seconds") is None
+
+
+def test_a_gap_in_the_artifact_history_disables_the_daily_slice(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    script, seen, evidence = _manual_weekly_script(monkeypatch, tmp_path)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    monkeypatch.setenv("GITHUB_EVENT_SCHEDULE", "27 8 * * *")
+    control = script.WorkerDispatchControl(
+        SimpleNamespace(availability_failures=lambda: {"route_failures": []})
+    )
+    monkeypatch.setattr(script, "_control", lambda _no_pause: control)
+    monkeypatch.setattr(script, "discover_discovery_retry_receipts", lambda **_kwargs: ((), ()))
+    # The verifier returns what it could authenticate and says what it could not.
+    monkeypatch.setattr(
+        script,
+        "verified_discovery_history",
+        lambda *_args, **_kwargs: ((), (), ("run 9: artifact digest mismatch",)),
+    )
+    assert script.main(["--due-only", "--incremental", "--discovery-evidence", evidence]) == 0
+    assert "remeasure_daily_rpd_share" not in seen

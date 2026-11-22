@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Daily slice of configured-route cap re-measurement (review/54 §8.14.G).** The daily
+  incremental run re-measures up to six caps in 40 minutes on providers it already visits, for
+  routes the day's health check proved. Each session has a hard call cap of 10% of the route's
+  daily request limit and of the provider's shared pool, less what the slice already spent that
+  day (saved by UTC day, so a repeated run continues from it); where nothing publishes a daily
+  limit the provider gets 20 requests. No session starts without enough calls to finish, and a
+  gap in the verified history disables the slice for that run. Its evidence counts as history
+  for the weekly review, which still makes the offers.
+
 - **Granicus proxy fallback and stderr diagnostics for video slides.** Wire Cloudflare Worker
   media proxy fallback into `SlidesStage` for video probe, detection, and frame capture when
   Granicus returns HTTP 403 Forbidden to GitHub Actions runners. Include redacted stderr in
