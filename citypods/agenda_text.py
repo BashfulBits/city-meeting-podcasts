@@ -1196,8 +1196,10 @@ def extract_minutes_document(
     is spent, so the expensive scan was not started).
 
     OCR is attempted only when a PDF's native text is nearly empty, runs over at most
-    ``OCR_MAX_PAGES`` pages inside a per-page time budget, and is discarded as ``"none"`` when its
-    mean confidence is under ``OCR_MINUTES_MIN_CONFIDENCE``.
+    ``OCR_MAX_PAGES`` pages, and is discarded as ``"none"`` when its mean confidence is under
+    ``OCR_MINUTES_MIN_CONFIDENCE``. Rendering and recognition share one deadline for the whole
+    document, sized from the page count (``OCR_FULL_SECONDS_PER_PAGE`` each); it is not enforced
+    page by page.
     """
     native, links = extract_document(content, content_type=content_type, source_url=source_url)
     empty_method = "native" if native.strip() else "none"
