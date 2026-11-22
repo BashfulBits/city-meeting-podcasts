@@ -381,6 +381,38 @@ def test_auxiliary_source_inherits_from_city_entity(tmp_path):
     assert city.aux_source["calendar_url"] == "https://foo.legistar.com/Calendar.aspx"
 
 
+def test_auxiliary_source_legistar_without_granicus_base(tmp_path):
+    _write_entity(
+        tmp_path,
+        "foo-tx.yml",
+        """
+        aux_provider: legistar
+        aux_source:
+          calendar_url: https://foo.legistar.com/Calendar.aspx
+          backfill_since: '2020-01-01'
+        """,
+    )
+    _write(tmp_path, "foo-tx.yml", VALID.replace("state: TX\n", "city: foo-tx\n"))
+
+    city = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert city.aux_provider == "legistar"
+    assert "granicus_base" not in city.aux_source
+    assert city.aux_source["calendar_url"] == "https://foo.legistar.com/Calendar.aspx"
+    assert city.aux_source["backfill_since"] == "2020-01-01"
+
+
+def test_dallas_auxiliary_legistar_configuration():
+    configs = {c.slug: c for c in load_city_configs("config", {})}
+    dallas_council = configs["dallas-tx-city-council"]
+    assert dallas_council.aux_provider == "legistar"
+    assert (
+        dallas_council.aux_source["calendar_url"]
+        == "https://cityofdallas.legistar.com/Calendar.aspx"
+    )
+    assert "granicus_base" not in dallas_council.aux_source
+    assert dallas_council.aux_source["backfill_since"] == "2020-01-01"
+
+
 @pytest.mark.parametrize(
     "bad_slug",
     ["../etc/passwd", "foo/bar", "foo.tx", "Foo-TX", "foo_tx", "/etc/passwd", ""],
