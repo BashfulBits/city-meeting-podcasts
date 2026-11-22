@@ -263,7 +263,29 @@ provider's daily request limit). Delivered in order:
    concurrent threads, and the report keeps the due order. The second drain costs each provider
    one more pause (up to the five-minute drain timeout) but overlaps across providers. With one
    worker the re-measure runs inside the first drain as before.
-3. **A daily slice** follows in its own change.
+3. **A daily slice** (the maintainer's limit: the daily checks never spend more than 10% of a
+   provider's request limit on this). The daily incremental run re-measures a few caps too: at most
+   `REMEASURE_DAILY_SESSION_CEILING` (6) sessions in `REMEASURE_DAILY_SECONDS` (40 minutes), only on
+   providers the run already visits (so it adds no extra pause), and only for routes the day's
+   health check proved or whose provider publishes no daily limit (the existing quota gate skips
+   the rest). Its sessions are saved as discovery evidence, so the weekly review counts them as
+   history, including for the two-day reduction rule; offers are still made only by the weekly run.
+   Each session is limited by a hard call cap: 10% (`REMEASURE_DAILY_RPD_SHARE`) of the route's own
+   daily limit and, where the provider has a shared pool (`rpd` on the provider), 10% of the pool,
+   less what the slice already spent that day (both axes of a route share its allowance, and
+   routes share a pool). Each route's own published limit is its quota, so 10% of each is 10% of
+   the provider's total. Only where neither the route nor the provider publishes a daily limit
+   does the slice get a fixed 20 requests a day for the provider. The spend is saved in the state
+   marker by UTC day (`remeasure_daily`), so a second incremental run the same day continues from
+   it and a new day starts at zero; a search that failed with unknown usage is charged its whole
+   allowance. Every charged submission, retries included, is one journaled attempt, so the count
+   is the number of provider calls. A gap in the verified artifact history (not in the
+   retry-receipt scan) disables the slice for that run, since a missing recent session could make a
+   measured axis look due.
+   The search stops before the call that would exceed the cap, and no session starts with fewer
+   than 2 calls left for a confirmation or 12 for a search, because a session cut short would
+   still count as the axis's measurement for 28 days. The run's observations report the axes
+   measured and requests spent.
 
 ## 8.15 One quota authority for direct and queued calls (#2249) — L2 design, 2026-11-21
 

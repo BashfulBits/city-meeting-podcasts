@@ -74,6 +74,7 @@ from citypods.provider_catalog.limits import (  # noqa: E402
 )
 from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
+    REMEASURE_DAILY_RPD_SHARE,
     REMEASURE_RUN_SECONDS,
     REMEASURE_SECONDS,
     NoDispatchControl,
@@ -88,6 +89,12 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
 DAILY_DISCOVERY_SECONDS = 7_200
 # Providers re-measured at once (review/54 §8.14.G); each is in its own dispatch pause.
 REMEASURE_WORKERS = 3
+# The daily incremental run re-measures a few caps too (review/54 §8.14.G), only on providers it
+# already visits, for at most this long and this many sessions, within the daily share of each
+# provider's request limit (reconcile.REMEASURE_DAILY_RPD_SHARE). Its job timeout is 180 minutes.
+REMEASURE_DAILY_SECONDS = 2_400
+REMEASURE_DAILY_SESSION_CEILING = 6
+REMEASURE_DAILY_RUN_SECONDS = (180 - 15 - 10) * 60
 # The weekly job's clock starts a few minutes before this process; re-measurement budgets from here.
 SCRIPT_STARTED = time.monotonic()
 LIMITS_PATH = REPO_ROOT / "config" / "provider_limits.yml"
@@ -662,6 +669,7 @@ def main(argv: list[str] | None = None) -> int:
     context_status = None
     discovery_history = ()
     discovery_history_gaps = ()
+    discovery_history_unavailable = False
     discovery_history_calls = {}
     discovery_successful_input_evidence = set()
     retry_receipts = {}
@@ -675,6 +683,9 @@ def main(argv: list[str] | None = None) -> int:
             discovery_history, accepted, discovery_history_gaps = verified_discovery_history(
                 references, repository=repository, now=now
             )
+            # Gaps in the artifact history (not in the retry-receipt scan below) mean a recent
+            # session may be missing, so a measured axis could look due.
+            discovery_history_unavailable = bool(discovery_history_gaps)
             for accepted_run in accepted:
                 for identity, calls in accepted_run.get("call_counts", {}).items():
                     discovery_history_calls[identity] = (
@@ -727,6 +738,7 @@ def main(argv: list[str] | None = None) -> int:
             zipfile.BadZipFile,
             zlib.error,
         ) as exc:
+            discovery_history_unavailable = True
             discovery_history_gaps = (
                 f"request-cap history or retry receipts unavailable ({type(exc).__name__})",
             )
@@ -827,6 +839,18 @@ def main(argv: list[str] | None = None) -> int:
     remeasure = weekly_full and bool(args.discovery_evidence) and not discovery_history_gaps
     if weekly_full and not remeasure:
         print("configured-route re-measure skipped: authenticated discovery history unavailable")
+    # The daily slice: an incremental run that also writes discovery evidence (so its sessions
+    # count as history for the two-day reduction rule) and has authenticated history.
+    daily_remeasure = (
+        args.incremental
+        and args.due_only
+        and bool(args.discovery_evidence)
+        and not args.discovery_enabled
+        and not args.provider
+        # A gap in the retry-receipt scan does not make history unreliable; a failed history
+        # load does (every route would look due).
+        and not discovery_history_unavailable
+    )
     report = reconcile(
         limits,
         load_lanes(),
@@ -855,11 +879,25 @@ def main(argv: list[str] | None = None) -> int:
         discovery_receipt_ids=retry_receipts,
         retry_candidate_keys=set(retry_receipts) if retry_receipts else None,
         candidate_keys={args.discovery_candidate} if args.discovery_candidate else None,
-        remeasure_time_budget_seconds=REMEASURE_SECONDS if remeasure else None,
-        remeasure_workers=REMEASURE_WORKERS if remeasure else 1,
+        remeasure_time_budget_seconds=(
+            REMEASURE_SECONDS if remeasure else REMEASURE_DAILY_SECONDS if daily_remeasure else None
+        ),
+        remeasure_workers=REMEASURE_WORKERS if remeasure or daily_remeasure else 1,
         remeasure_session_factory=requests.Session,
         remeasure_run_seconds=(
-            REMEASURE_RUN_SECONDS - (time.monotonic() - SCRIPT_STARTED) if remeasure else None
+            REMEASURE_RUN_SECONDS - (time.monotonic() - SCRIPT_STARTED)
+            if remeasure
+            else REMEASURE_DAILY_RUN_SECONDS - (time.monotonic() - SCRIPT_STARTED)
+            if daily_remeasure
+            else None
+        ),
+        **(
+            {
+                "remeasure_session_ceiling": REMEASURE_DAILY_SESSION_CEILING,
+                "remeasure_daily_rpd_share": REMEASURE_DAILY_RPD_SHARE,
+            }
+            if daily_remeasure
+            else {}
         ),
     )
     report.observations.extend(discovery_history_gaps)

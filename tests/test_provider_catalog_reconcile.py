@@ -3378,6 +3378,160 @@ def test_concurrent_providers_still_respect_the_session_ceiling(monkeypatch):
     assert len(report.discovery_sessions) >= 2
 
 
+def _daily_slice(
+    monkeypatch, *, route_rpd=None, provider_rpd=None, attempts=0, share=0.10, previous=None
+):
+    import citypods.provider_catalog.reconcile as module
+
+    limits = {
+        **LIMITS,
+        "providers": {
+            name: ({**cfg, "rpd": provider_rpd} if provider_rpd is not None else cfg)
+            for name, cfg in LIMITS["providers"].items()
+        },
+        "routes": [
+            {
+                **r,
+                "free": True,
+                "input_context_limit": 131072,
+                "output_context_limit": 8192,
+                "rpd": route_rpd,
+            }
+            for r in LIMITS["routes"]
+        ],
+    }
+    configured = {r["route_id"] for r in limits["routes"]}
+    allowed = []
+
+    def discover(candidate, *_args, **kwargs):
+        stub = _stub_session(candidate)
+        if candidate.key in configured:
+            allowed.append((candidate.provider, candidate.key, kwargs["max_attempts"]))
+            stub["artifact"]["attempts"] = [{}] * attempts
+        return stub
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        previous or {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(quota={}),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="daily",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+        remeasure_daily_rpd_share=share,
+    )
+    return report, allowed
+
+
+def test_the_daily_slice_never_spends_more_than_a_tenth_of_a_route_s_daily_limit(monkeypatch):
+    report, allowed = _daily_slice(monkeypatch, route_rpd=1000, attempts=30)
+    # A route's two axes share its allowance: 100, then 100 - the 30 calls the first one made.
+    by_route = {}
+    for _provider, key, n in allowed:
+        by_route.setdefault(key, []).append(n)
+    assert by_route and all(v[0] == 100 for v in by_route.values())
+    assert all(v == [100, 70, 40, 10][: len(v)] for v in by_route.values())
+    ran = [s for s in report.remeasure_sessions if s.get("ran")]
+    assert ran and all("allowance" in s for s in ran)
+    assert any("daily re-measure" in o for o in report.observations)
+
+
+def test_the_daily_slice_skips_a_route_whose_tenth_is_too_small_to_finish_a_search(monkeypatch):
+    report, allowed = _daily_slice(
+        monkeypatch, route_rpd=100
+    )  # a tenth is 10 calls, a search needs 12
+    assert not allowed
+    notes = [s.get("note") or "" for s in report.remeasure_sessions]
+    assert any("may spend 10 more requests" in n for n in notes)
+
+
+def test_a_second_run_the_same_day_continues_from_what_the_first_spent(monkeypatch):
+    first, allowed_first = _daily_slice(monkeypatch, provider_rpd=1000, attempts=60)
+    marker = first.state["remeasure_daily"]
+    assert marker["date"] == TODAY.isoformat()
+    assert marker["provider"] and sum(marker["provider"].values()) >= 60
+    # The pool's 100-request tenth is mostly spent: the second run can start at most one session.
+    second, allowed_second = _daily_slice(
+        monkeypatch, provider_rpd=1000, attempts=60, previous={"remeasure_daily": marker}
+    )
+    spent_first = sum(marker["provider"].values())
+    assert len(allowed_second) < len(allowed_first) or spent_first >= 100
+    assert all(n <= 100 - marker["provider"].get(p, 0) for p, _k, n in allowed_second)
+    assert sum(second.state["remeasure_daily"]["provider"].values()) >= spent_first
+
+
+def test_a_new_utc_day_starts_the_daily_allowance_again(monkeypatch):
+    yesterday = {"remeasure_daily": {"date": "2000-01-01", "route": {}, "provider": {"groq": 100}}}
+    _report, allowed = _daily_slice(monkeypatch, provider_rpd=1000, attempts=0, previous=yesterday)
+    assert allowed and max(n for _p, _k, n in allowed) == 100
+
+
+def test_a_provider_pool_is_shared_by_its_routes_through_the_day(monkeypatch):
+    # A pool of 1,000 requests allows 100: the first session spends 70, the next may spend 30.
+    report, allowed = _daily_slice(monkeypatch, provider_rpd=1000, attempts=70)
+    by_provider = {}
+    for provider, _key, n in allowed:
+        by_provider.setdefault(provider, []).append(n)
+    groq = by_provider["groq"]
+    assert groq[0] == 100 and (len(groq) == 1 or groq[1] == 30)
+    assert all(len(v) <= 2 for v in by_provider.values())  # a third would have 0 left
+
+
+def test_a_provider_without_a_published_daily_limit_gets_a_small_fixed_allowance(monkeypatch):
+    _report, allowed = _daily_slice(monkeypatch, route_rpd=None, attempts=5)
+    assert allowed and max(n for _p, _k, n in allowed) == 20
+
+
+def test_the_weekly_run_has_no_daily_share(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    seen = []
+
+    def discover(candidate, *_args, **kwargs):
+        seen.append(kwargs["max_attempts"])
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+    )
+    assert seen and all(n is None for n in seen)
+
+
 def test_remeasure_stops_when_its_own_time_budget_is_spent(monkeypatch):
     import citypods.provider_catalog.reconcile as module
 
