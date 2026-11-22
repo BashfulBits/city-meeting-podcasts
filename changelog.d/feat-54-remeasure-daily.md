@@ -4,5 +4,5 @@
   daily request limit and of the provider's shared pool, less what the slice already spent that
   day (saved by UTC day, so a repeated run continues from it); where nothing publishes a daily
   limit the provider gets 20 requests. No session starts without enough calls to finish, and a
-  gap in the verified history disables the slice for that run. Its evidence counts as history for the weekly review, which still makes
-  the offers.
+  gap in the verified history disables the slice for that run. Its evidence counts as history
+  for the weekly review, which still makes the offers.
