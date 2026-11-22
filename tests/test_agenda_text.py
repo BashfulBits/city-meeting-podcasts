@@ -891,3 +891,99 @@ def test_roster_does_not_read_a_vote_line_as_the_end_of_the_attendance_list():
 def test_roster_keeps_each_repeated_attendance_fact_once():
     block = "PRESENT: Mayor Ann Lee, Bob Roe\n"
     assert _names(parse_roster(block * 3)) == ["Ann Lee", "Bob Roe"]
+
+
+def test_prose_roster_checks_a_staff_or_guest_label_before_stripping_it():
+    staff = (
+        "Chair Ann Lee called the meeting to order. Staff: Jane Doe and Bob Roe were in attendance."
+    )
+    assert _names(parse_roster(staff)) == ["Ann Lee"]
+    guests = (
+        "Chair Ann Lee called the meeting to order. Guests Jane Doe and Bob Roe were in attendance."
+    )
+    assert _names(parse_roster(guests)) == ["Ann Lee"]
+    members = (
+        "Chair Ann Lee called the meeting to order. Commission Members: Jane Doe and Bob Roe "
+        "were in attendance."
+    )
+    assert _names(parse_roster(members)) == ["Jane Doe", "Bob Roe", "Ann Lee"]
+    plain = (
+        "Chair Ann Lee called the meeting to order. Commissioners Jane Doe and Bob Roe were in "
+        "attendance."
+    )
+    assert _names(parse_roster(plain)) == ["Jane Doe", "Bob Roe", "Ann Lee"]
+
+
+def test_roster_does_not_append_an_unrelated_heading_to_a_members_name():
+    assert _names(parse_roster("PRESENT: Alice Smith\nPublic Comment\n")) == ["Alice Smith"]
+    assert _names(parse_roster("PRESENT: Alice Smith\nNew Business\nABSENT: None")) == [
+        "Alice Smith"
+    ]
+
+
+def test_roster_keeps_the_lines_of_a_vertical_attendance_list_separate():
+    rows = parse_roster("PRESENT:\nALICE SMITH\nBOB JONES\nCARY LEE\n")
+    assert _names(rows) == ["ALICE SMITH", "BOB JONES", "CARY LEE"]
+
+
+def test_prose_roster_keeps_excused_distinct_from_absent():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioner Bob Roe was excused. "
+        "Commissioner Cy Poe was not present. Commissioner Di Moe was absent."
+    )
+    rows = parse_roster(text)
+    assert _names(rows, "excused") == ["Bob Roe"]
+    assert _names(rows, "absent") == ["Cy Poe", "Di Moe"]
+
+
+def test_roster_dedupe_keeps_names_that_differ_only_by_a_diacritic():
+    assert _names(parse_roster("PRESENT: José Silva, Jose Silva, José Silva")) == [
+        "José Silva",
+        "Jose Silva",
+    ]
+    prose = (
+        "Chair Ann Lee called the meeting to order. Commissioners José Silva and Jose Silva "
+        "were in attendance."
+    )
+    assert sorted(_names(parse_roster(prose))) == ["Ann Lee", "Jose Silva", "José Silva"]
+
+
+def test_roster_only_a_real_empty_attendance_heading_makes_the_next_heading_a_table():
+    assert _names(parse_roster("ROLL CALL:\nPRESENT:\nAlice Smith, Bob Jones\n")) == [
+        "Alice Smith",
+        "Bob Jones",
+    ]
+
+
+def test_prose_roster_does_not_mistake_a_surname_for_a_staff_title():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Mark Manager "
+        "were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Mark Manager", "Ann Lee"]
+    staffer = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Cy Poe, City "
+        "Attorney, were in attendance."
+    )
+    assert _names(parse_roster(staffer)) == ["Alice Smith", "Ann Lee"]
+
+
+def test_prose_members_are_read_when_structured_parsing_found_only_staff():
+    text = (
+        "STAFF PRESENT: Al Noe, City Manager.\n"
+        "Chair Ann Lee called the meeting to order at 7:00 p.m. Commissioners Bob Roe and Cy Poe "
+        "were in attendance."
+    )
+    rows = parse_roster(text)
+    assert any(row.get("section") == "staff" for row in rows)
+    members = [row["name"] for row in rows if row.get("section") != "staff"]
+    assert sorted(members) == ["Ann Lee", "Bob Roe", "Cy Poe"]
+
+
+def test_roster_parsing_stays_fast_with_many_repeated_attendance_headings():
+    import time
+
+    text = ("PRESENT: Chair Ann Lee, Bob Roe\nABSENT: None\n" + "Item text. " * 40 + "\n") * 2500
+    started = time.monotonic()
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe"]
+    assert time.monotonic() - started < 5
