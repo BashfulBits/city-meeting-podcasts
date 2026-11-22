@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Concurrent re-measure waits for artifact room instead of skipping routes (review/54 §8.14.G).**
+  On the third weekly run 19 axes were skipped as "budget spent" after only 13 sessions: each
+  session in flight reserved the worst-case 400 KB of evidence-artifact room, so two running
+  sessions left none for a third provider. A route that finds no room only because other sessions
+  are still running now waits for one to end; a budget spent for good still skips at once. The
+  room kept per session follows the largest session this run has produced, between 100 KB and
+  400 KB.
+
 - **Provider catalog history survives a transient network error.** `gh api` reads of workflow
   runs and evidence artifacts retry up to three times (after 5 s and 20 s) on connection resets,
   timeouts and 5xx responses; other errors still fail at once. The 2026-11-22 weekly run lost its
