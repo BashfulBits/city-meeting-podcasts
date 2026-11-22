@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
@@ -563,6 +565,8 @@ def reconcile(
     remeasure_time_budget_seconds: float | None = None,
     remeasure_run_seconds: float | None = None,
     remeasure_session_ceiling: int = REMEASURE_SESSION_CEILING,
+    remeasure_workers: int = 1,
+    remeasure_session_factory: Callable[[], Any] | None = None,
 ) -> Report:
     report = Report(floor=quality.floor, floor_source="pinned reference models")
     new_model_budget = new_model_limit
@@ -628,6 +632,11 @@ def reconcile(
     remeasure_due: list[tuple[str, str]] = []
     remeasure_started: float | None = None
     remeasured: set[tuple[str, str]] = set()
+    # With remeasure_workers > 1 each provider re-measures in its own thread after the provider
+    # loop (its own drain); the lock makes starting a session, and recording it, atomic.
+    remeasure_lock = threading.Lock()
+    remeasure_inflight = [0]
+    deferred_remeasure: dict[str, tuple] = {}
     if remeasure_time_budget_seconds is not None:
         from citypods.provider_catalog.limits import remeasure_review
 
@@ -642,14 +651,16 @@ def reconcile(
         # New-route sessions this run may still add must keep their place in the artifact.
         # A weekly run is built around three bounded new-route searches (MAX_RUN_SESSIONS).
         later_new_route = min(MAX_RUN_SESSIONS, max(0, session_limit - len(new_route_sessions())))
+        inflight = remeasure_inflight[0]  # sessions started but not yet in the artifact
         if (
             remeasure_started is not None
             and len([s for s in report.remeasure_sessions if s.get("ran")])
             >= remeasure_session_ceiling
-        ) or len(report.discovery_sessions) + later_new_route >= MAX_ARTIFACT_SESSIONS:
+        ) or len(report.discovery_sessions) + inflight + later_new_route >= MAX_ARTIFACT_SESSIONS:
             return None  # one run's evidence artifact holds at most MAX_ARTIFACT_SESSIONS
         used = len(json.dumps(report.discovery_sessions, default=str).encode())
-        if used + REMEASURE_SESSION_BYTES_RESERVE * (1 + later_new_route) >= MAX_ARTIFACT_BYTES:
+        reserved = REMEASURE_SESSION_BYTES_RESERVE * (1 + inflight + later_new_route)
+        if used + reserved >= MAX_ARTIFACT_BYTES:
             return None  # leave room under the artifact's byte limit
         start = remeasure_started if remeasure_started is not None else discovery_clock()
         ends = [start + remeasure_time_budget_seconds]
@@ -730,7 +741,7 @@ def reconcile(
         if isinstance(row, Mapping) and row.get("discovery")
     }
 
-    def remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause) -> None:
+    def remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause, http=None) -> None:
         """Re-measure configured caps inside this provider's drain (review/54 §8.14.A)."""
         nonlocal remeasure_started
         from types import SimpleNamespace
@@ -768,22 +779,24 @@ def reconcile(
                 # failures never count as reductions.
                 row["note"] = "daily quota not confirmed this run; waits for next week"
                 continue
-            deadline = remeasure_deadline()
-            if deadline is None:
-                row["note"] = "this run's re-measure budget was spent; waits for next week"
-                continue
-            if remeasure_started is None:
-                remeasure_started = discovery_clock()
-            cap = remeasure_current_cap(route, axis)
-            output = remeasure_current_cap(route, "output")
-            seeds = {"output": output or INPUT_OUTPUT_COUNTERPART_SEED}
-            if axis == "input":
-                seeds["input"] = cap
-            elif cap is not None:
-                seeds["output"] = cap
-            remeasured.add((identity, axis))
-            row["ran"] = True
-            row["cap"] = cap
+            with remeasure_lock:
+                deadline = remeasure_deadline()
+                if deadline is None:
+                    row["note"] = "this run's re-measure budget was spent; waits for next week"
+                    continue
+                if remeasure_started is None:
+                    remeasure_started = discovery_clock()
+                cap = remeasure_current_cap(route, axis)
+                output = remeasure_current_cap(route, "output")
+                seeds = {"output": output or INPUT_OUTPUT_COUNTERPART_SEED}
+                if axis == "input":
+                    seeds["input"] = cap
+                elif cap is not None:
+                    seeds["output"] = cap
+                remeasured.add((identity, axis))
+                row["ran"] = True
+                row["cap"] = cap
+                remeasure_inflight[0] += 1
             session_started = discovery_clock()
             # A bracket already measured tightly around the cap is re-tested, not searched again.
             confirm = confirmation_history(
@@ -808,7 +821,7 @@ def reconcile(
                     provider_cfg=cfg,
                     rules=rules,
                     pause=pause,
-                    session=session,
+                    session=http or session,
                     today=today,
                     run_id=discovery_run_id,
                     receipt_id=None,
@@ -830,10 +843,14 @@ def reconcile(
                 )
             except Exception as exc:  # advisory, like new-route discovery
                 row["note"] = f"search stopped safely ({type(exc).__name__})"
+                with remeasure_lock:
+                    remeasure_inflight[0] -= 1
                 continue
-            report.discovery_sessions.append(record["artifact"])
-            remeasure_artifacts.append(id(record["artifact"]))
-            save_sessions()
+            with remeasure_lock:
+                report.discovery_sessions.append(record["artifact"])
+                remeasure_artifacts.append(id(record["artifact"]))
+                save_sessions()
+                remeasure_inflight[0] -= 1
             row["seconds"] = round(discovery_clock() - session_started)
             row["calls"] = record["summary"].get("calls")
             bracket = next((a for a in record["summary"]["axes"] if a.get("axis") == axis), {})
@@ -849,6 +866,13 @@ def reconcile(
             row["admitted"] = bracket.get("admitted")
             row["refused"] = bracket.get("refused")
             row["reason"] = record["summary"].get("reason")
+
+    def start_remeasure(provider, due, cfg, rules, catalog, pause) -> None:
+        """Re-measure now inside this drain, or (concurrent mode) after every provider is done."""
+        if remeasure_workers > 1:
+            deferred_remeasure[provider] = (due, cfg, rules, catalog)
+        else:
+            remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause)
 
     for provider in selected:
         rules = all_rules().get(provider)
@@ -1525,9 +1549,7 @@ def reconcile(
             if not api_key:
                 report.observations.append(f"{provider}: no API key; candidates not checked")
                 if provider_remeasure:
-                    remeasure_routes_for_provider(
-                        provider_remeasure, provider, cfg, rules, catalog, pause
-                    )
+                    start_remeasure(provider, provider_remeasure, cfg, rules, catalog, pause)
                 continue
             quota_waits: dict[str, int] = {}
             resume_queue: list[dict[str, Any]] = []
@@ -1848,9 +1870,7 @@ def reconcile(
                 )
 
             if provider_remeasure:
-                remeasure_routes_for_provider(
-                    provider_remeasure, provider, cfg, rules, catalog, pause
-                )
+                start_remeasure(provider, provider_remeasure, cfg, rules, catalog, pause)
 
             if runner is not None and not pause.contended:
                 eligible = {o.route_id for o in report.rate_observations if o.provider == provider}
@@ -1977,6 +1997,31 @@ def reconcile(
                 context_run["states"] = context_history_states(
                     [*context_run["history"], *report.context_observations], now=datetime.now(UTC)
                 )
+
+    if deferred_remeasure:
+        # Providers have independent quotas and each runs in its own dispatch pause, so their
+        # re-measurements overlap. Routes of one provider stay sequential (they share its quota).
+        order = {key: i for i, key in enumerate(remeasure_due)}
+
+        def remeasure_provider(item) -> None:
+            provider, (due, cfg, rules, catalog) = item
+            http = remeasure_session_factory() if remeasure_session_factory else None
+            try:
+                with control.paused(provider) as pause:
+                    remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause, http)
+            except Exception as exc:  # advisory: one provider never stops the others
+                report.observations.append(
+                    f"{provider}: configured-route re-measurement stopped safely "
+                    f"({type(exc).__name__})"
+                )
+
+        with ThreadPoolExecutor(
+            max_workers=min(remeasure_workers, len(deferred_remeasure))
+        ) as pool:
+            list(pool.map(remeasure_provider, deferred_remeasure.items()))
+        report.remeasure_sessions.sort(
+            key=lambda r: order.get((r.get("route_id"), r.get("axis")), len(order))
+        )
 
     # Forget canary memory that has aged out so the state marker stays bounded.
     canary_memory = {
