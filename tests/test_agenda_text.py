@@ -1154,6 +1154,7 @@ def test_roster_stops_a_vertical_list_at_a_standalone_none():
 
 def test_roster_evidence_for_a_vertical_list_includes_the_source_lines():
     rows = parse_roster("PRESENT:\nAlice Smith\nBob Jones\nPUBLIC COMMENT\n")
+    assert [row["name"] for row in rows] == ["Alice Smith", "Bob Jones"]
     assert all("Alice Smith" in row["evidence"] and "Bob Jones" in row["evidence"] for row in rows)
     assert all("PUBLIC COMMENT" not in row["evidence"] for row in rows)
     inline = parse_roster("PRESENT: Alice Smith, Bob Jones\nABSENT: None\n")
@@ -1183,3 +1184,35 @@ def test_prose_roster_checks_a_guest_label_that_encloses_a_qualified_list():
         "Bob Roe."
     )
     assert sorted(_names(parse_roster(plain))) == ["Ann Lee", "Bob Roe", "Jane Doe"]
+
+
+def test_structured_roster_does_not_enrol_a_staff_titled_entry_under_a_member_heading():
+    text = "PRESENT:\nAlice Smith\nCity Attorney Bob Roe\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    inline = "PRESENT: Alice Smith, Deputy City Manager Cy Poe, Di Moe\n"
+    assert _names(parse_roster(inline)) == ["Alice Smith", "Di Moe"]
+    staff = "ALSO PRESENT: City Attorney Bob Roe\n"
+    assert [r["name"] for r in parse_roster(staff) if r.get("section") == "staff"] == ["Bob Roe"]
+
+
+def test_an_all_caps_given_name_is_not_a_staff_acronym():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners ALICE SMITH, MARK MANAGER, and "
+        "BOB ROE were present."
+    )
+    assert _names(parse_roster(text)) == ["ALICE SMITH", "MARK MANAGER", "BOB ROE", "Ann Lee"]
+
+
+def test_roster_keeps_reading_an_all_caps_line_after_a_comma_in_a_mixed_case_list():
+    text = "PRESENT:\nAlice Smith,\nBOB JONES, CAROL BROWN\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "BOB JONES", "CAROL BROWN"]
+
+
+def test_a_boards_own_secretary_is_a_member_but_a_city_secretary_is_staff():
+    text = (
+        "ABSENT: Chair Ann Lee, Secretary Thomas Plock, Bob Roe\n"
+        "PRESENT: City Secretary Di Moe, Cy Poe\n"
+    )
+    rows = parse_roster(text)
+    assert _names(rows, "absent") == ["Ann Lee", "Thomas Plock", "Bob Roe"]
+    assert _names(rows) == ["Cy Poe"]
