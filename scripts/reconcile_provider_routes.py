@@ -838,7 +838,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     remeasure = weekly_full and bool(args.discovery_evidence) and not discovery_history_gaps
     if weekly_full and not remeasure:
-        print("configured-route re-measure skipped: authenticated discovery history unavailable")
+        why = f" ({discovery_history_gaps[0]})" if discovery_history_gaps else ""
+        print(
+            f"configured-route re-measure skipped: authenticated discovery history unavailable{why}"
+        )
     # The daily slice: an incremental run that also writes discovery evidence (so its sessions
     # count as history for the two-day reduction rule) and has authenticated history.
     daily_remeasure = (
