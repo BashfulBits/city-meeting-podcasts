@@ -7,9 +7,12 @@ file. Nothing here writes config; Slice 1's only side effect is the rolling issu
 
 from __future__ import annotations
 
+import json
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
@@ -31,7 +34,12 @@ from citypods.llm_rate_probe import (
 )
 from citypods.provider_catalog.classify import Classification, classify
 from citypods.provider_catalog.decisions import Decisions
-from citypods.provider_catalog.discovery import MAX_ARTIFACT_SESSIONS, MAX_AUTO_MEASURE_ATTEMPTS
+from citypods.provider_catalog.discovery import (
+    MAX_ARTIFACT_BYTES,
+    MAX_ARTIFACT_SESSIONS,
+    MAX_AUTO_MEASURE_ATTEMPTS,
+    MAX_RUN_SESSIONS,
+)
 from citypods.provider_catalog.evidence import (
     CatalogEvidence,
     LimitObservation,
@@ -319,8 +327,17 @@ MEASURE_FALLBACK_PROVIDERS = 2
 # budget remains, and never more than this many in one run.
 MIN_SESSION_SECONDS = 600
 # Review/54 §8.14: configured-route cap re-measurement in the weekly full run.
-REMEASURE_SECONDS = 3_600
-REMEASURE_SESSION_CEILING = 4
+# Time and session allowances for one run. The first weekly run used 97 of 360 minutes and four
+# sessions: the ceiling, not the clock, was binding. Sessions are bounded by this window, by the
+# ceiling below, by the 32-session artifact and by REMEASURE_SESSION_BYTES_RESERVE.
+REMEASURE_SECONDS = 10_800
+REMEASURE_SESSION_CEILING = 12
+# Reachability, the old admitted size and the old refusal.
+CONFIRM_MAX_CALLS = 3
+# A session can hold up to 96 attempts of a few KB each. Before starting one, keep room for it and
+# for every new-route session this run may still add; an artifact over its 2 MiB limit is not
+# saved at all.
+REMEASURE_SESSION_BYTES_RESERVE = 400_000
 # The weekly job times out at 360 minutes; re-measurement stops 15 minutes before that so cleanup
 # and evidence upload still run (the script starts a few minutes into the job).
 REMEASURE_RUN_SECONDS = (360 - 15 - 10) * 60
@@ -548,6 +565,8 @@ def reconcile(
     remeasure_time_budget_seconds: float | None = None,
     remeasure_run_seconds: float | None = None,
     remeasure_session_ceiling: int = REMEASURE_SESSION_CEILING,
+    remeasure_workers: int = 1,
+    remeasure_session_factory: Callable[[], Any] | None = None,
 ) -> Report:
     report = Report(floor=quality.floor, floor_source="pinned reference models")
     new_model_budget = new_model_limit
@@ -613,6 +632,11 @@ def reconcile(
     remeasure_due: list[tuple[str, str]] = []
     remeasure_started: float | None = None
     remeasured: set[tuple[str, str]] = set()
+    # With remeasure_workers > 1 each provider re-measures in its own thread after the provider
+    # loop (its own drain); the lock makes starting a session, and recording it, atomic.
+    remeasure_lock = threading.Lock()
+    remeasure_inflight = [0]
+    deferred_remeasure: dict[str, tuple] = {}
     if remeasure_time_budget_seconds is not None:
         from citypods.provider_catalog.limits import remeasure_review
 
@@ -624,12 +648,20 @@ def reconcile(
         """Clock value the next re-measure session must end by, or None when none may start."""
         if remeasure_time_budget_seconds is None:
             return None
+        # New-route sessions this run may still add must keep their place in the artifact.
+        # A weekly run is built around three bounded new-route searches (MAX_RUN_SESSIONS).
+        later_new_route = min(MAX_RUN_SESSIONS, max(0, session_limit - len(new_route_sessions())))
+        inflight = remeasure_inflight[0]  # sessions started but not yet in the artifact
         if (
             remeasure_started is not None
             and len([s for s in report.remeasure_sessions if s.get("ran")])
             >= remeasure_session_ceiling
-        ) or len(report.discovery_sessions) >= MAX_ARTIFACT_SESSIONS:
+        ) or len(report.discovery_sessions) + inflight + later_new_route >= MAX_ARTIFACT_SESSIONS:
             return None  # one run's evidence artifact holds at most MAX_ARTIFACT_SESSIONS
+        used = len(json.dumps(report.discovery_sessions, default=str).encode())
+        reserved = REMEASURE_SESSION_BYTES_RESERVE * (1 + inflight + later_new_route)
+        if used + reserved >= MAX_ARTIFACT_BYTES:
+            return None  # leave room under the artifact's byte limit
         start = remeasure_started if remeasure_started is not None else discovery_clock()
         ends = [start + remeasure_time_budget_seconds]
         if remeasure_run_seconds is not None:
@@ -709,12 +741,17 @@ def reconcile(
         if isinstance(row, Mapping) and row.get("discovery")
     }
 
-    def remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause) -> None:
+    def remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause, http=None) -> None:
         """Re-measure configured caps inside this provider's drain (review/54 §8.14.A)."""
         nonlocal remeasure_started
         from types import SimpleNamespace
 
-        from citypods.provider_catalog.limits import remeasure_current_cap, remeasure_identity
+        from citypods.provider_catalog.limits import (
+            confirmation_history,
+            remeasure_current_cap,
+            remeasure_identity,
+            remeasure_parser_version,
+        )
 
         routes_by_id = {str(r["route_id"]): r for r in routes}
         for rid, axis in due:
@@ -742,22 +779,35 @@ def reconcile(
                 # failures never count as reductions.
                 row["note"] = "daily quota not confirmed this run; waits for next week"
                 continue
-            deadline = remeasure_deadline()
-            if deadline is None:
-                row["note"] = "this run's re-measure budget was spent; waits for next week"
-                continue
-            if remeasure_started is None:
-                remeasure_started = discovery_clock()
-            cap = remeasure_current_cap(route, axis)
-            output = remeasure_current_cap(route, "output")
-            seeds = {"output": output or INPUT_OUTPUT_COUNTERPART_SEED}
-            if axis == "input":
-                seeds["input"] = cap
-            elif cap is not None:
-                seeds["output"] = cap
-            remeasured.add((identity, axis))
-            row["ran"] = True
-            row["cap"] = cap
+            with remeasure_lock:
+                deadline = remeasure_deadline()
+                if deadline is None:
+                    row["note"] = "this run's re-measure budget was spent; waits for next week"
+                    continue
+                if remeasure_started is None:
+                    remeasure_started = discovery_clock()
+                cap = remeasure_current_cap(route, axis)
+                output = remeasure_current_cap(route, "output")
+                seeds = {"output": output or INPUT_OUTPUT_COUNTERPART_SEED}
+                if axis == "input":
+                    seeds["input"] = cap
+                elif cap is not None:
+                    seeds["output"] = cap
+                remeasured.add((identity, axis))
+                row["ran"] = True
+                row["cap"] = cap
+                remeasure_inflight[0] += 1
+            session_started = discovery_clock()
+            # A bracket already measured tightly around the cap is re-tested, not searched again.
+            confirm = confirmation_history(
+                discovery_history,
+                identity,
+                axis,
+                remeasure_parser_version(route),
+                cap,
+                rate_now or datetime.now(UTC),
+            )
+            row["confirm"] = bool(confirm)
             pause.renew()
             try:
                 record = _discover_candidate_caps(
@@ -771,13 +821,17 @@ def reconcile(
                     provider_cfg=cfg,
                     rules=rules,
                     pause=pause,
-                    session=session,
+                    session=http or session,
                     today=today,
                     run_id=discovery_run_id,
                     receipt_id=None,
-                    # Only this run's sessions: an older bracket would resume old bounds instead
-                    # of testing the configured cap first.
-                    history=_history_with_run_sessions((), report.discovery_sessions, identity),
+                    # This run's sessions, plus (only when it already brackets the configured cap
+                    # tightly) the newest older session: re-testing its admitted size tests the cap
+                    # too. Any other older bracket would resume old bounds instead of testing the
+                    # configured cap first.
+                    history=_history_with_run_sessions(
+                        confirm, report.discovery_sessions, identity
+                    ),
                     shared_budget=None,
                     selected_axes=(axis,),
                     sleep=sleep,
@@ -785,17 +839,40 @@ def reconcile(
                     fresh_run_budget=True,
                     account_id=str(route["account_id"]),
                     seeds=seeds,
+                    recheck_upper=bool(confirm),
                 )
             except Exception as exc:  # advisory, like new-route discovery
                 row["note"] = f"search stopped safely ({type(exc).__name__})"
+                with remeasure_lock:
+                    remeasure_inflight[0] -= 1
                 continue
-            report.discovery_sessions.append(record["artifact"])
-            remeasure_artifacts.append(id(record["artifact"]))
-            save_sessions()
+            with remeasure_lock:
+                report.discovery_sessions.append(record["artifact"])
+                remeasure_artifacts.append(id(record["artifact"]))
+                save_sessions()
+                remeasure_inflight[0] -= 1
+            row["seconds"] = round(discovery_clock() - session_started)
+            row["calls"] = record["summary"].get("calls")
             bracket = next((a for a in record["summary"]["axes"] if a.get("axis") == axis), {})
+            # Confirmed means the shortcut finished as a confirmation: converged within the calls
+            # it needs (reachability, the old admitted size, the old refusal), not a search that a
+            # refusal sent back to the full bracket.
+            row["confirmed"] = bool(
+                confirm
+                and bracket.get("status") == "converged"
+                and isinstance(row["calls"], int)
+                and row["calls"] <= CONFIRM_MAX_CALLS
+            )
             row["admitted"] = bracket.get("admitted")
             row["refused"] = bracket.get("refused")
             row["reason"] = record["summary"].get("reason")
+
+    def start_remeasure(provider, due, cfg, rules, catalog, pause) -> None:
+        """Re-measure now inside this drain, or (concurrent mode) after every provider is done."""
+        if remeasure_workers > 1:
+            deferred_remeasure[provider] = (due, cfg, rules, catalog)
+        else:
+            remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause)
 
     for provider in selected:
         rules = all_rules().get(provider)
@@ -1472,9 +1549,7 @@ def reconcile(
             if not api_key:
                 report.observations.append(f"{provider}: no API key; candidates not checked")
                 if provider_remeasure:
-                    remeasure_routes_for_provider(
-                        provider_remeasure, provider, cfg, rules, catalog, pause
-                    )
+                    start_remeasure(provider, provider_remeasure, cfg, rules, catalog, pause)
                 continue
             quota_waits: dict[str, int] = {}
             resume_queue: list[dict[str, Any]] = []
@@ -1795,9 +1870,7 @@ def reconcile(
                 )
 
             if provider_remeasure:
-                remeasure_routes_for_provider(
-                    provider_remeasure, provider, cfg, rules, catalog, pause
-                )
+                start_remeasure(provider, provider_remeasure, cfg, rules, catalog, pause)
 
             if runner is not None and not pause.contended:
                 eligible = {o.route_id for o in report.rate_observations if o.provider == provider}
@@ -1924,6 +1997,31 @@ def reconcile(
                 context_run["states"] = context_history_states(
                     [*context_run["history"], *report.context_observations], now=datetime.now(UTC)
                 )
+
+    if deferred_remeasure:
+        # Providers have independent quotas and each runs in its own dispatch pause, so their
+        # re-measurements overlap. Routes of one provider stay sequential (they share its quota).
+        order = {key: i for i, key in enumerate(remeasure_due)}
+
+        def remeasure_provider(item) -> None:
+            provider, (due, cfg, rules, catalog) = item
+            http = remeasure_session_factory() if remeasure_session_factory else None
+            try:
+                with control.paused(provider) as pause:
+                    remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause, http)
+            except Exception as exc:  # advisory: one provider never stops the others
+                report.observations.append(
+                    f"{provider}: configured-route re-measurement stopped safely "
+                    f"({type(exc).__name__})"
+                )
+
+        with ThreadPoolExecutor(
+            max_workers=min(remeasure_workers, len(deferred_remeasure))
+        ) as pool:
+            list(pool.map(remeasure_provider, deferred_remeasure.items()))
+        report.remeasure_sessions.sort(
+            key=lambda r: order.get((r.get("route_id"), r.get("axis")), len(order))
+        )
 
     # Forget canary memory that has aged out so the state marker stays bounded.
     canary_memory = {
@@ -2612,6 +2710,7 @@ def _discover_candidate_caps(
     fresh_run_budget=False,
     account_id=None,
     seeds=None,
+    recheck_upper=False,
 ):
     """Run the separate, charged size search only after candidate reachability is proven.
 
@@ -2754,6 +2853,7 @@ def _discover_candidate_caps(
                 shared_budget=shared_budget,
                 sleep=sleep,
                 deadline=deadline,
+                recheck_upper=recheck_upper,
             )
         except Exception as exc:
             # Preserve charged attempts even if orchestration fails after admission.

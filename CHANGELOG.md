@@ -15,6 +15,26 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Granicus proxy fallback and stderr diagnostics for video slides.** Wire Cloudflare Worker
+  media proxy fallback into `SlidesStage` for video probe, detection, and frame capture when
+  Granicus returns HTTP 403 Forbidden to GitHub Actions runners. Include redacted stderr in
+  subprocess error logs and reset failed attempts on dirty slide records so that previously failed
+  episodes are retried. Add `scripts/reset_slides_backoff.py` for targeted state recovery.
+
+- **Concurrent configured-route re-measurement (review/54 §8.14.G).** The weekly run re-measures
+  up to three providers at once, each in its own dispatch pause and HTTP session, after the
+  provider loop; routes of one provider stay sequential because they share its quota. Starting a
+  session is atomic, so the session ceiling and the evidence-artifact guard hold across threads.
+  With one worker the re-measure runs inside the first drain as before.
+
+- **More configured-route cap re-measurements per weekly run (review/54 §8.14.G).** The weekly
+  run's ceiling was the limit, not its clock: it re-measured 4 of 92 due axes in 97 of 360 minutes.
+  The session ceiling goes from 4 to 12, the re-measure window from 1 to 3 hours, and the evidence
+  artifact from 16 to 32 sessions, with a stop before the artifact could pass its 2 MiB limit. A
+  bracket already measured tightly around the configured cap is re-tested in two calls instead of
+  searched again, and a refusal there falls back to the full search. The rolling issue now reports
+  session time, provider calls, confirmed brackets and the reasons axes waited.
+
 - Minutes extraction (#2782): Granicus `MinutesViewer.php` links whose Google Docs viewer wraps a
   PDF on a sibling `*.granicus.com` host (Pflugerville serves PDFs from `legistar1.granicus.com`)
   are now unwrapped instead of stored as the viewer shell (`Loading…`). Stored shells are no longer

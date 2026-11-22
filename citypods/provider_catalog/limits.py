@@ -7,6 +7,7 @@ probe providers, edit configuration or authorize publication.
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -1145,6 +1146,43 @@ def session_axis_results(history, identity, axis, parser_version=None):
             )
         )
     return sorted(rows, key=lambda r: (r.observed_at, r.session_id))
+
+
+# A confirmed bracket older than this is searched again from the configured cap.
+CONFIRM_MAX_AGE_DAYS = 56
+
+
+def confirmation_history(history, identity, axis, parser_version, cap, now):
+    """The verified observations of the newest session when it already brackets ``cap`` tightly.
+
+    Given as the search's history, they make it re-test that session's admitted size twice and
+    keep its refusal (the search's existing resume rule), so an unchanged cap is confirmed in two
+    calls instead of a fresh search from the cap. Only the newest session counts, and only when it
+    converged (admitted below refused within the search's width), admitted at least ``cap`` (so
+    re-testing it also tests the cap) and is recent. A refusal at that size ends the shortcut and
+    the search continues as a fresh one. Otherwise ``()``: the search starts at the cap.
+    """
+    if cap is None:
+        return ()
+    results = session_axis_results(history, identity, axis, parser_version)
+    if not results:
+        return ()
+    newest = results[-1]
+    if newest.admitted is None or newest.refused is None or newest.admitted < cap:
+        return ()
+    if not 0 < newest.refused - newest.admitted <= max(1, math.ceil(newest.admitted / 200)):
+        return ()
+    if now - newest.observed_at > timedelta(days=CONFIRM_MAX_AGE_DAYS):
+        return ()
+    return tuple(
+        item
+        for item in history
+        if item.request.session_id == newest.session_id
+        and item.request.identity == identity
+        and item.request.axis == axis
+        and item.outcome in {"admitted", "refused"}
+        and item.verified
+    )
 
 
 def reduction_observation(result, cap):
