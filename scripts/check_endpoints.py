@@ -88,7 +88,7 @@ def _failure_explanation(result: CheckResult) -> str:
 
 
 def _issue_body(result: CheckResult) -> str:
-    escaped_detail = result.detail.replace("```", "``​`")
+    escaped_detail = result.detail.replace("```", "``\u200b`")
     return (
         f"{MARKER}\n\n"
         f"**Provider:** `{result.provider}`\n"

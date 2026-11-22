@@ -318,7 +318,7 @@ def test_render_issue_body_neutralizes_untrusted_scraped_text():
     assert "Row\\|break" in row  # pipe escaped, doesn't break the table
     assert "\\`code\\`" in row  # backtick escaped
     assert "@octocat" not in row  # zero-width space defuses the mention
-    assert "@​octo" in row
+    assert "@\u200bocto" in row
     assert "SECRET" not in body
     assert "token" not in body
 
