@@ -8,6 +8,7 @@ file. Nothing here writes config; Slice 1's only side effect is the rolling issu
 from __future__ import annotations
 
 import json
+import math
 import re
 import threading
 import time
@@ -334,6 +335,16 @@ REMEASURE_SECONDS = 10_800
 REMEASURE_SESSION_CEILING = 12
 # Reachability, the old admitted size and the old refusal.
 CONFIRM_MAX_CALLS = 3
+# The daily incremental run also re-measures a few caps, on providers it already visits, and never
+# spends more than this share of a daily request limit (a route's own, and a provider's shared
+# pool) on it. A provider with no published daily limit gets a fixed small allowance instead.
+REMEASURE_DAILY_RPD_SHARE = 0.10
+REMEASURE_DAILY_UNLIMITED_CALLS = 20
+# A confirmation needs two probes; a search from the cap needs about a dozen to finish. A session
+# cut off short would still count as this axis's measurement for 28 days, so none is started with
+# less than it needs.
+CONFIRM_MIN_CALLS = 2
+SEARCH_MIN_CALLS = 12
 # A session can hold up to 96 attempts of a few KB each. Before starting one, keep room for it and
 # for every new-route session this run may still add; an artifact over its 2 MiB limit is not
 # saved at all.
@@ -567,6 +578,7 @@ def reconcile(
     remeasure_session_ceiling: int = REMEASURE_SESSION_CEILING,
     remeasure_workers: int = 1,
     remeasure_session_factory: Callable[[], Any] | None = None,
+    remeasure_daily_rpd_share: float | None = None,
 ) -> Report:
     report = Report(floor=quality.floor, floor_source="pinned reference models")
     new_model_budget = new_model_limit
@@ -636,6 +648,9 @@ def reconcile(
     # loop (its own drain); the lock makes starting a session, and recording it, atomic.
     remeasure_lock = threading.Lock()
     remeasure_inflight = [0]
+    # Provider requests the daily slice has spent today, by route and by provider.
+    daily_used_route: dict[str, int] = {}
+    daily_used_provider: dict[str, int] = {}
     deferred_remeasure: dict[str, tuple] = {}
     if remeasure_time_budget_seconds is not None:
         from citypods.provider_catalog.limits import remeasure_review
@@ -741,6 +756,27 @@ def reconcile(
         if isinstance(row, Mapping) and row.get("discovery")
     }
 
+    def daily_allowance(route, provider, cfg) -> int | None:
+        """Calls left for this route today under the daily share, None when it is not applied."""
+        if remeasure_daily_rpd_share is None:
+            return None
+        caps = []
+        route_rpd = route.get("rpd")
+        if route_rpd is not None:
+            spent = daily_used_route.get(str(route["route_id"]), 0)
+            caps.append(math.floor(remeasure_daily_rpd_share * float(route_rpd)) - spent)
+        provider_rpd = cfg.get("rpd")
+        if provider_rpd is not None:
+            spent = daily_used_provider.get(provider, 0)
+            caps.append(math.floor(remeasure_daily_rpd_share * float(provider_rpd)) - spent)
+        if not caps:
+            caps.append(REMEASURE_DAILY_UNLIMITED_CALLS - daily_used_provider.get(provider, 0))
+        return max(0, min(caps))
+
+    def spend_daily(rid, provider, calls) -> None:
+        daily_used_route[rid] = daily_used_route.get(rid, 0) + calls
+        daily_used_provider[provider] = daily_used_provider.get(provider, 0) + calls
+
     def remeasure_routes_for_provider(due, provider, cfg, rules, catalog, pause, http=None) -> None:
         """Re-measure configured caps inside this provider's drain (review/54 §8.14.A)."""
         nonlocal remeasure_started
@@ -779,25 +815,7 @@ def reconcile(
                 # failures never count as reductions.
                 row["note"] = "daily quota not confirmed this run; waits for next week"
                 continue
-            with remeasure_lock:
-                deadline = remeasure_deadline()
-                if deadline is None:
-                    row["note"] = "this run's re-measure budget was spent; waits for next week"
-                    continue
-                if remeasure_started is None:
-                    remeasure_started = discovery_clock()
-                cap = remeasure_current_cap(route, axis)
-                output = remeasure_current_cap(route, "output")
-                seeds = {"output": output or INPUT_OUTPUT_COUNTERPART_SEED}
-                if axis == "input":
-                    seeds["input"] = cap
-                elif cap is not None:
-                    seeds["output"] = cap
-                remeasured.add((identity, axis))
-                row["ran"] = True
-                row["cap"] = cap
-                remeasure_inflight[0] += 1
-            session_started = discovery_clock()
+            cap = remeasure_current_cap(route, axis)
             # A bracket already measured tightly around the cap is re-tested, not searched again.
             confirm = confirmation_history(
                 discovery_history,
@@ -807,6 +825,36 @@ def reconcile(
                 cap,
                 rate_now or datetime.now(UTC),
             )
+            with remeasure_lock:
+                allowance = daily_allowance(route, provider, cfg)
+                if allowance is not None and allowance < (
+                    CONFIRM_MIN_CALLS if confirm else SEARCH_MIN_CALLS
+                ):
+                    row["note"] = (
+                        f"the daily slice may spend {allowance} more requests here "
+                        f"({remeasure_daily_rpd_share:.0%} of the daily limit); waits for the "
+                        "weekly run"
+                    )
+                    continue
+                deadline = remeasure_deadline()
+                if deadline is None:
+                    row["note"] = "this run's re-measure budget was spent; waits for next week"
+                    continue
+                if remeasure_started is None:
+                    remeasure_started = discovery_clock()
+                output = remeasure_current_cap(route, "output")
+                seeds = {"output": output or INPUT_OUTPUT_COUNTERPART_SEED}
+                if axis == "input":
+                    seeds["input"] = cap
+                elif cap is not None:
+                    seeds["output"] = cap
+                remeasured.add((identity, axis))
+                row["ran"] = True
+                row["cap"] = cap
+                if allowance is not None:
+                    row["allowance"] = allowance
+                remeasure_inflight[0] += 1
+            session_started = discovery_clock()
             row["confirm"] = bool(confirm)
             pause.renew()
             try:
@@ -840,13 +888,18 @@ def reconcile(
                     account_id=str(route["account_id"]),
                     seeds=seeds,
                     recheck_upper=bool(confirm),
+                    max_attempts=allowance,
                 )
             except Exception as exc:  # advisory, like new-route discovery
                 row["note"] = f"search stopped safely ({type(exc).__name__})"
                 with remeasure_lock:
                     remeasure_inflight[0] -= 1
+                    if allowance is not None:  # its calls are unknown: count the whole allowance
+                        spend_daily(rid, provider, allowance)
                 continue
             with remeasure_lock:
+                if allowance is not None:
+                    spend_daily(rid, provider, len(record["artifact"].get("attempts") or ()))
                 report.discovery_sessions.append(record["artifact"])
                 remeasure_artifacts.append(id(record["artifact"]))
                 save_sessions()
@@ -2022,6 +2075,12 @@ def reconcile(
         report.remeasure_sessions.sort(
             key=lambda r: order.get((r.get("route_id"), r.get("axis")), len(order))
         )
+    if remeasure_daily_rpd_share is not None and remeasure_due:
+        ran = [s for s in report.remeasure_sessions if s.get("ran")]
+        report.observations.append(
+            f"daily re-measure: {len(ran)} axis/axes, {sum(daily_used_provider.values())} provider "
+            f"requests (at most {remeasure_daily_rpd_share:.0%} of a daily limit per provider)"
+        )
 
     # Forget canary memory that has aged out so the state marker stays bounded.
     canary_memory = {
@@ -2711,6 +2770,7 @@ def _discover_candidate_caps(
     account_id=None,
     seeds=None,
     recheck_upper=False,
+    max_attempts=None,
 ):
     """Run the separate, charged size search only after candidate reachability is proven.
 
@@ -2790,6 +2850,9 @@ def _discover_candidate_caps(
     # Token reservations below describe the size-search requests, which carry the
     # explicit measured token sizes.
     budget = DiscoveryBudget(calls=reachability_calls)
+    if max_attempts is not None:
+        # A hard stop before the call that would exceed it (the daily slice's request allowance).
+        budget.max_calls = min(budget.max_calls, reachability_calls + max_attempts)
     if fresh_run_budget:
         # Time-bound runs are limited by the clock, not by the three-session shared envelope;
         # each session still carries the reviewed per-session ceilings.

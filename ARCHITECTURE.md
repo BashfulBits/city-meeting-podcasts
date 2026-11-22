@@ -327,7 +327,9 @@ selects free configured routes whose input or output axis has no authenticated d
 28 days or has a pending reduction. Each due axis runs one `_discover_candidate_caps` session seeded
 at the configured cap, one per physical identity, within 10,800 s and twelve sessions per run (a bracket already measured tightly around the cap is
 re-tested in two calls (its admitted size, then its refusal) instead of searched again; three
-providers re-measure at once, each in its own second dispatch pause after the provider loop), ending
+providers re-measure at once, each in its own second dispatch pause after the provider loop; the daily incremental run adds a
+slice of up to six sessions on providers it already visits, capped at 10% of each route's and
+provider pool's daily request limit), ending
 15 minutes before the 360-minute job timeout. One session with verified admissions above the cap
 offers a raise. A reduction needs two consistent refusals below the cap from different runs on
 different UTC days within 28 days; a served size at the cap resets it. Timeouts, 429s, outages and

@@ -4637,3 +4637,22 @@ def test_confirmation_falls_back_to_a_fresh_search_when_the_limit_dropped(tmp_pa
     )
     assert seen[0] == 4000 and len(seen) > 2  # refused at the old size: bisect below it
     assert result.brackets[0]["refused"] <= 4000 and result.brackets[0]["admitted"] < 2600
+
+
+def test_a_session_call_cap_is_a_hard_stop_before_the_call_that_would_exceed_it(tmp_path):
+    # The daily slice gives a re-measure session `reachability + allowance` calls.
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.target)
+        return observation(req, req.input_tokens, reported_input=req.input_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        budget=DiscoveryBudget(calls=1, max_calls=1 + 3),
+    )
+    assert len(seen) == 3
+    assert result.reason in {"partial", "discovery_budget_exhausted"} or result.brackets
