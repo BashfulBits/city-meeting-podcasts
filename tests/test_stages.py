@@ -2791,7 +2791,14 @@ def test_stored_minutes_text_discards_a_sparse_scan_text_layer_so_ocr_can_run():
     assert _stored_minutes_text(ctx, _minutes_episode()) is None
 
 
-def _run_minutes_stage(monkeypatch, outcome, *, stop_after_fetch=False):
+def _run_minutes_stage_with_text(monkeypatch, text, outcome):
+    import citypods.agenda_text as agenda_text
+
+    stats, ep, _ = _run_minutes_stage(monkeypatch, outcome, extracted_text=text)
+    return stats, ep, agenda_text
+
+
+def _run_minutes_stage(monkeypatch, outcome, *, stop_after_fetch=False, extracted_text=""):
     import citypods.agenda_text as agenda_text
     import citypods.http as http
     import citypods.stages as stages
@@ -2805,7 +2812,7 @@ def _run_minutes_stage(monkeypatch, outcome, *, stop_after_fetch=False):
 
     def fake_extract(content, **kwargs):
         seen["ocr_allowed"] = kwargs["ocr_allowed"]()
-        return "", [], outcome
+        return extracted_text, [], outcome
 
     monkeypatch.setattr(agenda_text, "extract_minutes_document", fake_extract)
     # The stage's own per-episode check passes; the budget is spent during the fetch.
@@ -2902,3 +2909,20 @@ def test_stored_minutes_that_ocr_produced_are_reused_when_short_but_confident():
     native = _minutes_payload(short_scan, page_count=4)  # same text, but a native text layer
     ctx = _minutes_ctx(_MinutesTextStorage(native))
     assert _stored_minutes(ctx, _minutes_episode()) is None  # sparse over 4 pages: re-fetched
+
+
+def test_stored_minutes_ignores_a_malformed_method_instead_of_aborting_the_stage():
+    from citypods.stages import _stored_minutes
+
+    real = "The council discussed the budget and approved the consent agenda items. " * 60
+    payload = {**_minutes_payload(real, page_count=2), "method": []}
+    ctx = _minutes_ctx(_MinutesTextStorage(payload))
+    assert _stored_minutes(ctx, _minutes_episode()) == (real, 2, "native")
+
+
+def test_minutes_stage_keeps_a_staff_only_scan_eligible_for_ocr_after_a_retry(monkeypatch):
+    stats, ep, _ = _run_minutes_stage_with_text(
+        monkeypatch, "STAFF PRESENT: Jane Doe, City Clerk", "retry"
+    )
+    assert stats.skipped == 1  # deferred: the member roll call still needs OCR
+    assert ep.minutes_roster_status is None

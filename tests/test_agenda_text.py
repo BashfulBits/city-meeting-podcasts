@@ -1547,10 +1547,10 @@ def test_an_all_caps_heading_before_a_numbered_item_is_not_a_member():
     assert "FINANCIAL UPDATE" not in rows[0]["evidence"]
 
 
-def test_minutes_ocr_is_used_when_it_covers_everything_the_text_layer_stated(monkeypatch):
+def test_minutes_ocr_runs_when_the_text_layer_states_no_members_or_votes(monkeypatch):
     import citypods.agenda_text as agenda_text
 
-    native = "PRESENT: Alice Smith"
+    native = "STAFF PRESENT: Jane Doe, City Clerk"  # staff only: no member roll call, no vote
     monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
     monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
     body = "PRESENT: Alice Smith, Bob Jones\n" + "Minutes of the meeting. " * 40
@@ -1561,6 +1561,40 @@ def test_minutes_ocr_is_used_when_it_covers_everything_the_text_layer_stated(mon
         ocr_runner=lambda *a, **k: (body, 95.0),
     )
     assert (text, method) == (body, "ocr")
+
+
+def test_minutes_ocr_does_not_run_when_the_text_layer_already_states_members_or_votes(
+    monkeypatch,
+):
+    import citypods.agenda_text as agenda_text
+
+    def runner(*args, **kwargs):
+        raise AssertionError("OCR must not run: the text layer already states the roll call")
+
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+    for native in (
+        "PRESENT: Alice Smith, Bob Jones",
+        "Present: Alice Smith, Bob Jones\nVote: Yes: Alice Smith; No: Bob Jones",
+        "Vote: Yes: Alice Smith; No: Bob Jones",
+    ):
+        monkeypatch.setattr(
+            agenda_text, "extract_document", lambda *a, native=native, **k: (native, [])
+        )
+        text, _, method = agenda_text.extract_minutes_document(
+            _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+        )
+        assert (text, method) == (native, "native")
+
+
+def test_prose_roster_ignores_attendance_at_a_previous_meeting():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioner Bob Jones was absent from the "
+        "previous meeting. Commissioners Cy Poe and Di Moe were present at the last meeting. "
+        "Commissioners Ed Foe and Flo Roe were in attendance."
+    )
+    rows = parse_roster(text)
+    assert sorted(_names(rows)) == ["Ann Lee", "Ed Foe", "Flo Roe"]
+    assert _names(rows, "absent") == []
 
 
 def test_roster_does_not_extend_a_complete_inline_list_from_a_heading_with_a_comma():

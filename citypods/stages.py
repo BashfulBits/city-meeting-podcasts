@@ -4689,6 +4689,7 @@ class MinutesTextStage:
         from datetime import UTC, datetime
 
         from citypods.agenda_text import (
+            _member_rows,
             _pdf_page_count,
             extract_minutes_document,
             parse_roster,
@@ -4756,7 +4757,7 @@ class MinutesTextStage:
                         # cutoff must not start up to minutes of scanning (deferred, not failed).
                         ocr_allowed=lambda: ctx.stop is None or not ctx.stop(),
                     )
-                    if text_method in {"retry", "deferred"} and not parse_roster(text):
+                    if text_method in {"retry", "deferred"} and not _member_rows(text):
                         # OCR could not run and the native text names nobody; caching that as an
                         # empty roster would hide a scan a healthy later run can read. (Native
                         # text that does hold a roster is kept: it is the document, just short.)
@@ -5019,7 +5020,10 @@ def _stored_minutes(ctx: StageContext, ep: Episode) -> tuple[str, int | None, st
         return None
     page_count = payload.get("page_count")
     page_count = page_count if isinstance(page_count, int) and page_count > 0 else None
-    method = payload.get("method") if payload.get("method") in {"native", "ocr"} else "native"
+    stored_method = payload.get("method")
+    method = (
+        stored_method if isinstance(stored_method, str) and stored_method == "ocr" else "native"
+    )
     # A sparse extraction ("City Council Minutes\nPage 1", one text page over a 40-page scan) is
     # a scan's stray text layer, not the document; reusing it would skip the OCR that can read it.
     # Text that OCR produced was accepted on its confidence, so a short confident scan is reused

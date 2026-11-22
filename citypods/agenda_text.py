@@ -1202,23 +1202,6 @@ def minutes_text_is_sparse(
     return _repeated_line_ratio(text) > _SPARSE_REPEATED_LINE_RATIO
 
 
-def _minutes_facts(text: str) -> tuple[set, set]:
-    """The roster and vote facts a text carries, to tell whether OCR recovered what native had.
-
-    Members are compared as (name, status) so a present/absent reading is a fact, not just a name,
-    and votes as (member, value, agenda item).
-    """
-    roster = parse_roster(text)
-    members = {
-        (_roster_key(row["name"]), row["status"]) for row in roster if row.get("section") != "staff"
-    }
-    votes = {
-        (vote.get("member"), vote.get("value"), vote.get("agenda_item"))
-        for vote in parse_votes(text, roster=roster)
-    }
-    return members, votes
-
-
 def _member_rows(text: str) -> list[dict]:
     """Roster rows for the body's members: a staff-only roster does not count as one."""
     return [row for row in parse_roster(text) if row.get("section") != "staff"]
@@ -1253,6 +1236,10 @@ def extract_minutes_document(
     page_count = _pdf_page_count(content)
     if page_count <= 0 or not minutes_text_is_sparse(native, page_count):
         return native, links, empty_method
+    if _member_rows(native) or parse_votes(native):
+        # The text layer already states members or votes. It is the document: OCR would only add a
+        # second reading to reconcile (and the cost of scanning it), so the sources are never mixed.
+        return native, links, empty_method
     if ocr_allowed is not None and not ocr_allowed():
         return native, links, "deferred"
     pages = list(range(1, min(page_count, OCR_MAX_PAGES) + 1))
@@ -1272,14 +1259,6 @@ def extract_minutes_document(
         or _alpha_chars(text) < OCR_MIN_ALPHA_CHARS
     ):
         return native, links, empty_method
-    native_members, native_votes = _minutes_facts(native)
-    ocr_members, ocr_votes = _minutes_facts(text)
-    if (native_members | native_votes) - (ocr_members | ocr_votes):
-        # OCR did not recover everything the born-digital text layer already states (a name, a
-        # present/absent reading, a vote). The sources are never joined: one parse of a joined text
-        # would mix vote groups, file a person as both present and absent, or let a structured OCR
-        # roster hide native prose. The text layer wins; OCR is used only when it covers it.
-        return native, links, "native"
     return text, links, "ocr"
 
 
@@ -1837,9 +1816,10 @@ _PRESIDER_LOOKBACK_CHARS = 120
 _QUALIFIER_LOOKBACK_CHARS = 41
 _PROSE_LOOKAHEAD_CHARS = 500
 # "were present to give public comment" names visitors, not members: a purpose clause disqualifies.
+_PRIOR_MEETING = r"(?:from|at|for|during|in)\s+(?:the\s+)?(?:previous|last|prior|earlier)\b"
 _PROSE_PRESENT_CUE_RE = re.compile(
     r"\s+(?:was|were)\s+(?:in\s+attendance|present)\b"
-    r"(?!\s+(?:to|for|during|at\s+the\s+(?:podium|microphone)))",
+    rf"(?!\s+(?:to|for|during|at\s+the\s+(?:podium|microphone)|{_PRIOR_MEETING}))",
     re.I,
 )
 # Words that show a sentence is about members of the body rather than whoever happened to be there.
@@ -1847,7 +1827,9 @@ _MEMBER_EVIDENCE_WORDS = _ROSTER_MEMBER_WORDS | frozenset(
     {"mayor", "chair", "vice", "commissioner", "tem", "councilmember", "councilmembers"}
 )
 _PROSE_ABSENT_CUE_RE = re.compile(
-    r"\s+(?:was|were)\s+(?P<phrase>absent|not\s+present|excused)\b", re.I
+    r"\s+(?:was|were)\s+(?P<phrase>absent|not\s+present|excused)\b"
+    rf"(?!\s+{_PRIOR_MEETING})",
+    re.I,
 )
 # "Mayor Jane Doe called the regular meeting to order": the presiding member is present and, being
 # the one who speaks most, the person a roster most needs to hold.
