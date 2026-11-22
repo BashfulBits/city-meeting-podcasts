@@ -1275,7 +1275,6 @@ def test_roster_rejects_the_whole_heading_when_a_wrapped_list_is_truncated():
     assert parse_roster("PRESENT: Alice Smith,\n" + "\n".join(lines) + "\n") == []
 
 
-<<<<<<< HEAD
 def test_minutes_ocr_runs_when_the_only_selectable_text_is_a_repeated_page_header(monkeypatch):
     import citypods.agenda_text as agenda_text
 
@@ -1301,7 +1300,8 @@ def test_minutes_text_sparseness_uses_pages_and_repeated_lines():
     assert minutes_text_is_sparse(real, 40)  # a page or two of text spread over 40 pages
     assert minutes_text_is_sparse("City Council Minutes\n" * 20 + "x" * 10)
     assert minutes_text_is_sparse("City Council Minutes\nPage 1")
-=======
+
+
 def test_roster_stops_a_vertical_list_at_a_standalone_none():
     assert parse_roster("PRESENT:\nNone\nMotion Carried\n") == []
     assert _names(parse_roster("PRESENT:\nAlice Smith\nNone\nMotion Carried\n")) == ["Alice Smith"]
@@ -1342,7 +1342,6 @@ def test_prose_roster_checks_a_guest_label_that_encloses_a_qualified_list():
         "Bob Roe."
     )
     assert sorted(_names(parse_roster(plain))) == ["Ann Lee", "Bob Roe", "Jane Doe"]
->>>>>>> feat/roster-prose-attendance
 
 
 def test_minutes_ocr_keeps_a_native_roster_the_scan_body_missed(monkeypatch):
