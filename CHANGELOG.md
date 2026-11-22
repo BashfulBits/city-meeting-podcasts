@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Weekly re-measure verifies unchecked routes and raises the ceiling (review/54 §8.14.G).** The
+  second weekly run re-measured 12 axes and left 76 waiting, 30 of them as "daily quota not
+  confirmed": routes with a daily limit that the weekly health pass skipped (a second account's
+  route of an already-checked model, or a scarce route checked in the last 28 days). Such a
+  route now gets the same one-request health check, through the dispatch ledger, before its
+  session, only while the re-measure budget is open and spaced from the provider's last request;
+  a scarce route still waits unless its remaining quota is known and covers a search, and that
+  quota bounds and shrinks with its sessions.
+  The session ceiling goes from 12 to 28. The daily slice is unchanged.
+
 - **Daily slice of configured-route cap re-measurement (review/54 §8.14.G).** The daily
   incremental run re-measures up to six caps in 40 minutes on providers it already visits, for
   routes the day's health check proved. Each session has a hard call cap of 10% of the route's
