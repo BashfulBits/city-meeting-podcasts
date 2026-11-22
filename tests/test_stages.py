@@ -2763,3 +2763,52 @@ def test_minutes_text_completion_markers_from_before_the_viewer_fix_are_dirty():
     marker = {"state": "complete", "input_fingerprint": fingerprint, "output": None}
     ep.stage_completion = {stage.name: {**marker, "version": "1"}}
     assert stage_is_dirty(stage, ep, city) is True
+
+
+def test_stored_minutes_text_discards_a_sparse_scan_text_layer_so_ocr_can_run():
+    from citypods.stages import _stored_minutes_text
+
+    sparse = "City Council Minutes\nPage 1"
+    ctx = _minutes_ctx(_MinutesTextStorage({"text": sparse}))
+    assert _stored_minutes_text(ctx, _minutes_episode()) is None
+
+
+def _run_minutes_stage(monkeypatch, outcome, *, stop_after_fetch=False):
+    import citypods.agenda_text as agenda_text
+    import citypods.http as http
+    import citypods.stages as stages
+
+    monkeypatch.setattr(http, "make_session", lambda: object())
+    monkeypatch.setattr(
+        http, "fetch_document_bytes", lambda *a, **k: (b"%PDF-1.4", "application/pdf")
+    )
+    monkeypatch.setattr(stages, "_validated_document_url", lambda city, url: url)
+    seen = {}
+
+    def fake_extract(content, **kwargs):
+        seen["ocr_allowed"] = kwargs["ocr_allowed"]()
+        return "", [], outcome
+
+    monkeypatch.setattr(agenda_text, "extract_minutes_document", fake_extract)
+    # The stage's own per-episode check passes; the budget is spent during the fetch.
+    calls = iter([False] + [stop_after_fetch] * 5)
+    ctx = StageContext(
+        storage=object(), ffmpeg=None, max_kbps=96, dry_run=False, stop=lambda: next(calls)
+    )
+    ep = _ep("m1")
+    ep.links = {"minutes": "https://city.granicus.com/MinutesViewer.php?view_id=1&clip_id=2"}
+    stats = stages.MinutesTextStage().process(None, _city(), [ep], ctx)
+    return stats, ep, seen
+
+
+def test_minutes_stage_defers_an_episode_whose_ocr_must_be_retried(monkeypatch):
+    stats, ep, _ = _run_minutes_stage(monkeypatch, "retry")
+    assert stats.skipped == 1 and stats.errors == []
+    assert ep.minutes_roster_status is None  # nothing was persisted as an empty roster
+
+
+def test_minutes_stage_tells_the_extractor_whether_the_run_budget_is_spent(monkeypatch):
+    _, _, seen = _run_minutes_stage(monkeypatch, "deferred", stop_after_fetch=True)
+    assert seen["ocr_allowed"] is False
+    _, _, seen = _run_minutes_stage(monkeypatch, "deferred", stop_after_fetch=False)
+    assert seen["ocr_allowed"] is True

@@ -3201,6 +3201,183 @@ def test_weekly_run_remeasures_configured_caps_after_discovery_and_daily_never(m
     assert not daily.remeasure_sessions
 
 
+def test_remeasure_records_cost_and_passes_a_confirming_history(monkeypatch):
+    import citypods.provider_catalog.limits as limits_module
+    import citypods.provider_catalog.reconcile as module
+
+    seen = []
+    rechecks = []
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    configured = {r["route_id"] for r in limits["routes"]}
+    clock = [0.0]
+
+    def discover(candidate, *_args, **kwargs):
+        if candidate.key in configured:
+            seen.append(kwargs["history"])
+            rechecks.append(kwargs["recheck_upper"])
+            clock[0] += 30
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setattr(limits_module, "confirmation_history", lambda *args: ("known-bracket",))
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: clock[0],
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+    )
+    ran = [s for s in report.remeasure_sessions if s.get("ran")]
+    assert ran and seen and all("known-bracket" in h for h in seen)
+    assert all(s["confirm"] and s["seconds"] == 30 and "calls" in s for s in ran)
+    # The known refusal is re-tested too, so a raised limit shows (not imported as proof).
+    assert rechecks and all(rechecks)
+    assert all("confirmed" in s for s in ran)
+
+
+def test_remeasure_stops_before_the_evidence_artifact_could_overflow(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    started = []
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    configured = {r["route_id"] for r in limits["routes"]}
+
+    def discover(candidate, *_args, **kwargs):
+        if candidate.key in configured:
+            started.append(candidate.key)
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setattr(module, "MAX_ARTIFACT_BYTES", 1)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+    )
+    assert not started
+    assert any("budget" in (s.get("note") or "") for s in report.remeasure_sessions)
+
+
+def _concurrent_remeasure(monkeypatch, *, ceiling=50, workers=3, factory=None):
+    import threading
+
+    import citypods.provider_catalog.reconcile as module
+
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    configured = {r["route_id"] for r in limits["routes"]}
+    arrived, overlapped, sessions = [], [], []
+    both = threading.Event()
+
+    def discover(candidate, *_args, **kwargs):
+        if candidate.key in configured:
+            arrived.append(threading.get_ident())
+            sessions.append(kwargs["session"])
+            if len(set(arrived)) >= 2:
+                both.set()
+            both.wait(5)  # a second provider's thread must arrive while this one is inside
+            overlapped.append(both.is_set())
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    control = FakeControl()
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=ceiling,
+        remeasure_workers=workers,
+        remeasure_session_factory=factory,
+    )
+    return report, control, arrived, overlapped, sessions
+
+
+def test_providers_re_measure_at_the_same_time_each_in_its_own_drain(monkeypatch):
+    made = []
+
+    def factory():
+        made.append(object())
+        return made[-1]
+
+    report, control, arrived, overlapped, sessions = _concurrent_remeasure(
+        monkeypatch, factory=factory
+    )
+    ran = [s for s in report.remeasure_sessions if s.get("ran")]
+    assert len(ran) >= 2 and len(set(arrived)) >= 2
+    assert overlapped and all(overlapped)  # sessions of different providers ran together
+    # A second drain per provider, taken after the provider loop, then one HTTP session each.
+    assert len(set(sessions)) == len(made) and set(sessions) <= set(made)
+    assert control.paused_providers.count("groq") == 2
+    due = [(s["route_id"], s["axis"]) for s in report.remeasure_sessions]
+    assert len(due) == len(set(due))
+
+
+def test_concurrent_providers_still_respect_the_session_ceiling(monkeypatch):
+    report, _control, _arrived, _overlapped, _sessions = _concurrent_remeasure(
+        monkeypatch, ceiling=2
+    )
+    ran = [s for s in report.remeasure_sessions if s.get("ran")]
+    assert len(ran) == 2
+    assert any("budget" in (s.get("note") or "") for s in report.remeasure_sessions)
+    assert len(report.discovery_sessions) >= 2
+
+
 def test_remeasure_stops_when_its_own_time_budget_is_spent(monkeypatch):
     import citypods.provider_catalog.reconcile as module
 

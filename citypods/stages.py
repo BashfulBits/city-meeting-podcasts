@@ -74,6 +74,7 @@ import json
 import multiprocessing
 import os
 import re
+import subprocess
 import tempfile
 import threading
 import time
@@ -1029,6 +1030,19 @@ def stage_is_dirty(
         # with no speaker artifact.  Revisit those records after the pilot scope/readiness fix.
         if marker.get("state") == "complete" and not marker.get("output"):
             return True
+    if stage.name == "slides" and isinstance(marker, dict):
+        # A prior slides run could have marked an episode complete with failed output before the
+        # Granicus Worker fallback was wired up. Revisit those records if attempts remain or
+        # eligible for one-time proxy recovery.
+        if marker.get("output") == "failed":
+            slides = ep.slides if isinstance(ep.slides, dict) else {}
+            if int(slides.get("attempts") or 0) < SLIDES_MAX_ATTEMPTS:
+                return True
+            if slides.get("reason") in {"CalledProcessError", "HTTP403"} and not slides.get(
+                "proxy_recovered"
+            ):
+                return True
+            return False
     fingerprint = stage_input_fingerprint(stage, ep, city, speaker_config=speaker_config)
     if not isinstance(marker, dict):
         if not _legacy_stage_complete(stage.name, ep):
@@ -1962,6 +1976,15 @@ class SlidesStage:
             if not budget.admit_episode():
                 stats.defer("run-cap")
                 continue
+            if (
+                ep.slides
+                and ep.slides.get("status") == "failed"
+                and ep.slides.get("attempts", 0) >= SLIDES_MAX_ATTEMPTS
+                and not ep.slides.get("proxy_recovered")
+                and ep.slides.get("reason") in {"CalledProcessError", "HTTP403"}
+            ):
+                ep.slides["attempts"] = 0
+                ep.slides["proxy_recovered"] = True
             try:
                 outcome = self._detect(provider, city, ep, ctx, config, budget)
             except Exception as exc:  # noqa: BLE001 - one episode's media must not stop the lane.
@@ -1973,7 +1996,20 @@ class SlidesStage:
                     "reason": type(exc).__name__,
                 }
                 if attempts < SLIDES_MAX_ATTEMPTS:
-                    stats.errors.append(f"slides {ep.uid}: {type(exc).__name__}: {exc}")
+                    from citypods.security import redact_subprocess_text
+
+                    detail = redact_subprocess_text(str(exc))
+                    if isinstance(exc, (subprocess.CalledProcessError, subprocess.TimeoutExpired)):
+                        raw_stderr = getattr(exc, "stderr", None)
+                        if raw_stderr:
+                            stderr_tail = (
+                                raw_stderr.decode("utf-8", errors="replace")
+                                if isinstance(raw_stderr, bytes)
+                                else str(raw_stderr)
+                            ).strip()
+                            if stderr_tail:
+                                detail = f"{detail} stderr={stderr_tail}"
+                    stats.errors.append(f"slides {ep.uid}: {type(exc).__name__}: {detail}")
                 else:
                     stats.quality("failed")
                 continue
@@ -1985,17 +2021,140 @@ class SlidesStage:
             stats.bytes_written += int((ep.slides or {}).get("bytes_written") or 0)
         return stats
 
-    def _run_text(self, command: list[str], timeout: float) -> str:
-        completed = self._run(command, check=True, capture_output=True, text=True, timeout=timeout)
-        return completed.stdout or ""
+    def _run_text(
+        self,
+        command: list[str],
+        timeout: float,
+        *,
+        url: str | None = None,
+        ctx: StageContext | None = None,
+    ) -> str:
+        try:
+            completed = self._run(
+                command, check=True, capture_output=True, text=True, timeout=timeout
+            )
+            return completed.stdout or ""
+        except subprocess.CalledProcessError as exc:
+            fallback = self._maybe_fallback_command(command, url, exc.stderr)
+            if fallback is not None:
+                worker_ok = False
+                if ctx and ctx.transport_telemetry:
+                    ctx.transport_telemetry.record_direct_fetch((url,), outcome="403")
+                try:
+                    completed = self._run(
+                        fallback, check=True, capture_output=True, text=True, timeout=timeout
+                    )
+                    worker_ok = True
+                    return completed.stdout or ""
+                except subprocess.TimeoutExpired as fallback_exc:
+                    self._raise_redacted_timeout(fallback_exc, command, fallback)
+                except subprocess.CalledProcessError as fallback_exc:
+                    self._raise_redacted_error(fallback_exc, command, fallback)
+                finally:
+                    if ctx and ctx.transport_telemetry:
+                        ctx.transport_telemetry.record_worker_fallback(
+                            (url,), outcome="success" if worker_ok else "failure"
+                        )
+            self._raise_redacted_error(exc, command)
 
-    def _run_bytes(self, command: list[str], timeout: float) -> bytes:
-        completed = self._run(command, check=True, capture_output=True, timeout=timeout)
-        return completed.stdout or b""
+    def _run_bytes(
+        self,
+        command: list[str],
+        timeout: float,
+        *,
+        url: str | None = None,
+        ctx: StageContext | None = None,
+    ) -> bytes:
+        try:
+            completed = self._run(command, check=True, capture_output=True, timeout=timeout)
+            return completed.stdout or b""
+        except subprocess.CalledProcessError as exc:
+            fallback = self._maybe_fallback_command(command, url, exc.stderr)
+            if fallback is not None:
+                worker_ok = False
+                if ctx and ctx.transport_telemetry:
+                    ctx.transport_telemetry.record_direct_fetch((url,), outcome="403")
+                try:
+                    completed = self._run(
+                        fallback, check=True, capture_output=True, timeout=timeout
+                    )
+                    worker_ok = True
+                    return completed.stdout or b""
+                except subprocess.TimeoutExpired as fallback_exc:
+                    self._raise_redacted_timeout(fallback_exc, command, fallback)
+                except subprocess.CalledProcessError as fallback_exc:
+                    self._raise_redacted_error(fallback_exc, command, fallback)
+                finally:
+                    if ctx and ctx.transport_telemetry:
+                        ctx.transport_telemetry.record_worker_fallback(
+                            (url,), outcome="success" if worker_ok else "failure"
+                        )
+            self._raise_redacted_error(exc, command)
+
+    def _maybe_fallback_command(
+        self,
+        command: list[str],
+        url: str | None,
+        stderr: bytes | str | None,
+    ) -> list[str] | None:
+        if not url:
+            return None
+        from citypods.media import _worker_fallback_for_403
+
+        return _worker_fallback_for_403(
+            command=command,
+            stderr=stderr,
+            rate_limit_urls=(url,),
+        )
+
+    def _raise_redacted_error(
+        self,
+        exc: subprocess.CalledProcessError,
+        original_cmd: list[str],
+        executed_cmd: list[str] | None = None,
+    ) -> None:
+        from citypods.granicus_proxy import redact_worker_endpoint
+        from citypods.media import _stderr_tail
+        from citypods.security import redact_subprocess_command, redact_subprocess_text
+
+        cmd_for_redaction = executed_cmd or original_cmd
+        raw_stderr = _stderr_tail(exc.stderr)
+        stderr_tail = redact_worker_endpoint(raw_stderr, cmd_for_redaction) if raw_stderr else ""
+        err = subprocess.CalledProcessError(
+            exc.returncode,
+            redact_subprocess_command(original_cmd),
+            output=redact_subprocess_text(exc.output),
+            stderr=stderr_tail or redact_subprocess_text(exc.stderr),
+        )
+        err.__cause__ = None
+        raise err
+
+    def _raise_redacted_timeout(
+        self,
+        exc: subprocess.TimeoutExpired,
+        original_cmd: list[str],
+        executed_cmd: list[str] | None = None,
+    ) -> None:
+        from citypods.granicus_proxy import redact_worker_endpoint
+        from citypods.media import _stderr_tail
+        from citypods.security import redact_subprocess_command, redact_subprocess_text
+
+        cmd_for_redaction = executed_cmd or original_cmd
+        raw_stderr = _stderr_tail(exc.stderr)
+        stderr_tail = redact_worker_endpoint(raw_stderr, cmd_for_redaction) if raw_stderr else ""
+        err = subprocess.TimeoutExpired(
+            redact_subprocess_command(original_cmd),
+            exc.timeout,
+            output=redact_subprocess_text(exc.output),
+            stderr=stderr_tail or redact_subprocess_text(exc.stderr),
+        )
+        err.__cause__ = None
+        raise err
 
     def _detect(self, provider, city, ep, ctx, config, budget) -> str:
         from citypods import slides as sl
         from citypods.http import HOST_LIMITER
+        from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 
         binary = str(getattr(ctx.ffmpeg, "binary", "ffmpeg"))
         probe_binary = _ffprobe_binary(ctx)
@@ -2021,7 +2180,13 @@ class SlidesStage:
         for source_id, url in sources:
             # Every source, whatever its scheme: the gate rejects anything but public https.
             validate_source_url(url, resolve=True)
-            probe = sl.parse_probe(self._run_text(sl.probe_command(probe_binary, url), 60))
+            with (
+                HOST_LIMITER.slot(url),
+                DISTRIBUTED_PROVIDER_LEASES.slots((url,), stop=ctx.stop),
+            ):
+                probe = sl.parse_probe(
+                    self._run_text(sl.probe_command(probe_binary, url), 60, url=url, ctx=ctx)
+                )
             if probe.has_video:
                 videos.append((source_id, url, probe))
         if videos:
@@ -2031,8 +2196,13 @@ class SlidesStage:
                 return "byte-budget"
         for source_id, url, probe in videos:
             timeout = (probe.duration or 4 * 3600) * 1.0 + 600
-            with HOST_LIMITER.slot(url):
-                text = self._run_text(sl.detect_command(binary, url, config), timeout)
+            with (
+                HOST_LIMITER.slot(url),
+                DISTRIBUTED_PROVIDER_LEASES.slots((url,), stop=ctx.stop),
+            ):
+                text = self._run_text(
+                    sl.detect_command(binary, url, config), timeout, url=url, ctx=ctx
+                )
             intervals = sl.parse_freeze_intervals(text, probe.duration)
             intervals, trimmed = sl.edge_trim(
                 intervals,
@@ -2047,9 +2217,15 @@ class SlidesStage:
                     capped = True
                     break
                 captured += 1
-                with HOST_LIMITER.slot(url):
+                with (
+                    HOST_LIMITER.slot(url),
+                    DISTRIBUTED_PROVIDER_LEASES.slots((url,), stop=ctx.stop),
+                ):
                     frame = self._run_bytes(
-                        sl.capture_command(binary, url, sl.settle_time(interval)), 120
+                        sl.capture_command(binary, url, sl.settle_time(interval)),
+                        120,
+                        url=url,
+                        ctx=ctx,
                     )
                 image = sl.decode_png(frame)
                 if image is None:
@@ -4567,7 +4743,18 @@ class MinutesTextStage:
                         content,
                         content_type=content_type,
                         source_url=minutes_url,
+                        # OCR is the expensive, restartable part: a fetch that crossed the stop
+                        # cutoff must not start up to minutes of scanning (deferred, not failed).
+                        ocr_allowed=lambda: ctx.stop is None or not ctx.stop(),
                     )
+                    if text_method in {"retry", "deferred"}:
+                        # Nothing was extracted for a transient reason; caching it as an empty
+                        # roster would hide a scan a healthy later run can read.
+                        stats.defer(
+                            "minutes-ocr-retry" if text_method == "retry" else "wall-clock-budget",
+                            sample=ep.uid or ep.guid,
+                        )
+                        continue
                     if text_method == "ocr":
                         stats.quality("minutes-text-ocr")
                 else:
@@ -4796,7 +4983,7 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
     which produced this artifact in the first place and neither of which needs repeating when
     only the roster parser changed.
     """
-    from citypods.agenda_text import classify_agenda_text
+    from citypods.agenda_text import OCR_MIN_ALPHA_CHARS, _alpha_chars, classify_agenda_text
 
     key = (ep.links or {}).get("minutes_text_artifact_key")
     if not key or ctx.storage is None:
@@ -4810,6 +4997,10 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
         return None
     text = payload.get("text") if isinstance(payload, dict) else None
     if not isinstance(text, str) or not text.strip():
+        return None
+    # A sparse extraction ("City Council Minutes\nPage 1") is a scan's stray text layer, not the
+    # document; reusing it would skip the OCR that can read the real one.
+    if _alpha_chars(text) < OCR_MIN_ALPHA_CHARS:
         return None
     # A viewer shell ("Loading...") stored as if it were the document would otherwise be re-parsed
     # forever; None sends the caller back to the provider for the real document.

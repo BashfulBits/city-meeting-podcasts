@@ -203,6 +203,7 @@ def probe_command(probe_binary: str, url: str) -> list[str]:
         "format=duration,bit_rate:stream=codec_type,width,height",
         "-of",
         "json",
+        "-i",
         url,
     ]
 

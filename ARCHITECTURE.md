@@ -325,7 +325,9 @@ Configured routes are re-measured by the weekly full run (review/54 §8.14). Aft
 new-route discovery, inside the same drain, `remeasure_review` (`provider_catalog/limits.py`)
 selects free configured routes whose input or output axis has no authenticated discovery session in
 28 days or has a pending reduction. Each due axis runs one `_discover_candidate_caps` session seeded
-at the configured cap, one per physical identity, within 3,600 s and four sessions per run, ending
+at the configured cap, one per physical identity, within 10,800 s and twelve sessions per run (a bracket already measured tightly around the cap is
+re-tested in two calls (its admitted size, then its refusal) instead of searched again; three
+providers re-measure at once, each in its own second dispatch pause after the provider loop), ending
 15 minutes before the 360-minute job timeout. One session with verified admissions above the cap
 offers a raise. A reduction needs two consistent refusals below the cap from different runs on
 different UTC days within 28 days; a served size at the cap resets it. Timeouts, 429s, outages and

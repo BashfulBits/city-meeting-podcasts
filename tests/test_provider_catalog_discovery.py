@@ -4567,3 +4567,73 @@ def test_repeated_connection_resets_at_one_size_step_down_like_a_timeout(tmp_pat
     # Two resets at the first size, then smaller sizes instead of a third identical attempt.
     assert targets[0] == targets[1] and targets[2] < targets[1]
     assert result.reason == "uncertain_no_response_after_five_calls"
+
+
+def _confirmation_history():
+    return [observation(request(), 4000), observation(request(attempt="b"), 4010, False)]
+
+
+def test_confirmation_retests_the_old_size_and_refusal_in_two_calls(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.target)
+        return observation(
+            req, req.input_tokens, req.input_tokens <= 4000, reported_input=req.input_tokens
+        )
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        history=_confirmation_history(),
+        recheck_upper=True,
+    )
+    assert seen == [4000, 4010]
+    assert result.brackets[0]["status"] == "converged"
+    assert (result.brackets[0]["admitted"], result.brackets[0]["refused"]) == (4000, 4010)
+
+
+def test_confirmation_sees_a_raised_provider_limit(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.target)
+        # The provider now admits up to 9000.
+        return observation(
+            req, req.input_tokens, req.input_tokens <= 9000, reported_input=req.input_tokens
+        )
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        history=_confirmation_history(),
+        recheck_upper=True,
+    )
+    assert seen[:2] == [4000, 4010]  # the old refusal was admitted, so the search went on
+    assert result.brackets[0]["admitted"] >= 8900 and result.brackets[0]["refused"] > 9000
+
+
+def test_confirmation_falls_back_to_a_fresh_search_when_the_limit_dropped(tmp_path):
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.target)
+        # The provider now admits up to 2500 only.
+        return observation(
+            req, req.input_tokens, req.input_tokens <= 2500, reported_input=req.input_tokens
+        )
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        history=_confirmation_history(),
+        recheck_upper=True,
+    )
+    assert seen[0] == 4000 and len(seen) > 2  # refused at the old size: bisect below it
+    assert result.brackets[0]["refused"] <= 4000 and result.brackets[0]["admitted"] < 2600
