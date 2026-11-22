@@ -1274,6 +1274,11 @@ def extract_minutes_document(
         return native, links, empty_method
     native_members, native_votes = _minutes_facts(native)
     ocr_members, ocr_votes = _minutes_facts(text)
+    native_status = {name: status for name, status in native_members}
+    if any(native_status.get(name, status) != status for name, status in ocr_members):
+        # The sources disagree about who was present or absent. Joining them would file the same
+        # person as both, so the born-digital text layer wins over a reading of an image.
+        return native, links, "native"
     if native_members - ocr_members or native_votes - ocr_votes:
         # A scan can have selectable attendance or vote lines over an image-only body, and OCR may
         # read none of them, only part, or with a different present/absent reading. Keep the native

@@ -2751,17 +2751,23 @@ def test_stored_minutes_text_returns_the_real_document():
     assert _stored_minutes_text(ctx, _minutes_episode()) == text
 
 
-def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetched():
+def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetched(monkeypatch):
+    import citypods.agenda_text as agenda_text
     from citypods.stages import _stored_minutes_text
 
     filler = " Please wait while the document loads in the viewer on this page."
-    # Long enough to clear the sparseness check, so only the viewer-placeholder check can reject.
-    for shell in (
-        "3804_M_City_Council_Minutes_-_Final.pdf\nLoading…" + filler * 3,
-        "DocumentViewer.php\nLoading…" + filler * 3,
-    ):
-        ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(shell)))
+    # Long enough, on one page, to clear the sparseness check: only the placeholder check rejects.
+    shells = (
+        "3804_M_City_Council_Minutes_-_Final.pdf\nLoading\u2026" + filler * 3,
+        "DocumentViewer.php\nLoading\u2026" + filler * 3,
+    )
+    for shell in shells:
+        ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(shell, page_count=1)))
         assert _stored_minutes_text(ctx, _minutes_episode()) is None
+    # Proof that the placeholder check is what rejected them: stub it out and the text is reused.
+    monkeypatch.setattr(agenda_text, "classify_agenda_text", lambda text: "complete")
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(shells[0], page_count=1)))
+    assert _stored_minutes_text(ctx, _minutes_episode()) == shells[0]
 
 
 def test_minutes_text_completion_markers_from_before_the_viewer_fix_are_dirty():
@@ -2830,8 +2836,14 @@ def test_stored_minutes_text_discards_repeated_page_headers_so_ocr_can_run():
     from citypods.stages import _stored_minutes_text
 
     headers = "City Council Meeting Minutes - Regular Meeting\n" * 8
-    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(headers)))
+    # One page keeps the density floor below the header text, so only repetition can reject it.
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(headers, page_count=1)))
     assert _stored_minutes_text(ctx, _minutes_episode()) is None
+    varied = "".join(
+        f"Item {i}: the council discussed a different matter at length.\n" for i in range(8)
+    )
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(varied, page_count=1)))
+    assert _stored_minutes_text(ctx, _minutes_episode()) is not None
 
 
 def test_minutes_stage_keeps_a_usable_native_roster_when_ocr_must_retry(monkeypatch):
