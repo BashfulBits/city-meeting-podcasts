@@ -86,6 +86,8 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
 # time remains (two hours), across providers and several per provider, so a backlog clears in
 # days rather than weeks. The workflow's 180-minute job timeout leaves room for the catalog checks.
 DAILY_DISCOVERY_SECONDS = 7_200
+# Providers re-measured at once (review/54 §8.14.G); each is in its own dispatch pause.
+REMEASURE_WORKERS = 3
 # The weekly job's clock starts a few minutes before this process; re-measurement budgets from here.
 SCRIPT_STARTED = time.monotonic()
 LIMITS_PATH = REPO_ROOT / "config" / "provider_limits.yml"
@@ -854,6 +856,8 @@ def main(argv: list[str] | None = None) -> int:
         retry_candidate_keys=set(retry_receipts) if retry_receipts else None,
         candidate_keys={args.discovery_candidate} if args.discovery_candidate else None,
         remeasure_time_budget_seconds=REMEASURE_SECONDS if remeasure else None,
+        remeasure_workers=REMEASURE_WORKERS if remeasure else 1,
+        remeasure_session_factory=requests.Session,
         remeasure_run_seconds=(
             REMEASURE_RUN_SECONDS - (time.monotonic() - SCRIPT_STARTED) if remeasure else None
         ),

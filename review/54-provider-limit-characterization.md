@@ -253,7 +253,17 @@ provider's daily request limit). Delivered in order:
    fresh search from the cap, and a raised provider limit still shows. A refusal at that size drops the history and
    the search continues fresh, so a reduction is found and counted exactly as before. Any other
    history starts at the cap as in §8.14.A.
-2. **Concurrent providers** and 3. **a daily slice** follow in their own changes.
+2. **Concurrent providers.** The weekly run re-measures several providers at once
+   (`REMEASURE_WORKERS`, 3). Providers have independent quotas and each runs in its own dispatch
+   pause, so their sessions overlap; routes of one provider stay sequential because they share its
+   quota. After the provider loop (health checks and new-route discovery as before, so discovery
+   keeps its place in the artifact), each provider with due axes is paused and drained again in its
+   own thread, with its own HTTP session, and re-measures there. A lock makes starting a session
+   atomic, so the ceiling and the artifact guard (which counts sessions still in flight) hold with
+   concurrent threads, and the report keeps the due order. The second drain costs each provider
+   one more pause (up to the five-minute drain timeout) but overlaps across providers. With one
+   worker the re-measure runs inside the first drain as before.
+3. **A daily slice** follows in its own change.
 
 ## 8.15 One quota authority for direct and queued calls (#2249) — L2 design, 2026-11-21
 
