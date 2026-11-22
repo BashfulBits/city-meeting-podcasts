@@ -1078,3 +1078,32 @@ def test_prose_roster_rejects_a_prefixed_guest_label():
         "attendance."
     )
     assert _names(parse_roster(staff)) == ["Ann Lee"]
+
+
+def test_prose_roster_drops_a_leading_department_title():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Parks Director "
+        "Bob Roe were present."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Ann Lee"]
+
+
+def test_roster_reads_an_all_caps_list_that_continues_after_a_comma():
+    text = "PRESENT: ALICE SMITH,\nBOB JONES, CAROL BROWN\nABSENT: NONE\n"
+    assert _names(parse_roster(text)) == ["ALICE SMITH", "BOB JONES", "CAROL BROWN"]
+
+
+def test_roster_ignores_printed_line_numbers_on_a_vertical_list():
+    text = "10 PRESENT:\n11 Alice Smith\n12 Bob Jones\n13 ABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+
+
+def test_roster_rejects_a_vertical_list_cut_off_by_the_lookahead_limit():
+    from citypods.agenda_text import _HEADING_LOOKAHEAD_CHARS
+
+    clipped = (
+        "PRESENT:\n" + " " * (_HEADING_LOOKAHEAD_CHARS - 4) + "Alice Smith\nBob Jones\n" + "x" * 50
+    )
+    assert parse_roster(clipped) == []
+    short = "PRESENT:\nAlice Smith\nBob Jones\n"
+    assert _names(parse_roster(short)) == ["Alice Smith", "Bob Jones"]

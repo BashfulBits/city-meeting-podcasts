@@ -1532,10 +1532,10 @@ def _continues_a_wrapped_list(previous: str, line: str) -> bool:
     """
     if len(line) > 120 or line.split(" ", 1)[0].casefold() in _WRAP_STOP_WORDS:
         return False
-    if line.isupper():
-        return False
     if _LIST_OPEN_END_RE.search(previous):
         return bool(line[:1].isupper())
+    if line.isupper():
+        return False
     return _wraps_onto(previous, line)
 
 
@@ -1556,6 +1556,7 @@ def _wraps_onto(previous: str, line: str) -> bool:
     )
 
 
+_PRINTED_LINE_NUMBER_RE = re.compile(r"^\d{1,3}\s+(?=\S)")
 _ABBREVIATED_END_RE = re.compile(r"(?:\b[A-Z]|\bJr|\bSr|\bDr|\bMr|\bMs|\bMrs)\.$")
 
 
@@ -1575,17 +1576,27 @@ def _names_after_heading(text: str, end: int, *, wrapped: bool = False, previous
     names: list[str] = []
     joined = ""
     lookahead = text[end : end + _HEADING_LOOKAHEAD_CHARS]
-    for line in lookahead.split("\n")[1 : 1 + _MAX_ROSTER_CONTINUATION_LINES + 2]:
-        stripped = line.strip()
+    lines = lookahead.split("\n")
+    clipped = end + _HEADING_LOOKAHEAD_CHARS < len(text)
+    if clipped:
+        lines = lines[:-1]  # the last line was cut mid-way and could be a half-read name
+    ended = False
+    for line in lines[1 : 1 + _MAX_ROSTER_CONTINUATION_LINES + 2]:
+        # Minutes with printed line numbers number every line ("11 Alice Smith").
+        stripped = _PRINTED_LINE_NUMBER_RE.sub("", line.strip())
         if not stripped:
+            ended = True
             break
-        if _ROSTER_BLOCK_STOP_RE.match(stripped) or _SECTION_HEADING_RE.search(stripped):
+        if _ROSTER_BLOCK_STOP_RE.match(line.strip()) or _SECTION_HEADING_RE.search(stripped):
+            ended = True
             break
         # A change from mixed case to ALL CAPS is a new section, not another member.
         if stripped.isupper() and any(any(c.islower() for c in earlier) for earlier in names):
+            ended = True
             break
         before = names[-1] if names else previous
         if wrapped and not _continues_a_wrapped_list(before, stripped):
+            ended = True
             break
         if len(names) >= _MAX_ROSTER_CONTINUATION_LINES:
             # More names follow than the bound allows: publishing the first few as the whole
@@ -1601,7 +1612,12 @@ def _names_after_heading(text: str, end: int, *, wrapped: bool = False, previous
         joined += stripped
         names.append(stripped)
         if _ends_a_sentence(stripped):
+            ended = True
             break
+    else:
+        # Ran out of lines without reaching an end. If the text was clipped, the list may go on.
+        if clipped and not ended:
+            return ""
     return joined
 
 
@@ -1720,7 +1736,7 @@ def _is_staff_title_phrase(part: str) -> bool:
 
 
 def _has_leading_staff_title(words: list[str]) -> bool:
-    """Whether an entry opens with a staff title ("City Attorney Bob Roe", "Deputy City Manager X").
+    """Whether an entry opens with a staff title ("City Attorney Bob Roe", "Parks Director X").
 
     Cleaning strips leading titles to reach the name, so a staffer would otherwise come out as a
     plain member. Only a title containing a role noun counts: "City Councilmember Wayne Cooper"
@@ -1729,7 +1745,7 @@ def _has_leading_staff_title(words: list[str]) -> bool:
     """
     consumed: list[str] = []
     for word in words:
-        if word not in _STAFF_ROLE_WORDS:
+        if word not in _STAFF_ROLE_WORDS and word not in _STAFF_DEPARTMENT_WORDS:
             break
         consumed.append(word)
     return bool(consumed) and len(consumed) < len(words) and bool(_STAFF_ROLE_NOUNS & set(consumed))
