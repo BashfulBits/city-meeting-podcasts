@@ -4747,9 +4747,10 @@ class MinutesTextStage:
                         # cutoff must not start up to minutes of scanning (deferred, not failed).
                         ocr_allowed=lambda: ctx.stop is None or not ctx.stop(),
                     )
-                    if text_method in {"retry", "deferred"}:
-                        # Nothing was extracted for a transient reason; caching it as an empty
-                        # roster would hide a scan a healthy later run can read.
+                    if text_method in {"retry", "deferred"} and not parse_roster(text):
+                        # OCR could not run and the native text names nobody; caching that as an
+                        # empty roster would hide a scan a healthy later run can read. (Native
+                        # text that does hold a roster is kept: it is the document, just short.)
                         stats.defer(
                             "minutes-ocr-retry" if text_method == "retry" else "wall-clock-budget",
                             sample=ep.uid or ep.guid,
@@ -4983,7 +4984,7 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
     which produced this artifact in the first place and neither of which needs repeating when
     only the roster parser changed.
     """
-    from citypods.agenda_text import OCR_MIN_ALPHA_CHARS, _alpha_chars, classify_agenda_text
+    from citypods.agenda_text import classify_agenda_text, minutes_text_is_sparse
 
     key = (ep.links or {}).get("minutes_text_artifact_key")
     if not key or ctx.storage is None:
@@ -5000,7 +5001,7 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
         return None
     # A sparse extraction ("City Council Minutes\nPage 1") is a scan's stray text layer, not the
     # document; reusing it would skip the OCR that can read the real one.
-    if _alpha_chars(text) < OCR_MIN_ALPHA_CHARS:
+    if minutes_text_is_sparse(text):
         return None
     # A viewer shell ("Loading...") stored as if it were the document would otherwise be re-parsed
     # forever; None sends the caller back to the provider for the real document.

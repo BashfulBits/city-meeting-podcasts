@@ -1177,6 +1177,21 @@ def extract_document(
 # a roster built from misread names would act as a correction constraint and suppress the right
 # speaker matches, which is worse than no roster.
 OCR_MINUTES_MIN_CONFIDENCE = 85.0
+# Real minutes carry well over a thousand letters a page. A scan whose only selectable text is a
+# running header ("City Council Meeting Minutes" on every page) clears the flat letter floor, so
+# sparseness is also judged per page and by how much of the text is the same line repeated.
+OCR_MIN_ALPHA_PER_PAGE = 150
+_SPARSE_REPEATED_LINE_RATIO = 0.5
+
+
+def minutes_text_is_sparse(text: str, page_count: int | None = None) -> bool:
+    """Whether extracted minutes text is a scan's stray text layer rather than the document."""
+    alpha = _alpha_chars(text)
+    if alpha < OCR_MIN_ALPHA_CHARS:
+        return True
+    if page_count and alpha / page_count < OCR_MIN_ALPHA_PER_PAGE:
+        return True
+    return _repeated_line_ratio(text) > _SPARSE_REPEATED_LINE_RATIO
 
 
 def extract_minutes_document(
@@ -1203,12 +1218,10 @@ def extract_minutes_document(
     """
     native, links = extract_document(content, content_type=content_type, source_url=source_url)
     empty_method = "native" if native.strip() else "none"
-    if _alpha_chars(native) >= OCR_MIN_ALPHA_CHARS or not _is_pdf(
-        content_type, source_url, content
-    ):
+    if not _is_pdf(content_type, source_url, content):
         return native, links, empty_method
     page_count = _pdf_page_count(content)
-    if page_count <= 0:
+    if page_count <= 0 or not minutes_text_is_sparse(native, page_count):
         return native, links, empty_method
     if ocr_allowed is not None and not ocr_allowed():
         return native, links, "deferred"

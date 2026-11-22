@@ -2812,3 +2812,38 @@ def test_minutes_stage_tells_the_extractor_whether_the_run_budget_is_spent(monke
     assert seen["ocr_allowed"] is False
     _, _, seen = _run_minutes_stage(monkeypatch, "deferred", stop_after_fetch=False)
     assert seen["ocr_allowed"] is True
+
+
+def test_stored_minutes_text_discards_repeated_page_headers_so_ocr_can_run():
+    from citypods.stages import _stored_minutes_text
+
+    headers = "City Council Meeting Minutes - Regular Meeting\n" * 8
+    ctx = _minutes_ctx(_MinutesTextStorage({"text": headers}))
+    assert _stored_minutes_text(ctx, _minutes_episode()) is None
+
+
+def test_minutes_stage_keeps_a_usable_native_roster_when_ocr_must_retry(monkeypatch):
+    import citypods.agenda_text as agenda_text
+    import citypods.http as http
+    import citypods.stages as stages
+
+    monkeypatch.setattr(http, "make_session", lambda: object())
+    monkeypatch.setattr(http, "fetch_document_bytes", lambda *a, **k: (b"%PDF", "application/pdf"))
+    monkeypatch.setattr(stages, "_validated_document_url", lambda city, url: url)
+    monkeypatch.setattr(
+        agenda_text,
+        "extract_minutes_document",
+        lambda *a, **k: ("PRESENT: Mayor Ann Lee, Bob Roe", [], "retry"),
+    )
+    stored = {}
+    monkeypatch.setattr(
+        stages,
+        "_store_document",
+        lambda ctx, src, uid, kind, payload, mime: stored.update({kind: payload}) or kind,
+    )
+    ctx = StageContext(storage=object(), ffmpeg=None, max_kbps=96, dry_run=False)
+    ep = _ep("m1")
+    ep.links = {"minutes": "https://city.granicus.com/MinutesViewer.php?view_id=1&clip_id=2"}
+    stats = stages.MinutesTextStage().process(None, _city(), [ep], ctx)
+    assert stats.skipped == 0  # not deferred: the native text is the document
+    assert "minutes-roster" in stored

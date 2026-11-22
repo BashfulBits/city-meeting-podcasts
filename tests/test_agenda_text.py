@@ -977,7 +977,7 @@ def test_minutes_ocr_is_not_attempted_when_native_text_exists_or_the_document_is
     def runner(*args, **kwargs):
         raise AssertionError("OCR must not run")
 
-    native = "Minutes. " * 40
+    native = "Minutes of the regular meeting of the council. " * 60
     monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
     monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
     text, _, method = agenda_text.extract_minutes_document(
@@ -1273,3 +1273,30 @@ def test_roster_rejects_the_whole_heading_when_a_wrapped_list_is_truncated():
 
     lines = [f"Member{chr(65 + i)} Person," for i in range(_MAX_ROSTER_CONTINUATION_LINES + 2)]
     assert parse_roster("PRESENT: Alice Smith,\n" + "\n".join(lines) + "\n") == []
+
+
+def test_minutes_ocr_runs_when_the_only_selectable_text_is_a_repeated_page_header(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    header = "City Council Meeting Minutes - Regular Meeting\n" * 8
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (header, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 8)
+    assert agenda_text._alpha_chars(header) >= agenda_text.OCR_MIN_ALPHA_CHARS  # clears the floor
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "PRESENT: Mayor Ann Lee, Bob Roe\n" + "Minutes of the regular meeting. " * 20, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "ocr" and text.startswith("PRESENT:")
+
+
+def test_minutes_text_sparseness_uses_pages_and_repeated_lines():
+    from citypods.agenda_text import minutes_text_is_sparse
+
+    real = "The council discussed the budget and approved the consent agenda items. " * 40
+    assert not minutes_text_is_sparse(real, 3)
+    assert minutes_text_is_sparse(real, 40)  # a page or two of text spread over 40 pages
+    assert minutes_text_is_sparse("City Council Minutes\n" * 20 + "x" * 10)
+    assert minutes_text_is_sparse("City Council Minutes\nPage 1")
