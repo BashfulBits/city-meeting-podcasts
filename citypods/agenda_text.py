@@ -320,6 +320,15 @@ _GRANICUS_NOT_PUBLISHED_HASHES = frozenset(
 )
 
 
+_UNPUBLISHED_NOTICE_RE = re.compile(r"\bthis agenda is not currently published\b", re.I)
+
+
+def _is_publisher_unpublished_notice(text: str) -> bool:
+    """The publisher's whole-page notice, not a real agenda that merely uses the phrase."""
+    normalized = _normalize_ws(text)
+    return len(normalized) <= 500 and bool(_UNPUBLISHED_NOTICE_RE.search(normalized))
+
+
 def is_unpublished_agenda(assessment: dict | None) -> bool:
     """Whether a stored assessment records the publisher's own "no agenda published" answer."""
     if not isinstance(assessment, dict):
@@ -521,7 +530,7 @@ def assess_agenda_document(
                 "rejected",
                 "unknown",
                 AGENDA_NOT_PUBLISHED_REASON
-                if classify_agenda_text(native) == "unpublished-placeholder"
+                if _is_publisher_unpublished_notice(native)
                 else "placeholder-or-low-quality-html",
                 native_chars=len(native),
             ),

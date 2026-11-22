@@ -744,3 +744,17 @@ def test_is_unpublished_agenda_recognizes_new_reason_and_the_legacy_granicus_has
     assert not is_unpublished_agenda({"reason": "placeholder-or-low-quality-html"})
     assert not is_unpublished_agenda({"reason": "ambiguous-native-and-ocr"})
     assert not is_unpublished_agenda(None)
+
+
+def test_a_real_agenda_mentioning_unpublished_items_is_not_marked_not_published():
+    body = (
+        "<html><body>"
+        + "Item 1. Review reports not currently published on the city website. " * 3
+        + "Loading... "
+        + "x" * 600
+        + "</body></html>"
+    ).encode()
+    assessment, _ = assess_agenda_document(
+        body, content_type="text/html", source_url="https://example.test/viewer"
+    )
+    assert assessment.reason != "agenda-not-published"
