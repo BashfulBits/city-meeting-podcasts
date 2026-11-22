@@ -1244,3 +1244,35 @@ def test_provider_errors_redacted_in_coverage_and_normal_findings():
     assert findings[0].message == "failed https://example.com/video"
     assert evidence[0]["diagnostics"] == ["provider-unavailable:failed https://example.com/video"]
     assert "private-value" not in str(evidence)
+
+
+def test_check_agenda_quality_ignores_agendas_the_publisher_never_published():
+    unpublished = {
+        "reason": "placeholder-or-low-quality-html",
+        "document_hash": "96075776f783fdd68189d7dfa02a8515d5697b6d76b632209342235e2f41e4a1",
+    }
+    records = {
+        f"u{i}": {
+            "uid": f"u{i}",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {"status": "rejected", "assessment_attempts": 10, **unpublished}
+            },
+        }
+        for i in range(5)
+    }
+    assert check_agenda_quality("council", records, body="City Council") is None
+    records["real"] = {
+        "uid": "real",
+        "body": "City Council",
+        "agenda_text": {
+            "quality": {
+                "status": "rejected",
+                "reason": "ambiguous-native-and-ocr",
+                "assessment_attempts": 10,
+            }
+        },
+    }
+    finding = check_agenda_quality("council", records, body="City Council")
+    assert finding is not None
+    assert "1 of 1" in finding.message

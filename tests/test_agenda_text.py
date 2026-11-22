@@ -704,3 +704,57 @@ def test_html_that_merely_mentions_pdf_is_not_sniffed_as_a_pdf():
 
     assert not _is_pdf("text/html", "https://example.test/a", b"<html>%PDF- later</html>")
     assert _is_pdf("application/octet-stream", "https://example.test/a", b"\n %PDF-1.7\n...")
+
+
+_GRANICUS_UNPUBLISHED = (
+    b"<p style='font-size:18.0pt'>This agenda is not currently published.  Please try again later "
+    b"or contact the publisher.</p><hr /><p>If you are authorized to publish the agenda, please "
+    b"log in to view the draft agenda.</p>"
+)
+
+
+def test_publisher_unpublished_agenda_gets_its_own_reason():
+    assessment, _ = assess_agenda_document(
+        _GRANICUS_UNPUBLISHED,
+        content_type="text/html; charset=utf-8",
+        source_url="https://example.granicus.com/AgendaViewer.php?view_id=1&clip_id=2",
+    )
+    assert assessment.status == "rejected"
+    assert assessment.reason == "agenda-not-published"
+
+
+def test_other_low_quality_html_keeps_the_generic_reason():
+    assessment, _ = assess_agenda_document(
+        b"<html><body>Loading...</body></html>",
+        content_type="text/html",
+        source_url="https://example.test/viewer",
+    )
+    assert assessment.reason == "placeholder-or-low-quality-html"
+
+
+def test_is_unpublished_agenda_recognizes_new_reason_and_the_legacy_granicus_hash():
+    from citypods.agenda_text import is_unpublished_agenda
+
+    legacy = {
+        "reason": "placeholder-or-low-quality-html",
+        "document_hash": "96075776f783fdd68189d7dfa02a8515d5697b6d76b632209342235e2f41e4a1",
+    }
+    assert is_unpublished_agenda({"reason": "agenda-not-published"})
+    assert is_unpublished_agenda(legacy)
+    assert not is_unpublished_agenda({"reason": "placeholder-or-low-quality-html"})
+    assert not is_unpublished_agenda({"reason": "ambiguous-native-and-ocr"})
+    assert not is_unpublished_agenda(None)
+
+
+def test_a_real_agenda_mentioning_unpublished_items_is_not_marked_not_published():
+    body = (
+        "<html><body>"
+        + "Item 1. Review reports not currently published on the city website. " * 3
+        + "Loading... "
+        + "x" * 600
+        + "</body></html>"
+    ).encode()
+    assessment, _ = assess_agenda_document(
+        body, content_type="text/html", source_url="https://example.test/viewer"
+    )
+    assert assessment.reason != "agenda-not-published"
