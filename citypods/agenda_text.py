@@ -1496,7 +1496,7 @@ _SECTION_HEADING_RE = re.compile(
     r"\b(?:public\s+comments?|citizens?\s+comments?|call\s+to\s+order|pledge|invocation|"
     r"agenda|minutes|approval|consent|regular\s+meeting|work\s+session|adjourn\w*|"
     r"announcements?|presentations?|new\s+business|old\s+business|executive\s+session|"
-    r"roll\s+call|reports?|discussion|items?\s+for|recess)\b",
+    r"roll\s+call|reports?|discussion|items?\s+for|recess|motions?|carried|seconded|ayes?|nays?)\b",
     re.I,
 )
 
@@ -1683,6 +1683,10 @@ _PROSE_ABSENT_RE = re.compile(
 _PRESIDER_RE = re.compile(
     rf"(?P<names>{_SPAN_CHAR}{{3,120}}?)\s+called\s+(?:the\s+)?(?:[A-Za-z]+\s+){{0,3}}?"
     r"(?:meeting|work\s*session|session)\s+to\s+order\b",
+    re.I,
+)
+_PRESIDER_OFFICE_RE = re.compile(
+    r"\b(?:mayor\s+pro\s+tem|vice[- ]\s*chair|chair(?:man|woman|person)?|mayor|commissioner)\b",
     re.I,
 )
 _PRESIDER_TITLE_WORDS = frozenset(
@@ -1911,7 +1915,12 @@ def _parse_prose_attendance(text: str) -> list[dict]:
     presider = _PRESIDER_RE.search(flat)
     if presider is not None:
         sentence = _member_sentence(presider.group("names"))
-        if sentence is not None and _qualifier_words(sentence) & _PRESIDER_TITLE_WORDS:
+        if sentence is not None:
+            # Flattening glues the line above ("City Council Minutes") onto the presider, so
+            # read from the last office word: "Council Minutes Mayor Jane Doe" -> "Mayor Jane Doe".
+            offices = list(_PRESIDER_OFFICE_RE.finditer(sentence))
+            sentence = sentence[offices[-1].start() :] if offices else ""
+        if sentence:
             rows += _prose_roster_rows(sentence, "present", None, presider.group(0))
     for match in _QUALIFIED_ATTENDANCE_RE.finditer(flat):
         if _ENCLOSING_NON_MEMBER_LABEL_RE.search(flat[max(0, match.start() - 60) : match.start()]):
@@ -1963,7 +1972,7 @@ def parse_roster(text: str) -> list[dict]:
             names_text, evidence_end = below
         names_text = _PLURAL_ROSTER_TITLE_RE.sub(" ", _INLINE_LABEL_RE.sub(" ", names_text))
         for raw_name in _ATTENDANCE_SPLIT_RE.split(names_text):
-            if section != "staff" and _has_leading_staff_title(
+            if section is None and _has_leading_staff_title(
                 [w.casefold().strip(".") for w in raw_name.split()]
             ):
                 continue  # "City Attorney Bob Roe" under a member heading is a staffer
