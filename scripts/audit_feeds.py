@@ -1149,9 +1149,20 @@ def _render_grouped_body(
     # on hundreds of feeds can push the body past GitHub's limit (createIssue then fails and the
     # whole audit run goes red). Shed state detail, least valuable first: long examples, then rows
     # (first_seen alone still preserves the "since" column).
+    # A scoped run later falls back to the visible table, then to an explicit "(not re-evaluated
+    # this run)" placeholder, for rows the state block no longer carries; it never invents detail.
+    # The visible table is capped at _MAX_ROWS rows, so the last resort (first_seen for only the
+    # displayed feeds) is bounded and always fits.
     head = "\n".join(parts)
-    for kwargs in ({}, {"example_chars": 120}, {"include_rows": False}):
-        body = head + "\n\n" + _render_state_block(check, first_seen, rows, **kwargs)
+    shown_first_seen = {slug: first_seen[slug] for slug in shown if slug in first_seen}
+    attempts = (
+        (first_seen, {}),
+        (first_seen, {"example_chars": 120}),
+        (first_seen, {"include_rows": False}),
+        (shown_first_seen, {"include_rows": False}),
+    )
+    for seen, kwargs in attempts:
+        body = head + "\n\n" + _render_state_block(check, seen, rows, **kwargs)
         if len(body) <= _MAX_BODY_CHARS:
             break
     return body
