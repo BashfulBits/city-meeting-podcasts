@@ -1119,3 +1119,48 @@ def test_roster_parsing_stays_fast_with_many_repeated_attendance_headings():
     started = time.monotonic()
     assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe"]
     assert time.monotonic() - started < 5
+
+
+def test_prose_roster_does_not_split_a_name_at_an_initial():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Robert J. Van "
+        "Dyke were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Robert J. Van Dyke", "Ann Lee"]
+    titled = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Mr. Bob Roe and "
+        "Cy Poe Jr. were in attendance."
+    )
+    assert _names(parse_roster(titled)) == ["Alice Smith", "Bob Roe", "Cy Poe Jr", "Ann Lee"]
+
+
+def test_prose_roster_does_not_enrol_a_staff_titled_entry_as_a_member():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and City Attorney "
+        "Bob Roe were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Ann Lee"]
+    elected = (
+        "Mayor Ann Lee called the meeting to order. City Councilmembers Wayne Cooper and County "
+        "Commissioner Jane Doe were in attendance."
+    )
+    assert _names(parse_roster(elected)) == ["Wayne Cooper", "Jane Doe", "Ann Lee"]
+
+
+def test_roster_rejects_a_vertical_list_longer_than_the_bound_instead_of_truncating_it():
+    from citypods.agenda_text import _MAX_ROSTER_CONTINUATION_LINES
+
+    members = [f"Member{chr(65 + i)} Person" for i in range(_MAX_ROSTER_CONTINUATION_LINES + 3)]
+    assert parse_roster("PRESENT:\n" + "\n".join(members) + "\n") == []
+    fitting = members[:12]
+    assert len(_names(parse_roster("PRESENT:\n" + "\n".join(fitting) + "\n"))) == 12
+
+
+def test_roster_stops_a_vertical_list_at_the_next_section_heading():
+    text = "PRESENT:\nAlice Smith\nBob Jones\nPUBLIC COMMENT\n1. Discussion\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+    caps = "PRESENT:\nALICE SMITH\nBOB JONES\nCALL TO ORDER\n"
+    assert _names(parse_roster(caps)) == ["ALICE SMITH", "BOB JONES"]
+    case_change = "PRESENT:\nAlice Smith\nNEW SECTION HEADING\n"
+    assert _names(parse_roster(case_change)) == ["Alice Smith"]
+    assert parse_roster("PRESENT:\nPUBLIC COMMENT\n") == []
