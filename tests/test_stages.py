@@ -2750,3 +2750,16 @@ def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetche
     ):
         ctx = _minutes_ctx(_MinutesTextStorage({"text": shell}))
         assert _stored_minutes_text(ctx, _minutes_episode()) is None
+
+
+def test_minutes_text_completion_markers_from_before_the_viewer_fix_are_dirty():
+    from citypods.stages import MinutesTextStage, stage_input_fingerprint, stage_is_dirty
+
+    stage = MinutesTextStage()
+    city = _city()
+    ep = _ep("m1")
+    ep.links = {"minutes": "https://city.granicus.com/MinutesViewer.php?view_id=1&clip_id=2"}
+    fingerprint = stage_input_fingerprint(stage, ep, city)
+    marker = {"state": "complete", "input_fingerprint": fingerprint, "output": None}
+    ep.stage_completion = {stage.name: {**marker, "version": "1"}}
+    assert stage_is_dirty(stage, ep, city) is True

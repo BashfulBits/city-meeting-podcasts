@@ -4500,7 +4500,9 @@ class MinutesTextStage:
     """Fetch effective minutes documents and publish deterministic vote/roster sidecars."""
 
     name = "minutes_text"
-    version = "1"
+    # "2": completion markers stamped before sibling-host Granicus viewers were unwrapped certify a
+    # stored viewer shell; a new version makes them dirty so process() re-fetches those episodes.
+    version = "2"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
