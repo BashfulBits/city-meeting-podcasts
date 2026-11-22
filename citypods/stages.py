@@ -1120,7 +1120,7 @@ class MomentsStage(LLMProducerStage):
     """Extract grounded R6 moments and apply the manual/calibrated admission policy."""
 
     name = "moments"
-    version = "2"
+    version = "3"
 
     def telemetry_purposes(self, ctx):
         return ("r6-moments",) if ctx.moment_backend is not None and ctx.storage is not None else ()
@@ -4500,9 +4500,11 @@ class MinutesTextStage:
     """Fetch effective minutes documents and publish deterministic vote/roster sidecars."""
 
     name = "minutes_text"
+    # "3": scanned minutes (a PDF with no text layer) are OCR'd now, so markers certifying an empty
+    # extraction are dirty and re-fetch once.
     # "2": completion markers stamped before sibling-host Granicus viewers were unwrapped certify a
     # stored viewer shell; a new version makes them dirty so process() re-fetches those episodes.
-    version = "2"
+    version = "3"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -4510,7 +4512,7 @@ class MinutesTextStage:
         import json as _json
         from datetime import UTC, datetime
 
-        from citypods.agenda_text import extract_document, parse_roster, parse_votes
+        from citypods.agenda_text import extract_minutes_document, parse_roster, parse_votes
         from citypods.http import fetch_document_bytes, make_session
         from citypods.records import minutes_text_backoff_until, source_key
 
@@ -4561,11 +4563,13 @@ class MinutesTextStage:
                     content, content_type = fetch_document_bytes(
                         session, _validated_document_url(city, minutes_url), timeout=30
                     )
-                    text, _ = extract_document(
+                    text, _, text_method = extract_minutes_document(
                         content,
                         content_type=content_type,
                         source_url=minutes_url,
                     )
+                    if text_method == "ocr":
+                        stats.quality("minutes-text-ocr")
                 else:
                     text = cached_text
                 roster = parse_roster(text)

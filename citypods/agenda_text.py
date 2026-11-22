@@ -386,8 +386,14 @@ def _ocr_pdf_pages(
     pages: list[int],
     *,
     timeout: int,
+    preserve_lines: bool = False,
 ) -> tuple[str, float | None]:
-    """Render selected PDF pages and return Tesseract text plus mean word confidence."""
+    """Render selected PDF pages and return Tesseract text plus mean word confidence.
+
+    By default each page comes back as one space-joined line, which is what agenda assessment was
+    built on. ``preserve_lines`` keeps Tesseract's own line breaks, which attendance parsing needs:
+    a heading such as "PRESENT:" is only a heading at the start of a line.
+    """
     if not shutil.which("pdftocairo") or not shutil.which("tesseract"):
         raise OcrUnavailableError
     with tempfile.TemporaryDirectory(prefix="citypods-ocr-") as temp_dir:
@@ -433,6 +439,7 @@ def _ocr_pdf_pages(
             )
             rows = csv.DictReader(proc.stdout.splitlines(), delimiter="\t")
             page_words: list[str] = []
+            lines: dict[tuple[str, str, str], list[str]] = {}
             for row in rows:
                 word = (row.get("text") or "").strip()
                 try:
@@ -441,10 +448,19 @@ def _ocr_pdf_pages(
                     confidence = -1
                 if word:
                     page_words.append(word)
+                    line_key = (
+                        row.get("block_num") or "",
+                        row.get("par_num") or "",
+                        row.get("line_num") or "",
+                    )
+                    lines.setdefault(line_key, []).append(word)
                     if confidence >= 0:
                         confidences.append(confidence)
             if page_words:
-                texts.append(" ".join(page_words))
+                if preserve_lines:
+                    texts.append("\n".join(" ".join(words) for words in lines.values()))
+                else:
+                    texts.append(" ".join(page_words))
                 if sum(len(item) for item in texts) >= OCR_MAX_OUTPUT_CHARS:
                     break
         text = "\n".join(texts)
@@ -1157,6 +1173,54 @@ def extract_document(
     return extract_html(content, source_url)
 
 
+# Scanned minutes carry no text layer. OCR text is only trusted when Tesseract itself is confident:
+# a roster built from misread names would act as a correction constraint and suppress the right
+# speaker matches, which is worse than no roster.
+OCR_MINUTES_MIN_CONFIDENCE = 85.0
+
+
+def extract_minutes_document(
+    content: bytes,
+    *,
+    content_type: str = "",
+    source_url: str | None = None,
+    ocr_runner=None,
+) -> tuple[str, list[DocumentLink], str]:
+    """Extract minutes text, falling back to OCR for a scanned PDF with no text layer.
+
+    Returns ``(text, links, method)`` where ``method`` is ``"native"``, ``"ocr"`` or ``"none"``.
+    OCR is attempted only when a PDF's native text is nearly empty, runs over at most
+    ``OCR_MAX_PAGES`` pages inside a per-page time budget, and is discarded when Tesseract is
+    missing, times out, or reports a mean confidence under ``OCR_MINUTES_MIN_CONFIDENCE``.
+    """
+    native, links = extract_document(content, content_type=content_type, source_url=source_url)
+    if _alpha_chars(native) >= OCR_MIN_ALPHA_CHARS or not _is_pdf(
+        content_type, source_url, content
+    ):
+        return native, links, "native" if native.strip() else "none"
+    page_count = _pdf_page_count(content)
+    if page_count <= 0:
+        return native, links, "native" if native.strip() else "none"
+    pages = list(range(1, min(page_count, OCR_MAX_PAGES) + 1))
+    runner = ocr_runner or _ocr_pdf_pages
+    try:
+        text, confidence = runner(
+            content,
+            pages,
+            timeout=max(OCR_FULL_TIMEOUT_SECONDS, OCR_FULL_SECONDS_PER_PAGE * len(pages)),
+            preserve_lines=True,
+        )
+    except (OcrUnavailableError, subprocess.SubprocessError, OSError):
+        return native, links, "native" if native.strip() else "none"
+    if (
+        confidence is None
+        or confidence < OCR_MINUTES_MIN_CONFIDENCE
+        or _alpha_chars(text) < OCR_MIN_ALPHA_CHARS
+    ):
+        return native, links, "native" if native.strip() else "none"
+    return text, links, "ocr"
+
+
 def _dedupe_links(links: list[DocumentLink]) -> list[DocumentLink]:
     out: list[DocumentLink] = []
     seen: set[str] = set()
@@ -1284,6 +1348,10 @@ def _norm_qualifier(value: str | None) -> str:
 _ROSTER_NAME_TITLES: tuple[tuple[str, ...], ...] = tuple(
     sorted(
         (
+            ("chair", "pro", "tem"),
+            ("chair", "pro", "tern"),
+            ("members",),
+            ("member",),
             ("mayor", "pro", "tem"),
             # OCR/scan variant that shows up in real minutes ("Mayor Pro Tern Paul Meltzer").
             ("mayor", "pro", "tern"),
@@ -1428,6 +1496,10 @@ _MAX_ROSTER_NAME_WORDS = 5
 _MAX_ROSTER_NAME_CHARS = 60
 
 
+# "Vice-Chair" and the OCR'd "Vice- Chair" are the same title as "Vice Chair".
+_VICE_CHAIR_HYPHEN_RE = re.compile(r"\bvice\s*-\s*chair\b", re.I)
+
+
 def _clean_roster_name(raw: str) -> str | None:
     """Return a bare person name, or ``None`` when the span is not name-shaped.
 
@@ -1438,7 +1510,7 @@ def _clean_roster_name(raw: str) -> str | None:
     suppresses correct naming for the whole meeting, which is strictly worse than extracting
     nothing: an empty roster already means "make no correction".
     """
-    name = _WHITESPACE_RE.sub(" ", raw).strip(" .,:;")
+    name = _VICE_CHAIR_HYPHEN_RE.sub("Vice Chair", _WHITESPACE_RE.sub(" ", raw)).strip(" .,:;")
     if not name or len(name) > _MAX_ROSTER_NAME_CHARS or any(char.isdigit() for char in name):
         return None
     words = name.split(" ")

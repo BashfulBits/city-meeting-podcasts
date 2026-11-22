@@ -3,6 +3,8 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from citypods.agenda_text import (
     OCR_FULL_SECONDS_PER_PAGE,
     AgendaTitleCandidate,
@@ -891,3 +893,111 @@ def test_roster_does_not_read_a_vote_line_as_the_end_of_the_attendance_list():
 def test_roster_keeps_each_repeated_attendance_fact_once():
     block = "PRESENT: Mayor Ann Lee, Bob Roe\n"
     assert _names(parse_roster(block * 3)) == ["Ann Lee", "Bob Roe"]
+
+
+def test_roster_strips_hyphenated_and_ocr_spaced_vice_chair_and_members_labels():
+    text = "PRESENT: Vice-Chair Ann Lee, Vice- Chair Bob Roe, Members Cy Poe, Chair Pro Tem Di Moe"
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Cy Poe", "Di Moe"]
+
+
+_SCANNED_PDF = b"%PDF-1.4 scanned"
+
+
+def _scanned(monkeypatch, pages=3):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: ("", []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: pages)
+    return agenda_text
+
+
+def test_minutes_ocr_reads_a_scanned_pdf_with_confident_text(monkeypatch):
+    agenda_text = _scanned(monkeypatch)
+    seen = {}
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        seen.update(pages=pages, timeout=timeout, preserve_lines=preserve_lines)
+        return "PRESENT: Mayor Ann Lee, Bob Roe\n" + "Minutes of the regular meeting. " * 20, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "ocr"
+    assert text.startswith("PRESENT:")
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe"]
+    assert seen["pages"] == [1, 2, 3] and seen["preserve_lines"] is True
+    assert seen["timeout"] >= agenda_text.OCR_FULL_SECONDS_PER_PAGE * 3
+
+
+def test_minutes_ocr_discards_unconfident_or_unavailable_ocr(monkeypatch):
+    agenda_text = _scanned(monkeypatch)
+    body = "Minutes of the regular meeting. " * 20
+
+    def blurry(content, pages, *, timeout, preserve_lines):
+        return body, 60.0
+
+    def missing(content, pages, *, timeout, preserve_lines):
+        raise agenda_text.OcrUnavailableError
+
+    def too_slow(content, pages, *, timeout, preserve_lines):
+        raise subprocess.TimeoutExpired("ocr", timeout)
+
+    for runner in (blurry, missing, too_slow):
+        text, _, method = agenda_text.extract_minutes_document(
+            _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+        )
+        assert (text, method) == ("", "none")
+
+
+def test_minutes_ocr_is_not_attempted_when_native_text_exists_or_the_document_is_html(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    def runner(*args, **kwargs):
+        raise AssertionError("OCR must not run")
+
+    native = "Minutes. " * 40
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert (text, method) == (native, "native")
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: ("", []))
+    _, _, method = agenda_text.extract_minutes_document(
+        b"<html></html>", content_type="text/html", ocr_runner=runner
+    )
+    assert method == "none"
+
+
+def test_ocr_can_keep_tesseract_line_breaks(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    header = "\t".join(
+        "level page_num block_num par_num line_num word_num left top width height conf text".split()
+    )
+
+    def row(block, line, word, conf, text):
+        return f"5\t1\t{block}\t1\t{line}\t{word}\t0\t0\t1\t1\t{conf}\t{text}"
+
+    tsv = "\n".join(
+        [
+            header,
+            row(1, 1, 1, 96, "PRESENT:"),
+            row(1, 1, 2, 96, "Ann"),
+            row(1, 1, 3, 96, "Lee"),
+            row(1, 2, 1, 94, "ABSENT:"),
+            row(1, 2, 2, 94, "None"),
+        ]
+    )
+
+    def fake_run(command, **kwargs):
+        stdout = tsv if command[0] == "tesseract" else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(agenda_text.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(agenda_text.subprocess, "run", fake_run)
+    flat, _ = agenda_text._ocr_pdf_pages(b"%PDF", [1], timeout=30)
+    lined, confidence = agenda_text._ocr_pdf_pages(b"%PDF", [1], timeout=30, preserve_lines=True)
+    assert flat == "PRESENT: Ann Lee ABSENT: None"
+    assert lined == "PRESENT: Ann Lee\nABSENT: None"
+    assert confidence == pytest.approx(95.2)
