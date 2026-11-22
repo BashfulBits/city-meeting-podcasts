@@ -485,6 +485,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="with --due-only: also health-check the least recently checked share of routes",
     )
+    parser.add_argument(
+        "--weekly-full",
+        action="store_true",
+        help=(
+            "run the weekly full path (new-route discovery, configured-route re-measure) from a "
+            "manual main dispatch; needs --discovery-evidence and no other mode"
+        ),
+    )
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--rate-evidence", type=Path)
     parser.add_argument("--discovery-enabled", action="store_true")
@@ -548,6 +556,24 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("discovery candidate must be an exact provider/model catalog identity")
         if os.environ.get("GITHUB_EVENT_NAME") not in {None, "workflow_dispatch"}:
             parser.error("an exact discovery candidate is only valid for manual dispatch")
+    if args.weekly_full and (
+        args.due_only
+        or args.incremental
+        or args.provider
+        or args.no_pause
+        or args.discovery_enabled
+        or args.manual_context
+        or args.context_evidence
+        or args.rate_evidence
+        or args.discovery_evidence is None
+        or not isinstance(control, WorkerDispatchControl)
+        or os.environ.get("GITHUB_REF") != "refs/heads/main"
+        or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+    ):
+        parser.error(
+            "--weekly-full is a manual main dispatch with a Worker pause and discovery evidence, "
+            "and no other mode"
+        )
     if args.discovery_enabled and (
         args.due_only
         or args.provider
@@ -737,7 +763,8 @@ def main(argv: list[str] | None = None) -> int:
         DISCOVERY_ACTIVATION_ENABLED
         and DISCOVERY_SCHEDULED_ENABLED
         and (
-            (
+            args.weekly_full
+            or (
                 os.environ.get("GITHUB_EVENT_NAME") == "schedule"
                 and os.environ.get("GITHUB_EVENT_SCHEDULE") == "07 10 * * 1"
             )
@@ -788,7 +815,7 @@ def main(argv: list[str] | None = None) -> int:
                 + "\n"
             )
 
-    weekly_full = (
+    weekly_full = args.weekly_full or (
         os.environ.get("GITHUB_EVENT_NAME") == "schedule"
         and os.environ.get("GITHUB_EVENT_SCHEDULE") == "07 10 * * 1"
         and not args.due_only
