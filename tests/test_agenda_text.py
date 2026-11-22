@@ -1244,3 +1244,13 @@ def test_directors_stay_members_under_an_explicit_member_label():
     assert [r["name"] for r in rows if r.get("section") == "members"] == ["Alice Smith", "Bob Roe"]
     unlabeled = "PRESENT: City Attorney Cy Poe, Di Moe\n"
     assert _names(parse_roster(unlabeled)) == ["Di Moe"]
+
+
+def test_roster_stops_a_member_list_at_an_explicit_staff_label():
+    text = "PRESENT: Alice Smith,\nStaff: Jane Doe\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    vertical = "PRESENT:\nAlice Smith\nBob Jones\nAlso present: Jane Doe, Clerk\n"
+    members = [r["name"] for r in parse_roster(vertical) if r.get("section") != "staff"]
+    assert members == ["Alice Smith", "Bob Jones"]  # Jane Doe is read, but as staff
+    guests = "PRESENT: Alice Smith,\nGuests: Jane Doe\n"
+    assert _names(parse_roster(guests)) == ["Alice Smith"]
