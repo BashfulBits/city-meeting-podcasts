@@ -350,6 +350,10 @@ SEARCH_MIN_CALLS = 12
 # for every new-route session this run may still add; an artifact over its 2 MiB limit is not
 # saved at all.
 REMEASURE_SESSION_BYTES_RESERVE = 400_000
+# Typical sessions are far smaller, so the room kept per session follows the largest one this run
+# has produced (twice its size), between this floor and the worst case above. Reserving the worst
+# case for every session in flight blocked concurrent providers on the second weekly run.
+REMEASURE_SESSION_BYTES_FLOOR = 100_000
 # The weekly job times out at 360 minutes; re-measurement stops 15 minutes before that so cleanup
 # and evidence upload still run (the script starts a few minutes into the job).
 REMEASURE_RUN_SECONDS = (360 - 15 - 10) * 60
@@ -647,8 +651,9 @@ def reconcile(
     remeasured: set[tuple[str, str]] = set()
     # With remeasure_workers > 1 each provider re-measures in its own thread after the provider
     # loop (its own drain); the lock makes starting a session, and recording it, atomic.
-    remeasure_lock = threading.Lock()
+    remeasure_lock = threading.Condition()  # also signals when a session ends and frees room
     remeasure_inflight = [0]
+    remeasure_largest = [0]  # bytes of the largest session artifact this run has produced
     # Provider requests the daily slice has spent today, by route and by provider.
     daily_used_route: dict[str, int] = {}
     daily_used_provider: dict[str, int] = {}
@@ -673,14 +678,18 @@ def reconcile(
             remeasure_review(discovery_history, limits, now=rate_now or datetime.now(UTC)).due
         )
 
-    def remeasure_deadline() -> float | None:
-        """Clock value the next re-measure session must end by, or None when none may start."""
+    def remeasure_deadline(inflight: int | None = None) -> float | None:
+        """Clock value the next re-measure session must end by, or None when none may start.
+
+        ``inflight`` overrides the count of sessions still running (to ask whether room would
+        open once they end)."""
         if remeasure_time_budget_seconds is None:
             return None
         # New-route sessions this run may still add must keep their place in the artifact.
         # A weekly run is built around three bounded new-route searches (MAX_RUN_SESSIONS).
         later_new_route = min(MAX_RUN_SESSIONS, max(0, session_limit - len(new_route_sessions())))
-        inflight = remeasure_inflight[0]  # sessions started but not yet in the artifact
+        if inflight is None:
+            inflight = remeasure_inflight[0]  # sessions started but not yet in the artifact
         if (
             remeasure_started is not None
             and len([s for s in report.remeasure_sessions if s.get("ran")])
@@ -688,7 +697,11 @@ def reconcile(
         ) or len(report.discovery_sessions) + inflight + later_new_route >= MAX_ARTIFACT_SESSIONS:
             return None  # one run's evidence artifact holds at most MAX_ARTIFACT_SESSIONS
         used = len(json.dumps(report.discovery_sessions, default=str).encode())
-        reserved = REMEASURE_SESSION_BYTES_RESERVE * (1 + inflight + later_new_route)
+        per_session = min(
+            REMEASURE_SESSION_BYTES_RESERVE,
+            max(REMEASURE_SESSION_BYTES_FLOOR, 2 * remeasure_largest[0]),
+        )
+        reserved = per_session * (1 + inflight + later_new_route)
         if used + reserved >= MAX_ARTIFACT_BYTES:
             return None  # leave room under the artifact's byte limit
         start = remeasure_started if remeasure_started is not None else discovery_clock()
@@ -697,6 +710,21 @@ def reconcile(
             ends.append(run_started + remeasure_run_seconds)
         end = min(ends)
         return end if end - discovery_clock() >= MIN_SESSION_SECONDS else None
+
+    def remeasure_budget() -> float | None:
+        """``remeasure_deadline``, waiting (lock held) while running sessions may free room.
+
+        A route that finds no room only because other providers' sessions are still running
+        waits for one to end instead of being skipped for the run; a budget that is spent for
+        good (ceiling, clock, artifact full of finished sessions) still returns None at once."""
+        while True:
+            deadline = remeasure_deadline()
+            if deadline is not None:
+                return deadline
+            if remeasure_inflight[0] > 0 and remeasure_deadline(inflight=0) is not None:
+                remeasure_lock.wait(timeout=60)
+                continue
+            return None
 
     structured_checks = dict(previous_state.get("structured_checks") or {})
     canary_memory: dict[str, dict[str, Any]] = dict(previous_state.get("canaries") or {})
@@ -870,7 +898,7 @@ def reconcile(
                 and remeasure_daily_rpd_share is None
             ):
                 with remeasure_lock:
-                    budget_open = remeasure_deadline() is not None
+                    budget_open = remeasure_budget() is not None
                 if not budget_open:  # no request is sent for a session that could not start
                     row["note"] = "this run's re-measure budget was spent; waits for next week"
                     continue
@@ -923,7 +951,7 @@ def reconcile(
                         "weekly run"
                     )
                     continue
-                deadline = remeasure_deadline()
+                deadline = remeasure_budget()
                 if deadline is None:
                     row["note"] = "this run's re-measure budget was spent; waits for next week"
                     continue
@@ -984,6 +1012,7 @@ def reconcile(
                     quota[rid] = {**(quota.get(rid) or {}), "rpd_remaining": 0}
                 with remeasure_lock:
                     remeasure_inflight[0] -= 1
+                    remeasure_lock.notify_all()
                     if allowance is not None:  # its calls are unknown: count the whole allowance
                         spend_daily(rid, provider, allowance)
                 continue
@@ -992,8 +1021,12 @@ def reconcile(
                     spend_daily(rid, provider, len(record["artifact"].get("attempts") or ()))
                 report.discovery_sessions.append(record["artifact"])
                 remeasure_artifacts.append(id(record["artifact"]))
+                remeasure_largest[0] = max(
+                    remeasure_largest[0], len(json.dumps(record["artifact"], default=str))
+                )
                 save_sessions()
                 remeasure_inflight[0] -= 1
+                remeasure_lock.notify_all()
             last_request[0] = time.monotonic()
             if quota_cap is not None:
                 spent = len(record["artifact"].get("attempts") or ())
