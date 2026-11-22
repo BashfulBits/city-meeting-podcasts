@@ -1482,3 +1482,40 @@ def test_roster_stops_a_member_list_at_an_explicit_staff_label():
     assert members == ["Alice Smith", "Bob Jones"]  # Jane Doe is read, but as staff
     guests = "PRESENT: Alice Smith,\nGuests: Jane Doe\n"
     assert _names(parse_roster(guests)) == ["Alice Smith"]
+
+
+def test_minutes_ocr_keeps_native_statuses_that_ocr_read_with_opposite_headings(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text,
+        "extract_document",
+        lambda *a, **k: ("PRESENT: Alice Smith\nABSENT: Bob Jones", []),
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "PRESENT: Bob Jones\nABSENT: Alice Smith\n" + "Minutes of the meeting. " * 40, 95.0
+
+    text, _, _ = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert text.startswith("PRESENT: Alice Smith")  # the native facts are kept, not replaced
+
+
+def test_minutes_ocr_keeps_a_native_vote_line_ocr_missed(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    native = "Present: Alice Smith, Bob Jones\nVote: Yes: Alice Smith; No: Bob Jones"
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "Present: Alice Smith, Bob Jones\n" + "Minutes of the meeting. " * 40, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "ocr"
+    votes = {(v["member"], v["value"]) for v in agenda_text.parse_votes(text)}
+    assert ("Alice Smith", "yes") in votes and ("Bob Jones", "no") in votes

@@ -1202,6 +1202,23 @@ def minutes_text_is_sparse(
     return _repeated_line_ratio(text) > _SPARSE_REPEATED_LINE_RATIO
 
 
+def _minutes_facts(text: str) -> tuple[set, set]:
+    """The roster and vote facts a text carries, to tell whether OCR recovered what native had.
+
+    Members are compared as (name, status) so a present/absent reading is a fact, not just a name,
+    and votes as (member, value, agenda item).
+    """
+    roster = parse_roster(text)
+    members = {
+        (_roster_key(row["name"]), row["status"]) for row in roster if row.get("section") != "staff"
+    }
+    votes = {
+        (vote.get("member"), vote.get("value"), vote.get("agenda_item"))
+        for vote in parse_votes(text, roster=roster)
+    }
+    return members, votes
+
+
 def _member_rows(text: str) -> list[dict]:
     """Roster rows for the body's members: a staff-only roster does not count as one."""
     return [row for row in parse_roster(text) if row.get("section") != "staff"]
@@ -1255,12 +1272,12 @@ def extract_minutes_document(
         or _alpha_chars(text) < OCR_MIN_ALPHA_CHARS
     ):
         return native, links, empty_method
-    native_members = {_roster_key(row["name"]) for row in _member_rows(native)}
-    ocr_members = {_roster_key(row["name"]) for row in _member_rows(text)}
-    if native_members - ocr_members:
-        # A scan can have a selectable attendance line over an image-only body, and OCR may read
-        # none of it or only part. Keep the native members OCR did not recover and add the OCR'd
-        # body; rows both sources name collapse when the roster is parsed.
+    native_members, native_votes = _minutes_facts(native)
+    ocr_members, ocr_votes = _minutes_facts(text)
+    if native_members - ocr_members or native_votes - ocr_votes:
+        # A scan can have selectable attendance or vote lines over an image-only body, and OCR may
+        # read none of them, only part, or with a different present/absent reading. Keep the native
+        # text and add the OCR'd body; rows both sources name collapse when the roster is parsed.
         return f"{native.rstrip()}\n{text}", links, "ocr"
     return text, links, "ocr"
 

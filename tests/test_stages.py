@@ -2754,9 +2754,11 @@ def test_stored_minutes_text_returns_the_real_document():
 def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetched():
     from citypods.stages import _stored_minutes_text
 
+    filler = " Please wait while the document loads in the viewer on this page."
+    # Long enough to clear the sparseness check, so only the viewer-placeholder check can reject.
     for shell in (
-        "3804_M_City_Council_Minutes_-_Final.pdf\nLoading…",
-        "DocumentViewer.php\nLoading…",
+        "3804_M_City_Council_Minutes_-_Final.pdf\nLoading…" + filler * 3,
+        "DocumentViewer.php\nLoading…" + filler * 3,
     ):
         ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(shell)))
         assert _stored_minutes_text(ctx, _minutes_episode()) is None
