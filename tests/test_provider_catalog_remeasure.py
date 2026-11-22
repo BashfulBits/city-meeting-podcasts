@@ -459,3 +459,65 @@ def test_manual_weekly_is_only_for_a_manual_main_dispatch(monkeypatch, tmp_path,
     with pytest.raises(SystemExit) as exc:
         script.main(["--weekly-full", "--discovery-evidence", evidence])
     assert exc.value.code == 2
+
+
+def _tight(session, days, *, admitted=100500, refused=100900):
+    return [
+        obs(session, days, "admitted", admitted),
+        obs(session, days, "admitted", admitted),
+        obs(session, days, "refused", refused),
+    ]
+
+
+def test_a_tight_recent_bracket_around_the_cap_is_confirmed_not_searched():
+    from citypods.provider_catalog.limits import confirmation_history
+
+    history = [*_tight("old", 20), *_tight("s1", 3)]
+    kept = confirmation_history(history, "id", "input", "p", 100000, NOW)
+    # Only the newest session's verified admissions and refusal are given to the search.
+    assert {o.request.session_id for o in kept} == {"s1"}
+    assert sorted(o.outcome for o in kept) == ["admitted", "admitted", "refused"]
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        [],  # nothing measured yet
+        _tight("s1", 3, admitted=99000, refused=99400),  # admitted below the cap: cap unverified
+        _tight("s1", 3, admitted=100500, refused=102000),  # not converged
+        [obs("s1", 3, "admitted", 100500), obs("s1", 3, "admitted", 100500)],  # no refusal
+        _tight("s1", 90),  # too old
+        [
+            *_tight("old", 20),
+            *refused_session("s2", 2, admitted=60000, refused=70000),
+        ],  # newest wins
+    ],
+)
+def test_other_histories_start_a_fresh_search_at_the_cap(history):
+    from citypods.provider_catalog.limits import confirmation_history
+
+    assert confirmation_history(history, "id", "input", "p", 100000, NOW) == ()
+
+
+def test_no_cap_means_no_confirmation():
+    from citypods.provider_catalog.limits import confirmation_history
+
+    assert confirmation_history(_tight("s1", 3), "id", "input", "p", None, NOW) == ()
+
+
+def test_the_issue_reports_session_cost_and_why_axes_waited():
+    from citypods.provider_catalog.issue import _remeasure_lines
+
+    state = {
+        "sessions": [
+            {"route_id": "a", "ran": True, "seconds": 120, "calls": 2, "confirm": True},
+            {"route_id": "b", "ran": True, "seconds": 600, "calls": 9, "confirm": False},
+            {"route_id": "c", "ran": False, "note": "health check this run was inconclusive"},
+            {"route_id": "d", "ran": False, "note": "health check this run was inconclusive"},
+            {"route_id": "e", "ran": False, "note": "daily quota not confirmed this run"},
+        ]
+    }
+    text = "\n".join(_remeasure_lines(state))
+    assert "Sessions took 12 min in all (median 600 s, longest 600 s), 11 provider calls" in text
+    assert "1 confirmed a known bracket" in text
+    assert "2 health check this run was inconclusive; 1 daily quota not confirmed this run" in text

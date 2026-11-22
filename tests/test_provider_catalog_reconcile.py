@@ -3201,6 +3201,96 @@ def test_weekly_run_remeasures_configured_caps_after_discovery_and_daily_never(m
     assert not daily.remeasure_sessions
 
 
+def test_remeasure_records_cost_and_passes_a_confirming_history(monkeypatch):
+    import citypods.provider_catalog.limits as limits_module
+    import citypods.provider_catalog.reconcile as module
+
+    seen = []
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    configured = {r["route_id"] for r in limits["routes"]}
+    clock = [0.0]
+
+    def discover(candidate, *_args, **kwargs):
+        if candidate.key in configured:
+            seen.append(kwargs["history"])
+            clock[0] += 30
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setattr(limits_module, "confirmation_history", lambda *args: ("known-bracket",))
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: clock[0],
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+    )
+    ran = [s for s in report.remeasure_sessions if s.get("ran")]
+    assert ran and seen and all("known-bracket" in h for h in seen)
+    assert all(s["confirm"] and s["seconds"] == 30 and "calls" in s for s in ran)
+
+
+def test_remeasure_stops_before_the_evidence_artifact_could_overflow(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    started = []
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    configured = {r["route_id"] for r in limits["routes"]}
+
+    def discover(candidate, *_args, **kwargs):
+        if candidate.key in configured:
+            started.append(candidate.key)
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setattr(module, "REMEASURE_ARTIFACT_SOFT_BYTES", 1)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+    )
+    assert not started
+    assert any("budget" in (s.get("note") or "") for s in report.remeasure_sessions)
+
+
 def test_remeasure_stops_when_its_own_time_budget_is_spent(monkeypatch):
     import citypods.provider_catalog.reconcile as module
 
