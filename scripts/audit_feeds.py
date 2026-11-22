@@ -85,6 +85,8 @@ _DEAD_MEETINGS_URL_STATUSES = frozenset({404, 410, 451})
 # overlong issue instead. The hidden state block (below) still tracks every affected feed's
 # first-seen date regardless of the display cap, so nothing is lost across runs.
 _MAX_ROWS = 60
+# GitHub rejects issue bodies over 65,536 characters; leave headroom under that.
+_MAX_BODY_CHARS = 60000
 _MAX_EXAMPLE_CHARS = 180
 _AGENDA_MAX_EXAMPLE_CHARS = 500
 _NON_ISSUE_CHECKS = frozenset({"empty"})
@@ -794,18 +796,25 @@ def _parse_state_rows(state: dict) -> dict[str, _FeedRow]:
     return rows
 
 
-def _render_state_block(check: str, first_seen: dict[str, str], rows: dict[str, _FeedRow]) -> str:
-    payload = json.dumps(
-        {
-            "check": check,
-            "first_seen": dict(sorted(first_seen.items())),
-            "rows": {
-                slug: {"severity": r.severity, "count": r.count, "example": r.example}
-                for slug, r in sorted(rows.items())
-            },
-        },
-        sort_keys=True,
-    )
+def _render_state_block(
+    check: str,
+    first_seen: dict[str, str],
+    rows: dict[str, _FeedRow],
+    *,
+    example_chars: int | None = None,
+    include_rows: bool = True,
+) -> str:
+    state: dict = {"check": check, "first_seen": dict(sorted(first_seen.items()))}
+    if include_rows:
+        state["rows"] = {
+            slug: {
+                "severity": r.severity,
+                "count": r.count,
+                "example": r.example if example_chars is None else r.example[:example_chars],
+            }
+            for slug, r in sorted(rows.items())
+        }
+    payload = json.dumps(state, sort_keys=True)
     # A feed-derived example (an upstream error/response message) could contain a literal "-->",
     # which would prematurely terminate this HTML comment and corrupt the state block. "-->" can
     # only appear inside a JSON string value here (it isn't valid bare JSON syntax), so replacing
@@ -1136,8 +1145,27 @@ def _render_grouped_body(
                 parts.append(f"- `{slug}` ({ctx.city}): " + ", ".join(links))
 
     parts += ["", _footer(check)]
-    parts += ["", _render_state_block(check, first_seen, rows)]
-    return "\n".join(parts)
+    # The hidden state block carries every row, not just the displayed ones, so a check failing
+    # on hundreds of feeds can push the body past GitHub's limit (createIssue then fails and the
+    # whole audit run goes red). Shed state detail, least valuable first: long examples, then rows
+    # (first_seen alone still preserves the "since" column).
+    # A scoped run later falls back to the visible table, then to an explicit "(not re-evaluated
+    # this run)" placeholder, for rows the state block no longer carries; it never invents detail.
+    # The visible table is capped at _MAX_ROWS rows, so the last resort (first_seen for only the
+    # displayed feeds) is bounded and always fits.
+    head = "\n".join(parts)
+    shown_first_seen = {slug: first_seen[slug] for slug in shown if slug in first_seen}
+    attempts = (
+        (first_seen, {}),
+        (first_seen, {"example_chars": 120}),
+        (first_seen, {"include_rows": False}),
+        (shown_first_seen, {"include_rows": False}),
+    )
+    for seen, kwargs in attempts:
+        body = head + "\n\n" + _render_state_block(check, seen, rows, **kwargs)
+        if len(body) <= _MAX_BODY_CHARS:
+            break
+    return body
 
 
 def _reconcile_grouped(

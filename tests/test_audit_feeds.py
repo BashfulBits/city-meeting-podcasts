@@ -1764,3 +1764,25 @@ def test_unexpected_body_evidence_fails_closed_on_unreachable_source(monkeypatch
 
 def test_unexpected_body_evidence_succeeds_when_all_sources_reachable(monkeypatch, tmp_path):
     assert _evidence_run(monkeypatch, tmp_path, []) == 0
+
+
+def test_render_grouped_body_stays_under_github_body_limit_with_many_long_rows():
+    """A check failing on hundreds of feeds must not exceed GitHub's issue body limit (#2280)."""
+    n = 1500
+    rows = {
+        f"city{i:04d}": _FeedRow(slug=f"city{i:04d}", count=2, severity=WARN, example="x" * 500)
+        for i in range(n)
+    }
+    first_seen = {slug: _NOW.isoformat() for slug in rows}
+    body = _render_grouped_body(
+        "agenda-quality",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={},
+        feed_context=None,
+        severity=WARN,
+        now=_NOW,
+    )
+    assert len(body) <= 65536
+    state = _mod._parse_state(body)
+    assert state["first_seen"]  # the displayed feeds keep their first-seen stamps
