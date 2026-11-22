@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Feed-health audit (#2280): a consolidated issue whose hidden state block would push the body past
+  GitHub's 65,536-character limit now sheds state detail (long examples, then rows) instead of
+  failing `createIssue` and turning the whole audit run red. This surfaced once the audit began
+  reading canonical state and found a large `agenda-quality` finding.
+
 - **Manual weekly-full provider catalog run.** The reconciliation workflow takes a `weekly_full`
   dispatch input that runs the weekly path by hand from main: new-route discovery and the
   configured-route cap re-measure (review/54 §8.14), with the weekly 360-minute budget and
