@@ -1637,6 +1637,14 @@ def _wraps_onto(previous: str, line: str) -> bool:
     )
 
 
+_ABBREVIATED_END_RE = re.compile(r"(?:\b[A-Z]|\bJr|\bSr|\bDr|\bMr|\bMs|\bMrs)\.$")
+
+
+def _ends_a_sentence(line: str) -> bool:
+    """A closing period, but not the one on a suffix or initial ("Alice Smith Jr.", "Robert J.")."""
+    return line.endswith(".") and not _ABBREVIATED_END_RE.search(line)
+
+
 def _names_after_heading(text: str, end: int, *, wrapped: bool = False, previous: str = "") -> str:
     """Names a heading like ``PRESENT:`` leaves for the lines below it.
 
@@ -1673,7 +1681,7 @@ def _names_after_heading(text: str, end: int, *, wrapped: bool = False, previous
             joined += joiner
         joined += stripped
         names.append(stripped)
-        if stripped.endswith("."):
+        if _ends_a_sentence(stripped):
             break
     return joined
 
@@ -1693,7 +1701,7 @@ _DASH_ROLE_SUFFIX_RE = re.compile(
 _NOT_AFTER_ABBREVIATION = (
     r"(?<!\b[A-Z]\.)(?<!\bJr\.)(?<!\bSr\.)(?<!\bDr\.)(?<!\bMr\.)(?<!\bMs\.)(?<!\bMrs\.)"
 )
-_SENTENCE_START_RE = re.compile(rf"(?:^|{_NOT_AFTER_ABBREVIATION}(?<=[.;])\s+(?=[A-Z]))")
+_SENTENCE_START_RE = re.compile(rf"(?:^|{_NOT_AFTER_ABBREVIATION}(?<=\.)\s+(?=[A-Z]))")
 # Text up to the end of a sentence: any character but a period, except the period of an initial
 # or title abbreviation, so a name like "Robert J. Van Dyke" is not cut in half.
 _SPAN_CHAR = (
@@ -1765,6 +1773,33 @@ _STAFF_ROLE_NOUNS = frozenset(
 )
 
 
+_STAFF_DEPARTMENT_WORDS = frozenset(
+    {
+        "airport", "animal", "budget", "building", "code", "communications", "community",
+        "compliance", "court", "development", "economic", "emergency", "engineering", "finance",
+        "fire", "human", "information", "legal", "library", "management", "municipal",
+        "parks", "planning", "police", "public", "recreation", "resources", "services",
+        "shelter", "technology", "transportation", "utilities", "water", "works",
+    }
+)  # fmt: skip
+
+
+def _is_staff_title_phrase(part: str) -> bool:
+    """Whether a span after a comma is a job title ("Parks Director", "PCDC Executive Director").
+
+    Needs a role noun and nothing but role words, department words or an acronym around it. A
+    full name that happens to end in a role word ("Mark Manager") is not one: "Mark" is neither.
+    """
+    original = part.split()
+    words = [w.casefold().strip(".") for w in original]
+    if not words or not (_STAFF_ROLE_NOUNS & set(words)):
+        return False
+    return all(
+        w in _STAFF_ROLE_WORDS or w in _STAFF_DEPARTMENT_WORDS or (o.isupper() and len(o) >= 2)
+        for w, o in zip(words, original, strict=True)
+    )
+
+
 def _has_leading_staff_title(words: list[str]) -> bool:
     """Whether an entry opens with a staff title ("City Attorney Bob Roe", "Deputy City Manager X").
 
@@ -1806,7 +1841,7 @@ def _prose_roster_rows(names_text: str, status: str, section: str | None, eviden
             continue
         is_title = bool(words) and (
             all(w in _STAFF_ROLE_WORDS for w in words)
-            or (after_comma and words[-1] in _STAFF_ROLE_WORDS)
+            or (after_comma and _is_staff_title_phrase(part))
         )
         if is_title:
             if kept:
@@ -1849,7 +1884,7 @@ def _non_member_lead(sentence: str) -> bool:
     The label is read before it is stripped, with or without a colon, so a staff or guest list is
     never admitted as members; "Commission Members:" and "Commissioners Jane Doe" still are.
     """
-    lead = sentence.split(":")[0] if ":" in sentence else sentence.split(" ", 1)[0]
+    lead = sentence.split(":")[0] if ":" in sentence else " ".join(sentence.split(" ")[:3])
     return bool(_qualifier_words(lead) & (_ROSTER_STAFF_WORDS | _ROSTER_EXCLUDED_WORDS | {"staff"}))
 
 

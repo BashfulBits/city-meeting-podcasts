@@ -1164,3 +1164,49 @@ def test_roster_stops_a_vertical_list_at_the_next_section_heading():
     case_change = "PRESENT:\nAlice Smith\nNEW SECTION HEADING\n"
     assert _names(parse_roster(case_change)) == ["Alice Smith"]
     assert parse_roster("PRESENT:\nPUBLIC COMMENT\n") == []
+
+
+def test_prose_roster_keeps_semicolon_separated_names():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith; Bob Roe were "
+        "present."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Roe", "Ann Lee"]
+
+
+def test_roster_keeps_reading_a_vertical_list_past_a_suffix_period():
+    text = "PRESENT:\nAlice Smith Jr.\nBob Jones\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith Jr", "Bob Jones"]
+    initial = "PRESENT:\nRobert J.\nBob Jones\n"
+    assert "Bob Jones" in _names(parse_roster(initial))
+
+
+def test_prose_roster_keeps_a_full_name_that_ends_in_a_role_word_after_a_comma():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Mark Manager, and "
+        "Bob Roe were present."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Mark Manager", "Bob Roe", "Ann Lee"]
+    staff = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Shane Mize, Parks "
+        "Director, and Bob Roe were present."
+    )
+    assert _names(parse_roster(staff)) == ["Alice Smith", "Bob Roe", "Ann Lee"]
+    acronym = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Amy Madison, PCDC "
+        "Executive Director, and Bob Roe were present."
+    )
+    assert _names(parse_roster(acronym)) == ["Alice Smith", "Bob Roe", "Ann Lee"]
+
+
+def test_prose_roster_rejects_a_prefixed_guest_label():
+    text = (
+        "Chair Ann Lee called the meeting to order. Invited guests Alice Smith and Bob Roe were "
+        "in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee"]
+    staff = (
+        "Chair Ann Lee called the meeting to order. City staff Alice Smith and Bob Roe were in "
+        "attendance."
+    )
+    assert _names(parse_roster(staff)) == ["Ann Lee"]
