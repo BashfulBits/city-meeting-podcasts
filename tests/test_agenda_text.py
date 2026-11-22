@@ -1472,3 +1472,13 @@ def test_minutes_ocr_keeps_native_members_that_ocr_only_partly_recovered(monkeyp
     )
     assert method == "ocr"
     assert _names(parse_roster(text)) == ["Alice Smith", "Bob Roe"]
+
+
+def test_roster_stops_a_member_list_at_an_explicit_staff_label():
+    text = "PRESENT: Alice Smith,\nStaff: Jane Doe\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    vertical = "PRESENT:\nAlice Smith\nBob Jones\nAlso present: Jane Doe, Clerk\n"
+    members = [r["name"] for r in parse_roster(vertical) if r.get("section") != "staff"]
+    assert members == ["Alice Smith", "Bob Jones"]  # Jane Doe is read, but as staff
+    guests = "PRESENT: Alice Smith,\nGuests: Jane Doe\n"
+    assert _names(parse_roster(guests)) == ["Alice Smith"]

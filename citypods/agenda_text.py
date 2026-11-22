@@ -1629,6 +1629,12 @@ def _follows_heading(text: str, start: int) -> bool:
 
 
 _WRAP_STOP_WORDS = frozenset({"also", "staff", "city", "others", "guests", "excused", "none"})
+# A staff or guest label ("Staff: Jane Doe", "Also present: ...") ends a member list even when
+# names follow it on the same line.
+_NON_MEMBER_LABEL_LINE_RE = re.compile(
+    r"^(?:also\s+present|(?:city\s+)?staff|guests?|visitors?|others?|public|audience)\b[^\n:]{0,30}:",
+    re.I,
+)
 _NO_ATTENDANCE_RE = re.compile(r"^(?:none|n/a|no\s+one|nobody|vacant)\.?$", re.I)
 
 
@@ -1717,6 +1723,7 @@ def _names_after_heading(
             _ROSTER_BLOCK_STOP_RE.match(line.strip())
             or _SECTION_HEADING_RE.search(stripped)
             or _NO_ATTENDANCE_RE.match(stripped)
+            or _NON_MEMBER_LABEL_LINE_RE.match(stripped)
         ):
             ended = True  # "None" says nobody is listed, so the next line is not a name
             break
