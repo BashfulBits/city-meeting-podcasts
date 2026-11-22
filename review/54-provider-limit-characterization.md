@@ -59,8 +59,9 @@ never be silent.
   pending reduction for it. Pending confirmations go first, then the oldest last measurement, then
   routes on the lanes with the most traffic.
 - **Budget.** Configured-route sessions share the weekly run's existing clock with discovery.
-  New-route discovery runs first. Re-measurement uses at most `REMEASURE_SECONDS` (3,600 s) and
-  `REMEASURE_SESSION_CEILING` (4) sessions per run, one session per provider at a time. A session
+  New-route discovery runs first. Re-measurement uses at most `REMEASURE_SECONDS` (10,800 s) and
+  `REMEASURE_SESSION_CEILING` (12) sessions per run (both raised on 2026-11-22, see §8.14.G; they
+  were 3,600 s and 4), one session per provider at a time. A session
   starts only if `MIN_SESSION_SECONDS` (600) remain. The clock is also capped by the job:
   re-measurement stops 15 minutes before the weekly job's timeout, so cleanup and evidence upload
   still run. The weekly job timeout goes from 300 to 360 minutes, GitHub's hosted-runner maximum,
@@ -228,7 +229,31 @@ Tests:
 
 Rollout: ship the code; the next Monday run measures up to four due routes. Read the first issue
 before ticking anything. Raise `REMEASURE_SESSION_CEILING` only after a full weekly run stays
-inside its job timeout.
+inside its job timeout. (Done: see §8.14.G.)
+
+### 8.14.G Throughput: more axes per run (2026-11-22)
+
+The first weekly-full run (manual, 2026-11-22) re-measured 4 axes and left 88 waiting, using 97 of
+its 360 minutes. The ceiling, not the clock, was binding: 92 axes due every 28 days at 4 a week can
+never keep up. Maintainer direction (2026-11-22): raise the ceiling, report cost, confirm known
+brackets cheaply, run providers concurrently, and take a small daily slice (never more than 10% of a
+provider's daily request limit). Delivered in order:
+
+1. **Ceiling, cost report, cheap confirm** (this section). `REMEASURE_SESSION_CEILING` 4 → 12,
+   `REMEASURE_SECONDS` 3,600 → 10,800 and `MAX_ARTIFACT_SESSIONS` 16 → 32; a session is not started
+   unless the evidence has room for it and for every new-route session the run may still add
+   (`REMEASURE_SESSION_BYTES_RESERVE`, 400 KB each, within the 2 MiB envelope; an artifact over the
+   limit is not saved at all). Each session's seconds and provider calls, and
+   the count of axes by waiting reason, now appear in the issue's "Configured route caps" block.
+   **Cheap confirm:** when the newest authenticated session for the axis converged (admitted below
+   refused within the search width), admitted at least the configured cap, and is under 56 days
+   old, its observations are given to the search as history. The search's existing resume rule then
+   re-tests the admitted size once and then the old refusal (`recheck_upper`, the output axis's
+   resume rule applied to every axis), so an unchanged cap is confirmed in two calls instead of a
+   fresh search from the cap, and a raised provider limit still shows. A refusal at that size drops the history and
+   the search continues fresh, so a reduction is found and counted exactly as before. Any other
+   history starts at the cap as in §8.14.A.
+2. **Concurrent providers** and 3. **a daily slice** follow in their own changes.
 
 ## 8.15 One quota authority for direct and queued calls (#2249) — L2 design, 2026-11-21
 

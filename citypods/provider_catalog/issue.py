@@ -11,8 +11,10 @@ from __future__ import annotations
 import base64
 import json
 import re
+import statistics
 import subprocess
 import zlib
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from glob import escape
 from typing import Any
@@ -649,6 +651,27 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
     return fulfilled
 
 
+def _remeasure_cost_lines(ran, waiting) -> list[str]:
+    """What the sessions cost and why the others waited, so the next change can be sized."""
+    out = []
+    timed = [s for s in ran if isinstance(s.get("seconds"), int)]
+    if timed:
+        confirms = sum(1 for s in ran if s.get("confirmed"))
+        calls = sum(s["calls"] for s in ran if isinstance(s.get("calls"), int))
+        seconds = sorted(s["seconds"] for s in timed)
+        median = round(statistics.median(seconds))
+        out.append(
+            f"- Sessions took {sum(seconds) // 60} min in all (median {median} s, longest "
+            f"{seconds[-1]} s), {calls} provider calls; {confirms} confirmed a known bracket "
+            "instead of searching."
+        )
+    reasons = Counter(str(s.get("note") or "not run") for s in waiting)
+    if reasons:
+        top = "; ".join(f"{n} {text}" for text, n in reasons.most_common(5))
+        out.append(f"- Waiting, by reason: {top}.")
+    return out
+
+
 def _remeasure_lines(remeasure) -> list[str]:
     """Configured-route cap re-measurement (review/54 §8.14): offers, pending cuts, waits."""
     if not isinstance(remeasure, dict):
@@ -682,6 +705,7 @@ def _remeasure_lines(remeasure) -> list[str]:
             )
             + "."
         )
+        lines += _remeasure_cost_lines(ran, waiting)
     lines.append("")
     return lines
 

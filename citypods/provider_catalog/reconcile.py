@@ -7,6 +7,7 @@ file. Nothing here writes config; Slice 1's only side effect is the rolling issu
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Callable, Iterator, Mapping
@@ -31,7 +32,12 @@ from citypods.llm_rate_probe import (
 )
 from citypods.provider_catalog.classify import Classification, classify
 from citypods.provider_catalog.decisions import Decisions
-from citypods.provider_catalog.discovery import MAX_ARTIFACT_SESSIONS, MAX_AUTO_MEASURE_ATTEMPTS
+from citypods.provider_catalog.discovery import (
+    MAX_ARTIFACT_BYTES,
+    MAX_ARTIFACT_SESSIONS,
+    MAX_AUTO_MEASURE_ATTEMPTS,
+    MAX_RUN_SESSIONS,
+)
 from citypods.provider_catalog.evidence import (
     CatalogEvidence,
     LimitObservation,
@@ -319,8 +325,17 @@ MEASURE_FALLBACK_PROVIDERS = 2
 # budget remains, and never more than this many in one run.
 MIN_SESSION_SECONDS = 600
 # Review/54 §8.14: configured-route cap re-measurement in the weekly full run.
-REMEASURE_SECONDS = 3_600
-REMEASURE_SESSION_CEILING = 4
+# Time and session allowances for one run. The first weekly run used 97 of 360 minutes and four
+# sessions: the ceiling, not the clock, was binding. Sessions are bounded by this window, by the
+# ceiling below, by the 32-session artifact and by REMEASURE_SESSION_BYTES_RESERVE.
+REMEASURE_SECONDS = 10_800
+REMEASURE_SESSION_CEILING = 12
+# Reachability, the old admitted size and the old refusal.
+CONFIRM_MAX_CALLS = 3
+# A session can hold up to 96 attempts of a few KB each. Before starting one, keep room for it and
+# for every new-route session this run may still add; an artifact over its 2 MiB limit is not
+# saved at all.
+REMEASURE_SESSION_BYTES_RESERVE = 400_000
 # The weekly job times out at 360 minutes; re-measurement stops 15 minutes before that so cleanup
 # and evidence upload still run (the script starts a few minutes into the job).
 REMEASURE_RUN_SECONDS = (360 - 15 - 10) * 60
@@ -624,12 +639,18 @@ def reconcile(
         """Clock value the next re-measure session must end by, or None when none may start."""
         if remeasure_time_budget_seconds is None:
             return None
+        # New-route sessions this run may still add must keep their place in the artifact.
+        # A weekly run is built around three bounded new-route searches (MAX_RUN_SESSIONS).
+        later_new_route = min(MAX_RUN_SESSIONS, max(0, session_limit - len(new_route_sessions())))
         if (
             remeasure_started is not None
             and len([s for s in report.remeasure_sessions if s.get("ran")])
             >= remeasure_session_ceiling
-        ) or len(report.discovery_sessions) >= MAX_ARTIFACT_SESSIONS:
+        ) or len(report.discovery_sessions) + later_new_route >= MAX_ARTIFACT_SESSIONS:
             return None  # one run's evidence artifact holds at most MAX_ARTIFACT_SESSIONS
+        used = len(json.dumps(report.discovery_sessions, default=str).encode())
+        if used + REMEASURE_SESSION_BYTES_RESERVE * (1 + later_new_route) >= MAX_ARTIFACT_BYTES:
+            return None  # leave room under the artifact's byte limit
         start = remeasure_started if remeasure_started is not None else discovery_clock()
         ends = [start + remeasure_time_budget_seconds]
         if remeasure_run_seconds is not None:
@@ -714,7 +735,12 @@ def reconcile(
         nonlocal remeasure_started
         from types import SimpleNamespace
 
-        from citypods.provider_catalog.limits import remeasure_current_cap, remeasure_identity
+        from citypods.provider_catalog.limits import (
+            confirmation_history,
+            remeasure_current_cap,
+            remeasure_identity,
+            remeasure_parser_version,
+        )
 
         routes_by_id = {str(r["route_id"]): r for r in routes}
         for rid, axis in due:
@@ -758,6 +784,17 @@ def reconcile(
             remeasured.add((identity, axis))
             row["ran"] = True
             row["cap"] = cap
+            session_started = discovery_clock()
+            # A bracket already measured tightly around the cap is re-tested, not searched again.
+            confirm = confirmation_history(
+                discovery_history,
+                identity,
+                axis,
+                remeasure_parser_version(route),
+                cap,
+                rate_now or datetime.now(UTC),
+            )
+            row["confirm"] = bool(confirm)
             pause.renew()
             try:
                 record = _discover_candidate_caps(
@@ -775,9 +812,13 @@ def reconcile(
                     today=today,
                     run_id=discovery_run_id,
                     receipt_id=None,
-                    # Only this run's sessions: an older bracket would resume old bounds instead
-                    # of testing the configured cap first.
-                    history=_history_with_run_sessions((), report.discovery_sessions, identity),
+                    # This run's sessions, plus (only when it already brackets the configured cap
+                    # tightly) the newest older session: re-testing its admitted size tests the cap
+                    # too. Any other older bracket would resume old bounds instead of testing the
+                    # configured cap first.
+                    history=_history_with_run_sessions(
+                        confirm, report.discovery_sessions, identity
+                    ),
                     shared_budget=None,
                     selected_axes=(axis,),
                     sleep=sleep,
@@ -785,6 +826,7 @@ def reconcile(
                     fresh_run_budget=True,
                     account_id=str(route["account_id"]),
                     seeds=seeds,
+                    recheck_upper=bool(confirm),
                 )
             except Exception as exc:  # advisory, like new-route discovery
                 row["note"] = f"search stopped safely ({type(exc).__name__})"
@@ -792,7 +834,18 @@ def reconcile(
             report.discovery_sessions.append(record["artifact"])
             remeasure_artifacts.append(id(record["artifact"]))
             save_sessions()
+            row["seconds"] = round(discovery_clock() - session_started)
+            row["calls"] = record["summary"].get("calls")
             bracket = next((a for a in record["summary"]["axes"] if a.get("axis") == axis), {})
+            # Confirmed means the shortcut finished as a confirmation: converged within the calls
+            # it needs (reachability, the old admitted size, the old refusal), not a search that a
+            # refusal sent back to the full bracket.
+            row["confirmed"] = bool(
+                confirm
+                and bracket.get("status") == "converged"
+                and isinstance(row["calls"], int)
+                and row["calls"] <= CONFIRM_MAX_CALLS
+            )
             row["admitted"] = bracket.get("admitted")
             row["refused"] = bracket.get("refused")
             row["reason"] = record["summary"].get("reason")
@@ -2612,6 +2665,7 @@ def _discover_candidate_caps(
     fresh_run_budget=False,
     account_id=None,
     seeds=None,
+    recheck_upper=False,
 ):
     """Run the separate, charged size search only after candidate reachability is proven.
 
@@ -2754,6 +2808,7 @@ def _discover_candidate_caps(
                 shared_budget=shared_budget,
                 sleep=sleep,
                 deadline=deadline,
+                recheck_upper=recheck_upper,
             )
         except Exception as exc:
             # Preserve charged attempts even if orchestration fails after admission.
