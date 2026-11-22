@@ -4,4 +4,8 @@ colors:
   - "#0000ee"
   - "#c39c34"
 meetings_url: https://dallascityhall.com//government/Pages/Live.aspx
+aux_provider: legistar
+aux_source:
+  calendar_url: https://cityofdallas.legistar.com/Calendar.aspx
+  backfill_since: '2020-01-01'
 state: TX

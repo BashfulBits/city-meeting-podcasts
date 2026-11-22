@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from citypods.models import Episode
 from citypods.providers.legistar import (
     LegistarProvider,
     _extract_aspnet_fields,
@@ -13,6 +14,7 @@ from citypods.providers.legistar import (
     _parse_calendar_page,
     _parse_calendar_records_page,
 )
+from citypods.records import attach_auxiliary_agenda_links
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SOURCE = {
@@ -127,3 +129,141 @@ def test_provider_contract_and_validation():
         provider.validate(
             {"granicus_base": "https://x.granicus.com", "backfill_since": "2024-01-01"}
         )
+
+
+def test_validation_allows_omitting_granicus_base():
+    provider = LegistarProvider()
+    source = {
+        "calendar_url": "https://cityofdallas.legistar.com/Calendar.aspx",
+        "backfill_since": "2020-01-01",
+    }
+    provider.validate(source)
+    with pytest.raises(ValueError, match="granicus_base"):
+        provider.validate({**source, "granicus_base": "http://insecure.granicus.com"})
+
+
+def test_parse_calendar_records_with_swagit_video_link():
+    html = """
+    <tr class="rgRow" id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00__0">
+        <td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypBody">City Council</a>
+        </td><td class="rgSorted">11/19/2026</td><td>
+        </td><td>
+            <span id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_lblTime">9:00 AM</span>
+        </td><td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypAgenda"
+               href="View.ashx?M=A&amp;ID=100">Agenda</a>
+        </td><td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypVideo" class="videolink"
+               href="https://dallastx.new.swagit.com/videos/410396?place=holder&amp;Mode2=Video">Video</a>
+        </td>
+    </tr>
+    """
+    source = {
+        "calendar_url": "https://cityofdallas.legistar.com/Calendar.aspx",
+        "backfill_since": "2020-01-01",
+    }
+    records = _parse_calendar_records_page(html, source)
+    assert len(records) == 1
+    record = records[0]
+    assert record.body == "City Council"
+    assert record.video_guid == "410396"
+    assert record.video_url is None
+    assert record.links["agenda"] == "https://cityofdallas.legistar.com/View.ashx?M=A&ID=100"
+    assert record.links["canonical_video"] == "https://dallastx.new.swagit.com/videos/410396"
+
+    # Verify integration with attach_auxiliary_agenda_links
+    episode = Episode(
+        guid="410396",
+        title="City Council – November 19, 2026",
+        published=record.published,
+        video_url="https://dallastx.new.swagit.com/videos/410396/download",
+        body="City Council",
+        links={"canonical_video": "https://dallastx.new.swagit.com/videos/410396"},
+    )
+    attach_auxiliary_agenda_links([episode], [record])
+    assert episode.links["agenda"] == "https://cityofdallas.legistar.com/View.ashx?M=A&ID=100"
+
+
+def test_parse_calendar_records_with_swagit_event_link():
+    html = """
+    <tr class="rgRow" id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00__0">
+        <td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypBody">City Council</a>
+        </td><td class="rgSorted">11/25/2026</td><td>
+        </td><td>
+            <span id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_lblTime">9:00 AM</span>
+        </td><td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypAgenda"
+               href="View.ashx?M=A&amp;ID=200">Agenda</a>
+        </td><td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypVideo" class="videolink"
+               href="https://dallastx.new.swagit.com/events/50601?Mode2=Video">Video</a>
+        </td>
+    </tr>
+    """
+    source = {
+        "calendar_url": "https://cityofdallas.legistar.com/Calendar.aspx",
+        "backfill_since": "2020-01-01",
+    }
+    records = _parse_calendar_records_page(html, source)
+    assert len(records) == 1
+    record = records[0]
+    assert record.body == "City Council"
+    assert record.video_guid is None
+    assert record.video_url is None
+    assert (
+        record.links["canonical_video"]
+        == "https://dallastx.new.swagit.com/events/50601?Mode2=Video"
+    )
+    assert record.links["agenda"] == "https://cityofdallas.legistar.com/View.ashx?M=A&ID=200"
+
+    # Matches by body and date even without video_guid
+    episode = Episode(
+        guid="some-diff-guid",
+        title="City Council – November 25, 2026",
+        published=record.published,
+        video_url="https://dallastx.new.swagit.com/videos/something/download",
+        body="City Council",
+        links={},
+    )
+    attach_auxiliary_agenda_links([episode], [record])
+    assert episode.links["agenda"] == "https://cityofdallas.legistar.com/View.ashx?M=A&ID=200"
+
+
+def test_video_deeplink_swagit_delegation():
+    provider = LegistarProvider()
+    link = provider.video_deeplink("https://dallastx.new.swagit.com/videos/410396", 125)
+    assert link == "https://dallastx.new.swagit.com/play/410396/125"
+    # An unrelated host with swagit.com in path/query falls back to Granicus
+    non_swagit = provider.video_deeplink(
+        "https://not-swagit.com/swagit.com/MediaPlayer.php?clip_id=1", 60
+    )
+    assert non_swagit == "https://not-swagit.com/swagit.com/MediaPlayer.php?clip_id=1&starttime=60"
+
+
+def test_parse_calendar_records_ignores_swagit_url_in_query_param():
+    html = """
+    <tr class="rgRow" id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00__0">
+        <td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypBody">City Council</a>
+        </td><td class="rgSorted">11/25/2026</td><td>
+        </td><td>
+            <span id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_lblTime">9:00 AM</span>
+        </td><td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypVideo" class="videolink"
+               href="https://example.gov/Video.aspx?url=https://dallastx.new.swagit.com/videos/410396">Video</a>
+        </td>
+    </tr>
+    """
+    source = {
+        "calendar_url": "https://cityofdallas.legistar.com/Calendar.aspx",
+        "backfill_since": "2020-01-01",
+    }
+    records = _parse_calendar_records_page(html, source)
+    assert len(records) == 1
+    record = records[0]
+    assert record.video_guid is None
+    assert record.links["canonical_video"] == (
+        "https://example.gov/Video.aspx?url=https://dallastx.new.swagit.com/videos/410396"
+    )

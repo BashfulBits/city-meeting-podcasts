@@ -18,6 +18,7 @@ from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import AgendaRecord, CalendarIndex, ChangeToken, Episode
 from citypods.providers.base import ProviderError
 from citypods.providers.granicus import GranicusProvider
+from citypods.providers.swagit import SwagitProvider
 
 _ROW_RE = re.compile(
     r'<tr\s+class="rg(?:Alt)?Row"[^>]*id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00__\d+"[^>]*>(.*?)</tr>',
@@ -155,7 +156,9 @@ def _row_link_url(row: str, calendar_url: str, *suffixes: str) -> str | None:
 def _parse_calendar_records_page(html: str, source: dict) -> list[AgendaRecord]:
     """Parse every dated Legistar calendar row from one HTML grid page (no network)."""
     calendar_url = _source_url(source, "calendar_url")
-    granicus_base = _source_url(source, "granicus_base").rstrip("/")
+    granicus_base = (
+        _source_url(source, "granicus_base").rstrip("/") if source.get("granicus_base") else None
+    )
     configured_body = str(source.get("body") or "").strip()
     fallback_view = str(source.get("view_id") or "").strip()
     records: list[AgendaRecord] = []
@@ -180,7 +183,7 @@ def _parse_calendar_records_page(html: str, source: dict) -> list[AgendaRecord]:
         clip_id = _row_video_id(row)
         video_guid = None
         video_url = None
-        if clip_id is not None:
+        if clip_id is not None and granicus_base:
             view_id = _row_view_id(row) or fallback_view
             # A malformed video link must not discard the rest of a multi-year
             # calendar scan. Retain its meeting metadata as a no-video row;
@@ -193,6 +196,15 @@ def _parse_calendar_records_page(html: str, source: dict) -> list[AgendaRecord]:
                     "agenda_portal",
                     f"{granicus_base}/AgendaViewer.php?view_id={view_id}&clip_id={clip_id}",
                 )
+        elif video_href := _row_link_url(row, calendar_url, "hypVideo"):
+            links.setdefault("canonical_video", video_href)
+            parsed_video = urlsplit(video_href)
+            host = (parsed_video.netloc or "").lower()
+            if host.endswith(".swagit.com") or host == "swagit.com":
+                if match := re.fullmatch(r"/videos/([0-9]+)", parsed_video.path):
+                    video_guid = match.group(1)
+                    scheme = parsed_video.scheme or "https"
+                    links["canonical_video"] = f"{scheme}://{host}/videos/{video_guid}"
 
         records.append(
             AgendaRecord(
@@ -235,11 +247,12 @@ class LegistarProvider:
     capabilities: frozenset[str] = frozenset({"deeplink"})
 
     def validate(self, source: dict) -> None:
-        for key in ("calendar_url", "granicus_base", "backfill_since"):
+        for key in ("calendar_url", "backfill_since"):
             if not source.get(key):
                 raise ValueError(f"legistar source requires {key!r}")
         _source_url(source, "calendar_url")
-        _source_url(source, "granicus_base")
+        if source.get("granicus_base"):
+            _source_url(source, "granicus_base")
         try:
             datetime.fromisoformat(str(source["backfill_since"]))
         except ValueError as exc:
@@ -301,6 +314,9 @@ class LegistarProvider:
         return GranicusProvider().resolve_media_url(episode, source)
 
     def video_deeplink(self, ref: str, t_seconds: float) -> str | None:
+        host = (urlsplit(ref).hostname or "").lower()
+        if host == "swagit.com" or host.endswith(".swagit.com"):
+            return SwagitProvider().video_deeplink(ref, t_seconds)
         return GranicusProvider().video_deeplink(ref, t_seconds)
 
     def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:
