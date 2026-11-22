@@ -569,8 +569,14 @@ def run_discovery(
     clock=time.monotonic,
     sleep=time.sleep,
     deadline=None,
+    recheck_upper=False,
 ):
-    """Inject transport, pause renewal and time; no provider calls without a charged receipt."""
+    """Inject transport, pause renewal and time; no provider calls without a charged receipt.
+
+    ``recheck_upper`` gives every axis the output axis's resume rule: one fresh success at the old
+    admitted size, then one fresh test of the old refusal, instead of two successes that import the
+    old refusal as current proof. A confirmation of a known bracket (review/54 §8.14.G) needs it:
+    an imported refusal could never show that the provider raised its limit."""
     if type(input_priority) is not bool:
         raise ValueError("invalid discovery input priority")
     output_control = output_discovery_control(output_min_tokens)
@@ -721,7 +727,7 @@ def run_discovery(
             if item.request.axis == axis and item.request.control == control:
                 bracket.observe(item)
         fresh_successes, quota_retry = 0, False
-        required_fresh = 1 if axis == "output" else 2
+        required_fresh = 1 if axis == "output" or recheck_upper else 2
         upper_recheck = None
         provider_limits = set()
         # Each refusal that still quotes the provider's limit means our headroom was too thin
@@ -1400,7 +1406,7 @@ def run_discovery(
                 )
                 if compatible:
                     fresh_successes += 1
-                    if axis == "output":
+                    if axis == "output" or recheck_upper:
                         # The fresh lower proves itself. Re-test an old refusal rather than
                         # importing it as current proof or spending a second identical success.
                         upper_recheck = (

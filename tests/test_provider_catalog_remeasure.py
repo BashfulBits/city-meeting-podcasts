@@ -510,14 +510,15 @@ def test_the_issue_reports_session_cost_and_why_axes_waited():
 
     state = {
         "sessions": [
-            {"route_id": "a", "ran": True, "seconds": 120, "calls": 2, "confirm": True},
-            {"route_id": "b", "ran": True, "seconds": 600, "calls": 9, "confirm": False},
+            {"route_id": "a", "ran": True, "seconds": 120, "calls": 2, "confirmed": True},
+            # A confirmation attempt that fell back to a search is not counted as confirmed.
+            {"route_id": "b", "ran": True, "seconds": 600, "calls": 9, "confirm": True},
             {"route_id": "c", "ran": False, "note": "health check this run was inconclusive"},
             {"route_id": "d", "ran": False, "note": "health check this run was inconclusive"},
             {"route_id": "e", "ran": False, "note": "daily quota not confirmed this run"},
         ]
     }
     text = "\n".join(_remeasure_lines(state))
-    assert "Sessions took 12 min in all (median 600 s, longest 600 s), 11 provider calls" in text
+    assert "Sessions took 12 min in all (median 360 s, longest 600 s), 11 provider calls" in text
     assert "1 confirmed a known bracket" in text
     assert "2 health check this run was inconclusive; 1 daily quota not confirmed this run" in text

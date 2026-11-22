@@ -241,14 +241,16 @@ provider's daily request limit). Delivered in order:
 
 1. **Ceiling, cost report, cheap confirm** (this section). `REMEASURE_SESSION_CEILING` 4 → 12,
    `REMEASURE_SECONDS` 3,600 → 10,800 and `MAX_ARTIFACT_SESSIONS` 16 → 32; a session is not started
-   once the run's evidence would pass `REMEASURE_ARTIFACT_SOFT_BYTES` (1.5 MB of the 2 MiB envelope;
-   an artifact over the limit is not saved at all). Each session's seconds and provider calls, and
+   unless the evidence has room for it and for every new-route session the run may still add
+   (`REMEASURE_SESSION_BYTES_RESERVE`, 400 KB each, within the 2 MiB envelope; an artifact over the
+   limit is not saved at all). Each session's seconds and provider calls, and
    the count of axes by waiting reason, now appear in the issue's "Configured route caps" block.
    **Cheap confirm:** when the newest authenticated session for the axis converged (admitted below
    refused within the search width), admitted at least the configured cap, and is under 56 days
    old, its observations are given to the search as history. The search's existing resume rule then
-   re-tests the admitted size twice and keeps the old refusal, so an unchanged cap is confirmed in
-   two calls instead of a fresh search from the cap. A refusal at that size drops the history and
+   re-tests the admitted size once and then the old refusal (`recheck_upper`, the output axis's
+   resume rule applied to every axis), so an unchanged cap is confirmed in two calls instead of a
+   fresh search from the cap, and a raised provider limit still shows. A refusal at that size drops the history and
    the search continues fresh, so a reduction is found and counted exactly as before. Any other
    history starts at the cap as in §8.14.A.
 2. **Concurrent providers** and 3. **a daily slice** follow in their own changes.

@@ -3206,6 +3206,7 @@ def test_remeasure_records_cost_and_passes_a_confirming_history(monkeypatch):
     import citypods.provider_catalog.reconcile as module
 
     seen = []
+    rechecks = []
     limits = {
         **LIMITS,
         "routes": [
@@ -3219,6 +3220,7 @@ def test_remeasure_records_cost_and_passes_a_confirming_history(monkeypatch):
     def discover(candidate, *_args, **kwargs):
         if candidate.key in configured:
             seen.append(kwargs["history"])
+            rechecks.append(kwargs["recheck_upper"])
             clock[0] += 30
         return _stub_session(candidate)
 
@@ -3246,6 +3248,9 @@ def test_remeasure_records_cost_and_passes_a_confirming_history(monkeypatch):
     ran = [s for s in report.remeasure_sessions if s.get("ran")]
     assert ran and seen and all("known-bracket" in h for h in seen)
     assert all(s["confirm"] and s["seconds"] == 30 and "calls" in s for s in ran)
+    # The known refusal is re-tested too, so a raised limit shows (not imported as proof).
+    assert rechecks and all(rechecks)
+    assert all("confirmed" in s for s in ran)
 
 
 def test_remeasure_stops_before_the_evidence_artifact_could_overflow(monkeypatch):
@@ -3267,7 +3272,7 @@ def test_remeasure_stops_before_the_evidence_artifact_could_overflow(monkeypatch
         return _stub_session(candidate)
 
     monkeypatch.setattr(module, "_discover_candidate_caps", discover)
-    monkeypatch.setattr(module, "REMEASURE_ARTIFACT_SOFT_BYTES", 1)
+    monkeypatch.setattr(module, "MAX_ARTIFACT_BYTES", 1)
     monkeypatch.setenv("K", "test-key")
     report = reconcile(
         limits,

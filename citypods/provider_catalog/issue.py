@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import statistics
 import subprocess
 import zlib
 from collections import Counter
@@ -655,10 +656,10 @@ def _remeasure_cost_lines(ran, waiting) -> list[str]:
     out = []
     timed = [s for s in ran if isinstance(s.get("seconds"), int)]
     if timed:
-        confirms = sum(1 for s in ran if s.get("confirm"))
+        confirms = sum(1 for s in ran if s.get("confirmed"))
         calls = sum(s["calls"] for s in ran if isinstance(s.get("calls"), int))
         seconds = sorted(s["seconds"] for s in timed)
-        median = seconds[len(seconds) // 2]
+        median = round(statistics.median(seconds))
         out.append(
             f"- Sessions took {sum(seconds) // 60} min in all (median {median} s, longest "
             f"{seconds[-1]} s), {calls} provider calls; {confirms} confirmed a known bracket "
