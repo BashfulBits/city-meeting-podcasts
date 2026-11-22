@@ -1452,3 +1452,23 @@ def test_directors_stay_members_under_an_explicit_member_label():
     assert [r["name"] for r in rows if r.get("section") == "members"] == ["Alice Smith", "Bob Roe"]
     unlabeled = "PRESENT: City Attorney Cy Poe, Di Moe\n"
     assert _names(parse_roster(unlabeled)) == ["Di Moe"]
+
+
+def test_minutes_ocr_keeps_native_members_that_ocr_only_partly_recovered(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text,
+        "extract_document",
+        lambda *a, **k: ("PRESENT: Alice Smith, Bob Roe", []),
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "PRESENT: Alice Smith\n" + "Minutes of the regular meeting. " * 30, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "ocr"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Roe"]

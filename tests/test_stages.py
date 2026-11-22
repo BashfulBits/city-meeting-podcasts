@@ -2721,6 +2721,16 @@ class _MinutesTextStorage:
         return True
 
 
+def _minutes_payload(text, *, version="2", page_count=3):
+    from citypods.stages import MINUTES_TEXT_PIPELINE_VERSION
+
+    return {
+        "version": MINUTES_TEXT_PIPELINE_VERSION if version == "2" else version,
+        "page_count": page_count,
+        "text": text,
+    }
+
+
 def _minutes_ctx(storage):
     from types import SimpleNamespace
 
@@ -2737,7 +2747,7 @@ def test_stored_minutes_text_returns_the_real_document():
     from citypods.stages import _stored_minutes_text
 
     text = "City Council Meeting MINUTES. Present: Mayor Smith, Council Member Jones. " * 20
-    ctx = _minutes_ctx(_MinutesTextStorage({"text": text}))
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(text)))
     assert _stored_minutes_text(ctx, _minutes_episode()) == text
 
 
@@ -2748,7 +2758,7 @@ def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetche
         "3804_M_City_Council_Minutes_-_Final.pdf\nLoading…",
         "DocumentViewer.php\nLoading…",
     ):
-        ctx = _minutes_ctx(_MinutesTextStorage({"text": shell}))
+        ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(shell)))
         assert _stored_minutes_text(ctx, _minutes_episode()) is None
 
 
@@ -2769,7 +2779,7 @@ def test_stored_minutes_text_discards_a_sparse_scan_text_layer_so_ocr_can_run():
     from citypods.stages import _stored_minutes_text
 
     sparse = "City Council Minutes\nPage 1"
-    ctx = _minutes_ctx(_MinutesTextStorage({"text": sparse}))
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(sparse)))
     assert _stored_minutes_text(ctx, _minutes_episode()) is None
 
 
@@ -2818,7 +2828,7 @@ def test_stored_minutes_text_discards_repeated_page_headers_so_ocr_can_run():
     from citypods.stages import _stored_minutes_text
 
     headers = "City Council Meeting Minutes - Regular Meeting\n" * 8
-    ctx = _minutes_ctx(_MinutesTextStorage({"text": headers}))
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(headers)))
     assert _stored_minutes_text(ctx, _minutes_episode()) is None
 
 
@@ -2847,3 +2857,22 @@ def test_minutes_stage_keeps_a_usable_native_roster_when_ocr_must_retry(monkeypa
     stats = stages.MinutesTextStage().process(None, _city(), [ep], ctx)
     assert stats.skipped == 0  # not deferred: the native text is the document
     assert "minutes-roster" in stored
+
+
+def test_stored_minutes_text_from_an_older_extractor_is_refetched():
+    from citypods.stages import _stored_minutes_text
+
+    real = "The council discussed the budget and approved the consent agenda items. " * 60
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(real, version="1")))
+    assert _stored_minutes_text(ctx, _minutes_episode()) is None
+
+
+def test_stored_minutes_text_uses_the_recorded_page_count_to_spot_a_mostly_blank_scan():
+    from citypods.stages import _stored_minutes
+
+    one_page = "The council discussed the budget and approved the consent agenda items. " * 30
+    assert len(one_page) > 2000  # clears the cached floor on its own
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(one_page, page_count=40)))
+    assert _stored_minutes(ctx, _minutes_episode()) is None  # one text page over 40 pages
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(one_page, page_count=2)))
+    assert _stored_minutes(ctx, _minutes_episode()) == (one_page, 2)

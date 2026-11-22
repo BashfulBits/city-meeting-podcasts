@@ -4688,7 +4688,12 @@ class MinutesTextStage:
         import json as _json
         from datetime import UTC, datetime
 
-        from citypods.agenda_text import extract_minutes_document, parse_roster, parse_votes
+        from citypods.agenda_text import (
+            _pdf_page_count,
+            extract_minutes_document,
+            parse_roster,
+            parse_votes,
+        )
         from citypods.http import fetch_document_bytes, make_session
         from citypods.records import minutes_text_backoff_until, source_key
 
@@ -4709,6 +4714,7 @@ class MinutesTextStage:
                 stats.reused += 1
                 continue
             cached_text: str | None = None
+            page_count: int | None = None
             if (
                 ep.minutes_text_url == minutes_url
                 and ep.minutes_votes_url
@@ -4726,7 +4732,9 @@ class MinutesTextStage:
                 # extracted and stored. That is what makes a bump cheap -- no provider fetch and,
                 # for a scanned PDF, no second OCR pass over the whole archive. Falling through
                 # to `None` re-fetches, which is correct when the sidecar is unreadable.
-                cached_text = _stored_minutes_text(ctx, ep)
+                stored = _stored_minutes(ctx, ep)
+                if stored is not None:
+                    cached_text, page_count = stored
             now = datetime.now(UTC)
             if minutes_text_backoff_until(ep) and minutes_text_backoff_until(ep) > now:
                 stats.defer("minutes-text-backoff")
@@ -4758,6 +4766,7 @@ class MinutesTextStage:
                         continue
                     if text_method == "ocr":
                         stats.quality("minutes-text-ocr")
+                    page_count = _pdf_page_count(content) or None
                 else:
                     text = cached_text
                 roster = parse_roster(text)
@@ -4811,6 +4820,7 @@ class MinutesTextStage:
                     {
                         "version": MINUTES_TEXT_PIPELINE_VERSION,
                         "source_url": minutes_url,
+                        "page_count": page_count,
                         "text": text,
                     },
                     sort_keys=True,
@@ -4973,16 +4983,18 @@ AGENDA_TEXT_PIPELINE_VERSION = "3"
 # re-assessed during normal enrichment; old artifacts remain available until a replacement is
 # accepted, and suspicious PDFs alone invoke OCR.
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
-MINUTES_TEXT_PIPELINE_VERSION = "1"
+# "2": the payload records the PDF's page count and was produced by the page-aware extractor. A "1"
+# payload may be a scan's stray text layer whose density cannot be judged, so it is re-fetched once.
+MINUTES_TEXT_PIPELINE_VERSION = "2"
 
 
-def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
-    """Return the minutes text this stage already extracted, or None if it cannot be read.
+def _stored_minutes(ctx: StageContext, ep: Episode) -> tuple[str, int | None] | None:
+    """The minutes text this stage already extracted and its page count, or None if unusable.
 
     Re-parsing a stored extraction is what keeps a `MINUTES_ROSTER_PARSER_VERSION` bump cheap:
     the expensive half of this stage is the provider fetch and, for a scanned PDF, OCR -- both of
     which produced this artifact in the first place and neither of which needs repeating when
-    only the roster parser changed.
+    only the roster parser changed. None sends the caller back to the provider.
     """
     from citypods.agenda_text import classify_agenda_text, minutes_text_is_sparse
 
@@ -4996,18 +5008,28 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
         payload = json.loads(raw.decode())
     except (UnicodeDecodeError, ValueError):
         return None
-    text = payload.get("text") if isinstance(payload, dict) else None
+    if not isinstance(payload, dict) or payload.get("version") != MINUTES_TEXT_PIPELINE_VERSION:
+        return None  # an older extractor's output: its density cannot be judged, so re-fetch
+    text = payload.get("text")
     if not isinstance(text, str) or not text.strip():
         return None
-    # A sparse extraction ("City Council Minutes\nPage 1") is a scan's stray text layer, not the
-    # document; reusing it would skip the OCR that can read the real one.
-    if minutes_text_is_sparse(text, cached=True):
+    page_count = payload.get("page_count")
+    page_count = page_count if isinstance(page_count, int) and page_count > 0 else None
+    # A sparse extraction ("City Council Minutes\nPage 1", one text page over a 40-page scan) is
+    # a scan's stray text layer, not the document; reusing it would skip the OCR that can read it.
+    if minutes_text_is_sparse(text, page_count, cached=page_count is None):
         return None
     # A viewer shell ("Loading...") stored as if it were the document would otherwise be re-parsed
-    # forever; None sends the caller back to the provider for the real document.
+    # forever.
     if classify_agenda_text(text) in {"viewer-placeholder", "unpublished-placeholder"}:
         return None
-    return text
+    return text, page_count
+
+
+def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
+    """The stored minutes text alone (see :func:`_stored_minutes`)."""
+    stored = _stored_minutes(ctx, ep)
+    return stored[0] if stored else None
 
 
 MINUTES_VOTES_PIPELINE_VERSION = "1"

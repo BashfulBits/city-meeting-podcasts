@@ -1255,9 +1255,12 @@ def extract_minutes_document(
         or _alpha_chars(text) < OCR_MIN_ALPHA_CHARS
     ):
         return native, links, empty_method
-    if native.strip() and _member_rows(native) and not _member_rows(text):
-        # A scan can have a selectable attendance line over an image-only body. OCR read the body
-        # but missed that line, so keep the native roster and append the OCR'd body.
+    native_members = {_roster_key(row["name"]) for row in _member_rows(native)}
+    ocr_members = {_roster_key(row["name"]) for row in _member_rows(text)}
+    if native_members - ocr_members:
+        # A scan can have a selectable attendance line over an image-only body, and OCR may read
+        # none of it or only part. Keep the native members OCR did not recover and add the OCR'd
+        # body; rows both sources name collapse when the roster is parsed.
         return f"{native.rstrip()}\n{text}", links, "ocr"
     return text, links, "ocr"
 
