@@ -812,7 +812,18 @@ def test_stage_fallback_to_granicus_proxy_on_403(monkeypatch):
     assert telemetry.direct_fetches[0] == ((granicus_url,), "403")
     assert len(telemetry.worker_fallbacks) >= 1
     assert telemetry.worker_fallbacks[0] == ((granicus_url,), "success")
-    proxy_calls = [c for c in calls if "https://worker.example" in " ".join(c)]
+    from urllib.parse import urlsplit
+
+    proxy_calls = [
+        c
+        for c in calls
+        if any(
+            isinstance(arg, str)
+            and arg.startswith("https://")
+            and urlsplit(arg).netloc == "worker.example"
+            for arg in c
+        )
+    ]
     assert len(proxy_calls) >= 1
     assert "-headers" in proxy_calls[0]
 
@@ -863,7 +874,7 @@ def test_stage_is_dirty_revisits_failed_slides():
     stage = SlidesStage()
     ep = _episode()
     city = _city()
-    ep.slides = {"status": "failed", "attempts": 3}
+    ep.slides = {"status": "failed", "attempts": 2}
     ep.stage_completion = {
         "slides": {
             "state": "complete",
@@ -873,3 +884,12 @@ def test_stage_is_dirty_revisits_failed_slides():
         }
     }
     assert stage_is_dirty(stage, ep, city) is True
+
+    # Terminal failure after proxy recovery does not stay dirty forever
+    ep.slides = {
+        "status": "failed",
+        "attempts": 3,
+        "reason": "CalledProcessError",
+        "proxy_recovered": True,
+    }
+    assert stage_is_dirty(stage, ep, city) is False

@@ -164,7 +164,6 @@ def main(argv: list[str] | None = None) -> int:
     source_to_provider = {source_key(c): c.provider for c in cities}
 
     storage = make_storage(site_config, "https://example.invalid", args.output_dir)
-    state_dir = resolve_state_dir(site_config, args.output_dir)
 
     if args.apply and storage is None:
         print(
@@ -173,49 +172,55 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    if storage is not None:
-        pulled = pull_state(storage, state_dir)
-        print(f"state: pulled {pulled} file(s) from durable storage")
+    import tempfile
 
-    providers = _clean_filters(args.provider, lower=True)
-    sources = _clean_filters(args.source)
-    uids = _clean_filters(args.uid)
-    reasons = _clean_filters(args.reason)
-    selected, available_sources = select_sources(
-        state_dir, source_to_provider, providers=providers, sources=sources
-    )
-    if not selected:
-        print("no sources matched the given filters; nothing to scan")
-        return 1
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        if storage is not None:
+            sync_dir = Path(tmp_dir)
+            pulled = pull_state(storage, sync_dir)
+            print(f"state: pulled {pulled} file(s) from durable storage")
+        else:
+            sync_dir = resolve_state_dir(site_config, args.output_dir)
 
-    summary = reset_slides_backoff(
-        state_dir,
-        selected,
-        apply=args.apply,
-        uids=uids,
-        reasons=reasons,
-        include_completed=args.include_completed,
-    )
-    if not summary["reset"]:
-        print(f"scanned {len(selected)} source(s); no matching records found")
-        return 1
+        providers = _clean_filters(args.provider, lower=True)
+        sources = _clean_filters(args.source)
+        uids = _clean_filters(args.uid)
+        reasons = _clean_filters(args.reason)
+        selected, _available = select_sources(
+            sync_dir, source_to_provider, providers=providers, sources=sources
+        )
+        if not selected:
+            print("no sources matched the given filters; nothing to scan")
+            return 1
 
-    print(f"scanned {len(selected)} source(s); slides state to reset:")
-    for key, n in sorted(summary["per_source"].items()):
-        provider = source_to_provider.get(key, "?")
-        print(f"  {key} ({provider}): {n} record(s)")
+        summary = reset_slides_backoff(
+            sync_dir,
+            selected,
+            apply=args.apply,
+            uids=uids,
+            reasons=reasons,
+            include_completed=args.include_completed,
+        )
+        if not summary["reset"]:
+            print(f"scanned {len(selected)} source(s); no matching records found")
+            return 1
 
-    if args.apply and storage is not None and summary["touched_sources"]:
-        prefixes = [f"sources/{sk}/" for sk in sorted(summary["touched_sources"])]
-        pushed = push_state(storage, state_dir, only_prefixes=prefixes)
-        print(f"state: pushed {pushed} file(s) back (scoped to {len(prefixes)} source(s))")
+        print(f"scanned {len(selected)} source(s); slides state to reset:")
+        for key, n in sorted(summary["per_source"].items()):
+            provider = source_to_provider.get(key, "?")
+            print(f"  {key} ({provider}): {n} record(s)")
 
-    verb = "reset" if args.apply else "would reset (dry-run)"
-    print(
-        f"\n{summary['reset']} record(s) {verb}"
-        + ("" if args.apply else "  — re-run with --apply to make changes")
-    )
-    return 0
+        if args.apply and storage is not None and summary["touched_sources"]:
+            prefixes = [f"sources/{sk}/" for sk in sorted(summary["touched_sources"])]
+            pushed = push_state(storage, sync_dir, only_prefixes=prefixes)
+            print(f"state: pushed {pushed} file(s) back (scoped to {len(prefixes)} source(s))")
+
+        verb = "reset" if args.apply else "would reset (dry-run)"
+        print(
+            f"\n{summary['reset']} record(s) {verb}"
+            + ("" if args.apply else "  — re-run with --apply to make changes")
+        )
+        return 0
 
 
 if __name__ == "__main__":

@@ -1032,9 +1032,17 @@ def stage_is_dirty(
             return True
     if stage.name == "slides" and isinstance(marker, dict):
         # A prior slides run could have marked an episode complete with failed output before the
-        # Granicus Worker fallback was wired up. Revisit those records.
+        # Granicus Worker fallback was wired up. Revisit those records if attempts remain or
+        # eligible for one-time proxy recovery.
         if marker.get("output") == "failed":
-            return True
+            slides = ep.slides if isinstance(ep.slides, dict) else {}
+            if int(slides.get("attempts") or 0) < SLIDES_MAX_ATTEMPTS:
+                return True
+            if slides.get("reason") in {"CalledProcessError", "HTTP403"} and not slides.get(
+                "proxy_recovered"
+            ):
+                return True
+            return False
     fingerprint = stage_input_fingerprint(stage, ep, city, speaker_config=speaker_config)
     if not isinstance(marker, dict):
         if not _legacy_stage_complete(stage.name, ep):
@@ -1972,8 +1980,11 @@ class SlidesStage:
                 ep.slides
                 and ep.slides.get("status") == "failed"
                 and ep.slides.get("attempts", 0) >= SLIDES_MAX_ATTEMPTS
+                and not ep.slides.get("proxy_recovered")
+                and ep.slides.get("reason") in {"CalledProcessError", "HTTP403"}
             ):
                 ep.slides["attempts"] = 0
+                ep.slides["proxy_recovered"] = True
             try:
                 outcome = self._detect(provider, city, ep, ctx, config, budget)
             except Exception as exc:  # noqa: BLE001 - one episode's media must not stop the lane.
@@ -1985,15 +1996,19 @@ class SlidesStage:
                     "reason": type(exc).__name__,
                 }
                 if attempts < SLIDES_MAX_ATTEMPTS:
-                    detail = str(exc)
-                    if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
-                        stderr_tail = (
-                            exc.stderr.decode("utf-8", errors="replace")
-                            if isinstance(exc.stderr, bytes)
-                            else str(exc.stderr)
-                        ).strip()
-                        if stderr_tail:
-                            detail = f"{detail} stderr={stderr_tail}"
+                    from citypods.security import redact_subprocess_text
+
+                    detail = redact_subprocess_text(str(exc))
+                    if isinstance(exc, (subprocess.CalledProcessError, subprocess.TimeoutExpired)):
+                        raw_stderr = getattr(exc, "stderr", None)
+                        if raw_stderr:
+                            stderr_tail = (
+                                raw_stderr.decode("utf-8", errors="replace")
+                                if isinstance(raw_stderr, bytes)
+                                else str(raw_stderr)
+                            ).strip()
+                            if stderr_tail:
+                                detail = f"{detail} stderr={stderr_tail}"
                     stats.errors.append(f"slides {ep.uid}: {type(exc).__name__}: {detail}")
                 else:
                     stats.quality("failed")
@@ -2084,15 +2099,13 @@ class SlidesStage:
     ) -> list[str] | None:
         if not url:
             return None
-        from citypods.granicus_proxy import worker_fallback_command
-        from citypods.media import _rate_limited_status
+        from citypods.media import _worker_fallback_for_403
 
-        if _rate_limited_status(stderr) != "HTTP 403":
-            return None
-        try:
-            return worker_fallback_command(command, (url,))
-        except ValueError:
-            return None
+        return _worker_fallback_for_403(
+            command=command,
+            stderr=stderr,
+            rate_limit_urls=(url,),
+        )
 
     def _raise_redacted_error(
         self,
@@ -2102,17 +2115,19 @@ class SlidesStage:
     ) -> None:
         from citypods.granicus_proxy import redact_worker_endpoint
         from citypods.media import _stderr_tail
+        from citypods.security import redact_subprocess_command, redact_subprocess_text
 
         cmd_for_redaction = executed_cmd or original_cmd
         raw_stderr = _stderr_tail(exc.stderr)
         stderr_tail = redact_worker_endpoint(raw_stderr, cmd_for_redaction) if raw_stderr else ""
         err = subprocess.CalledProcessError(
             exc.returncode,
-            original_cmd,
-            output=exc.output,
-            stderr=stderr_tail or exc.stderr,
+            redact_subprocess_command(original_cmd),
+            output=redact_subprocess_text(exc.output),
+            stderr=stderr_tail or redact_subprocess_text(exc.stderr),
         )
-        raise err from exc
+        err.__cause__ = None
+        raise err
 
     def _raise_redacted_timeout(
         self,
@@ -2122,21 +2137,24 @@ class SlidesStage:
     ) -> None:
         from citypods.granicus_proxy import redact_worker_endpoint
         from citypods.media import _stderr_tail
+        from citypods.security import redact_subprocess_command, redact_subprocess_text
 
         cmd_for_redaction = executed_cmd or original_cmd
         raw_stderr = _stderr_tail(exc.stderr)
         stderr_tail = redact_worker_endpoint(raw_stderr, cmd_for_redaction) if raw_stderr else ""
         err = subprocess.TimeoutExpired(
-            original_cmd,
+            redact_subprocess_command(original_cmd),
             exc.timeout,
-            output=exc.output,
-            stderr=stderr_tail or exc.stderr,
+            output=redact_subprocess_text(exc.output),
+            stderr=stderr_tail or redact_subprocess_text(exc.stderr),
         )
-        raise err from exc
+        err.__cause__ = None
+        raise err
 
     def _detect(self, provider, city, ep, ctx, config, budget) -> str:
         from citypods import slides as sl
         from citypods.http import HOST_LIMITER
+        from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 
         binary = str(getattr(ctx.ffmpeg, "binary", "ffmpeg"))
         probe_binary = _ffprobe_binary(ctx)
@@ -2162,7 +2180,10 @@ class SlidesStage:
         for source_id, url in sources:
             # Every source, whatever its scheme: the gate rejects anything but public https.
             validate_source_url(url, resolve=True)
-            with HOST_LIMITER.slot(url):
+            with (
+                HOST_LIMITER.slot(url),
+                DISTRIBUTED_PROVIDER_LEASES.slots((url,), stop=ctx.stop),
+            ):
                 probe = sl.parse_probe(
                     self._run_text(sl.probe_command(probe_binary, url), 60, url=url, ctx=ctx)
                 )
@@ -2175,7 +2196,10 @@ class SlidesStage:
                 return "byte-budget"
         for source_id, url, probe in videos:
             timeout = (probe.duration or 4 * 3600) * 1.0 + 600
-            with HOST_LIMITER.slot(url):
+            with (
+                HOST_LIMITER.slot(url),
+                DISTRIBUTED_PROVIDER_LEASES.slots((url,), stop=ctx.stop),
+            ):
                 text = self._run_text(
                     sl.detect_command(binary, url, config), timeout, url=url, ctx=ctx
                 )
@@ -2193,7 +2217,10 @@ class SlidesStage:
                     capped = True
                     break
                 captured += 1
-                with HOST_LIMITER.slot(url):
+                with (
+                    HOST_LIMITER.slot(url),
+                    DISTRIBUTED_PROVIDER_LEASES.slots((url,), stop=ctx.stop),
+                ):
                     frame = self._run_bytes(
                         sl.capture_command(binary, url, sl.settle_time(interval)),
                         120,
