@@ -651,6 +651,19 @@ def reconcile(
     # Provider requests the daily slice has spent today, by route and by provider.
     daily_used_route: dict[str, int] = {}
     daily_used_provider: dict[str, int] = {}
+    # A second incremental run the same UTC day (a manual dispatch) continues from what the first
+    # spent; a new day starts again at zero.
+    saved_daily = previous_state.get("remeasure_daily")
+    same_day_daily = (
+        saved_daily
+        if isinstance(saved_daily, Mapping) and saved_daily.get("date") == today.isoformat()
+        else None
+    )
+    if remeasure_daily_rpd_share is not None and same_day_daily is not None:
+        for target, key in ((daily_used_route, "route"), (daily_used_provider, "provider")):
+            for name, calls in (same_day_daily.get(key) or {}).items():
+                if isinstance(calls, int) and not isinstance(calls, bool) and calls >= 0:
+                    target[str(name)] = calls
     deferred_remeasure: dict[str, tuple] = {}
     if remeasure_time_budget_seconds is not None:
         from citypods.provider_catalog.limits import remeasure_review
@@ -2120,6 +2133,19 @@ def reconcile(
             if any(r.get("route_id") == rid for r in routes)
         },
         "canaries": canary_memory,
+        **(
+            {
+                "remeasure_daily": {
+                    "date": today.isoformat(),
+                    "route": dict(daily_used_route),
+                    "provider": dict(daily_used_provider),
+                }
+            }
+            if remeasure_daily_rpd_share is not None
+            else {"remeasure_daily": dict(same_day_daily)}
+            if same_day_daily is not None
+            else {}
+        ),
         "route_checks": route_checks,
         "deferred": deferred,
         "anomalies": sorted(a.key for a in report.anomalies),

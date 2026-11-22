@@ -683,6 +683,9 @@ def main(argv: list[str] | None = None) -> int:
             discovery_history, accepted, discovery_history_gaps = verified_discovery_history(
                 references, repository=repository, now=now
             )
+            # Gaps in the artifact history (not in the retry-receipt scan below) mean a recent
+            # session may be missing, so a measured axis could look due.
+            discovery_history_unavailable = bool(discovery_history_gaps)
             for accepted_run in accepted:
                 for identity, calls in accepted_run.get("call_counts", {}).items():
                     discovery_history_calls[identity] = (

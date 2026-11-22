@@ -3378,7 +3378,9 @@ def test_concurrent_providers_still_respect_the_session_ceiling(monkeypatch):
     assert len(report.discovery_sessions) >= 2
 
 
-def _daily_slice(monkeypatch, *, route_rpd=None, provider_rpd=None, attempts=0, share=0.10):
+def _daily_slice(
+    monkeypatch, *, route_rpd=None, provider_rpd=None, attempts=0, share=0.10, previous=None
+):
     import citypods.provider_catalog.reconcile as module
 
     limits = {
@@ -3415,7 +3417,7 @@ def _daily_slice(monkeypatch, *, route_rpd=None, provider_rpd=None, attempts=0, 
         LANES,
         NO_DECISIONS,
         QUALITY_K9_UNSCORED,
-        {},
+        previous or {},
         session=FakeSession(CATALOGS),
         control=FakeControl(quota={}),
         today=TODAY,
@@ -3452,6 +3454,27 @@ def test_the_daily_slice_skips_a_route_whose_tenth_is_too_small_to_finish_a_sear
     assert not allowed
     notes = [s.get("note") or "" for s in report.remeasure_sessions]
     assert any("may spend 10 more requests" in n for n in notes)
+
+
+def test_a_second_run_the_same_day_continues_from_what_the_first_spent(monkeypatch):
+    first, allowed_first = _daily_slice(monkeypatch, provider_rpd=1000, attempts=60)
+    marker = first.state["remeasure_daily"]
+    assert marker["date"] == TODAY.isoformat()
+    assert marker["provider"] and sum(marker["provider"].values()) >= 60
+    # The pool's 100-request tenth is mostly spent: the second run can start at most one session.
+    second, allowed_second = _daily_slice(
+        monkeypatch, provider_rpd=1000, attempts=60, previous={"remeasure_daily": marker}
+    )
+    spent_first = sum(marker["provider"].values())
+    assert len(allowed_second) < len(allowed_first) or spent_first >= 100
+    assert all(n <= 100 - marker["provider"].get(p, 0) for p, _k, n in allowed_second)
+    assert sum(second.state["remeasure_daily"]["provider"].values()) >= spent_first
+
+
+def test_a_new_utc_day_starts_the_daily_allowance_again(monkeypatch):
+    yesterday = {"remeasure_daily": {"date": "2000-01-01", "route": {}, "provider": {"groq": 100}}}
+    _report, allowed = _daily_slice(monkeypatch, provider_rpd=1000, attempts=0, previous=yesterday)
+    assert allowed and max(n for _p, _k, n in allowed) == 100
 
 
 def test_a_provider_pool_is_shared_by_its_routes_through_the_day(monkeypatch):

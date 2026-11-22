@@ -545,3 +545,24 @@ def test_only_the_daily_incremental_run_gets_the_daily_slice(monkeypatch, tmp_pa
     assert script.main(["--due-only"]) == 0
     assert "remeasure_daily_rpd_share" not in seen
     assert seen.get("remeasure_time_budget_seconds") is None
+
+
+def test_a_gap_in_the_artifact_history_disables_the_daily_slice(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    script, seen, evidence = _manual_weekly_script(monkeypatch, tmp_path)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    monkeypatch.setenv("GITHUB_EVENT_SCHEDULE", "27 8 * * *")
+    control = script.WorkerDispatchControl(
+        SimpleNamespace(availability_failures=lambda: {"route_failures": []})
+    )
+    monkeypatch.setattr(script, "_control", lambda _no_pause: control)
+    monkeypatch.setattr(script, "discover_discovery_retry_receipts", lambda **_kwargs: ((), ()))
+    # The verifier returns what it could authenticate and says what it could not.
+    monkeypatch.setattr(
+        script,
+        "verified_discovery_history",
+        lambda *_args, **_kwargs: ((), (), ("run 9: artifact digest mismatch",)),
+    )
+    assert script.main(["--due-only", "--incremental", "--discovery-evidence", evidence]) == 0
+    assert "remeasure_daily_rpd_share" not in seen
