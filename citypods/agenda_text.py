@@ -1191,8 +1191,8 @@ _ATTENDANCE_STATUS_RE = re.compile(
     r"[ \t]*:[ \t]*(?P<names>.*)$",
     re.I | re.M,
 )
-_ATTENDANCE_SPLIT_RE = re.compile(r",|;|\s{2,}|\s+and\s+")
-_ATTENDANCE_SPLIT_CAPTURE_RE = re.compile(r"(,|;|\s{2,}|\s+and\s+)")
+_ATTENDANCE_SPLIT_RE = re.compile(r",|;|\s{2,}|\s+(?:and|&)\s+")
+_ATTENDANCE_SPLIT_CAPTURE_RE = re.compile(r"(,|;|\s{2,}|\s+(?:and|&)\s+)")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 # Qualifier vocabulary, matched on any contained word so "Council Members", "Board Members" and
@@ -1565,7 +1565,9 @@ def _ends_a_sentence(line: str) -> bool:
     return line.endswith(".") and not _ABBREVIATED_END_RE.search(line)
 
 
-def _names_after_heading(text: str, end: int, *, wrapped: bool = False, previous: str = "") -> str:
+def _names_after_heading(
+    text: str, end: int, *, wrapped: bool = False, previous: str = ""
+) -> str | None:
     """Names a heading like ``PRESENT:`` leaves for the lines below it.
 
     Only a single heading followed by its own names qualifies. Minutes that print every heading
@@ -1600,8 +1602,9 @@ def _names_after_heading(text: str, end: int, *, wrapped: bool = False, previous
             break
         if len(names) >= _MAX_ROSTER_CONTINUATION_LINES:
             # More names follow than the bound allows: publishing the first few as the whole
-            # roster would exclude the rest from speaker correction. Reject the extraction.
-            return ""
+            # roster would exclude the rest from speaker correction. None tells the caller to
+            # reject the whole heading, which is not the same as "no continuation".
+            return None
         if names:
             # Lines are separate entries unless one visibly wraps onto the next: joining
             # "ALICE SMITH" and "BOB JONES" with a space would make one four-word name.
@@ -1617,7 +1620,7 @@ def _names_after_heading(text: str, end: int, *, wrapped: bool = False, previous
     else:
         # Ran out of lines without reaching an end. If the text was clipped, the list may go on.
         if clipped and not ended:
-            return ""
+            return None
     return joined
 
 
@@ -1643,8 +1646,15 @@ _SPAN_CHAR = (
     r"(?:[^.]|(?<=\b[A-Z])\.|(?<=\bJr)\.|(?<=\bSr)\.|(?<=\bDr)\.|(?<=\bMr)\.|(?<=\bMs)\.|"
     r"(?<=\bMrs)\.)"
 )
+# "were present to give public comment" names visitors, not members: a purpose clause disqualifies.
 _PROSE_PRESENT_RE = re.compile(
-    rf"(?P<names>{_SPAN_CHAR}{{3,500}}?)\s+(?:was|were)\s+(?:in\s+attendance|present)\b", re.I
+    rf"(?P<names>{_SPAN_CHAR}{{3,500}}?)\s+(?:was|were)\s+(?:in\s+attendance|present)\b"
+    r"(?!\s+(?:to|for|during|at\s+the\s+(?:podium|microphone)))",
+    re.I,
+)
+# Words that show a sentence is about members of the body rather than whoever happened to be there.
+_MEMBER_EVIDENCE_WORDS = _ROSTER_MEMBER_WORDS | frozenset(
+    {"mayor", "chair", "vice", "commissioner", "tem", "councilmember", "councilmembers"}
 )
 _PROSE_ABSENT_RE = re.compile(
     rf"(?P<names>{_SPAN_CHAR}{{3,500}}?)\s+(?:was|were)\s+(?P<phrase>absent|not\s+present|excused)\b",
@@ -1823,7 +1833,7 @@ def _non_member_lead(sentence: str) -> bool:
     return bool(_qualifier_words(lead) & (_ROSTER_STAFF_WORDS | _ROSTER_EXCLUDED_WORDS | {"staff"}))
 
 
-def _member_sentence(span: str) -> str | None:
+def _member_sentence(span: str, *, require_member_evidence: bool = False) -> str | None:
     """The member list a matched span ends in, or None when it is a staff/guest list.
 
     Trims to the span's own sentence, refuses a staff or guest label, then drops a harmless
@@ -1832,6 +1842,8 @@ def _member_sentence(span: str) -> str | None:
     sentence = _SENTENCE_START_RE.split(span)[-1].strip()
     if _non_member_lead(sentence):
         return None
+    if require_member_evidence and not _qualifier_words(sentence) & _MEMBER_EVIDENCE_WORDS:
+        return None  # presence alone is not membership; the label counts as evidence
     if ":" in sentence:
         sentence = sentence.rsplit(":", 1)[1].strip()
     if _qualifier_words(sentence) & {"staff", "employees", "attending"}:
@@ -1859,7 +1871,7 @@ def _parse_prose_attendance(text: str) -> list[dict]:
             if pattern is _PROSE_ABSENT_RE:
                 status = "excused" if match.group("phrase").casefold() == "excused" else "absent"
             # The match is lazy from wherever scanning resumed, so trim to its own sentence.
-            sentence = _member_sentence(match.group("names"))
+            sentence = _member_sentence(match.group("names"), require_member_evidence=True)
             if sentence is None:
                 continue
             rows += _prose_roster_rows(sentence, status, None, match.group(0))
@@ -1898,17 +1910,22 @@ def parse_roster(text: str) -> list[dict]:
         status = match.group("status").lower()
         section = _roster_section(qualifier)
         names_text = match.group("names").strip()
-        if names_text and section != "staff" and not names_text.endswith("."):
+        if names_text and section != "staff" and not _ends_a_sentence(names_text):
             # A long attendance line wraps ("... and Council Members Keely" / "Briggs, Jesse
             # Davis"): without the second line the member is kept as a bare first name.
             wrapped_names = _names_after_heading(
                 text, match.end(), wrapped=True, previous=names_text
             )
+            if wrapped_names is None:
+                continue
             names_text = f"{names_text} {wrapped_names}".strip()
         if not names_text and section != "staff" and not _follows_heading(text, match.start()):
             # Staff blocks are "Name, Title; Name, Title" runs whose titles cannot be told from
             # names here, so only member headings read the lines below them.
-            names_text = _names_after_heading(text, match.end())
+            below = _names_after_heading(text, match.end())
+            if below is None:
+                continue
+            names_text = below
         names_text = _PLURAL_ROSTER_TITLE_RE.sub(" ", _INLINE_LABEL_RE.sub(" ", names_text))
         for raw_name in _ATTENDANCE_SPLIT_RE.split(names_text):
             name = _clean_roster_name(raw_name)
