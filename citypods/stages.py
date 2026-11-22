@@ -4761,6 +4761,13 @@ class MinutesTextStage:
                         # OCR could not run and the native text names nobody; caching that as an
                         # empty roster would hide a scan a healthy later run can read. (Native
                         # text that does hold a roster is kept: it is the document, just short.)
+                        if text_method == "retry":
+                            # Count the failed attempt so the stage's own backoff spaces it out;
+                            # otherwise scans that always time out would take the OCR budget at
+                            # the head of every run and starve readable scans behind them. A
+                            # budget stop is not a failure and is not counted.
+                            ep.minutes_text_attempts += 1
+                            ep.minutes_text_last_attempt = datetime.now(UTC).isoformat()
                         stats.defer(
                             "minutes-ocr-retry" if text_method == "retry" else "wall-clock-budget",
                             sample=ep.uid or ep.guid,
@@ -5001,7 +5008,11 @@ def _stored_minutes(ctx: StageContext, ep: Episode) -> tuple[str, int | None, st
     which produced this artifact in the first place and neither of which needs repeating when
     only the roster parser changed. None sends the caller back to the provider.
     """
-    from citypods.agenda_text import classify_agenda_text, minutes_text_is_sparse
+    from citypods.agenda_text import (
+        classify_agenda_text,
+        minutes_text_is_sparse,
+        states_members_or_votes,
+    )
 
     key = (ep.links or {}).get("minutes_text_artifact_key")
     if not key or ctx.storage is None:
@@ -5028,7 +5039,10 @@ def _stored_minutes(ctx: StageContext, ep: Episode) -> tuple[str, int | None, st
     # a scan's stray text layer, not the document; reusing it would skip the OCR that can read it.
     # Text that OCR produced was accepted on its confidence, so a short confident scan is reused
     # rather than OCR'd again on every parser upgrade.
-    if method != "ocr" and minutes_text_is_sparse(text, page_count, cached=page_count is None):
+    # Native text that states the roll call or votes was accepted on purpose (the extractor skips
+    # OCR for it), so it is reused too even when sparse.
+    accepted = method == "ocr" or states_members_or_votes(text)
+    if not accepted and minutes_text_is_sparse(text, page_count, cached=page_count is None):
         return None
     # A viewer shell ("Loading...") stored as if it were the document would otherwise be re-parsed
     # forever.

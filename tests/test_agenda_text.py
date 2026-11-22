@@ -1623,3 +1623,41 @@ def test_roster_parsing_is_fast_on_a_long_document_with_many_attendance_cues():
     for _ in range(5):
         parse_roster(text)
     assert time.monotonic() - started < 3  # about 1 ms a document in practice
+
+
+def test_an_aggregate_vote_tally_does_not_suppress_ocr(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text, "extract_document", lambda *a, **k: ("Vote: Yes: 5; No: 0", [])
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+    body = "PRESENT: Alice Smith, Bob Jones\n" + "Minutes of the meeting. " * 40
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=lambda *a, **k: (body, 95.0)
+    )
+    assert (text, method) == (body, "ocr")
+    assert agenda_text.states_members_or_votes("Vote: Yes: Alice Smith; No: Bob Jones")
+    assert not agenda_text.states_members_or_votes("Vote: Yes: 5; No: 0")
+
+
+def test_a_page_header_does_not_make_a_guest_list_look_like_members():
+    text = (
+        "Chair Ann Lee called the meeting to order.\nCity Council Minutes\nInvited guests Jane Doe "
+        "and Bob Roe were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee"]
+
+
+def test_roster_keeps_a_two_word_all_caps_name_but_stops_at_a_heading():
+    text = "PRESENT:\nAlice Smith\nBOB JONES\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "BOB JONES"]
+    heading = "PRESENT:\nAlice Smith\nNEW SECTION HEADING\n"
+    assert _names(parse_roster(heading)) == ["Alice Smith"]
+
+
+def test_staff_titles_under_an_explicit_member_heading_are_dropped_but_its_own_office_stays():
+    text = "Council Members Present: Alice Smith, City Attorney Bob Roe\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    directors = "Directors Present: Director Alice Smith, Bob Roe\n"
+    assert _names(parse_roster(directors)) == ["Alice Smith", "Bob Roe"]

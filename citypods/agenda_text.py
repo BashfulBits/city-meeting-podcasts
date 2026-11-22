@@ -1202,6 +1202,18 @@ def minutes_text_is_sparse(
     return _repeated_line_ratio(text) > _SPARSE_REPEATED_LINE_RATIO
 
 
+def states_members_or_votes(text: str) -> bool:
+    """Whether a text layer names members present/absent or records an individual vote.
+
+    An aggregate tally ("Vote: Yes: 5; No: 0") names no one, so it does not count.
+    """
+    if _member_rows(text):
+        return True
+    return any(
+        any(char.isalpha() for char in str(vote.get("member") or "")) for vote in parse_votes(text)
+    )
+
+
 def _member_rows(text: str) -> list[dict]:
     """Roster rows for the body's members: a staff-only roster does not count as one."""
     return [row for row in parse_roster(text) if row.get("section") != "staff"]
@@ -1236,7 +1248,7 @@ def extract_minutes_document(
     page_count = _pdf_page_count(content)
     if page_count <= 0 or not minutes_text_is_sparse(native, page_count):
         return native, links, empty_method
-    if _member_rows(native) or parse_votes(native):
+    if states_members_or_votes(native):
         # The text layer already states members or votes. It is the document: OCR would only add a
         # second reading to reconcile (and the cost of scanning it), so the sources are never mixed.
         return native, links, empty_method
@@ -1753,6 +1765,7 @@ def _names_after_heading(
         # previous line ends with a comma or "and", which says the list visibly goes on.
         if (
             stripped.isupper()
+            and len(stripped.split()) >= 3  # "BOB JONES" is a name; "NEW SECTION HEADING" is not
             and any(any(c.islower() for c in earlier) for earlier in names)
             and not _LIST_OPEN_END_RE.search(before)
         ):
@@ -1938,7 +1951,9 @@ def _is_staff_title_phrase(part: str) -> bool:
     )
 
 
-def _has_leading_staff_title(words: list[str]) -> bool:
+def _has_leading_staff_title(
+    words: list[str], exempt: set[str] | frozenset[str] = frozenset()
+) -> bool:
     """Whether an entry opens with a staff title ("City Attorney Bob Roe", "Parks Director X").
 
     Cleaning strips leading titles to reach the name, so a staffer would otherwise come out as a
@@ -1955,7 +1970,8 @@ def _has_leading_staff_title(words: list[str]) -> bool:
         return (
             False  # a board's own "Secretary Thomas Plock" is a member; "City Secretary" is staff
         )
-    return bool(consumed) and len(consumed) < len(words) and bool(_STAFF_ROLE_NOUNS & set(consumed))
+    nouns = (_STAFF_ROLE_NOUNS & set(consumed)) - set(exempt)
+    return bool(consumed) and len(consumed) < len(words) and bool(nouns)
 
 
 def _prose_roster_rows(names_text: str, status: str, section: str | None, evidence: str) -> list:
@@ -2023,6 +2039,22 @@ def _opening_window(flat: str) -> str:
     return flat[start : match.end() + _PROSE_WINDOW_AFTER]
 
 
+_EXPLICIT_NON_MEMBER_WORDS = frozenset(
+    {
+        "guests",
+        "guest",
+        "visitors",
+        "audience",
+        "staff",
+        "employees",
+        "applicants",
+        "petitioners",
+        "speakers",
+        "others",
+    }
+)
+
+
 def _non_member_lead(sentence: str) -> bool:
     """Whether a sentence is led by a staff or guest label ("Staff:", "Guests Jane Doe ...").
 
@@ -2030,7 +2062,11 @@ def _non_member_lead(sentence: str) -> bool:
     never admitted as members; "Commission Members:" and "Commissioners Jane Doe" still are.
     """
     lead = sentence.split(":")[0] if ":" in sentence else " ".join(sentence.split(" ")[:3])
-    return bool(_qualifier_words(lead) & (_ROSTER_STAFF_WORDS | _ROSTER_EXCLUDED_WORDS | {"staff"}))
+    if _qualifier_words(lead) & (_ROSTER_STAFF_WORDS | _ROSTER_EXCLUDED_WORDS | {"staff"}):
+        return True
+    # A page header can precede the label ("City Council Minutes Invited guests Jane Doe ..."), so
+    # an explicit guest/staff word anywhere in the sentence marks it, whatever its first words say.
+    return bool(_qualifier_words(sentence) & _EXPLICIT_NON_MEMBER_WORDS)
 
 
 def _member_sentence(span: str, *, require_member_evidence: bool = False) -> str | None:
@@ -2121,7 +2157,9 @@ def _parse_prose_attendance(text: str) -> list[dict]:
     return unique
 
 
-def _member_entries(names_text: str, section: str | None) -> list[str]:
+def _member_entries(
+    names_text: str, section: str | None, qualifier: str | None = None
+) -> list[str]:
     """Entries of a structured attendance list, without the staff a member heading may include.
 
     Under a member (or unlabeled) heading, "City Attorney Bob Roe" and "Jane Doe, City Attorney"
@@ -2141,7 +2179,11 @@ def _member_entries(names_text: str, section: str | None) -> list[str]:
             if entries:
                 entries[-1] = None  # the name just before the title is that staffer
             continue
-        entries.append(None if section is None and _has_leading_staff_title(words) else piece)
+        own_offices = {w.rstrip("s") for w in _qualifier_words(qualifier)}
+        staff_titled = _has_leading_staff_title(words, exempt=own_offices)
+        # Under an explicit member heading the heading's own office stays ("Directors Present:
+        # Director Alice Smith"), but "Council Members Present: ..., City Attorney X" is staff.
+        entries.append(None if staff_titled else piece)
     return [entry for entry in entries if entry]
 
 
@@ -2172,7 +2214,7 @@ def parse_roster(text: str) -> list[dict]:
                 continue
             names_text, evidence_end = below
         names_text = _PLURAL_ROSTER_TITLE_RE.sub(" ", _INLINE_LABEL_RE.sub(" ", names_text))
-        for raw_name in _member_entries(names_text, section):
+        for raw_name in _member_entries(names_text, section, qualifier):
             name = _clean_roster_name(raw_name)
             if not name:
                 continue

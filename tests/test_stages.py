@@ -2902,13 +2902,34 @@ def test_stored_minutes_text_uses_the_recorded_page_count_to_spot_a_mostly_blank
 def test_stored_minutes_that_ocr_produced_are_reused_when_short_but_confident():
     from citypods.stages import _stored_minutes
 
-    short_scan = "PRESENT: Mayor Ann Lee, Bob Roe. The council met briefly and adjourned. " * 3
+    short_scan = "The council met briefly, took no action on any item, and adjourned early. " * 3
     payload = {**_minutes_payload(short_scan, page_count=4), "method": "ocr"}
     ctx = _minutes_ctx(_MinutesTextStorage(payload))
     assert _stored_minutes(ctx, _minutes_episode()) == (short_scan, 4, "ocr")
     native = _minutes_payload(short_scan, page_count=4)  # same text, but a native text layer
     ctx = _minutes_ctx(_MinutesTextStorage(native))
     assert _stored_minutes(ctx, _minutes_episode()) is None  # sparse over 4 pages: re-fetched
+
+
+def test_sparse_native_text_that_states_the_roll_call_is_reused():
+    from citypods.stages import _stored_minutes
+
+    roll_call = "PRESENT: Mayor Ann Lee, Bob Roe. The council met briefly and adjourned early. " * 2
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(roll_call, page_count=3)))
+    assert _stored_minutes(ctx, _minutes_episode()) == (roll_call, 3, "native")
+
+
+def test_a_retried_scan_backs_off_instead_of_taking_the_ocr_budget_every_run(monkeypatch):
+    from datetime import UTC, datetime
+
+    from citypods.records import minutes_text_backoff_until
+
+    stats, ep, _ = _run_minutes_stage(monkeypatch, "retry")
+    assert stats.skipped == 1
+    assert ep.minutes_text_attempts == 1
+    assert minutes_text_backoff_until(ep) > datetime.now(UTC)  # the next run skips it for a while
+    stats, ep, _ = _run_minutes_stage(monkeypatch, "deferred")
+    assert ep.minutes_text_attempts == 0  # a budget stop is not a failure
 
 
 def test_stored_minutes_ignores_a_malformed_method_instead_of_aborting_the_stage():
