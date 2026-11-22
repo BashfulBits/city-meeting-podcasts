@@ -1424,3 +1424,31 @@ def test_a_cached_extract_below_the_cached_floor_is_sparse_but_a_fresh_one_may_n
     assert minutes_text_is_sparse(one_text_page, cached=True)  # page count lost: re-fetch
     real = "The council discussed the budget and approved the consent agenda. " * 40
     assert not minutes_text_is_sparse(real, cached=True)
+
+
+def test_prose_presider_does_not_swallow_the_header_line_above_it():
+    text = (
+        "City Council Minutes\nMayor Jane Doe called the meeting to order at 7:00pm. "
+        "Councilmembers Ann Lee and Bob Roe were in attendance.\n"
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Jane Doe"]
+    wrapped = (
+        "City of Springfield Minutes\nMayor Pro Tem\nKimberly Holiday called the meeting to "
+        "order. Councilmembers Ann Lee were in attendance."
+    )
+    assert "Kimberly Holiday" in _names(parse_roster(wrapped))
+
+
+def test_roster_does_not_read_a_motion_result_as_a_continued_name():
+    text = "PRESENT: Alice Smith,\nMotion Carried.\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    vertical = "PRESENT:\nAlice Smith\nMotion Carried\n"
+    assert _names(parse_roster(vertical)) == ["Alice Smith"]
+
+
+def test_directors_stay_members_under_an_explicit_member_label():
+    text = "Directors Present: Director Alice Smith, Bob Roe\nAlso Present: City Attorney Cy Poe\n"
+    rows = parse_roster(text)
+    assert [r["name"] for r in rows if r.get("section") == "members"] == ["Alice Smith", "Bob Roe"]
+    unlabeled = "PRESENT: City Attorney Cy Poe, Di Moe\n"
+    assert _names(parse_roster(unlabeled)) == ["Di Moe"]
