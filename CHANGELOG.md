@@ -15,6 +15,20 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Minutes extraction (#2782): Granicus `MinutesViewer.php` links whose Google Docs viewer wraps a
+  PDF on a sibling `*.granicus.com` host (Pflugerville serves PDFs from `legistar1.granicus.com`)
+  are now unwrapped instead of stored as the viewer shell (`Loading…`). Stored shells are no longer
+  re-parsed from cache: `MINUTES_ROSTER_PARSER_VERSION` and the minutes stage version move up, and
+  `_stored_minutes_text` returns nothing for a shell, so affected episodes re-fetch the real
+  document once. Unwrapping stays limited to the same host or two hosts under `granicus.com`.
+
+- **Legistar auxiliary agendas for Swagit video feeds.** Relaxed `granicus_base` requirement in
+  `LegistarProvider` to enable Legistar as an auxiliary agenda/calendar companion for non-Granicus
+  video providers (Roadmap R11). Supported extracting Swagit video IDs (`/videos/(\\d+)`) into
+  `AgendaRecord.video_guid` for Priority 1 GUID-based joining with Swagit episodes, populated
+  clean canonical video URLs, and configured Dallas, TX (`dallas-tx`) to pair its Swagit video
+  feeds with its official Legistar calendar.
+
 - **Replace raw invisible Unicode characters with explicit escape sequences.** Converted literal
   zero-width spaces (`\u200b`) in `availability_digest.py`, `test_availability_digest.py`, and
   `check_endpoints.py` to explicit `\u200b` escapes, replaced literal `\uFEFF` in

@@ -2705,3 +2705,61 @@ def test_admit_r6_dispatch_unbounded_when_moment_max_dispatches_is_none(tmp_path
         assert result == "admitted"
     assert ctx.moment_dispatches == 50
     assert "rollout-dispatch-cap" not in stats.defer_reasons
+
+
+class _MinutesTextStorage:
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    def exists(self, key):
+        return True
+
+    def get_file(self, key, local_path):
+        import pathlib
+
+        pathlib.Path(local_path).write_bytes(json.dumps(self.payload).encode())
+        return True
+
+
+def _minutes_ctx(storage):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(storage=storage)
+
+
+def _minutes_episode():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(links={"minutes_text_artifact_key": "documents/x/minutes-text"})
+
+
+def test_stored_minutes_text_returns_the_real_document():
+    from citypods.stages import _stored_minutes_text
+
+    text = "City Council Meeting MINUTES. Present: Mayor Smith, Council Member Jones. " * 20
+    ctx = _minutes_ctx(_MinutesTextStorage({"text": text}))
+    assert _stored_minutes_text(ctx, _minutes_episode()) == text
+
+
+def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetched():
+    from citypods.stages import _stored_minutes_text
+
+    for shell in (
+        "3804_M_City_Council_Minutes_-_Final.pdf\nLoading…",
+        "DocumentViewer.php\nLoading…",
+    ):
+        ctx = _minutes_ctx(_MinutesTextStorage({"text": shell}))
+        assert _stored_minutes_text(ctx, _minutes_episode()) is None
+
+
+def test_minutes_text_completion_markers_from_before_the_viewer_fix_are_dirty():
+    from citypods.stages import MinutesTextStage, stage_input_fingerprint, stage_is_dirty
+
+    stage = MinutesTextStage()
+    city = _city()
+    ep = _ep("m1")
+    ep.links = {"minutes": "https://city.granicus.com/MinutesViewer.php?view_id=1&clip_id=2"}
+    fingerprint = stage_input_fingerprint(stage, ep, city)
+    marker = {"state": "complete", "input_fingerprint": fingerprint, "output": None}
+    ep.stage_completion = {stage.name: {**marker, "version": "1"}}
+    assert stage_is_dirty(stage, ep, city) is True
