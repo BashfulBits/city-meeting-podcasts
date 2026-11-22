@@ -235,6 +235,11 @@ def test_video_deeplink_swagit_delegation():
     provider = LegistarProvider()
     link = provider.video_deeplink("https://dallastx.new.swagit.com/videos/410396", 125)
     assert link == "https://dallastx.new.swagit.com/play/410396/125"
+    # An unrelated host with swagit.com in path/query falls back to Granicus
+    non_swagit = provider.video_deeplink(
+        "https://not-swagit.com/swagit.com/MediaPlayer.php?clip_id=1", 60
+    )
+    assert non_swagit == "https://not-swagit.com/swagit.com/MediaPlayer.php?clip_id=1&starttime=60"
 
 
 def test_parse_calendar_records_ignores_swagit_url_in_query_param():

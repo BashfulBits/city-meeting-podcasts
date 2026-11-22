@@ -314,7 +314,8 @@ class LegistarProvider:
         return GranicusProvider().resolve_media_url(episode, source)
 
     def video_deeplink(self, ref: str, t_seconds: float) -> str | None:
-        if "swagit.com" in ref:
+        host = (urlsplit(ref).hostname or "").lower()
+        if host == "swagit.com" or host.endswith(".swagit.com"):
             return SwagitProvider().video_deeplink(ref, t_seconds)
         return GranicusProvider().video_deeplink(ref, t_seconds)
 
