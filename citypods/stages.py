@@ -5001,7 +5001,7 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
         return None
     # A sparse extraction ("City Council Minutes\nPage 1") is a scan's stray text layer, not the
     # document; reusing it would skip the OCR that can read the real one.
-    if minutes_text_is_sparse(text):
+    if minutes_text_is_sparse(text, cached=True):
         return None
     # A viewer shell ("Loading...") stored as if it were the document would otherwise be re-parsed
     # forever; None sends the caller back to the provider for the real document.

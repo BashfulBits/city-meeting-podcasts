@@ -1394,3 +1394,33 @@ def test_a_boards_own_secretary_is_a_member_but_a_city_secretary_is_staff():
     rows = parse_roster(text)
     assert _names(rows, "absent") == ["Ann Lee", "Thomas Plock", "Bob Roe"]
     assert _names(rows) == ["Cy Poe"]
+
+
+def test_minutes_ocr_keeps_a_native_member_roster_when_ocr_finds_only_staff(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text, "extract_document", lambda *a, **k: ("PRESENT: Mayor Ann Lee, Bob Roe", [])
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "STAFF PRESENT: Jane Doe\n" + "Minutes of the regular meeting. " * 30, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "ocr"
+    members = [r["name"] for r in parse_roster(text) if r.get("section") != "staff"]
+    assert members == ["Ann Lee", "Bob Roe"]
+
+
+def test_a_cached_extract_below_the_cached_floor_is_sparse_but_a_fresh_one_may_not_be():
+    from citypods.agenda_text import minutes_text_is_sparse
+
+    one_text_page = "The council discussed the budget and approved the consent agenda. " * 5
+    assert not minutes_text_is_sparse(one_text_page, 1)  # a real one-page document
+    assert minutes_text_is_sparse(one_text_page, 5)  # the same text spread over a 5-page scan
+    assert minutes_text_is_sparse(one_text_page, cached=True)  # page count lost: re-fetch
+    real = "The council discussed the budget and approved the consent agenda. " * 40
+    assert not minutes_text_is_sparse(real, cached=True)

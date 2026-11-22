@@ -1184,14 +1184,27 @@ OCR_MIN_ALPHA_PER_PAGE = 150
 _SPARSE_REPEATED_LINE_RATIO = 0.5
 
 
-def minutes_text_is_sparse(text: str, page_count: int | None = None) -> bool:
+# A stored extract has lost its page count, so a five-page scan with one text-bearing page cannot
+# be recognised by density. Real minutes run to thousands of letters; anything under this floor is
+# re-fetched once, where the fresh extractor sees the page count and decides.
+OCR_CACHED_MIN_ALPHA_CHARS = 600
+
+
+def minutes_text_is_sparse(
+    text: str, page_count: int | None = None, *, cached: bool = False
+) -> bool:
     """Whether extracted minutes text is a scan's stray text layer rather than the document."""
     alpha = _alpha_chars(text)
-    if alpha < OCR_MIN_ALPHA_CHARS:
+    if alpha < (OCR_CACHED_MIN_ALPHA_CHARS if cached else OCR_MIN_ALPHA_CHARS):
         return True
     if page_count and alpha / page_count < OCR_MIN_ALPHA_PER_PAGE:
         return True
     return _repeated_line_ratio(text) > _SPARSE_REPEATED_LINE_RATIO
+
+
+def _member_rows(text: str) -> list[dict]:
+    """Roster rows for the body's members: a staff-only roster does not count as one."""
+    return [row for row in parse_roster(text) if row.get("section") != "staff"]
 
 
 def extract_minutes_document(
@@ -1242,7 +1255,7 @@ def extract_minutes_document(
         or _alpha_chars(text) < OCR_MIN_ALPHA_CHARS
     ):
         return native, links, empty_method
-    if native.strip() and parse_roster(native) and not parse_roster(text):
+    if native.strip() and _member_rows(native) and not _member_rows(text):
         # A scan can have a selectable attendance line over an image-only body. OCR read the body
         # but missed that line, so keep the native roster and append the OCR'd body.
         return f"{native.rstrip()}\n{text}", links, "ocr"
