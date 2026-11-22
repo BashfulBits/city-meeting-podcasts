@@ -235,3 +235,30 @@ def test_video_deeplink_swagit_delegation():
     provider = LegistarProvider()
     link = provider.video_deeplink("https://dallastx.new.swagit.com/videos/410396", 125)
     assert link == "https://dallastx.new.swagit.com/play/410396/125"
+
+
+def test_parse_calendar_records_ignores_swagit_url_in_query_param():
+    html = """
+    <tr class="rgRow" id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00__0">
+        <td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypBody">City Council</a>
+        </td><td class="rgSorted">11/25/2026</td><td>
+        </td><td>
+            <span id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_lblTime">9:00 AM</span>
+        </td><td>
+            <a id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl04_hypVideo" class="videolink"
+               href="https://example.gov/Video.aspx?url=https://dallastx.new.swagit.com/videos/410396">Video</a>
+        </td>
+    </tr>
+    """
+    source = {
+        "calendar_url": "https://cityofdallas.legistar.com/Calendar.aspx",
+        "backfill_since": "2020-01-01",
+    }
+    records = _parse_calendar_records_page(html, source)
+    assert len(records) == 1
+    record = records[0]
+    assert record.video_guid is None
+    assert record.links["canonical_video"] == (
+        "https://example.gov/Video.aspx?url=https://dallastx.new.swagit.com/videos/410396"
+    )

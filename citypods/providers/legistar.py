@@ -198,12 +198,13 @@ def _parse_calendar_records_page(html: str, source: dict) -> list[AgendaRecord]:
                 )
         elif video_href := _row_link_url(row, calendar_url, "hypVideo"):
             links.setdefault("canonical_video", video_href)
-            if swagit_match := re.search(
-                r"https?://[^/]+\.swagit\.com/videos/([0-9]+)", video_href, re.IGNORECASE
-            ):
-                video_guid = swagit_match.group(1)
-                origin = f"{urlsplit(video_href).scheme}://{urlsplit(video_href).netloc}"
-                links["canonical_video"] = f"{origin}/videos/{video_guid}"
+            parsed_video = urlsplit(video_href)
+            host = (parsed_video.netloc or "").lower()
+            if host.endswith(".swagit.com") or host == "swagit.com":
+                if match := re.fullmatch(r"/videos/([0-9]+)", parsed_video.path):
+                    video_guid = match.group(1)
+                    scheme = parsed_video.scheme or "https"
+                    links["canonical_video"] = f"{scheme}://{host}/videos/{video_guid}"
 
         records.append(
             AgendaRecord(
