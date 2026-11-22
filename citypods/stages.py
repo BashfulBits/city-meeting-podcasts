@@ -4500,7 +4500,9 @@ class MinutesTextStage:
     """Fetch effective minutes documents and publish deterministic vote/roster sidecars."""
 
     name = "minutes_text"
-    version = "1"
+    # "2": completion markers stamped before sibling-host Granicus viewers were unwrapped certify a
+    # stored viewer shell; a new version makes them dirty so process() re-fetches those episodes.
+    version = "2"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -4790,6 +4792,8 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
     which produced this artifact in the first place and neither of which needs repeating when
     only the roster parser changed.
     """
+    from citypods.agenda_text import classify_agenda_text
+
     key = (ep.links or {}).get("minutes_text_artifact_key")
     if not key or ctx.storage is None:
         return None
@@ -4801,7 +4805,13 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
     except (UnicodeDecodeError, ValueError):
         return None
     text = payload.get("text") if isinstance(payload, dict) else None
-    return text if isinstance(text, str) and text.strip() else None
+    if not isinstance(text, str) or not text.strip():
+        return None
+    # A viewer shell ("Loading...") stored as if it were the document would otherwise be re-parsed
+    # forever; None sends the caller back to the provider for the real document.
+    if classify_agenda_text(text) in {"viewer-placeholder", "unpublished-placeholder"}:
+        return None
+    return text
 
 
 MINUTES_VOTES_PIPELINE_VERSION = "1"
@@ -4811,8 +4821,10 @@ MINUTES_VOTES_PIPELINE_VERSION = "1"
 # would keep its empty or mis-sectioned roster indefinitely, and the audit's "re-run the minutes
 # lane" advice would do nothing. A bump re-parses the stored `minutes-text` artifact
 # (`_stored_minutes_text`), so it costs one object read per episode rather than a provider fetch
-# and an OCR pass; it falls back to a full re-fetch only when that artifact cannot be read.
-MINUTES_ROSTER_PARSER_VERSION = "2"
+# and an OCR pass; it falls back to a full re-fetch only when that artifact cannot be read, or
+# holds a viewer shell instead of the document. "3": re-fetch the shells stored before sibling-host
+# Granicus viewer redirects were unwrapped (Pflugerville minutes were all stored as "Loading...").
+MINUTES_ROSTER_PARSER_VERSION = "3"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"

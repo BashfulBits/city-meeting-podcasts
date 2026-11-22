@@ -593,3 +593,52 @@ def test_fetch_document_bytes_leaves_ordinary_responses_alone():
     session = _DocSession({url: _DocResponse(url, b"%PDF-1.4", "application/pdf")})
     assert fetch_document_bytes(session, url) == (b"%PDF-1.4", "application/pdf")
     assert session.requested == [url]
+
+
+def test_fetch_document_bytes_unwraps_a_viewer_redirect_to_a_sibling_granicus_host():
+    from citypods.http import fetch_document_bytes
+
+    start = "https://city.granicus.com/MinutesViewer.php?view_id=1&clip_id=9&doc_id=x"
+    inner = "https://legistar1.granicus.com/City/meetings/2026/10/minutes.pdf"
+    wrapped = (
+        "https://docs.google.com/gview?url="
+        + requests.utils.quote(inner, safe="")
+        + "&embedded=true"
+    )
+    session = _DocSession(
+        {
+            start: _DocResponse(wrapped, b"<html>Loading...</html>"),
+            inner: _DocResponse(inner, b"%PDF-1.7 minutes", "application/pdf"),
+        }
+    )
+    assert fetch_document_bytes(session, start) == (b"%PDF-1.7 minutes", "application/pdf")
+    assert session.requested == [start, inner]
+
+
+def test_a_granicus_viewer_cannot_steer_the_fetch_to_a_lookalike_host():
+    from citypods.http import fetch_document_bytes
+
+    start = "https://city.granicus.com/MinutesViewer.php?view_id=1&clip_id=9"
+    inner = "https://granicus.com.evil.example/x.pdf"
+    wrapped = (
+        "https://docs.google.com/gview?url="
+        + requests.utils.quote(inner, safe="")
+        + "&embedded=true"
+    )
+    session = _DocSession({start: _DocResponse(wrapped, b"shell")})
+    assert fetch_document_bytes(session, start)[0] == b"shell"
+    assert session.requested == [start]
+
+
+def test_a_non_granicus_viewer_cannot_reach_a_granicus_host():
+    from citypods.http import fetch_document_bytes
+
+    start = "https://city.example/MinutesViewer.php"
+    inner = "https://legistar1.granicus.com/x.pdf"
+    wrapped = (
+        "https://docs.google.com/gview?url="
+        + requests.utils.quote(inner, safe="")
+        + "&embedded=true"
+    )
+    session = _DocSession({start: _DocResponse(wrapped, b"shell")})
+    assert fetch_document_bytes(session, start)[0] == b"shell"
