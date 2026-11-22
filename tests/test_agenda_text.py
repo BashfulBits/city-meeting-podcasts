@@ -1254,3 +1254,28 @@ def test_roster_stops_a_member_list_at_an_explicit_staff_label():
     assert members == ["Alice Smith", "Bob Jones"]  # Jane Doe is read, but as staff
     guests = "PRESENT: Alice Smith,\nGuests: Jane Doe\n"
     assert _names(parse_roster(guests)) == ["Alice Smith"]
+
+
+def test_a_structured_absence_does_not_hide_prose_that_names_who_was_present():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Jane Doe were "
+        "present.\nABSENT: Bob Jones\n"
+    )
+    rows = parse_roster(text)
+    assert sorted(_names(rows)) == ["Alice Smith", "Ann Lee", "Jane Doe"]
+    assert _names(rows, "absent") == ["Bob Jones"]
+
+
+def test_a_structured_list_stays_authoritative_for_the_statuses_it_covers():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Minutes "
+        "Planning were present.\nPRESENT: Alice Smith, Bob Jones\n"
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+
+
+def test_an_all_caps_heading_before_a_numbered_item_is_not_a_member():
+    text = "PRESENT:\nALICE SMITH\nFINANCIAL UPDATE\n1. Discussion\n"
+    rows = parse_roster(text)
+    assert _names(rows) == ["ALICE SMITH"]
+    assert "FINANCIAL UPDATE" not in rows[0]["evidence"]

@@ -1519,6 +1519,7 @@ _NON_MEMBER_LABEL_LINE_RE = re.compile(
     r"^(?:also\s+present|(?:city\s+)?staff|guests?|visitors?|others?|public|audience)\b[^\n:]{0,30}:",
     re.I,
 )
+_NUMBERED_ITEM_RE = re.compile(r"^\d{1,3}[.)]\s")
 _NO_ATTENDANCE_RE = re.compile(r"^(?:none|n/a|no\s+one|nobody|vacant)\.?$", re.I)
 
 
@@ -1586,6 +1587,8 @@ def _names_after_heading(
     one yields nothing: silence beats a guess.
     """
     names: list[str] = []
+    ends: list[int] = []
+    stopped_at_numbered = False
     joined = ""
     lookahead = text[end : end + _HEADING_LOOKAHEAD_CHARS]
     lines = lookahead.split("\n")
@@ -1610,6 +1613,7 @@ def _names_after_heading(
             or _NON_MEMBER_LABEL_LINE_RE.match(stripped)
         ):
             ended = True  # "None" says nobody is listed, so the next line is not a name
+            stopped_at_numbered = bool(_NUMBERED_ITEM_RE.match(line.strip()))
             break
         before = names[-1] if names else previous
         # A change from mixed case to ALL CAPS is a new section, not another member -- unless the
@@ -1638,6 +1642,7 @@ def _names_after_heading(
             joined += joiner
         joined += stripped
         names.append(stripped)
+        ends.append(line_end)
         consumed_end = line_end
         if _ends_a_sentence(stripped):
             ended = True
@@ -1646,6 +1651,11 @@ def _names_after_heading(
         # Ran out of lines without reaching an end. If the text was clipped, the list may go on.
         if clipped and not ended:
             return None
+    if stopped_at_numbered and len(names) > 1 and names[-1].isupper():
+        # An ALL CAPS line straight before a numbered item is that item's heading ("FINANCIAL
+        # UPDATE" / "1. Discussion"), not one more member; the list ended a line earlier.
+        joined = joined[: -len(names[-1])].rstrip(", ")
+        consumed_end = ends[-2]
     return joined, consumed_end
 
 
@@ -1992,10 +2002,12 @@ def parse_roster(text: str) -> list[dict]:
             if section:
                 row["section"] = section
             result.append(row)
-    if not any(row.get("section") != "staff" for row in result):
-        # Nothing structured named a member (a "STAFF PRESENT:" line alone does not count), so
-        # read the prose; a structured member list stays authoritative when it exists.
-        result = result + _parse_prose_attendance(text)
+    # A structured member list stays authoritative for the statuses it covers (reading prose beside
+    # it adds junk such as "Minutes Planning" and OCR near-duplicates), but a status it does not
+    # cover at all -- "ABSENT: Bob Jones" under prose naming who was present -- is read from the
+    # prose. A "STAFF PRESENT:" line alone covers nothing.
+    covered = {row["status"] for row in result if row.get("section") != "staff"}
+    result = result + [row for row in _parse_prose_attendance(text) if row["status"] not in covered]
     if not result:
         return []
     # The attendance block is often repeated (a header on every page); keep each fact once.
