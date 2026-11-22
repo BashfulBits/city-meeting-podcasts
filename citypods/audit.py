@@ -42,6 +42,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from citypods.agenda_text import is_unpublished_agenda
 from citypods.bodies import (
     BodyInclusion,
     BodySelector,
@@ -793,6 +794,9 @@ def check_agenda_quality(
         assessment = quality.get("last_assessment")
         if not isinstance(assessment, dict):
             assessment = quality
+        if is_unpublished_agenda(assessment):
+            # The publisher has no agenda for this meeting; there is nothing to inspect or fix.
+            continue
         last_seen = assessment.get("last_seen")
         if last_seen:
             try:

@@ -309,6 +309,28 @@ def _is_short_notice(text: str) -> bool:
     return bool(text and len(text) <= 1_000 and _NOTICE_RE.search(text))
 
 
+# The publisher itself says there is no agenda ("This agenda is not currently published"), which
+# Granicus serves for older meetings that never had one. Nothing is wrong with extraction, so the
+# feed-health audit must not ask a human to inspect it.
+AGENDA_NOT_PUBLISHED_REASON = "agenda-not-published"
+# sha256 of the Granicus AgendaViewer "not currently published" body. Assessments recorded before
+# the dedicated reason existed carry this hash with the generic placeholder reason.
+_GRANICUS_NOT_PUBLISHED_HASHES = frozenset(
+    {"96075776f783fdd68189d7dfa02a8515d5697b6d76b632209342235e2f41e4a1"}
+)
+
+
+def is_unpublished_agenda(assessment: dict | None) -> bool:
+    """Whether a stored assessment records the publisher's own "no agenda published" answer."""
+    if not isinstance(assessment, dict):
+        return False
+    reason = assessment.get("reason")
+    return reason == AGENDA_NOT_PUBLISHED_REASON or (
+        reason == "placeholder-or-low-quality-html"
+        and assessment.get("document_hash") in _GRANICUS_NOT_PUBLISHED_HASHES
+    )
+
+
 def classify_agenda_text(text: str) -> str:
     """Return the shared coarse class used by production and chapter research."""
     normalized = _normalize_ws(text)
@@ -498,7 +520,9 @@ def assess_agenda_document(
                 "none",
                 "rejected",
                 "unknown",
-                "placeholder-or-low-quality-html",
+                AGENDA_NOT_PUBLISHED_REASON
+                if classify_agenda_text(native) == "unpublished-placeholder"
+                else "placeholder-or-low-quality-html",
                 native_chars=len(native),
             ),
             discovered,
