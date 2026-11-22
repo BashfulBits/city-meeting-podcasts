@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Concurrent configured-route re-measurement (review/54 §8.14.G).** The weekly run re-measures
+  up to three providers at once, each in its own dispatch pause and HTTP session, after the
+  provider loop; routes of one provider stay sequential because they share its quota. Starting a
+  session is atomic, so the session ceiling and the evidence-artifact guard hold across threads.
+  With one worker the re-measure runs inside the first drain as before.
+
 - **More configured-route cap re-measurements per weekly run (review/54 §8.14.G).** The weekly
   run's ceiling was the limit, not its clock: it re-measured 4 of 92 due axes in 97 of 360 minutes.
   The session ceiling goes from 4 to 12, the re-measure window from 1 to 3 hours, and the evidence
