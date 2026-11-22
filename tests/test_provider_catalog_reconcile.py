@@ -3368,6 +3368,68 @@ def test_providers_re_measure_at_the_same_time_each_in_its_own_drain(monkeypatch
     assert len(due) == len(set(due))
 
 
+def test_a_provider_waits_for_artifact_room_instead_of_being_skipped(monkeypatch):
+    import threading
+    import time
+
+    import citypods.provider_catalog.reconcile as module
+
+    # Room for two sessions at a time (each reserves 1,000 bytes, and three new-route sessions
+    # stay reserved): the third provider's thread has to wait for one to end, not be skipped.
+    monkeypatch.setattr(module, "REMEASURE_SESSION_BYTES_FLOOR", 1_000)
+    monkeypatch.setattr(module, "REMEASURE_SESSION_BYTES_RESERVE", 1_000)
+    monkeypatch.setattr(module, "MAX_ARTIFACT_BYTES", 5_500)
+    limits = {
+        **LIMITS,
+        "routes": [
+            {**r, "free": True, "input_context_limit": 131072, "output_context_limit": 8192}
+            for r in LIMITS["routes"]
+        ],
+    }
+    configured = {r["route_id"] for r in limits["routes"]}
+    lock = threading.Lock()
+    running, peak, measured = [0], [0], []
+
+    def discover(candidate, *_args, **kwargs):
+        if candidate.key in configured:
+            with lock:
+                running[0] += 1
+                peak[0] = max(peak[0], running[0])
+                measured.append(candidate.key)
+            time.sleep(0.15)  # long enough for the other threads to ask for room meanwhile
+            with lock:
+                running[0] -= 1
+        return _stub_session(candidate)
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="weekly",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: 0.0,
+        remeasure_time_budget_seconds=3_600,
+        remeasure_session_ceiling=50,
+        remeasure_workers=3,
+    )
+    assert peak[0] == 2  # never more at once than the room allows...
+    ran = [s for s in report.remeasure_sessions if s.get("ran")]
+    waiting = [s for s in report.remeasure_sessions if not s.get("ran")]
+    # ...and nothing was dropped for it: every due axis ran.
+    assert len(ran) == len(measured) and ran
+    assert not [s for s in waiting if "budget" in (s.get("note") or "")]
+
+
 def test_concurrent_providers_still_respect_the_session_ceiling(monkeypatch):
     report, _control, _arrived, _overlapped, _sessions = _concurrent_remeasure(
         monkeypatch, ceiling=2

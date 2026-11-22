@@ -277,6 +277,21 @@ provider's daily request limit). Delivered in order:
    request this run sends it, so its second axis cannot start on a quota the first one spent. The
    daily slice keeps the old, stricter gate. The ceiling goes from 12 to 28 (the 32-session
    artifact less three new-route sessions and one spare).
+   **Third weekly run (2026-11-22): 13 axes, 63 waiting, one raise offered** (`nvidia_nemotron_3_ultra_550b_a55b_free`
+   input 246,109 → 934,464). The 30 "quota not confirmed" waits resolved into real reasons
+   (18 with no API key in the workflow, 2 quota exhausted, the rest checked), but 19 waited on
+   "budget spent" with only 13 sessions run and the clock far from its limit. The cause was in the
+   concurrency: each session in flight reserved the worst-case 400 KB of artifact room, and with
+   three new-route sessions also reserved, two sessions in flight left none, so the third
+   provider's route was skipped for the run instead of waiting. Now a route that finds no room
+   only because other sessions are still running waits for one to end; a budget that is spent
+   for good (ceiling, clock, artifact full of finished sessions) still skips at once. The room
+   kept per session follows the largest session this run has produced (twice its size, between
+   100 KB and 400 KB), since typical sessions are a few KB. One session took 64 minutes
+   (NVIDIA, input up to 934k tokens at up to 720 s a call); the three-hour window absorbs it.
+   The 18 "no API key" axes are the ten Gemini routes on the second account:
+   `GEMINI_API_KEY_SECONDARY` is not in the reconcile workflow's environment. Adding it is a
+   decision about that credential's exposure, left to the maintainer.
 3. **A daily slice** (the maintainer's limit: the daily checks never spend more than 10% of a
    provider's request limit on this). The daily incremental run re-measures a few caps too: at most
    `REMEASURE_DAILY_SESSION_CEILING` (6) sessions in `REMEASURE_DAILY_SECONDS` (40 minutes), only on
