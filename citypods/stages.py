@@ -4715,6 +4715,7 @@ class MinutesTextStage:
                 continue
             cached_text: str | None = None
             page_count: int | None = None
+            stored_method = "native"
             if (
                 ep.minutes_text_url == minutes_url
                 and ep.minutes_votes_url
@@ -4734,7 +4735,7 @@ class MinutesTextStage:
                 # to `None` re-fetches, which is correct when the sidecar is unreadable.
                 stored = _stored_minutes(ctx, ep)
                 if stored is not None:
-                    cached_text, page_count = stored
+                    cached_text, page_count, stored_method = stored
             now = datetime.now(UTC)
             if minutes_text_backoff_until(ep) and minutes_text_backoff_until(ep) > now:
                 stats.defer("minutes-text-backoff")
@@ -4769,6 +4770,7 @@ class MinutesTextStage:
                     page_count = _pdf_page_count(content) or None
                 else:
                     text = cached_text
+                    text_method = stored_method
                 roster = parse_roster(text)
                 # Downstream, "no minutes published yet" and "minutes published but the roster did
                 # not parse" are indistinguishable -- both are an empty `minutes_roster` -- yet
@@ -4821,6 +4823,7 @@ class MinutesTextStage:
                         "version": MINUTES_TEXT_PIPELINE_VERSION,
                         "source_url": minutes_url,
                         "page_count": page_count,
+                        "method": text_method,
                         "text": text,
                     },
                     sort_keys=True,
@@ -4988,8 +4991,9 @@ AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "2"
 
 
-def _stored_minutes(ctx: StageContext, ep: Episode) -> tuple[str, int | None] | None:
-    """The minutes text this stage already extracted and its page count, or None if unusable.
+def _stored_minutes(ctx: StageContext, ep: Episode) -> tuple[str, int | None, str] | None:
+    """The minutes text this stage already extracted, its page count and how it was obtained
+    ("native" or "ocr"), or None if unusable.
 
     Re-parsing a stored extraction is what keeps a `MINUTES_ROSTER_PARSER_VERSION` bump cheap:
     the expensive half of this stage is the provider fetch and, for a scanned PDF, OCR -- both of
@@ -5015,15 +5019,18 @@ def _stored_minutes(ctx: StageContext, ep: Episode) -> tuple[str, int | None] | 
         return None
     page_count = payload.get("page_count")
     page_count = page_count if isinstance(page_count, int) and page_count > 0 else None
+    method = payload.get("method") if payload.get("method") in {"native", "ocr"} else "native"
     # A sparse extraction ("City Council Minutes\nPage 1", one text page over a 40-page scan) is
     # a scan's stray text layer, not the document; reusing it would skip the OCR that can read it.
-    if minutes_text_is_sparse(text, page_count, cached=page_count is None):
+    # Text that OCR produced was accepted on its confidence, so a short confident scan is reused
+    # rather than OCR'd again on every parser upgrade.
+    if method != "ocr" and minutes_text_is_sparse(text, page_count, cached=page_count is None):
         return None
     # A viewer shell ("Loading...") stored as if it were the document would otherwise be re-parsed
     # forever.
     if classify_agenda_text(text) in {"viewer-placeholder", "unpublished-placeholder"}:
         return None
-    return text, page_count
+    return text, page_count, method
 
 
 def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:

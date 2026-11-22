@@ -2889,4 +2889,16 @@ def test_stored_minutes_text_uses_the_recorded_page_count_to_spot_a_mostly_blank
     ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(one_page, page_count=40)))
     assert _stored_minutes(ctx, _minutes_episode()) is None  # one text page over 40 pages
     ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(one_page, page_count=2)))
-    assert _stored_minutes(ctx, _minutes_episode()) == (one_page, 2)
+    assert _stored_minutes(ctx, _minutes_episode()) == (one_page, 2, "native")
+
+
+def test_stored_minutes_that_ocr_produced_are_reused_when_short_but_confident():
+    from citypods.stages import _stored_minutes
+
+    short_scan = "PRESENT: Mayor Ann Lee, Bob Roe. The council met briefly and adjourned. " * 3
+    payload = {**_minutes_payload(short_scan, page_count=4), "method": "ocr"}
+    ctx = _minutes_ctx(_MinutesTextStorage(payload))
+    assert _stored_minutes(ctx, _minutes_episode()) == (short_scan, 4, "ocr")
+    native = _minutes_payload(short_scan, page_count=4)  # same text, but a native text layer
+    ctx = _minutes_ctx(_MinutesTextStorage(native))
+    assert _stored_minutes(ctx, _minutes_episode()) is None  # sparse over 4 pages: re-fetched

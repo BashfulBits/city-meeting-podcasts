@@ -1359,9 +1359,9 @@ def test_minutes_ocr_keeps_a_native_roster_the_scan_body_missed(monkeypatch):
     text, _, method = agenda_text.extract_minutes_document(
         _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
     )
-    assert method == "ocr"
+    # OCR missed the attendance line, so the text layer wins; the sources are never joined.
+    assert (text, method) == ("PRESENT: Mayor Ann Lee, Bob Roe", "native")
     assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe"]
-    assert "Minutes of the regular meeting." in text
 
 
 def test_structured_roster_does_not_enrol_a_staff_titled_entry_under_a_member_heading():
@@ -1410,7 +1410,7 @@ def test_minutes_ocr_keeps_a_native_member_roster_when_ocr_finds_only_staff(monk
     text, _, method = agenda_text.extract_minutes_document(
         _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
     )
-    assert method == "ocr"
+    assert method == "native"
     members = [r["name"] for r in parse_roster(text) if r.get("section") != "staff"]
     assert members == ["Ann Lee", "Bob Roe"]
 
@@ -1470,7 +1470,7 @@ def test_minutes_ocr_keeps_native_members_that_ocr_only_partly_recovered(monkeyp
     text, _, method = agenda_text.extract_minutes_document(
         _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
     )
-    assert method == "ocr"
+    assert (text, method) == ("PRESENT: Alice Smith, Bob Roe", "native")
     assert _names(parse_roster(text)) == ["Alice Smith", "Bob Roe"]
 
 
@@ -1517,7 +1517,7 @@ def test_minutes_ocr_keeps_a_native_vote_line_ocr_missed(monkeypatch):
     text, _, method = agenda_text.extract_minutes_document(
         _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
     )
-    assert method == "ocr"
+    assert (text, method) == (native, "native")
     votes = {(v["member"], v["value"]) for v in agenda_text.parse_votes(text)}
     assert ("Alice Smith", "yes") in votes and ("Bob Jones", "no") in votes
 
@@ -1545,3 +1545,47 @@ def test_an_all_caps_heading_before_a_numbered_item_is_not_a_member():
     rows = parse_roster(text)
     assert _names(rows) == ["ALICE SMITH"]
     assert "FINANCIAL UPDATE" not in rows[0]["evidence"]
+
+
+def test_minutes_ocr_is_used_when_it_covers_everything_the_text_layer_stated(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    native = "PRESENT: Alice Smith"
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+    body = "PRESENT: Alice Smith, Bob Jones\n" + "Minutes of the meeting. " * 40
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF,
+        content_type="application/pdf",
+        ocr_runner=lambda *a, **k: (body, 95.0),
+    )
+    assert (text, method) == (body, "ocr")
+
+
+def test_roster_does_not_extend_a_complete_inline_list_from_a_heading_with_a_comma():
+    text = "PRESENT: Alice Smith, Bob Jones\nBudget, Finance and Policy\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+    wrapped = "PRESENT: Mayor Ann Lee and Council Members Keely\nBriggs, Jesse Davis\n"
+    assert _names(parse_roster(wrapped)) == ["Ann Lee", "Keely Briggs", "Jesse Davis"]
+
+
+def test_structured_roster_drops_a_name_followed_by_a_staff_title():
+    text = "PRESENT: Alice Smith, Jane Doe, City Attorney, Bob Jones\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+    vertical = "PRESENT:\nAlice Smith\nJane Doe, City Attorney\n"
+    assert _names(parse_roster(vertical)) == ["Alice Smith"]
+    staff = "ALSO PRESENT: Jane Doe, City Attorney\n"
+    assert [r["name"] for r in parse_roster(staff) if r.get("section") == "staff"] == ["Jane Doe"]
+
+
+def test_roster_parsing_is_fast_on_a_long_document_with_many_attendance_cues():
+    import time
+
+    sentence = "The council reviewed the item and Mayor Ann Lee and Bob Roe were in attendance. "
+    text = "Mayor Ann Lee called the meeting to order at 7:00pm. " + sentence * 4 + "x. " * 4000
+    text = "PRESENT: Mayor Ann Lee, Bob Roe\n" + text + ("Item text. " * 40 + "\n") * 1500
+    started = time.monotonic()
+    for _ in range(5):
+        parse_roster(text)
+    assert time.monotonic() - started < 3  # about 1 ms a document in practice

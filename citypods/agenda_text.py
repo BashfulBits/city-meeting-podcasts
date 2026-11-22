@@ -1274,16 +1274,12 @@ def extract_minutes_document(
         return native, links, empty_method
     native_members, native_votes = _minutes_facts(native)
     ocr_members, ocr_votes = _minutes_facts(text)
-    native_status = {name: status for name, status in native_members}
-    if any(native_status.get(name, status) != status for name, status in ocr_members):
-        # The sources disagree about who was present or absent. Joining them would file the same
-        # person as both, so the born-digital text layer wins over a reading of an image.
+    if (native_members | native_votes) - (ocr_members | ocr_votes):
+        # OCR did not recover everything the born-digital text layer already states (a name, a
+        # present/absent reading, a vote). The sources are never joined: one parse of a joined text
+        # would mix vote groups, file a person as both present and absent, or let a structured OCR
+        # roster hide native prose. The text layer wins; OCR is used only when it covers it.
         return native, links, "native"
-    if native_members - ocr_members or native_votes - ocr_votes:
-        # A scan can have selectable attendance or vote lines over an image-only body, and OCR may
-        # read none of them, only part, or with a different present/absent reading. Keep the native
-        # text and add the OCR'd body; rows both sources name collapse when the roster is parsed.
-        return f"{native.rstrip()}\n{text}", links, "ocr"
     return text, links, "ocr"
 
 
@@ -1685,6 +1681,24 @@ def _continues_a_wrapped_list(previous: str, line: str) -> bool:
     return _wraps_onto(previous, line)
 
 
+_INITIAL_RE = re.compile(r"^[A-Z]\.?$")
+
+
+def _last_entry_is_incomplete(previous: str) -> bool:
+    """Whether the last entry of ``previous`` is a title and at most one name word.
+
+    "Council Members Keely" and "Council Member Robert J." are unfinished (a surname follows on the
+    next line); "Bob Jones" is a complete name.
+    """
+    last = re.split(r",|;|&|\band\b", previous)[-1]
+    words = [
+        w
+        for w in last.split()
+        if w.casefold().strip(".") not in _GENERIC_ROSTER_WORDS and not _INITIAL_RE.match(w)
+    ]
+    return len(words) <= 1
+
+
 def _wraps_onto(previous: str, line: str) -> bool:
     """Evidence that ``line`` finishes an entry ``previous`` started, rather than starting its own.
 
@@ -1693,7 +1707,9 @@ def _wraps_onto(previous: str, line: str) -> bool:
     ("Alice Smith" / "Public Comment") is the next part of the minutes, not the rest of a name.
     """
     if _SURNAME_LIST_START_RE.match(line):
-        return True
+        # Only if the previous entry is visibly unfinished ("Council Members Keely" / "Briggs,"):
+        # after a complete name ("Bob Jones") a line like "Budget, Finance and Policy" is a heading.
+        return _last_entry_is_incomplete(previous)
     words = previous.replace(",", " ").split()
     return bool(
         _SHORT_NAME_TAIL_RE.match(line)
@@ -1813,15 +1829,16 @@ _NOT_AFTER_ABBREVIATION = (
     r"(?<!\b[A-Z]\.)(?<!\bJr\.)(?<!\bSr\.)(?<!\bDr\.)(?<!\bMr\.)(?<!\bMs\.)(?<!\bMrs\.)"
 )
 _SENTENCE_START_RE = re.compile(rf"(?:^|{_NOT_AFTER_ABBREVIATION}(?<=\.)\s+(?=[A-Z]))")
-# Text up to the end of a sentence: any character but a period, except the period of an initial
-# or title abbreviation, so a name like "Robert J. Van Dyke" is not cut in half.
-_SPAN_CHAR = (
-    r"(?:[^.]|(?<=\b[A-Z])\.|(?<=\bJr)\.|(?<=\bSr)\.|(?<=\bDr)\.|(?<=\bMr)\.|(?<=\bMs)\.|"
-    r"(?<=\bMrs)\.)"
-)
+# Prose is read from short cues ("... were in attendance"), looking back a bounded distance for the
+# sentence they end. Scanning every position with a lazy sentence-spanning pattern was two orders
+# of magnitude slower on a real document and ran for every episode.
+_PROSE_LOOKBACK_CHARS = 500
+_PRESIDER_LOOKBACK_CHARS = 120
+_QUALIFIER_LOOKBACK_CHARS = 41
+_PROSE_LOOKAHEAD_CHARS = 500
 # "were present to give public comment" names visitors, not members: a purpose clause disqualifies.
-_PROSE_PRESENT_RE = re.compile(
-    rf"(?P<names>{_SPAN_CHAR}{{3,500}}?)\s+(?:was|were)\s+(?:in\s+attendance|present)\b"
+_PROSE_PRESENT_CUE_RE = re.compile(
+    r"\s+(?:was|were)\s+(?:in\s+attendance|present)\b"
     r"(?!\s+(?:to|for|during|at\s+the\s+(?:podium|microphone)))",
     re.I,
 )
@@ -1829,15 +1846,14 @@ _PROSE_PRESENT_RE = re.compile(
 _MEMBER_EVIDENCE_WORDS = _ROSTER_MEMBER_WORDS | frozenset(
     {"mayor", "chair", "vice", "commissioner", "tem", "councilmember", "councilmembers"}
 )
-_PROSE_ABSENT_RE = re.compile(
-    rf"(?P<names>{_SPAN_CHAR}{{3,500}}?)\s+(?:was|were)\s+(?P<phrase>absent|not\s+present|excused)\b",
-    re.I,
+_PROSE_ABSENT_CUE_RE = re.compile(
+    r"\s+(?:was|were)\s+(?P<phrase>absent|not\s+present|excused)\b", re.I
 )
 # "Mayor Jane Doe called the regular meeting to order": the presiding member is present and, being
 # the one who speaks most, the person a roster most needs to hold.
-_PRESIDER_RE = re.compile(
-    rf"(?P<names>{_SPAN_CHAR}{{3,120}}?)\s+called\s+(?:the\s+)?(?:[A-Za-z]+\s+){{0,3}}?"
-    r"(?:meeting|work\s*session|session)\s+to\s+order\b",
+_PRESIDER_CUE_RE = re.compile(
+    r"\s+called\s+(?:the\s+)?(?:[A-Za-z]+\s+){0,3}?(?:meeting|work\s*session|session)\s+to\s+"
+    r"order\b",
     re.I,
 )
 _PRESIDER_OFFICE_RE = re.compile(
@@ -1850,10 +1866,20 @@ _PRESIDER_TITLE_WORDS = frozenset(
 _ENCLOSING_NON_MEMBER_LABEL_RE = re.compile(
     r"\b(?:guests?|visitors?|audience|public|others?|staff|applicants?|speakers?)\s*:\s*$", re.I
 )
-_QUALIFIED_ATTENDANCE_RE = re.compile(
-    r"(?P<qualifier>[A-Z][A-Za-z ]{2,40}?)\s+in\s+attendance(?:\s+include)?\s*:?\s+"
-    rf"(?P<names>{_SPAN_CHAR}{{3,500}})",
-)
+_QUALIFIED_CUE_RE = re.compile(r"\s+in\s+attendance(?:\s+include)?\s*:?\s+", re.I)
+_TRAILING_WORDS_RE = re.compile(r"[A-Za-z ]{3,41}$")
+_FROM_FIRST_CAPITAL_RE = re.compile(r"[A-Z][A-Za-z ]*$")
+_ABBREVIATION_PERIOD_RE = re.compile(r"(?:\b[A-Z]|\bJr|\bSr|\bDr|\bMr|\bMs|\bMrs)\.$")
+
+
+def _sentence_text_after(text: str) -> str:
+    """``text`` up to the first period that ends a sentence (not one after an initial or title)."""
+    for match in re.finditer(r"\.", text):
+        if not _ABBREVIATION_PERIOD_RE.search(text[: match.end()]):
+            return text[: match.start()]
+    return text
+
+
 # A run-on label ("... Lisa Ely Commissioners absent: ...") ends a name list without punctuation.
 _RUN_ON_LABEL_RE = re.compile(
     r"\s+(?:commissioners?|members?|staff|city|absent|also|guests?)\b.*$", re.I | re.S
@@ -2057,38 +2083,52 @@ def _parse_prose_attendance(text: str) -> list[dict]:
     """
     flat = _opening_window(_WHITESPACE_RE.sub(" ", text))
     rows: list[dict] = []
-    for pattern in (_PROSE_PRESENT_RE, _PROSE_ABSENT_RE):
-        for match in pattern.finditer(flat):
+    for cue_re in (_PROSE_PRESENT_CUE_RE, _PROSE_ABSENT_CUE_RE):
+        for match in cue_re.finditer(flat):
             status = "present"
-            if pattern is _PROSE_ABSENT_RE:
+            if cue_re is _PROSE_ABSENT_CUE_RE:
                 status = "excused" if match.group("phrase").casefold() == "excused" else "absent"
-            # The match is lazy from wherever scanning resumed, so trim to its own sentence.
-            sentence = _member_sentence(match.group("names"), require_member_evidence=True)
-            if sentence is None:
+            span = flat[max(0, match.start() - _PROSE_LOOKBACK_CHARS) : match.start()]
+            sentence = _member_sentence(span, require_member_evidence=True)
+            if sentence is None or len(sentence) < 3:
                 continue
-            rows += _prose_roster_rows(sentence, status, None, match.group(0))
-    presider = _PRESIDER_RE.search(flat)
+            evidence = f"{sentence} {match.group(0).strip()}"
+            rows += _prose_roster_rows(sentence, status, None, evidence)
+    presider = _PRESIDER_CUE_RE.search(flat)
     if presider is not None:
-        sentence = _member_sentence(presider.group("names"))
+        span = flat[max(0, presider.start() - _PRESIDER_LOOKBACK_CHARS) : presider.start()]
+        sentence = _member_sentence(span)
         if sentence is not None:
             # Flattening glues the line above ("City Council Minutes") onto the presider, so
             # read from the last office word: "Council Minutes Mayor Jane Doe" -> "Mayor Jane Doe".
             offices = list(_PRESIDER_OFFICE_RE.finditer(sentence))
             sentence = sentence[offices[-1].start() :] if offices else ""
         if sentence:
-            rows += _prose_roster_rows(sentence, "present", None, presider.group(0))
-    for match in _QUALIFIED_ATTENDANCE_RE.finditer(flat):
-        if _ENCLOSING_NON_MEMBER_LABEL_RE.search(flat[max(0, match.start() - 60) : match.start()]):
+            rows += _prose_roster_rows(sentence, "present", None, f"{sentence} called to order")
+    for match in _QUALIFIED_CUE_RE.finditer(flat):
+        back_start = max(0, match.start() - _QUALIFIER_LOOKBACK_CHARS)
+        back = flat[back_start : match.start()]
+        run = _TRAILING_WORDS_RE.search(back)
+        capital = _FROM_FIRST_CAPITAL_RE.search(run.group(0)) if run else None
+        if run is None or capital is None:
+            continue
+        qualifier = capital.group(0)
+        qualifier_start = back_start + run.start() + capital.start()
+        if _ENCLOSING_NON_MEMBER_LABEL_RE.search(
+            flat[max(0, qualifier_start - 60) : qualifier_start]
+        ):
             continue  # "Guests: Commissioners in attendance: ..." -- the list is the guests'
-        qualifier = match.group("qualifier")
         words = _qualifier_words(qualifier)
         if words & (_ROSTER_STAFF_WORDS | _ROSTER_EXCLUDED_WORDS):
             continue
         section = _roster_section(qualifier)
         if section != "members":
             continue
-        names = _RUN_ON_LABEL_RE.sub("", match.group("names"))
-        rows += _prose_roster_rows(names, "present", section, match.group(0))
+        ahead = flat[match.end() : match.end() + _PROSE_LOOKAHEAD_CHARS]
+        names = _RUN_ON_LABEL_RE.sub("", _sentence_text_after(ahead))
+        if len(names) < 3:
+            continue
+        rows += _prose_roster_rows(names, "present", section, f"{qualifier} in attendance: {names}")
     seen: set[tuple[str, str]] = set()
     unique = []
     for row in rows:
@@ -2097,6 +2137,30 @@ def _parse_prose_attendance(text: str) -> list[dict]:
             seen.add(key)
             unique.append(row)
     return unique
+
+
+def _member_entries(names_text: str, section: str | None) -> list[str]:
+    """Entries of a structured attendance list, without the staff a member heading may include.
+
+    Under a member (or unlabeled) heading, "City Attorney Bob Roe" and "Jane Doe, City Attorney"
+    are staff: the first opens with a title, the second is a title after a comma, which marks the
+    name before it. Staff headings keep every entry.
+    """
+    pieces = _ATTENDANCE_SPLIT_CAPTURE_RE.split(names_text)
+    entries: list[str | None] = []
+    for index in range(0, len(pieces), 2):
+        piece = pieces[index]
+        if section == "staff":
+            entries.append(piece)
+            continue
+        after_comma = index > 0 and pieces[index - 1].strip() in {",", ";"}
+        words = [w.casefold().strip(".") for w in piece.split()]
+        if after_comma and _is_staff_title_phrase(piece):
+            if entries:
+                entries[-1] = None  # the name just before the title is that staffer
+            continue
+        entries.append(None if section is None and _has_leading_staff_title(words) else piece)
+    return [entry for entry in entries if entry]
 
 
 def parse_roster(text: str) -> list[dict]:
@@ -2126,11 +2190,7 @@ def parse_roster(text: str) -> list[dict]:
                 continue
             names_text, evidence_end = below
         names_text = _PLURAL_ROSTER_TITLE_RE.sub(" ", _INLINE_LABEL_RE.sub(" ", names_text))
-        for raw_name in _ATTENDANCE_SPLIT_RE.split(names_text):
-            if section is None and _has_leading_staff_title(
-                [w.casefold().strip(".") for w in raw_name.split()]
-            ):
-                continue  # "City Attorney Bob Roe" under a member heading is a staffer
+        for raw_name in _member_entries(names_text, section):
             name = _clean_roster_name(raw_name)
             if not name:
                 continue
