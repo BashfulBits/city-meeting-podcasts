@@ -1704,11 +1704,16 @@ def _names_after_heading(
         ):
             ended = True  # "None" says nobody is listed, so the next line is not a name
             break
-        # A change from mixed case to ALL CAPS is a new section, not another member.
-        if stripped.isupper() and any(any(c.islower() for c in earlier) for earlier in names):
+        before = names[-1] if names else previous
+        # A change from mixed case to ALL CAPS is a new section, not another member -- unless the
+        # previous line ends with a comma or "and", which says the list visibly goes on.
+        if (
+            stripped.isupper()
+            and any(any(c.islower() for c in earlier) for earlier in names)
+            and not _LIST_OPEN_END_RE.search(before)
+        ):
             ended = True
             break
-        before = names[-1] if names else previous
         if wrapped and not _continues_a_wrapped_list(before, stripped):
             ended = True
             break
@@ -1855,8 +1860,13 @@ def _is_staff_title_phrase(part: str) -> bool:
     words = [w.casefold().strip(".") for w in original]
     if not words or not (_STAFF_ROLE_NOUNS & set(words)):
         return False
+    # An upper-case token only counts as an acronym ("PCDC") beside mixed-case words. In an
+    # all-caps line every word is upper case, so "MARK" would pass as one.
+    acronyms_count = any(not o.isupper() for o in original)
     return all(
-        w in _STAFF_ROLE_WORDS or w in _STAFF_DEPARTMENT_WORDS or (o.isupper() and len(o) >= 2)
+        w in _STAFF_ROLE_WORDS
+        or w in _STAFF_DEPARTMENT_WORDS
+        or (acronyms_count and o.isupper() and len(o) >= 2)
         for w, o in zip(words, original, strict=True)
     )
 
@@ -1874,6 +1884,10 @@ def _has_leading_staff_title(words: list[str]) -> bool:
         if word not in _STAFF_ROLE_WORDS and word not in _STAFF_DEPARTMENT_WORDS:
             break
         consumed.append(word)
+    if consumed == ["secretary"]:
+        return (
+            False  # a board's own "Secretary Thomas Plock" is a member; "City Secretary" is staff
+        )
     return bool(consumed) and len(consumed) < len(words) and bool(_STAFF_ROLE_NOUNS & set(consumed))
 
 
@@ -2049,6 +2063,10 @@ def parse_roster(text: str) -> list[dict]:
             names_text, evidence_end = below
         names_text = _PLURAL_ROSTER_TITLE_RE.sub(" ", _INLINE_LABEL_RE.sub(" ", names_text))
         for raw_name in _ATTENDANCE_SPLIT_RE.split(names_text):
+            if section != "staff" and _has_leading_staff_title(
+                [w.casefold().strip(".") for w in raw_name.split()]
+            ):
+                continue  # "City Attorney Bob Roe" under a member heading is a staffer
             name = _clean_roster_name(raw_name)
             if not name:
                 continue

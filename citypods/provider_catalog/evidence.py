@@ -7,6 +7,8 @@ import io
 import json
 import re
 import subprocess
+import sys
+import time
 import zipfile
 import zlib
 from dataclasses import asdict, dataclass
@@ -231,12 +233,40 @@ def rate_artifact(observations, limits, *, repository, run_id, head_sha, now, at
     return {"payload": payload, "payload_digest": digest(payload)}
 
 
+# A transient network failure while reading history (a reset or timed-out artifact download from
+# GitHub's blob storage, a 5xx) must not make the whole history unavailable: the 2026-11-22
+# weekly run lost its entire configured-route re-measure to one "connection reset by peer".
+GH_ATTEMPTS = 3
+GH_BACKOFF_SECONDS = (5, 20)
+_TRANSIENT_GH_ERROR = re.compile(
+    r"connection reset|connection refused|timed out|timeout|unexpected eof|\beof\b|tls|"
+    r"temporary failure|HTTP 5\d\d|\b50[234]\b|broken pipe|no such host",
+    re.IGNORECASE,
+)
+_sleep = time.sleep
+
+
+def _gh_api(path):
+    """``gh api`` with a few retries for transient network errors; others fail at once."""
+    for attempt in range(GH_ATTEMPTS):
+        try:
+            return subprocess.check_output(["gh", "api", path], stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
+            if detail:
+                print(detail[:400], file=sys.stderr)
+            if attempt + 1 >= GH_ATTEMPTS or not _TRANSIENT_GH_ERROR.search(detail):
+                raise
+            _sleep(GH_BACKOFF_SECONDS[min(attempt, len(GH_BACKOFF_SECONDS) - 1)])
+    raise AssertionError("unreachable")
+
+
 def _gh_json(path):
-    return json.loads(subprocess.check_output(["gh", "api", path]))
+    return json.loads(_gh_api(path))
 
 
 def _gh_download(path):
-    return subprocess.check_output(["gh", "api", path])
+    return _gh_api(path)
 
 
 def _main_ancestor(sha):
