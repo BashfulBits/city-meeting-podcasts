@@ -791,7 +791,7 @@ def reconcile(
         daily_used_route[rid] = daily_used_route.get(rid, 0) + calls
         daily_used_provider[provider] = daily_used_provider.get(provider, 0) + calls
 
-    def verify_before_measuring(route, provider, cfg, rules, pause, http, quota):
+    def verify_before_measuring(route, provider, cfg, rules, pause, http, quota, last_request):
         """Health-check a route this run did not check, so it can be measured (weekly run only).
 
         The weekly health pass tests one route per upstream model, and a scarce route only every
@@ -812,10 +812,18 @@ def reconcile(
             control.reserve(rid)
         except DispatchPauseError:
             return None, "dispatch ledger unavailable; waits for next week"
+        if rules.canary_interval_seconds and last_request[0] is not None:
+            # Space this check from the previous route's last request on the provider.
+            wait = rules.canary_interval_seconds - (time.monotonic() - last_request[0])
+            if wait > 0:
+                sleep(wait)
         pause.renew()
         response = canary_fn(rules, cfg, str(route["upstream_model"]), api_key, http or session)
+        last_request[0] = time.monotonic()
         verdict = classify(response, rules).verdict
         route_verdicts[rid] = verdict
+        if remaining is not None:
+            quota[rid] = {**(quota.get(rid) or {}), "rpd_remaining": remaining - 1}
         if rules.canary_interval_seconds:
             sleep(rules.canary_interval_seconds)  # space this check from the session's first probe
         pause.renew()
@@ -839,6 +847,7 @@ def reconcile(
             if remeasure_daily_rpd_share is not None
             else {k: dict(v) for k, v in (control.route_quota(provider) or {}).items()}
         )
+        last_request: list[float | None] = [None]  # when this provider last got a request
         for rid, axis in due:
             route = routes_by_id[rid]
             row = {"route_id": rid, "axis": axis, "ran": False}
@@ -860,8 +869,13 @@ def reconcile(
                 and route.get("rpd") is not None
                 and remeasure_daily_rpd_share is None
             ):
+                with remeasure_lock:
+                    budget_open = remeasure_deadline() is not None
+                if not budget_open:  # no request is sent for a session that could not start
+                    row["note"] = "this run's re-measure budget was spent; waits for next week"
+                    continue
                 verdict, why = verify_before_measuring(
-                    route, provider, cfg, rules, pause, http, quota
+                    route, provider, cfg, rules, pause, http, quota, last_request
                 )
                 if why:
                     row["note"] = why
@@ -885,6 +899,19 @@ def reconcile(
                 cap,
                 rate_now or datetime.now(UTC),
             )
+            # A scarce route's remaining daily quota bounds the session, and shrinks with every
+            # request this run sends it (so its second axis cannot start on a spent quota).
+            quota_cap = None
+            scarce = route.get("rpd") is not None and 0 < float(route["rpd"]) <= SCARCE_RPD
+            if remeasure_daily_rpd_share is None and scarce:
+                left = (quota.get(rid) or {}).get("rpd_remaining")
+                if left is not None:
+                    if left < (CONFIRM_MIN_CALLS if confirm else SEARCH_MIN_CALLS):
+                        row["note"] = (
+                            f"only {left} requests are left of its daily limit; waits for next week"
+                        )
+                        continue
+                    quota_cap = left
             with remeasure_lock:
                 allowance = daily_allowance(route, provider, cfg)
                 if allowance is not None and allowance < (
@@ -948,10 +975,13 @@ def reconcile(
                     account_id=str(route["account_id"]),
                     seeds=seeds,
                     recheck_upper=bool(confirm),
-                    max_attempts=allowance,
+                    max_attempts=allowance if allowance is not None else quota_cap,
                 )
             except Exception as exc:  # advisory, like new-route discovery
                 row["note"] = f"search stopped safely ({type(exc).__name__})"
+                last_request[0] = time.monotonic()
+                if quota_cap is not None:  # its calls are unknown: count all that were left
+                    quota[rid] = {**(quota.get(rid) or {}), "rpd_remaining": 0}
                 with remeasure_lock:
                     remeasure_inflight[0] -= 1
                     if allowance is not None:  # its calls are unknown: count the whole allowance
@@ -964,6 +994,10 @@ def reconcile(
                 remeasure_artifacts.append(id(record["artifact"]))
                 save_sessions()
                 remeasure_inflight[0] -= 1
+            last_request[0] = time.monotonic()
+            if quota_cap is not None:
+                spent = len(record["artifact"].get("attempts") or ())
+                quota[rid] = {**(quota.get(rid) or {}), "rpd_remaining": max(0, quota_cap - spent)}
             row["seconds"] = round(discovery_clock() - session_started)
             row["calls"] = record["summary"].get("calls")
             bracket = next((a for a in record["summary"]["axes"] if a.get("axis") == axis), {})

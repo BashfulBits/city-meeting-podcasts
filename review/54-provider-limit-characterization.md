@@ -271,8 +271,12 @@ provider's daily request limit). Delivered in order:
    only every `SCARCE_CHECK_DAYS` (28). The weekly re-measure now gives such a route the same
    one-request health check, through the dispatch ledger, before its session, instead of skipping
    it. A scarce route (50 requests a day or fewer) still waits unless its remaining daily quota is
-   known and covers a search. The daily slice keeps the old, stricter gate. The ceiling goes from
-   12 to 28 (the 32-session artifact less three new-route sessions and one spare).
+   known and covers a search. The extra check is sent only while the re-measure budget is open,
+   and is spaced from the provider's previous request by the canary interval. A scarce route's
+   remaining daily quota also bounds its sessions (the search's call cap) and shrinks with every
+   request this run sends it, so its second axis cannot start on a quota the first one spent. The
+   daily slice keeps the old, stricter gate. The ceiling goes from 12 to 28 (the 32-session
+   artifact less three new-route sessions and one spare).
 3. **A daily slice** (the maintainer's limit: the daily checks never spend more than 10% of a
    provider's request limit on this). The daily incremental run re-measures a few caps too: at most
    `REMEASURE_DAILY_SESSION_CEILING` (6) sessions in `REMEASURE_DAILY_SECONDS` (40 minutes), only on

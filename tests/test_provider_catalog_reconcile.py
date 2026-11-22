@@ -3529,10 +3529,14 @@ def test_the_weekly_run_has_no_daily_share(monkeypatch):
         remeasure_time_budget_seconds=3_600,
         remeasure_session_ceiling=50,
     )
-    assert seen and all(n is None for n in seen)
+    # No daily share in the weekly run. A scarce route's session is bounded by what is left of its
+    # daily limit (or_scarce: 20), and every other route is unbounded.
+    assert seen and set(seen) <= {None, 20} and None in seen
 
 
-def _verify_run(monkeypatch, *, routes, quota=None, previous=None, providers=None):
+def _verify_run(
+    monkeypatch, *, routes, quota=None, previous=None, providers=None, attempts=0, budget=3_600
+):
     """A weekly re-measure over ``routes``; returns (report, measured route ids, canary models)."""
     import citypods.provider_catalog.reconcile as module
 
@@ -3547,9 +3551,11 @@ def _verify_run(monkeypatch, *, routes, quota=None, previous=None, providers=Non
     measured, canaried = [], []
 
     def discover(candidate, *_args, **kwargs):
+        stub = _stub_session(candidate)
         if candidate.key in configured:
             measured.append(candidate.key)
-        return _stub_session(candidate)
+            stub["artifact"]["attempts"] = [{}] * attempts
+        return stub
 
     def canary(rules, cfg, model, key, session):
         canaried.append(model)
@@ -3573,7 +3579,7 @@ def _verify_run(monkeypatch, *, routes, quota=None, previous=None, providers=Non
         discovery_run_id="weekly",
         discovery_time_budget_seconds=7_200,
         discovery_clock=lambda: 0.0,
-        remeasure_time_budget_seconds=3_600,
+        remeasure_time_budget_seconds=budget,
         remeasure_session_ceiling=50,
     )
     return report, measured, canaried, control
@@ -3632,6 +3638,38 @@ def test_a_scarce_route_without_enough_known_quota_still_waits(monkeypatch):
         assert any(
             "daily quota not confirmed" in (s.get("note") or "") for s in report.remeasure_sessions
         )
+
+
+def test_no_extra_health_check_is_sent_once_the_remeasure_budget_is_spent(monkeypatch):
+    second = {**KEEP, "route_id": "groq_second", "account_id": "q", "rpd": 1000}
+    first = {**KEEP, "rpd": 1000}
+    report, measured, canaried, control = _verify_run(
+        monkeypatch, routes=[first, second], providers=TWO_ACCOUNTS, budget=0
+    )
+    # Only the health pass's own check ran; the unchecked route sent nothing and waits.
+    assert not measured and canaried.count(KEEP["upstream_model"]) == 1
+    assert "groq_second" not in control.reserved
+    assert any(
+        s["route_id"] == "groq_second" and "budget" in (s.get("note") or "")
+        for s in report.remeasure_sessions
+    )
+
+
+def test_a_scarce_route_s_second_axis_cannot_start_on_the_quota_its_first_one_spent(monkeypatch):
+    scarce = {**LIMITS["routes"][2]}  # rpd 20
+    checked_recently = {"route_checks": {"or_scarce": TODAY.isoformat()}}
+    # 30 left: the extra check leaves 29, the input session spends 20, 9 remain for the output
+    # axis, which needs 12 for a search.
+    report, measured, _canaried, _control = _verify_run(
+        monkeypatch,
+        routes=[scarce],
+        quota={"or_scarce": {"rpd_remaining": 30}},
+        previous=checked_recently,
+        attempts=20,
+    )
+    assert measured == ["or_scarce"]
+    waiting = [s for s in report.remeasure_sessions if not s.get("ran")]
+    assert any("only 9 requests are left" in (s.get("note") or "") for s in waiting)
 
 
 def test_a_route_whose_extra_health_check_fails_is_not_measured(monkeypatch):
