@@ -778,8 +778,10 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   `route_id` with its own ledger entry. `LLM_MODE=direct` is the synchronous GH Actions path;
   direct LiteLLM calls default to a 720 s `timeout` (`LLMBackendConfig.direct_timeout_seconds`, the
   Worker's `MAX_RESPONSE_SECONDS`) unless the job sets its own. Callers that must finish in the
-  same run (city discovery, audit remedies) set `require_direct` and never queue (review/41
-  §incident). The original R2-queue Worker (`workers/llm-dispatch-proxy`, review/41/review/43) was
+  same run (city discovery, audit remedies) queue on the one `interactive-classify` lane at
+  priority 0 and wait for the result (about a minute: the Worker claims jobs on a one-minute cron;
+  #2249, `citypods/compute/interactive.py`), so the Worker's ledger sees their quota. They used
+  to set `require_direct` (review/41 §incident), which spent quota the ledger could not see. The original R2-queue Worker (`workers/llm-dispatch-proxy`, review/41/review/43) was
   retired in 2026-09 and removed along with its queue maintenance scripts; handles it issued
   reconcile as terminal failures. `scripts/compile_llm_limits.py`'s default invocation is a pure,
   network-free YAML→JSON compile; a provider's live model/pricing discovery endpoint (OpenRouter
@@ -1631,12 +1633,12 @@ action-specific requirements are checked locally per finding, so one incomplete 
 becomes manual review instead of invalidating the entire batch. `manual_review` records uncertainty
 without inventing an owning body.
 
-**Interactive execution (issue #1231).** Remedy uses `LiteLLMBackend.run_immediate`, with
-`require_direct=True`, no dispatch overflow, and no queue admission. It keeps the shared provider
-quota reservation/settlement but neither reads nor writes the deferred/result registry. Thus old
-unstructured cached answers and orphaned handles cannot poison subsequent `/remedy` runs. The
-recipe also versions evidence, prompt, and schema. AI Gateway may proxy direct HTTP for analytics;
-the LLM dispatch Worker and its sweep never own these calls. The maintainer explicitly requested
+**Interactive execution (issue #1231, queued since #2249).** Remedy submits each call to the
+Worker's `interactive-classify` lane at priority 0 (`citypods/compute/interactive.py`
+`submit_and_wait`) and waits in the same process, ten minutes at most per call. It was direct
+(`run_immediate`, `require_direct`) until #2249 and so spent provider quota the Worker's ledger
+could not see. The recipe versions evidence, prompt, and schema, so an old unstructured cached
+answer cannot be replayed for a changed contract. The maintainer explicitly requested
 this same-run behavior on 2026-09-05 after the stale-cache/deferral incident: bounded synchronous
 work gives immediate findings at the cost of reporting unfinished batches when free quota is spent.
 No catalog audio/stage version changes or episode backfills are involved; only remedy is affected.

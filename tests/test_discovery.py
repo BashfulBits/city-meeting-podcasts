@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import citypods.discovery.classify as classify_module
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import LLMStructuredOutputError
 from citypods.compute.llm_policy import ROUTE_CANDIDATES
@@ -200,16 +201,29 @@ def test_discovery_script_defers_rather_than_crashes_without_cas_storage(monkeyp
     assert "discovery deferred" in capsys.readouterr().err
 
 
-def test_classifier_marks_queued_dispatch_for_deferred_retry():
+def test_classifier_marks_queued_dispatch_for_deferred_retry(monkeypatch):
     class Backend:
-        def run_inference(self, job: InferenceJob):
-            return JobHandle(
-                task=job.task,
-                recipe_hash=job.recipe_hash,
-                backend="litellm",
-                ref="request-1",
-            )
+        def enqueue_batch(self, jobs):
+            job = jobs[0]
+            return [
+                JobHandle(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    backend="litellm",
+                    ref="request-1",
+                )
+            ]
 
+        def poll_batch(self, handles):
+            return {handle.ref: None for handle in handles}
+
+    # No real wait: a zero-second budget means the first poll is already past the deadline.
+    real = classify_module.submit_and_wait
+    monkeypatch.setattr(
+        classify_module,
+        "submit_and_wait",
+        lambda backend, job: real(backend, job, timeout_seconds=0, sleep=lambda _s: None),
+    )
     with pytest.raises(ClassificationDeferred, match="queued"):
         classify(Backend(), _request(), _results())
 
@@ -237,7 +251,10 @@ def test_classifier_rejects_source_url_not_in_retrieved_evidence():
 
 def test_classifier_prompt_includes_provider_source_schemas():
     class Backend:
-        def run_inference(self, job: InferenceJob):
+        def enqueue_batch(self, jobs):
+            return [self._one(jobs[0])]
+
+        def _one(self, job: InferenceJob):
             prompt = job.inputs["messages"][0]["content"]
             assert "minutes_url" in prompt
             assert "granicus_base" in prompt
@@ -246,7 +263,10 @@ def test_classifier_prompt_includes_provider_source_schemas():
             # City discovery acts on the result immediately, so it only ever asks for a free
             # route -- no paid fallback, no deadline to wait out (see classify()'s docstring).
             assert job.inputs["llm_policy"].allow_paid is False
-            assert job.inputs["llm_policy"].purpose == "city-onboarding"
+            assert job.inputs["llm_policy"].queue_only is True
+            assert job.inputs["llm_policy"].priority == 0
+            assert not job.inputs["llm_policy"].require_direct
+            assert job.inputs["llm_policy"].purpose == "interactive-classify"
             assert job.inputs["llm_policy"].deadline_at is None
             assert job.inputs["llm_policy"].allowed_models == ("gemini/gemini-3-flash-preview",)
             return JobResult(
@@ -283,7 +303,10 @@ def test_classifier_prompt_includes_provider_source_schemas():
 
 def test_auxiliary_prompt_requires_confirmed_city_identity_for_strict_schema():
     class Backend:
-        def run_inference(self, job: InferenceJob):
+        def enqueue_batch(self, jobs):
+            return [self._one(jobs[0])]
+
+        def _one(self, job: InferenceJob):
             prompt = job.inputs["messages"][0]["content"]
             assert "In auxiliary mode, set city_identity to confirmed" in prompt
             return JobResult(
@@ -304,7 +327,10 @@ def test_classifier_declares_one_pydantic_contract_per_task():
         def __init__(self):
             self.calls: list[InferenceJob] = []
 
-        def run_inference(self, job: InferenceJob):
+        def enqueue_batch(self, jobs):
+            return [self._one(jobs[0])]
+
+        def _one(self, job: InferenceJob):
             self.calls.append(job)
             content = _classification_content()
             return JobResult(

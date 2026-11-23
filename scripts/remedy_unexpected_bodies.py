@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
             source_key = bundle.get("source_key", "")
             city = bundle.get("city", {}).get("slug", source_key)
             labels = [f["unexpected_body"] for f in bundle.get("unexpected_findings", [])]
-            _log(f"Classifying {city} batch {batch_number} ({len(labels)} labels; direct only)…")
+            _log(f"Classifying {city} batch {batch_number} ({len(labels)} labels; queued)…")
             try:
                 if datetime.now(UTC) >= deadline:
                     raise TimeoutError("Run classification deadline reached")

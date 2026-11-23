@@ -1545,7 +1545,9 @@ def test_remedy_has_direct_diagnostics_verification_tools_and_bounded_fallback()
     assert "constraints/chapter-research.txt" in install["run"]
     classify = next(s for s in job["steps"] if s.get("id") == "classify")
     assert classify["env"]["LLM_SAFE_DIAGNOSTICS"] == "1"
-    assert not any("DISPATCH" in key for key in classify["env"])
+    # Classification is queued on the Worker's interactive lane (#2249), not called directly.
+    assert "LLM_DISPATCH_V2_URL" in classify["env"]
+    assert "LLM_DISPATCH_V2_AUTH_TOKEN" in classify["env"]
     assert "timeout --signal=TERM" in classify["run"]
     fallback = next(
         s for s in job["steps"] if s.get("name") == "Report interrupted or failed execution"

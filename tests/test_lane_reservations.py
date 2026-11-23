@@ -38,19 +38,22 @@ RATIOS = {
     "judge:anchor": 20,
     "judge:sibling": 30,
     "judge:adjudicator": 10,
+    # Live lanes split the live pool by ratio: 100 and 50 of its 150 jobs (#2249).
+    "interactive-classify": 0.5,
     "remedy:p3": 1,
 }
-LIVE = {"remedy:p3"}
-# At DO_ROWS_ENQUEUE_STOP 90,000: the live pool (100 remedy jobs x 18 rows) comes off the top,
-# then k = (88,500 - 1,800) / 2,595 = 33.41 jobs per ratio point for the other lanes.
+LIVE = {"remedy:p3", "interactive-classify"}
+# At DO_ROWS_ENQUEUE_STOP 90,000: the live pool (100 remedy jobs x 18 rows plus 50 interactive
+# jobs x 24 rows) comes off the top, then k = 32.95 jobs per ratio point for the other lanes.
 RESERVED_JOBS = {
-    "chapter-agenda": 334,
-    "chapter-locator": 334,
-    "topic-tags:tagger": 1336,
-    "r6-moments": 334,
-    "judge:anchor": 668,
-    "judge:sibling": 1002,
-    "judge:adjudicator": 334,
+    "chapter-agenda": 329,
+    "chapter-locator": 329,
+    "topic-tags:tagger": 1317,
+    "r6-moments": 329,
+    "judge:anchor": 658,
+    "judge:sibling": 988,
+    "judge:adjudicator": 329,
+    "interactive-classify": 50,
     "remedy:p3": 100,
 }
 
@@ -83,12 +86,12 @@ class TestCommittedSplit:
 
     def test_reservations_split_the_row_cap(self):
         lanes = _lanes()
-        assert jobs_per_ratio_point(lanes, _budget()) == pytest.approx(33.410, abs=0.001)
+        assert jobs_per_ratio_point(lanes, _budget()) == pytest.approx(32.948, abs=0.001)
         assert {p: _jobs(lane) for p, lane in lanes.items()} == RESERVED_JOBS
-        assert sum(RESERVED_JOBS.values()) == 4_442
-        assert sum(lane.reserved_write_units for lane in lanes.values()) == 23_446
+        assert sum(RESERVED_JOBS.values()) == 4_429
+        assert sum(lane.reserved_write_units for lane in lanes.values()) == 23_512
         rows = _rows(lanes, _budget())
-        assert ROW_CAP - 50 < rows <= ROW_CAP
+        assert ROW_CAP - 100 < rows <= ROW_CAP
 
     def test_every_lane_may_borrow_up_to_the_reserved_total(self):
         lanes = _lanes()
@@ -105,8 +108,9 @@ class TestCommittedSplit:
 
     def test_live_lane_gets_the_whole_pool_and_can_borrow(self):
         remedy = _lanes()["remedy:p3"]
-        assert _jobs(remedy) == SITE["llm_lane_budget"]["live_reservation_jobs"] == 100
-        assert remedy.daily_write_units == 23_446
+        assert _jobs(remedy) == 100
+        assert SITE["llm_lane_budget"]["live_reservation_jobs"] == 150
+        assert remedy.daily_write_units == 23_512
         assert remedy.max_queued_jobs == 200
 
     def test_load_lanes_matches_the_split(self):
@@ -149,7 +153,7 @@ class TestResplit:
     def test_changing_the_row_cap_rescales_everything(self, row_cap):
         lanes = _lanes(row_cap=row_cap)
         budget = _budget(row_cap)
-        scale = (row_cap - 1500 - 1800) / (ROW_CAP - 1500 - 1800)
+        scale = (row_cap - 1500 - 3000) / (ROW_CAP - 1500 - 3000)
         for purpose, jobs in RESERVED_JOBS.items():
             if purpose in LIVE:
                 assert _jobs(lanes[purpose]) == jobs, purpose
@@ -163,18 +167,24 @@ class TestLivePool:
         block = copy.deepcopy(SITE["llm_lanes"])
         block["live-two"] = dict(copy.deepcopy(block["remedy:p3"]), reservation_ratio=3)
         lanes = _lanes(block)
-        assert _jobs(lanes["remedy:p3"]) == 25
-        assert _jobs(lanes["live-two"]) == 75
-        assert lanes["live-two"].max_queued_jobs == 150
-        # Same pool, same rows: the other lanes are unchanged.
+        # 150 live jobs split 1 : 0.5 : 3.
+        assert _jobs(lanes["remedy:p3"]) == 33
+        assert _jobs(lanes["interactive-classify"]) == 16
+        assert _jobs(lanes["live-two"]) == 100
+        assert lanes["live-two"].max_queued_jobs == 200
+        # Same pool of jobs: the other lanes move only by the rounding of the live lanes' rows.
         for purpose, jobs in RESERVED_JOBS.items():
             if purpose not in LIVE:
-                assert _jobs(lanes[purpose]) == jobs, purpose
+                assert _jobs(lanes[purpose]) == pytest.approx(jobs, abs=5), purpose
 
     def test_the_live_pool_comes_off_the_top(self):
         budget = _budget()
         lanes = _lanes()
-        live_rows = 100 * budget.rows_per_job(lanes["remedy:p3"].ingress_write_units_per_job)
+        live_rows = sum(
+            _jobs(lane) * budget.rows_per_job(lane.ingress_write_units_per_job)
+            for lane in lanes.values()
+            if lane.live
+        )
         assert live_reservation_rows(lanes, budget) == live_rows
         weight = sum(
             RATIOS[p] * budget.rows_per_job(lane.ingress_write_units_per_job)
@@ -188,6 +198,7 @@ class TestLivePool:
     def test_no_live_lanes_split_the_whole_cap_as_before(self):
         block = copy.deepcopy(SITE["llm_lanes"])
         del block["remedy:p3"]
+        del block["interactive-classify"]
         lanes = _lanes(block)
         budget = _budget()
         assert live_reservation_rows(lanes, budget) == 0
@@ -198,6 +209,7 @@ class TestLivePool:
     def test_live_lanes_with_only_zero_ratios_fail(self):
         block = copy.deepcopy(SITE["llm_lanes"])
         block["remedy:p3"]["reservation_ratio"] = 0
+        block["interactive-classify"]["reservation_ratio"] = 0
         with pytest.raises(ValueError, match="live_reservation_jobs pool has nothing to split"):
             _lanes(block)
 
@@ -218,8 +230,8 @@ class TestCompileGuards:
             unit_budget=TUNING["MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY"],
             job_budget=TUNING["MAX_JOBS_PER_UTC_DAY"],
         )
-        assert totals["jobs"] == 4_442
-        assert totals["units"] == 23_446
+        assert totals["jobs"] == 4_429
+        assert totals["units"] == 23_512
 
     def test_units_past_the_ingress_guard_fail_the_compile(self):
         from scripts import compile_llm_lanes

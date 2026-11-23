@@ -53,6 +53,8 @@ DISPATCHING_PURPOSES = frozenset(
         "judge:sibling",
         "judge:adjudicator",
         "remedy:p3",
+        # #2249: city onboarding and the remedy classifier, queued at priority 0.
+        "interactive-classify",
     }
 )
 # Purposes whose producer is not enabled yet. A reservation is subtracted from every other lane's
@@ -281,8 +283,8 @@ class TestLaneLookup:
 
     @pytest.mark.parametrize("purpose", sorted(NON_DISPATCHING_PURPOSES))
     def test_non_dispatching_purposes_are_refused_explicitly(self, purpose):
-        # `topic-tags:rules` makes no LLM call; `city-onboarding` sets require_direct=True. Asking
-        # for a dispatch lane for either is a bug in the caller, and the error says which.
+        # `topic-tags:rules` makes no LLM call; it makes no LLM call. Asking
+        # for a dispatch lane for it is a bug in the caller, and the error says which.
         with pytest.raises(UnregisteredLaneError, match="non-dispatching"):
             lane_for(purpose)
 
