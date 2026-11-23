@@ -95,3 +95,13 @@ def test_the_lane_covers_both_callers_routes():
     models = set(lane_for(INTERACTIVE_PURPOSE).models)
     assert set(REMEDY_MODELS) <= models
     assert set(discovery_allowed_models("gemini/gemini-3.7-flash")) <= models
+
+
+def test_the_configured_discovery_model_is_in_the_lane():
+    # A model outside the lane is refused at ingress as `model_not_in_lane`, which discovery would
+    # treat as a transient deferral forever; this fails the build instead.
+    from citypods.config import load_site_config
+    from citypods.discovery.config import discovery_llm_config
+
+    configured = discovery_llm_config(load_site_config("config/site_config.yml")).model
+    assert configured in lane_for(INTERACTIVE_PURPOSE).models

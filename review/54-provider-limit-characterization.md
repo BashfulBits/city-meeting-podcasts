@@ -539,7 +539,11 @@ the union of the two callers' Gemini routes. `citypods/compute/interactive.py` p
 onboarding's classifier waits up to ten minutes and raises `ClassificationDeferred` on timeout (the
 job stays queued; the stable recipe hash lets the next run find it); the remedy classifier gets a
 ten-minute deadline per call. `city-onboarding` left `NON_DISPATCHING_PURPOSES`, and the two
-workflows now carry `LLM_DISPATCH_V2_URL` and `_AUTH_TOKEN`. Limit measuring stays direct.
+workflows now carry `LLM_DISPATCH_V2_URL` and `_AUTH_TOKEN`. Limit measuring stays direct. Known
+cost: onboarding's recipe hash includes the retrieved search results, so a retry after a timeout
+that retrieves different results queues a new job and the first one's answer goes unused (one
+wasted free call). The policy carries no `deadline_at` because it would change the request digest
+under a stable idempotency key.
 
 **Recommendation (before the measurement): measure route A first.** Submit a small priority 0 job to the live Worker from a
 workflow, with the routes onboarding uses, and record queue wait and total time for ten sequential

@@ -1122,7 +1122,7 @@ def classify_unexpected_bodies(
         deadline_at or datetime.max.replace(tzinfo=UTC),
         datetime.now(UTC) + timedelta(minutes=deadline_minutes),
     )
-    policy = interactive_policy(REMEDY_MODELS, timeout_class="long", deadline_at=deadline)
+    policy = interactive_policy(REMEDY_MODELS, timeout_class="long")
     messages = [
         {
             "role": "user",

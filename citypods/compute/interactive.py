@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from datetime import datetime
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import LiteLLMBackend, LLMBackendError
@@ -34,9 +33,13 @@ def interactive_policy(
     allowed_models: tuple[str, ...],
     *,
     timeout_class: str = "fast",
-    deadline_at: datetime | None = None,
 ) -> LLMRequestPolicy:
-    """Policy for a queued, priority-0, free-route-only call on the interactive lane."""
+    """Policy for a queued, priority-0, free-route-only call on the interactive lane.
+
+    There is deliberately no ``deadline_at``: it would enter the request digest, so a retry with
+    the same recipe but a later deadline would look like a different request under the same
+    idempotency key. The caller bounds its own wait with ``submit_and_wait(timeout_seconds=...)``.
+    """
     return LLMRequestPolicy(
         allowed_models=allowed_models,
         allow_paid=False,
@@ -44,7 +47,6 @@ def interactive_policy(
         queue_only=True,
         timeout_class=timeout_class,  # type: ignore[arg-type]
         priority=0,
-        deadline_at=deadline_at,
     )
 
 
