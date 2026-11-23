@@ -257,10 +257,14 @@ def _gh_api(path):
             return subprocess.check_output(
                 ["gh", "api", path], stderr=subprocess.PIPE, timeout=GH_CALL_TIMEOUT_SECONDS
             )
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             print(f"gh api timed out after {GH_CALL_TIMEOUT_SECONDS}s", file=sys.stderr)
             if attempt + 1 >= GH_ATTEMPTS:
-                raise
+                # Surface as the failure every history loader already treats as a gap in the
+                # evidence, so one stalled download cannot reject a whole /apply.
+                raise subprocess.CalledProcessError(
+                    124, ["gh", "api", path], stderr=b"timed out"
+                ) from exc
             _sleep(GH_BACKOFF_SECONDS[min(attempt, len(GH_BACKOFF_SECONDS) - 1)])
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or b"").decode("utf-8", "replace").strip()

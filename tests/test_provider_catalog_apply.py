@@ -1652,7 +1652,8 @@ def test_a_stalled_gh_call_is_retried_then_fails(monkeypatch):
 
     monkeypatch.setattr(evidence.subprocess, "check_output", stalled)
     monkeypatch.setattr(evidence, "_sleep", lambda _s: None)
-    with pytest.raises(subprocess.TimeoutExpired):
+    # The final timeout is a CalledProcessError, which the history loaders turn into a gap.
+    with pytest.raises(subprocess.CalledProcessError):
         evidence._gh_api("repos/x/y")
     assert calls == [evidence.GH_CALL_TIMEOUT_SECONDS] * evidence.GH_ATTEMPTS
 
