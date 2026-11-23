@@ -1,0 +1,74 @@
+name: LLM queue latency probe
+
+# Review/54 §8.15.G route A: how long does one job take through the v2 Worker queue at priority 0
+# versus priority 1? Sequential, tiny, free-tier `city-onboarding` jobs (the lane interactive
+# callers use), alternating the two priorities so both see the same backlog. Manual only; it
+# spends a few free-tier provider calls and writes the same B2 payload and registry records as any
+# queue producer. Results land in the run summary and the `queue-latency` artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      calls:
+        description: "Pairs of calls (one at each priority); 1 to 20"
+        required: false
+        default: "5"
+        type: string
+      poll_seconds:
+        description: "Seconds between result polls"
+        required: false
+        default: "2"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-queue-latency-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Time queued jobs at both priorities
+        env:
+          CALLS: ${{ inputs.calls }}
+          POLL_SECONDS: ${{ inputs.poll_seconds }}
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          [[ "$CALLS" =~ ^[0-9]{1,2}$ ]] || { echo "calls must be a number" >&2; exit 1; }
+          [[ "$POLL_SECONDS" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "bad poll_seconds" >&2; exit 1; }
+          python scripts/llm_queue_latency_probe.py --calls "$CALLS" --poll-seconds "$POLL_SECONDS"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: queue-latency-${{ github.run_id }}
+          path: queue-latency.json
+          if-no-files-found: ignore
+          retention-days: 30
