@@ -1566,25 +1566,6 @@ routes:
     observed_on: "2026-10-31"
     upstream_429_default: upstream_capacity
 
-  - route_id: beatapi_secondary_minimax_m3_1_flash_free
-    model: beatapi/minimax-m3.1-flash
-    model_key: minimax/minimax-m3.1-flash
-    provider: beatapi_secondary
-    tier: backup
-    upstream_model: minimax-m3.1-flash-free
-    response_timeout_seconds: 720
-    # Pools by model_key; BeatAPI's /models lists no context sizes, so these are the conservative
-    # values every BeatAPI route here uses until a measurement replaces them.
-    input_context_limit: 128000
-    output_context_limit: 16384
-    account_id: primary
-    rpm: 1
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-10-31"
-    upstream_429_default: upstream_capacity
 
   - route_id: beatapi_jev_1_13_free
     model: beatapi/jev-1.13
@@ -1881,6 +1862,54 @@ routes:
     hard_input_ceiling: 677462
     structured_output_method: json_schema
     structured_output_verified_on: '2026-11-14'
+    rpm: 1
+    concurrency: 1
+    free: true
+    response_timeout_seconds: 720
+    output_context_limit: 262144
+  # Input cap evidence: 501462 provider-counted input tokens admitted; 226 output tokens
+  # generated in the same request (control input:v2).
+  # The hard_input_ceiling is the admitted input lower bound; the estimated rejection is not
+  # used as a cap.
+  # Provider/catalog input_context_limit claim: not published; source:
+  # https://integrate.api.nvidia.com/v1/models. Operational context is at least the empirically
+  # observed input plus generated output.
+  # Output context: configured value 4096 is sourced from a measured output search (a verified
+  # lower bound, not a proven maximum).
+  - route_id: nvidia_z_ai_glm_5_3_flash
+    model: z-ai/glm-5.3-flash
+    provider: nvidia
+    upstream_model: z-ai/glm-5.3-flash
+    account_id: primary
+    input_context_limit: 501688
+    hard_input_ceiling: 501462
+    structured_output_method: json_schema
+    structured_output_verified_on: '2026-11-23'
+    rpm: 1
+    concurrency: 1
+    free: true
+    response_timeout_seconds: 720
+    output_context_limit: 4096
+  # Added on the stored test result from 2026-11-18: today's re-check was rate-limited (HTTP 429
+  # or spent quota) after retries.
+  # Input cap evidence: 677458 provider-counted input tokens admitted; 281 output tokens
+  # generated in the same request (control input:v2).
+  # The hard_input_ceiling is the admitted input lower bound; the estimated rejection is not
+  # used as a cap.
+  # Provider/catalog input_context_limit claim: 1048576; source:
+  # https://api.kilo.ai/api/gateway/models. Operational context is at least the empirically
+  # observed input plus generated output.
+  # Output context: configured value 262144 is sourced from the provider catalog and is subject
+  # to this PR's review.
+  - route_id: kilo_inclusionai_ling_3_2_flash_free
+    model: inclusionai/ling-3.2-flash
+    provider: kilo
+    upstream_model: inclusionai/ling-3.2-flash:free
+    account_id: primary
+    input_context_limit: 1048576
+    hard_input_ceiling: 677458
+    structured_output_method: json_schema
+    structured_output_verified_on: '2026-11-18'
     rpm: 1
     concurrency: 1
     free: true
