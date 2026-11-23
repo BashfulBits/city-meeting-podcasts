@@ -27,11 +27,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
-PURPOSE = "city-onboarding"
+# `city-onboarding` itself cannot be queued: it is deliberately a non-dispatching purpose with no
+# lane registered at the Worker, which refuses it as ``purpose_not_registered`` (llm_lanes.py). The
+# round trip is a property of the queue, not of the lane, so the default is a registered lane
+# whose models are free-tier chat models; the onboarding purpose can be asked for to see that.
+PURPOSE = "topic-tags:tagger"
 PROMPT = "Reply with the single word OK."
 
 
-def make_job(priority: int, nonce: str, model: str):
+def make_job(priority: int, nonce: str, model: str, purpose: str = PURPOSE):
     from citypods.compute.base import InferenceJob
     from citypods.compute.llm_policy import LLMRequestPolicy
 
@@ -43,7 +47,7 @@ def make_job(priority: int, nonce: str, model: str):
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(model,),
                 allow_paid=False,
-                purpose=PURPOSE,
+                purpose=purpose,
                 queue_only=True,
                 timeout_class="fast",
                 priority=priority,  # type: ignore[arg-type]
@@ -140,7 +144,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--calls", type=int, default=5, help="pairs of calls (one per priority)")
     parser.add_argument("--poll-seconds", type=float, default=2.0)
     parser.add_argument("--timeout-seconds", type=float, default=1200.0, help="per call")
-    parser.add_argument("--model", help="allowed model (default: the onboarding primary)")
+    parser.add_argument(
+        "--purpose", default=PURPOSE, help="a lane purpose registered at the Worker"
+    )
+    parser.add_argument("--model", help="allowed model (default: the lane's first model)")
     parser.add_argument("--site-config", default="config/site_config.yml")
     parser.add_argument("--output-dir", default="public")
     parser.add_argument("--out", type=Path, default=Path("queue-latency.json"))
@@ -150,8 +157,8 @@ def main(argv: list[str] | None = None) -> int:
 
     from citypods.compute.base import JobHandle, JobResult
     from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+    from citypods.compute.llm_lanes import load_lanes
     from citypods.config import load_site_config
-    from citypods.discovery.config import discovery_allowed_models
     from citypods.storage import make_storage
 
     storage = make_storage(load_site_config(args.site_config), "", Path(args.output_dir))
@@ -161,20 +168,27 @@ def main(argv: list[str] | None = None) -> int:
     if not config.dispatch_v2_url:
         raise SystemExit("LLM_DISPATCH_V2_URL is not set")
     backend = LiteLLMBackend(config, storage=storage)
-    model = args.model or discovery_allowed_models()[0]
+    lane = load_lanes().get(args.purpose)
+    model = args.model or (lane.models[0] if lane is not None and lane.models else None)
+    if not model:
+        raise SystemExit(f"no lane models for purpose {args.purpose!r}; pass --model")
     run = os.environ.get("GITHUB_RUN_ID", str(int(time.time())))
     context = {"before": worker_backlog(config.dispatch_v2_url, config.dispatch_v2_auth_token)}
 
     rows: list[dict[str, Any]] = []
     for index, priority in enumerate(order(args.calls)):
-        job = make_job(priority, f"{run}:{index}", model)
+        job = make_job(priority, f"{run}:{index}", model, args.purpose)
         started = time.monotonic()
         row: dict[str, Any] = {"index": index, "priority": priority, "model": model}
         try:
             outcome = backend.enqueue_batch([job])[0]
             row["submit_seconds"] = round(time.monotonic() - started, 2)
             if isinstance(outcome, Exception):
-                row.update(outcome="submit_error", error=type(outcome).__name__)
+                row.update(
+                    outcome="submit_error",
+                    error=f"{type(outcome).__name__}: {str(outcome)[:200]}",
+                    reason=getattr(outcome, "reason", None),
+                )
             elif isinstance(outcome, JobResult):
                 row.update(outcome="completed", total_seconds=row["submit_seconds"])
             elif isinstance(outcome, JobHandle):
@@ -209,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = summarize(rows)
     result = {
         "model": model,
-        "purpose": PURPOSE,
+        "purpose": args.purpose,
         "summary": summary,
         "context": context,
         "rows": rows,
