@@ -238,6 +238,10 @@ def rate_artifact(observations, limits, *, repository, run_id, head_sha, now, at
 # weekly run lost its entire configured-route re-measure to one "connection reset by peer".
 GH_ATTEMPTS = 3
 GH_BACKOFF_SECONDS = (5, 20)
+# One ``gh api`` call, including an artifact download, may take this long before it is treated as
+# a transient network failure and retried. Without a limit a stalled connection held the whole
+# /apply job until its 120-minute timeout (2026-11-23).
+GH_CALL_TIMEOUT_SECONDS = 180
 _TRANSIENT_GH_ERROR = re.compile(
     r"connection reset|connection refused|timed out|timeout|unexpected eof|\beof\b|tls|"
     r"temporary failure|HTTP 5\d\d|\b50[234]\b|broken pipe|no such host",
@@ -250,7 +254,14 @@ def _gh_api(path):
     """``gh api`` with a few retries for transient network errors; others fail at once."""
     for attempt in range(GH_ATTEMPTS):
         try:
-            return subprocess.check_output(["gh", "api", path], stderr=subprocess.PIPE)
+            return subprocess.check_output(
+                ["gh", "api", path], stderr=subprocess.PIPE, timeout=GH_CALL_TIMEOUT_SECONDS
+            )
+        except subprocess.TimeoutExpired:
+            print(f"gh api timed out after {GH_CALL_TIMEOUT_SECONDS}s", file=sys.stderr)
+            if attempt + 1 >= GH_ATTEMPTS:
+                raise
+            _sleep(GH_BACKOFF_SECONDS[min(attempt, len(GH_BACKOFF_SECONDS) - 1)])
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
             if detail:
