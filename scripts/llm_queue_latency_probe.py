@@ -132,9 +132,9 @@ def worker_backlog(url: str | None, token: str | None) -> dict[str, Any] | str:
             timeout=20,
         )
         body = response.json()
-        scheduler = body.get("scheduler") if isinstance(body, Mapping) else None
-        counts = (scheduler or body).get("jobs") if isinstance(scheduler or body, Mapping) else None
-        return counts if isinstance(counts, Mapping) else {"http": response.status_code}
+        jobs = body.get("jobs") if isinstance(body, Mapping) else None
+        states = jobs.get("by_state") if isinstance(jobs, Mapping) else None
+        return dict(states) if isinstance(states, Mapping) else {"http": response.status_code}
     except Exception as exc:  # noqa: BLE001 - context only
         return f"unavailable ({type(exc).__name__})"
 
