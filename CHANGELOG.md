@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **LLM budget monitor advice.** Reservation alerts now ask maintainers to check the applicable
+  output-counting token quota before tuning, and to preserve route eligibility when increasing a
+  reservation. An output above the reservation alone does not establish a TPM constraint.
+
 - **Remedy P3 offline exercise.** Add a synthetic integration test covering publication
   validation, isolated local Git proposal creation, duplicate planning and feedback recovery.
   Fake GitHub and storage keep the exercise offline; production publication and model admission
