@@ -14,10 +14,11 @@ these two are. A caller that makes dozens of sequential calls must not use this.
 from __future__ import annotations
 
 import time
+import dataclasses
 from collections.abc import Callable
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
-from citypods.compute.llm import LiteLLMBackend, LLMBackendError
+from citypods.compute.llm import LiteLLMBackend, LLMBackendError, LLMDispatchTerminalError
 from citypods.compute.llm_policy import LLMRequestPolicy
 
 INTERACTIVE_PURPOSE = "interactive-classify"
@@ -56,6 +57,7 @@ def submit_and_wait(
     *,
     timeout_seconds: float = DEFAULT_WAIT_SECONDS,
     poll_seconds: float = DEFAULT_POLL_SECONDS,
+    terminal_retries: int = 1,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> JobResult:
@@ -64,8 +66,37 @@ def submit_and_wait(
     Raises the submission or job error as is, and :class:`InteractiveTimeout` when the wait runs
     out. The job is not cancelled on timeout: its recipe hash is stable, so the next run finds the
     pending or completed record instead of paying for the call again.
+
+    The Worker keeps a job that failed permanently under its recipe hash and replays that failure
+    to every later submission of the same recipe. An interactive caller is a person re-running a
+    command after a transient cause (a full route, a dead model), so a replayed or fresh permanent
+    failure is retried under a new recipe hash, ``terminal_retries`` times, before it is raised.
     """
     started = clock()
+    attempt = 0
+    while True:
+        attempt_job = job
+        if attempt:
+            attempt_job = dataclasses.replace(job, recipe_hash=f"{job.recipe_hash}-retry-{attempt}")
+        try:
+            return _wait_for(
+                backend, attempt_job, started, timeout_seconds, poll_seconds, sleep, clock
+            )
+        except LLMDispatchTerminalError:
+            if attempt >= terminal_retries or not job.recipe_hash:
+                raise
+            attempt += 1
+
+
+def _wait_for(
+    backend: LiteLLMBackend,
+    job: InferenceJob,
+    started: float,
+    timeout_seconds: float,
+    poll_seconds: float,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+) -> JobResult:
     outcome = backend.enqueue_batch([job])[0]
     if isinstance(outcome, Exception):
         raise outcome

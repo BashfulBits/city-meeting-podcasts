@@ -11,7 +11,7 @@ from citypods.compute.interactive import (
     interactive_policy,
     submit_and_wait,
 )
-from citypods.compute.llm import LLMBackendError
+from citypods.compute.llm import LLMBackendError, LLMDispatchTerminalError
 from citypods.compute.llm_lanes import NON_DISPATCHING_PURPOSES, lane_for, load_lanes
 from citypods.discovery.config import discovery_allowed_models
 
@@ -85,6 +85,42 @@ def test_a_rejected_submission_raises():
 def test_a_failed_job_raises():
     with pytest.raises(LLMBackendError, match="failed"):
         run(FakeBackend(HANDLE, polls=[LLMBackendError("failed")]))
+
+
+class RecordingBackend(FakeBackend):
+    """Answers each enqueue from a script and records the recipe hashes it saw."""
+
+    def __init__(self, script):
+        super().__init__(None)
+        self.script = list(script)
+        self.seen = []
+
+    def enqueue_batch(self, jobs):
+        self.seen.append(jobs[0].recipe_hash)
+        return [self.script.pop(0)]
+
+
+def test_a_replayed_permanent_failure_is_retried_under_a_new_recipe_hash():
+    backend = RecordingBackend([HANDLE, HANDLE])
+    backend.polls = [LLMDispatchTerminalError("failed permanently"), RESULT]
+    assert run(backend) is RESULT
+    assert backend.seen == [JOB.recipe_hash, f"{JOB.recipe_hash}-retry-1"]
+
+
+def test_a_second_permanent_failure_is_raised():
+    backend = RecordingBackend([HANDLE, HANDLE])
+    backend.polls = [LLMDispatchTerminalError("one"), LLMDispatchTerminalError("two")]
+    with pytest.raises(LLMDispatchTerminalError, match="two"):
+        run(backend)
+    assert len(backend.seen) == 2
+
+
+def test_other_job_errors_are_not_retried():
+    backend = RecordingBackend([HANDLE])
+    backend.polls = [LLMBackendError("boom")]
+    with pytest.raises(LLMBackendError, match="boom"):
+        run(backend)
+    assert len(backend.seen) == 1
 
 
 def test_the_lane_covers_both_callers_routes():
