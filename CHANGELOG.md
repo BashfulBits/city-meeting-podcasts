@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **`/apply` can no longer hang silently until the job timeout.** A run on 2026-11-23 sat in the
+  apply step for the whole 120 minutes with nothing logged, because every command ran with its
+  output captured and no time limit. Each command now has one (5 minutes, 20 for tests), each
+  `gh api` download has 3 minutes with its retries, and the log names each stage. A stalled
+  command fails the `/apply` and says so on the issue instead.
+
 - **City onboarding's queued classification may use its fallback models (#2249).** The first live
   run asked for Gemini 3.7 alone, which allows 20 requests a day per account, and waited the full
   ten minutes for capacity. It now lets the Worker choose among 3.7 and its three vetted fallbacks.
