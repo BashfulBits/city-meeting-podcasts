@@ -13,8 +13,8 @@ these two are. A caller that makes dozens of sequential calls must not use this.
 
 from __future__ import annotations
 
-import time
 import dataclasses
+import time
 from collections.abc import Callable
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
