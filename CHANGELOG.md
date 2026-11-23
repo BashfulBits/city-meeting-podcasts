@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Queue latency probe uses a registered lane and reports why a submission is refused (#2249).**
+  The Worker refuses `city-onboarding` jobs as `purpose_not_registered` because that purpose is
+  deliberately non-dispatching, so the first probe run measured nothing. The probe now defaults to a
+  registered lane (`topic-tags:tagger`, a `purpose` input on the workflow), records the Worker's
+  rejection reason, and review/54 §8.15.G notes that queueing onboarding needs a registered lane.
+
 - **LLM queue latency probe (review/54 §8.15.G, #2249).** A manual `LLM queue latency probe`
   workflow submits tiny sequential `city-onboarding` jobs to the v2 Worker queue at priority 0 and
   priority 1, alternating so both see the same backlog, and reports submit time and total time to
