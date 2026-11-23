@@ -105,6 +105,14 @@ ignored:
     model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
     reason: Maintainer /apply selection
     decided_on: '2026-11-20'
+  - provider: nvidia
+    model: poolside/laguna-xs-2.1
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-23'
+  - provider: gemini
+    model: gemini-robotics-er-2-preview
+    reason: Maintainer /apply selection
+    decided_on: '2026-11-23'
 acknowledged:
   - provider: beatapi_secondary
     model_glob: "*"
