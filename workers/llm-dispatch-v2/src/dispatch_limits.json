@@ -1924,7 +1924,7 @@
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b",
       "input_context_limit": 1000000,
       "output_context_limit": 65536,
-      "hard_input_ceiling": 246109,
+      "hard_input_ceiling": 934464,
       "hard_input_ceiling_tolerance": null,
       "response_timeout_seconds": 780,
       "input_token_ratio": 1.75,
