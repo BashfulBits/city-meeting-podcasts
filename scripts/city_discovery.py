@@ -12,7 +12,7 @@ from citypods.compute.llm import LiteLLMBackend, LLMBackendError
 from citypods.config import load_city_configs, load_site_config
 from citypods.discovery import DiscoveryRequest, TavilyClient, verify_discovery
 from citypods.discovery.classify import ClassificationDeferred, classify
-from citypods.discovery.config import discovery_llm_config
+from citypods.discovery.config import discovery_allowed_models, discovery_llm_config
 from citypods.discovery.eligibility import auxiliary_states
 from citypods.discovery.render import render_evidence
 from citypods.records import load_records, source_key
@@ -154,7 +154,10 @@ def main(argv: list[str] | None = None) -> int:
             ),
             request,
             results,
-            allowed_models=(llm_config.model,),
+            # The configured model first, then its vetted fallbacks: queued on the Worker's
+            # interactive lane these form one pool, so a Gemini route with no quota left (3.7 has
+            # 20 requests a day per account) no longer holds the call for the whole wait.
+            allowed_models=discovery_allowed_models(llm_config.model),
         )
         evidence = verify_discovery(request, classification, results, existing_city=city)
     except (ClassificationDeferred, LLMBackendError) as exc:
