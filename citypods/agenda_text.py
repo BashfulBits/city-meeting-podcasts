@@ -1183,11 +1183,16 @@ def minutes_links(links: list[DocumentLink]) -> list[DocumentLink]:
 # also *widens* extraction: with the status word previously anchored to the start of the line, the
 # cities that helpfully label their sections were exactly the ones whose rosters parsed as empty.
 _ATTENDANCE_STATUS_RE = re.compile(
-    r"^[ \t]*(?P<qualifier>[A-Za-z][A-Za-z /&'-]{0,40}?)?[ \t]*"
-    r"(?P<status>present|absent|excused|recused)[ \t]*:[ \t]*(?P<names>.+)$",
+    # An optional leading line number: some minutes PDFs carry printed line numbers ("10 PRESENT:").
+    r"^[ \t]*(?:\d{1,3}[ \t]+)?(?P<qualifier>[A-Za-z][A-Za-z /&'-]{0,40}?)?[ \t]*"
+    r"(?P<status>present|absent|excused|recused)"
+    # "PRESENT IN PERSON:", "PRESENT VIRTUALLY:" -- how the member attended, not who they are.
+    r"(?:[ \t]+(?:in[ \t]+person|virtually|remotely|via[ \t]+[A-Za-z]{3,12}))?"
+    r"[ \t]*:[ \t]*(?P<names>.*)$",
     re.I | re.M,
 )
-_ATTENDANCE_SPLIT_RE = re.compile(r",|;|\s{2,}|\s+and\s+")
+_ATTENDANCE_SPLIT_RE = re.compile(r",|;|\s{2,}|\s+(?:and|&)\s+")
+_ATTENDANCE_SPLIT_CAPTURE_RE = re.compile(r"(,|;|\s{2,}|\s+(?:and|&)\s+)")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 # Qualifier vocabulary, matched on any contained word so "Council Members", "Board Members" and
@@ -1281,6 +1286,8 @@ _ROSTER_NAME_TITLES: tuple[tuple[str, ...], ...] = tuple(
     sorted(
         (
             ("mayor", "pro", "tem"),
+            # OCR/scan variant that shows up in real minutes ("Mayor Pro Tern Paul Meltzer").
+            ("mayor", "pro", "tern"),
             ("deputy", "mayor"),
             ("vice", "mayor"),
             ("vice", "chair"),
@@ -1392,6 +1399,32 @@ _STAFF_ROLE_WORDS = frozenset(
         "village",
     }
 )
+# A span made only of these is an office or suffix left over from splitting a wrapped line
+# ("... Mayor Pro Tem Kamp and Council" / "Members ..."), not a person.
+_GENERIC_ROSTER_WORDS = frozenset(
+    {
+        "council",
+        "member",
+        "members",
+        "mayor",
+        "pro",
+        "tem",
+        "tern",
+        "chair",
+        "vice",
+        "board",
+        "committee",
+        "commission",
+        "commissioner",
+        "commissioners",
+        "jr",
+        "sr",
+        "ii",
+        "iii",
+        "iv",
+    }
+)
+_NAME_PARTICLES = frozenset({"de", "del", "la", "le", "van", "von", "da", "di", "st", "mc", "mac"})
 _MAX_ROSTER_NAME_WORDS = 5
 _MAX_ROSTER_NAME_CHARS = 60
 
@@ -1439,7 +1472,493 @@ def _clean_roster_name(raw: str) -> str | None:
     cleaned = " ".join(words).strip(" .,:;")
     if len(cleaned) < 2 or not any(char.isalpha() for char in cleaned):
         return None
+    if all(word.casefold().strip(".,") in _GENERIC_ROSTER_WORDS for word in words):
+        return None
     return cleaned
+
+
+# "PRESENT: Chair A, Commissioners: B, C" -- a sub-label inside one line, not part of a name.
+_INLINE_LABEL_RE = re.compile(
+    r"\b(?:commissioners?|(?:board|council|committee|commission)\s+members?|members?)\s*:\s*",
+    re.I,
+)
+_ROSTER_BLOCK_STOP_RE = re.compile(
+    r"^[ \t]*(?:\d{1,3}[ \t]*[.)]?[ \t]+)?(?:[A-Za-z /&'-]{0,40}?)"
+    r"(?:present|absent|excused|recused)\b[^\n]*:[ \t]*|^[ \t]*\d{1,3}[.)][ \t]|[^\n]*:[ \t]*$",
+    re.I,
+)
+_MAX_ROSTER_CONTINUATION_LINES = 30
+_HEADING_LOOKBACK_CHARS = 400
+_HEADING_LOOKAHEAD_CHARS = 4000
+# Section headings that follow an attendance block. A line that carries one ends the block, so
+# "PUBLIC COMMENT" is never filed as a person.
+_SECTION_HEADING_RE = re.compile(
+    r"\b(?:public\s+comments?|citizens?\s+comments?|call\s+to\s+order|pledge|invocation|"
+    r"agenda|minutes|approval|consent|regular\s+meeting|work\s+session|adjourn\w*|"
+    r"announcements?|presentations?|new\s+business|old\s+business|executive\s+session|"
+    r"roll\s+call|reports?|discussion|items?\s+for|recess|motions?|carried|seconded|ayes?|nays?)\b",
+    re.I,
+)
+
+
+def _follows_heading(text: str, start: int) -> bool:
+    """Whether the line above this one is itself an attendance heading with no names.
+
+    "PRESENT IN PERSON:" / "PRESENT VIRTUALLY:" / "ABSENT:" followed by one line of names per
+    heading is a flattened table: the names under the last heading belong to the first, not to it.
+    """
+    previous = text[max(0, start - _HEADING_LOOKBACK_CHARS) : start].rstrip().rsplit("\n", 1)[-1]
+    heading = _ATTENDANCE_STATUS_RE.match(previous.strip())
+    return bool(heading and not heading.group("names").strip())
+
+
+_WRAP_STOP_WORDS = frozenset({"also", "staff", "city", "others", "guests", "excused", "none"})
+# A staff or guest label ("Staff: Jane Doe", "Also present: ...") ends a member list even when
+# names follow it on the same line.
+_NON_MEMBER_LABEL_LINE_RE = re.compile(
+    r"^(?:also\s+present|(?:city\s+)?staff|guests?|visitors?|others?|public|audience)\b[^\n:]{0,30}:",
+    re.I,
+)
+_NUMBERED_ITEM_RE = re.compile(r"^\d{1,3}[.)]\s")
+_NO_ATTENDANCE_RE = re.compile(r"^(?:none|n/a|no\s+one|nobody|vacant)\.?$", re.I)
+
+
+_SURNAME_LIST_START_RE = re.compile(r"^[A-Z][A-Za-z'\u2019-]+(?:,|\s+and\b)")
+_SHORT_NAME_TAIL_RE = re.compile(
+    r"^(?:[A-Z][A-Za-z'\u2019.-]+)(?:\s+[A-Z][A-Za-z'\u2019.-]+)?[,.]?$"
+)
+_LIST_OPEN_END_RE = re.compile(r"(?:[,;&]|\band)\s*$", re.I)
+
+
+def _continues_a_wrapped_list(previous: str, line: str) -> bool:
+    """Whether ``line`` carries on a name list that ``previous`` left unfinished.
+
+    Only two shapes qualify: the previous line ends mid-list (a comma, "and", "&"), or this line
+    opens like the tail of a list (a surname then a comma, or a lone short name). Anything else
+    -- a section heading ("WORK SESSION"), prose, a numbered item, "Also present ..." -- is the
+    next part of the minutes, and appending it would turn it into names.
+    """
+    if len(line) > 120 or line.split(" ", 1)[0].casefold() in _WRAP_STOP_WORDS:
+        return False
+    if _LIST_OPEN_END_RE.search(previous):
+        return bool(line[:1].isupper())
+    if line.isupper():
+        return False
+    return _wraps_onto(previous, line)
+
+
+def _wraps_onto(previous: str, line: str) -> bool:
+    """Evidence that ``line`` finishes an entry ``previous`` started, rather than starting its own.
+
+    A surname then a comma ("Briggs, Jesse Davis"), or a lone short name straight after a title
+    word ("Council Members Deb" / "Armintor"). A bare title-case line after a complete name
+    ("Alice Smith" / "Public Comment") is the next part of the minutes, not the rest of a name.
+    """
+    if _SURNAME_LIST_START_RE.match(line):
+        return True
+    words = previous.replace(",", " ").split()
+    return bool(
+        _SHORT_NAME_TAIL_RE.match(line)
+        and len(words) >= 2
+        and words[-2].casefold().strip(".") in _GENERIC_ROSTER_WORDS
+    )
+
+
+_PRINTED_LINE_NUMBER_RE = re.compile(r"^\d{1,3}\s+(?=\S)")
+_ABBREVIATED_END_RE = re.compile(r"(?:\b[A-Z]|\bJr|\bSr|\bDr|\bMr|\bMs|\bMrs)\.$")
+
+
+def _ends_a_sentence(line: str) -> bool:
+    """A closing period, but not the one on a suffix or initial ("Alice Smith Jr.", "Robert J.")."""
+    return line.endswith(".") and not _ABBREVIATED_END_RE.search(line)
+
+
+def _names_after_heading(
+    text: str, end: int, *, wrapped: bool = False, previous: str = ""
+) -> tuple[str, int] | None:
+    """Names a heading like ``PRESENT:`` leaves for the lines below it.
+
+    Returns ``(names, end_offset)`` -- the names and where the last line used ends in ``text``, so
+    the row's evidence can show them -- or None when the list is cut off and must be rejected.
+
+    Only a single heading followed by its own names qualifies. Minutes that print every heading
+    first ("PRESENT:", "ABSENT:", then one line of names per heading) put the names in an order
+    that cannot be matched to headings by position alone, so a second heading right below this
+    one yields nothing: silence beats a guess.
+    """
+    names: list[str] = []
+    ends: list[int] = []
+    stopped_at_numbered = False
+    joined = ""
+    lookahead = text[end : end + _HEADING_LOOKAHEAD_CHARS]
+    lines = lookahead.split("\n")
+    clipped = end + _HEADING_LOOKAHEAD_CHARS < len(text)
+    if clipped:
+        lines = lines[:-1]  # the last line was cut mid-way and could be a half-read name
+    ended = False
+    consumed_end = end
+    cursor = end + len(lines[0]) + 1
+    for line in lines[1 : 1 + _MAX_ROSTER_CONTINUATION_LINES + 2]:
+        line_end = cursor + len(line)
+        cursor = line_end + 1
+        # Minutes with printed line numbers number every line ("11 Alice Smith").
+        stripped = _PRINTED_LINE_NUMBER_RE.sub("", line.strip())
+        if not stripped:
+            ended = True
+            break
+        if (
+            _ROSTER_BLOCK_STOP_RE.match(line.strip())
+            or _SECTION_HEADING_RE.search(stripped)
+            or _NO_ATTENDANCE_RE.match(stripped)
+            or _NON_MEMBER_LABEL_LINE_RE.match(stripped)
+        ):
+            ended = True  # "None" says nobody is listed, so the next line is not a name
+            stopped_at_numbered = bool(_NUMBERED_ITEM_RE.match(line.strip()))
+            break
+        before = names[-1] if names else previous
+        # A change from mixed case to ALL CAPS is a new section, not another member -- unless the
+        # previous line ends with a comma or "and", which says the list visibly goes on.
+        if (
+            stripped.isupper()
+            and any(any(c.islower() for c in earlier) for earlier in names)
+            and not _LIST_OPEN_END_RE.search(before)
+        ):
+            ended = True
+            break
+        if wrapped and not _continues_a_wrapped_list(before, stripped):
+            ended = True
+            break
+        if len(names) >= _MAX_ROSTER_CONTINUATION_LINES:
+            # More names follow than the bound allows: publishing the first few as the whole
+            # roster would exclude the rest from speaker correction. None tells the caller to
+            # reject the whole heading, which is not the same as "no continuation".
+            return None
+        if names:
+            # Lines are separate entries unless one visibly wraps onto the next: joining
+            # "ALICE SMITH" and "BOB JONES" with a space would make one four-word name.
+            joiner = (
+                " " if _LIST_OPEN_END_RE.search(before) or _wraps_onto(before, stripped) else ", "
+            )
+            joined += joiner
+        joined += stripped
+        names.append(stripped)
+        ends.append(line_end)
+        consumed_end = line_end
+        if _ends_a_sentence(stripped):
+            ended = True
+            break
+    else:
+        # Ran out of lines without reaching an end. If the text was clipped, the list may go on.
+        if clipped and not ended:
+            return None
+    if stopped_at_numbered and len(names) > 1 and names[-1].isupper():
+        # An ALL CAPS line straight before a numbered item is that item's heading ("FINANCIAL
+        # UPDATE" / "1. Discussion"), not one more member; the list ended a line earlier.
+        joined = joined[: -len(names[-1])].rstrip(", ")
+        consumed_end = ends[-2]
+    return joined, consumed_end
+
+
+_PLURAL_ROSTER_TITLE_RE = re.compile(
+    r"\b(?:council\s*members?|commissioners?|(?:committee|board|commission)\s+members?|"
+    r"trustees|directors|aldermen)\b",
+    re.I,
+)
+_DASH_ROLE_SUFFIX_RE = re.compile(
+    r"\s*[\u2013\u2014-]\s*(?:(?:vice|co)[- ]?)?(?:chair(?:man|woman|person)?|secretary|treasurer)"
+    r"\s*$",
+    re.I,
+)
+# A colon is not a boundary: "Staff: A and B were in attendance" must keep its label. A period
+# after an initial or title abbreviation ("Robert J. Van Dyke", "Mr. Metayer") is not one either.
+_NOT_AFTER_ABBREVIATION = (
+    r"(?<!\b[A-Z]\.)(?<!\bJr\.)(?<!\bSr\.)(?<!\bDr\.)(?<!\bMr\.)(?<!\bMs\.)(?<!\bMrs\.)"
+)
+_SENTENCE_START_RE = re.compile(rf"(?:^|{_NOT_AFTER_ABBREVIATION}(?<=\.)\s+(?=[A-Z]))")
+# Text up to the end of a sentence: any character but a period, except the period of an initial
+# or title abbreviation, so a name like "Robert J. Van Dyke" is not cut in half.
+_SPAN_CHAR = (
+    r"(?:[^.]|(?<=\b[A-Z])\.|(?<=\bJr)\.|(?<=\bSr)\.|(?<=\bDr)\.|(?<=\bMr)\.|(?<=\bMs)\.|"
+    r"(?<=\bMrs)\.)"
+)
+# "were present to give public comment" names visitors, not members: a purpose clause disqualifies.
+_PROSE_PRESENT_RE = re.compile(
+    rf"(?P<names>{_SPAN_CHAR}{{3,500}}?)\s+(?:was|were)\s+(?:in\s+attendance|present)\b"
+    r"(?!\s+(?:to|for|during|at\s+the\s+(?:podium|microphone)))",
+    re.I,
+)
+# Words that show a sentence is about members of the body rather than whoever happened to be there.
+_MEMBER_EVIDENCE_WORDS = _ROSTER_MEMBER_WORDS | frozenset(
+    {"mayor", "chair", "vice", "commissioner", "tem", "councilmember", "councilmembers"}
+)
+_PROSE_ABSENT_RE = re.compile(
+    rf"(?P<names>{_SPAN_CHAR}{{3,500}}?)\s+(?:was|were)\s+(?P<phrase>absent|not\s+present|excused)\b",
+    re.I,
+)
+# "Mayor Jane Doe called the regular meeting to order": the presiding member is present and, being
+# the one who speaks most, the person a roster most needs to hold.
+_PRESIDER_RE = re.compile(
+    rf"(?P<names>{_SPAN_CHAR}{{3,120}}?)\s+called\s+(?:the\s+)?(?:[A-Za-z]+\s+){{0,3}}?"
+    r"(?:meeting|work\s*session|session)\s+to\s+order\b",
+    re.I,
+)
+_PRESIDER_OFFICE_RE = re.compile(
+    r"\b(?:mayor\s+pro\s+tem|vice[- ]\s*chair|chair(?:man|woman|person)?|mayor|commissioner)\b",
+    re.I,
+)
+_PRESIDER_TITLE_WORDS = frozenset(
+    {"mayor", "chair", "chairman", "chairwoman", "chairperson", "vice", "commissioner"}
+)
+_ENCLOSING_NON_MEMBER_LABEL_RE = re.compile(
+    r"\b(?:guests?|visitors?|audience|public|others?|staff|applicants?|speakers?)\s*:\s*$", re.I
+)
+_QUALIFIED_ATTENDANCE_RE = re.compile(
+    r"(?P<qualifier>[A-Z][A-Za-z ]{2,40}?)\s+in\s+attendance(?:\s+include)?\s*:?\s+"
+    rf"(?P<names>{_SPAN_CHAR}{{3,500}})",
+)
+# A run-on label ("... Lisa Ely Commissioners absent: ...") ends a name list without punctuation.
+_RUN_ON_LABEL_RE = re.compile(
+    r"\s+(?:commissioners?|members?|staff|city|absent|also|guests?)\b.*$", re.I | re.S
+)
+
+
+def _looks_like_prose_name(name: str) -> bool:
+    """Prose is full of capitalised-or-not words, so a prose name must look like a name.
+
+    Every word is capitalised (or a name particle) and at least two words long: the prose lists
+    this reads give full names, and a lone lowercase or single word is far more likely to be a
+    fragment ("seperately", "com Wednesday") than a person.
+    """
+    words = name.split()
+    if len(words) < 2 or any(char in name for char in "()$@/"):
+        return False
+    last = words[-1].casefold().strip(".")
+    if last in _STAFF_ROLE_WORDS | {"president", "vice"} and (
+        len(words) > 2 or words[-2].casefold().strip(".") in _STAFF_ROLE_WORDS
+    ):
+        return False  # "PCDC Executive Director": an office, not a person ("Mark Manager" is)
+    return all(w[0].isupper() or w.casefold().strip(".") in _NAME_PARTICLES for w in words)
+
+
+_STAFF_ROLE_NOUNS = frozenset(
+    {
+        "administrator",
+        "analyst",
+        "attorney",
+        "chief",
+        "clerk",
+        "coordinator",
+        "director",
+        "engineer",
+        "manager",
+        "officer",
+        "planner",
+        "secretary",
+        "specialist",
+        "superintendent",
+    }
+)
+
+
+_STAFF_DEPARTMENT_WORDS = frozenset(
+    {
+        "airport", "animal", "budget", "building", "code", "communications", "community",
+        "compliance", "court", "development", "economic", "emergency", "engineering", "finance",
+        "fire", "human", "information", "legal", "library", "management", "municipal",
+        "parks", "planning", "police", "public", "recreation", "resources", "services",
+        "shelter", "technology", "transportation", "utilities", "water", "works",
+    }
+)  # fmt: skip
+
+
+def _is_staff_title_phrase(part: str) -> bool:
+    """Whether a span after a comma is a job title ("Parks Director", "PCDC Executive Director").
+
+    Needs a role noun and nothing but role words, department words or an acronym around it. A
+    full name that happens to end in a role word ("Mark Manager") is not one: "Mark" is neither.
+    """
+    original = part.split()
+    words = [w.casefold().strip(".") for w in original]
+    if not words or not (_STAFF_ROLE_NOUNS & set(words)):
+        return False
+    # An upper-case token only counts as an acronym ("PCDC") beside mixed-case words. In an
+    # all-caps line every word is upper case, so "MARK" would pass as one.
+    acronyms_count = any(not o.isupper() for o in original)
+    return all(
+        w in _STAFF_ROLE_WORDS
+        or w in _STAFF_DEPARTMENT_WORDS
+        or (acronyms_count and o.isupper() and len(o) >= 2)
+        for w, o in zip(words, original, strict=True)
+    )
+
+
+def _has_leading_staff_title(words: list[str]) -> bool:
+    """Whether an entry opens with a staff title ("City Attorney Bob Roe", "Parks Director X").
+
+    Cleaning strips leading titles to reach the name, so a staffer would otherwise come out as a
+    plain member. Only a title containing a role noun counts: "City Councilmember Wayne Cooper"
+    and "County Commissioner Jane Doe" lead with "city"/"county" but name members, and a surname
+    such as "Mark Manager" does not open with a title at all.
+    """
+    consumed: list[str] = []
+    for word in words:
+        if word not in _STAFF_ROLE_WORDS and word not in _STAFF_DEPARTMENT_WORDS:
+            break
+        consumed.append(word)
+    if consumed == ["secretary"]:
+        return (
+            False  # a board's own "Secretary Thomas Plock" is a member; "City Secretary" is staff
+        )
+    return bool(consumed) and len(consumed) < len(words) and bool(_STAFF_ROLE_NOUNS & set(consumed))
+
+
+def _prose_roster_rows(names_text: str, status: str, section: str | None, evidence: str) -> list:
+    """Rows for a prose list like "Mayor Pro Tem A and Councilmembers B, C and D".
+
+    A person followed by a pure staff title ("Charles Zech, City Attorney") is a staffer who
+    shares the sentence with the members, so both are dropped rather than filed as a member.
+    """
+    # Prose is already single-spaced, so the gap left by a removed title must be closed or it would
+    # read as a column break and split "City Councilmembers Wayne Cooper" into "City" and a name.
+    names_text = _WHITESPACE_RE.sub(" ", _PLURAL_ROSTER_TITLE_RE.sub(" ", names_text))
+    pieces = _ATTENDANCE_SPLIT_CAPTURE_RE.split(names_text)
+    kept: list[str | None] = []
+    for index in range(0, len(pieces), 2):
+        part = _DASH_ROLE_SUFFIX_RE.sub("", pieces[index])
+        after_comma = index > 0 and pieces[index - 1].strip() in {",", ";"}
+        words = [w.casefold().strip(".") for w in _WHITESPACE_RE.sub(" ", part).split() if w]
+        # A title that follows a name after a comma ("Charles Zech, City Attorney", "A, PCDC
+        # Executive Director") belongs to that name's owner, who is staff, not a member. Joined
+        # with "and" the same words can be a surname ("Mark Manager"), so only a comma counts.
+        if _has_leading_staff_title(words):
+            kept.append(
+                None
+            )  # "City Attorney Bob Roe": cleaning would strip the title, not the role
+            continue
+        is_title = bool(words) and (
+            all(w in _STAFF_ROLE_WORDS for w in words)
+            or (after_comma and _is_staff_title_phrase(part))
+        )
+        if is_title:
+            if kept:
+                kept[-1] = None  # the name just before a staff title is that staffer
+            continue
+        kept.append(_clean_roster_name(part))
+    rows = []
+    for name in kept:
+        if not name or not _looks_like_prose_name(name):
+            continue
+        row = {"name": name, "status": status, "evidence": evidence[:500]}
+        if section:
+            row["section"] = section
+        rows.append(row)
+    return rows
+
+
+# A call-to-order heading or convening statement, not any "to order" ("a motion to order supplies").
+_CALL_TO_ORDER_RE = re.compile(
+    r"\bcall(?:ed)?\s+(?:(?:the\s+)?(?:[A-Za-z]+\s+){0,3})?to\s+order\b", re.I
+)
+_PROSE_WINDOW_BEFORE = 400
+_PROSE_WINDOW_AFTER = 2500
+
+
+def _opening_window(flat: str) -> str:
+    """The stretch of minutes where the body's own attendance is recorded.
+
+    "... were in attendance" also introduces presenters, applicants and guests deep in the item
+    discussion, and those are not members. Attendance is recorded around the call to order, so
+    only that window is read; without a call to order the document's opening is used.
+    """
+    match = _CALL_TO_ORDER_RE.search(flat)
+    if match is None:
+        return flat[:_PROSE_WINDOW_AFTER]
+    start = max(0, match.start() - _PROSE_WINDOW_BEFORE)
+    return flat[start : match.end() + _PROSE_WINDOW_AFTER]
+
+
+def _non_member_lead(sentence: str) -> bool:
+    """Whether a sentence is led by a staff or guest label ("Staff:", "Guests Jane Doe ...").
+
+    The label is read before it is stripped, with or without a colon, so a staff or guest list is
+    never admitted as members; "Commission Members:" and "Commissioners Jane Doe" still are.
+    """
+    lead = sentence.split(":")[0] if ":" in sentence else " ".join(sentence.split(" ")[:3])
+    return bool(_qualifier_words(lead) & (_ROSTER_STAFF_WORDS | _ROSTER_EXCLUDED_WORDS | {"staff"}))
+
+
+def _member_sentence(span: str, *, require_member_evidence: bool = False) -> str | None:
+    """The member list a matched span ends in, or None when it is a staff/guest list.
+
+    Trims to the span's own sentence, refuses a staff or guest label, then drops a harmless
+    "Commission Members:" label so only the names remain.
+    """
+    sentence = _SENTENCE_START_RE.split(span)[-1].strip()
+    if _non_member_lead(sentence):
+        return None
+    if require_member_evidence and not _qualifier_words(sentence) & _MEMBER_EVIDENCE_WORDS:
+        return None  # presence alone is not membership; the label counts as evidence
+    if ":" in sentence:
+        sentence = sentence.rsplit(":", 1)[1].strip()
+    if _qualifier_words(sentence) & {"staff", "employees", "attending"}:
+        return None
+    return sentence
+
+
+def _roster_key(name: str) -> str:
+    """Dedupe key that keeps diacritics: "Jose" and "José" are different people on a roster."""
+    return " ".join(name.casefold().split())
+
+
+def _parse_prose_attendance(text: str) -> list[dict]:
+    """Members named in attendance sentences ("... were in attendance", "... in attendance: A, B").
+
+    Staff lists are skipped: their "Name, Title; Name, Title" shape cannot be told from a list of
+    members without a title vocabulary, and a staffer filed as a member would be handed the
+    cross-meeting speaker page the tier policy withholds (review/31 section C.4.1).
+    """
+    flat = _opening_window(_WHITESPACE_RE.sub(" ", text))
+    rows: list[dict] = []
+    for pattern in (_PROSE_PRESENT_RE, _PROSE_ABSENT_RE):
+        for match in pattern.finditer(flat):
+            status = "present"
+            if pattern is _PROSE_ABSENT_RE:
+                status = "excused" if match.group("phrase").casefold() == "excused" else "absent"
+            # The match is lazy from wherever scanning resumed, so trim to its own sentence.
+            sentence = _member_sentence(match.group("names"), require_member_evidence=True)
+            if sentence is None:
+                continue
+            rows += _prose_roster_rows(sentence, status, None, match.group(0))
+    presider = _PRESIDER_RE.search(flat)
+    if presider is not None:
+        sentence = _member_sentence(presider.group("names"))
+        if sentence is not None:
+            # Flattening glues the line above ("City Council Minutes") onto the presider, so
+            # read from the last office word: "Council Minutes Mayor Jane Doe" -> "Mayor Jane Doe".
+            offices = list(_PRESIDER_OFFICE_RE.finditer(sentence))
+            sentence = sentence[offices[-1].start() :] if offices else ""
+        if sentence:
+            rows += _prose_roster_rows(sentence, "present", None, presider.group(0))
+    for match in _QUALIFIED_ATTENDANCE_RE.finditer(flat):
+        if _ENCLOSING_NON_MEMBER_LABEL_RE.search(flat[max(0, match.start() - 60) : match.start()]):
+            continue  # "Guests: Commissioners in attendance: ..." -- the list is the guests'
+        qualifier = match.group("qualifier")
+        words = _qualifier_words(qualifier)
+        if words & (_ROSTER_STAFF_WORDS | _ROSTER_EXCLUDED_WORDS):
+            continue
+        section = _roster_section(qualifier)
+        if section != "members":
+            continue
+        names = _RUN_ON_LABEL_RE.sub("", match.group("names"))
+        rows += _prose_roster_rows(names, "present", section, match.group(0))
+    seen: set[tuple[str, str]] = set()
+    unique = []
+    for row in rows:
+        key = (_roster_key(row["name"]), row["status"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(row)
+    return unique
 
 
 def parse_roster(text: str) -> list[dict]:
@@ -1451,15 +1970,55 @@ def parse_roster(text: str) -> list[dict]:
             continue
         status = match.group("status").lower()
         section = _roster_section(qualifier)
-        for raw_name in _ATTENDANCE_SPLIT_RE.split(match.group("names").strip()):
+        names_text = match.group("names").strip()
+        evidence_end = match.end()
+        if names_text and section != "staff" and not _ends_a_sentence(names_text):
+            # A long attendance line wraps ("... and Council Members Keely" / "Briggs, Jesse
+            # Davis"): without the second line the member is kept as a bare first name.
+            wrapped = _names_after_heading(text, match.end(), wrapped=True, previous=names_text)
+            if wrapped is None:
+                continue
+            names_text = f"{names_text} {wrapped[0]}".strip()
+            evidence_end = max(evidence_end, wrapped[1])
+        if not names_text and section != "staff" and not _follows_heading(text, match.start()):
+            # Staff blocks are "Name, Title; Name, Title" runs whose titles cannot be told from
+            # names here, so only member headings read the lines below them.
+            below = _names_after_heading(text, match.end())
+            if below is None:
+                continue
+            names_text, evidence_end = below
+        names_text = _PLURAL_ROSTER_TITLE_RE.sub(" ", _INLINE_LABEL_RE.sub(" ", names_text))
+        for raw_name in _ATTENDANCE_SPLIT_RE.split(names_text):
+            if section is None and _has_leading_staff_title(
+                [w.casefold().strip(".") for w in raw_name.split()]
+            ):
+                continue  # "City Attorney Bob Roe" under a member heading is a staffer
             name = _clean_roster_name(raw_name)
             if not name:
                 continue
-            row = {"name": name, "status": status, "evidence": match.group(0)[:500]}
+            # Evidence is the heading plus any continuation lines the names came from.
+            evidence = text[match.start() : evidence_end][:500]
+            row = {"name": name, "status": status, "evidence": evidence}
             if section:
                 row["section"] = section
             result.append(row)
-    return result
+    # A structured member list stays authoritative for the statuses it covers (reading prose beside
+    # it adds junk such as "Minutes Planning" and OCR near-duplicates), but a status it does not
+    # cover at all -- "ABSENT: Bob Jones" under prose naming who was present -- is read from the
+    # prose. A "STAFF PRESENT:" line alone covers nothing.
+    covered = {row["status"] for row in result if row.get("section") != "staff"}
+    result = result + [row for row in _parse_prose_attendance(text) if row["status"] not in covered]
+    if not result:
+        return []
+    # The attendance block is often repeated (a header on every page); keep each fact once.
+    seen: set[tuple[str, str, str | None]] = set()
+    unique = []
+    for row in result:
+        key = (_roster_key(row["name"]), row["status"], row.get("section"))
+        if key not in seen:
+            seen.add(key)
+            unique.append(row)
+    return unique
 
 
 _VOTE_HEADING_RE = re.compile(r"\s*(?:item\s+)?(\d+[A-Za-z.]*)[.)\-:]\s*(.+)$", re.I)

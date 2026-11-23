@@ -5000,7 +5000,9 @@ MINUTES_VOTES_PIPELINE_VERSION = "1"
 # and an OCR pass; it falls back to a full re-fetch only when that artifact cannot be read, or
 # holds a viewer shell instead of the document. "3": re-fetch the shells stored before sibling-host
 # Granicus viewer redirects were unwrapped (Pflugerville minutes were all stored as "Loading...").
-MINUTES_ROSTER_PARSER_VERSION = "3"
+# "4": prose attendance sentences, line-numbered and "IN PERSON/VIRTUALLY" headings, and names on
+# the line below a heading are read now, and generic office fragments ("Council") are dropped.
+MINUTES_ROSTER_PARSER_VERSION = "4"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"

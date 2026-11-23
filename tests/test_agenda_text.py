@@ -758,3 +758,524 @@ def test_a_real_agenda_mentioning_unpublished_items_is_not_marked_not_published(
         body, content_type="text/html", source_url="https://example.test/viewer"
     )
     assert assessment.reason != "agenda-not-published"
+
+
+def _names(rows, status="present"):
+    return [row["name"] for row in rows if row["status"] == status]
+
+
+def test_roster_reads_a_prose_attendance_sentence_and_the_presiding_member():
+    text = (
+        "City of Springfield\nMinutes - Final\nCity Council\nCall to Order1.\n"
+        "Mayor Jane Doe called the meeting to order at 7:00pm. Mayor Pro Tem Ann Lee and\n"
+        "Councilmembers Bob Roe, Cy Poe, and Di Moe were in attendance. Councilmember Ed Foe\n"
+        "joined the meeting at 7:09pm. City staff in attendance: Al Noe, City Manager; Bo Zoe,\n"
+        "City Attorney.\n"
+    )
+    rows = parse_roster(text)
+    assert _names(rows) == ["Ann Lee", "Bob Roe", "Cy Poe", "Di Moe", "Jane Doe"]
+    assert all(row.get("section") != "staff" for row in rows)
+
+
+def test_prose_roster_ignores_guests_who_were_in_attendance_later_in_the_minutes():
+    filler = "Item discussion continued. " * 150
+    text = (
+        "Mayor Jane Doe called the meeting to order at 7:00pm. Councilmembers Ann Lee and Bob Roe "
+        "were in attendance. " + filler + "Amy Guest, Acme Executive Director, was in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Jane Doe"]
+
+
+def test_prose_roster_drops_a_staffer_listed_beside_the_members():
+    text = (
+        "Vice Chair Jo Park called the meeting to order at 7:00 p.m. Commissioners Ann Lee, Bob "
+        "Roe, and Cy Poe, City Attorney, were in attendance. Chair Di Moe was not present."
+    )
+    rows = parse_roster(text)
+    assert _names(rows) == ["Ann Lee", "Bob Roe", "Jo Park"]  # Cy Poe is the City Attorney
+    assert _names(rows, "absent") == ["Di Moe"]
+
+
+def test_prose_roster_reads_a_qualified_in_attendance_list_but_not_the_staff_one():
+    text = (
+        "Chair Ann Lee called the meeting to order at 7:00pm. Commissioners in attendance: Ann "
+        "Lee, Bob Roe, Cy Poe Commissioners absent: Di Moe. Staff in attendance: Al Noe, "
+        "Director; Bo Zoe, Planner."
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Cy Poe"]
+
+
+def test_prose_roster_rejects_fragments_and_single_words():
+    text = (
+        "The meeting was called to order at 7:00pm. The motion carried separately and "
+        "seperately were in attendance."
+    )
+    assert parse_roster(text) == []
+
+
+def test_roster_reads_a_status_line_with_a_line_number_prefix():
+    text = (
+        "9\n10 PRESENT: Chair Ann Lee, Commissioners: Bob Roe, Cy Poe, and Di Moe\n11 ABSENT: None"
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Cy Poe", "Di Moe"]
+
+
+def test_roster_reads_in_person_and_virtual_headings():
+    text = (
+        "PRESENT IN PERSON: Mayor Ann Lee and Council Members Bob Roe, Cy Poe\n"
+        "PRESENT VIRTUALLY: Di Moe"
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Cy Poe", "Di Moe"]
+
+
+def test_roster_reads_names_on_the_line_below_a_heading():
+    text = (
+        "PRESENT:\nMayor Ann Lee, Mayor Pro Tem Bob Roe, Council Member Cy Poe and Council Member "
+        "Di Moe.\nABSENT:\nCouncil Member Ed Foe.\n1.\nRequests for clarification"
+    )
+    rows = parse_roster(text)
+    assert _names(rows) == ["Ann Lee", "Bob Roe", "Cy Poe", "Di Moe"]
+    assert _names(rows, "absent") == ["Ed Foe"]
+
+
+def test_roster_leaves_a_flattened_heading_table_empty_rather_than_guess():
+    """Every heading printed first, then one line of names per heading: the names cannot be
+    matched to headings by position, and mis-filing the present members as absent would be worse
+    than no roster."""
+    text = (
+        "PRESENT IN PERSON:\nPRESENT VIRTUALLY:\nABSENT:\n"
+        "Mayor Ann Lee and Council Members Bob Roe, Cy Poe\n"
+        "Mayor Pro Tem Di Moe\nNone\n"
+    )
+    assert parse_roster(text) == []
+
+
+def test_roster_drops_office_fragments_and_ocr_mayor_pro_tern():
+    text = "PRESENT: Mayor Ann Lee, Mayor Pro Tern Bob Roe and Council\nABSENT: Jr"
+    rows = parse_roster(text)
+    assert _names(rows) == ["Ann Lee", "Bob Roe"]
+    assert _names(rows, "absent") == []
+
+
+def test_roster_strips_an_inline_commissioners_label():
+    text = "PRESENT: Chair Ann Lee, Commissioners: Bob Roe, Cy Poe"
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Cy Poe"]
+
+
+def test_roster_joins_a_wrapped_attendance_line():
+    text = (
+        "PRESENT: Mayor Ann Lee, Mayor Pro Tem Bob Roe and Council Members Cy\n"
+        "Poe, Di Moe, and Ed Foe\n"
+        "ABSENT: None\n"
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Cy Poe", "Di Moe", "Ed Foe"]
+
+
+def test_roster_joins_a_wrapped_first_name_to_its_surname():
+    text = "PRESENT: Mayor Ann Lee and Council Members Bob\nRoe, Cy Poe\n1. Citizen Comments\n"
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Cy Poe"]
+
+
+def test_roster_does_not_swallow_the_section_that_follows_an_attendance_line():
+    text = "PRESENT: Chair Ann Lee, Bob Roe\nABSENT: Commissioner Cy Poe\nWORK SESSION\n1. Items\n"
+    rows = parse_roster(text)
+    assert _names(rows) == ["Ann Lee", "Bob Roe"]
+    assert _names(rows, "absent") == ["Cy Poe"]
+
+
+def test_roster_does_not_read_a_vote_line_as_the_end_of_the_attendance_list():
+    text = "Present: Alice Smith, Bob Jones\nVote: Yes: Alice Smith, Carol Outsider; No: Bob Jones"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+
+
+def test_roster_keeps_each_repeated_attendance_fact_once():
+    block = "PRESENT: Mayor Ann Lee, Bob Roe\n"
+    assert _names(parse_roster(block * 3)) == ["Ann Lee", "Bob Roe"]
+
+
+def test_prose_roster_checks_a_staff_or_guest_label_before_stripping_it():
+    staff = (
+        "Chair Ann Lee called the meeting to order. Staff: Jane Doe and Bob Roe were in attendance."
+    )
+    assert _names(parse_roster(staff)) == ["Ann Lee"]
+    guests = (
+        "Chair Ann Lee called the meeting to order. Guests Jane Doe and Bob Roe were in attendance."
+    )
+    assert _names(parse_roster(guests)) == ["Ann Lee"]
+    members = (
+        "Chair Ann Lee called the meeting to order. Commission Members: Jane Doe and Bob Roe "
+        "were in attendance."
+    )
+    assert _names(parse_roster(members)) == ["Jane Doe", "Bob Roe", "Ann Lee"]
+    plain = (
+        "Chair Ann Lee called the meeting to order. Commissioners Jane Doe and Bob Roe were in "
+        "attendance."
+    )
+    assert _names(parse_roster(plain)) == ["Jane Doe", "Bob Roe", "Ann Lee"]
+
+
+def test_roster_does_not_append_an_unrelated_heading_to_a_members_name():
+    assert _names(parse_roster("PRESENT: Alice Smith\nPublic Comment\n")) == ["Alice Smith"]
+    assert _names(parse_roster("PRESENT: Alice Smith\nNew Business\nABSENT: None")) == [
+        "Alice Smith"
+    ]
+
+
+def test_roster_keeps_the_lines_of_a_vertical_attendance_list_separate():
+    rows = parse_roster("PRESENT:\nALICE SMITH\nBOB JONES\nCARY LEE\n")
+    assert _names(rows) == ["ALICE SMITH", "BOB JONES", "CARY LEE"]
+
+
+def test_prose_roster_keeps_excused_distinct_from_absent():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioner Bob Roe was excused. "
+        "Commissioner Cy Poe was not present. Commissioner Di Moe was absent."
+    )
+    rows = parse_roster(text)
+    assert _names(rows, "excused") == ["Bob Roe"]
+    assert _names(rows, "absent") == ["Cy Poe", "Di Moe"]
+
+
+def test_roster_dedupe_keeps_names_that_differ_only_by_a_diacritic():
+    assert _names(parse_roster("PRESENT: José Silva, Jose Silva, José Silva")) == [
+        "José Silva",
+        "Jose Silva",
+    ]
+    prose = (
+        "Chair Ann Lee called the meeting to order. Commissioners José Silva and Jose Silva "
+        "were in attendance."
+    )
+    assert sorted(_names(parse_roster(prose))) == ["Ann Lee", "Jose Silva", "José Silva"]
+
+
+def test_roster_only_a_real_empty_attendance_heading_makes_the_next_heading_a_table():
+    assert _names(parse_roster("ROLL CALL:\nPRESENT:\nAlice Smith, Bob Jones\n")) == [
+        "Alice Smith",
+        "Bob Jones",
+    ]
+
+
+def test_prose_roster_does_not_mistake_a_surname_for_a_staff_title():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Mark Manager "
+        "were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Mark Manager", "Ann Lee"]
+    staffer = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Cy Poe, City "
+        "Attorney, were in attendance."
+    )
+    assert _names(parse_roster(staffer)) == ["Alice Smith", "Ann Lee"]
+
+
+def test_prose_members_are_read_when_structured_parsing_found_only_staff():
+    text = (
+        "STAFF PRESENT: Al Noe, City Manager.\n"
+        "Chair Ann Lee called the meeting to order at 7:00 p.m. Commissioners Bob Roe and Cy Poe "
+        "were in attendance."
+    )
+    rows = parse_roster(text)
+    assert any(row.get("section") == "staff" for row in rows)
+    members = [row["name"] for row in rows if row.get("section") != "staff"]
+    assert sorted(members) == ["Ann Lee", "Bob Roe", "Cy Poe"]
+
+
+def test_roster_parsing_stays_fast_with_many_repeated_attendance_headings():
+    import time
+
+    text = ("PRESENT: Chair Ann Lee, Bob Roe\nABSENT: None\n" + "Item text. " * 40 + "\n") * 2500
+    started = time.monotonic()
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe"]
+    assert time.monotonic() - started < 5
+
+
+def test_prose_roster_does_not_split_a_name_at_an_initial():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Robert J. Van "
+        "Dyke were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Robert J. Van Dyke", "Ann Lee"]
+    titled = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Mr. Bob Roe and "
+        "Cy Poe Jr. were in attendance."
+    )
+    assert _names(parse_roster(titled)) == ["Alice Smith", "Bob Roe", "Cy Poe Jr", "Ann Lee"]
+
+
+def test_prose_roster_does_not_enrol_a_staff_titled_entry_as_a_member():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and City Attorney "
+        "Bob Roe were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Ann Lee"]
+    elected = (
+        "Mayor Ann Lee called the meeting to order. City Councilmembers Wayne Cooper and County "
+        "Commissioner Jane Doe were in attendance."
+    )
+    assert _names(parse_roster(elected)) == ["Wayne Cooper", "Jane Doe", "Ann Lee"]
+
+
+def test_roster_rejects_a_vertical_list_longer_than_the_bound_instead_of_truncating_it():
+    from citypods.agenda_text import _MAX_ROSTER_CONTINUATION_LINES
+
+    members = [f"Member{chr(65 + i)} Person" for i in range(_MAX_ROSTER_CONTINUATION_LINES + 3)]
+    assert parse_roster("PRESENT:\n" + "\n".join(members) + "\n") == []
+    fitting = members[:12]
+    assert len(_names(parse_roster("PRESENT:\n" + "\n".join(fitting) + "\n"))) == 12
+
+
+def test_roster_stops_a_vertical_list_at_the_next_section_heading():
+    text = "PRESENT:\nAlice Smith\nBob Jones\nPUBLIC COMMENT\n1. Discussion\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+    caps = "PRESENT:\nALICE SMITH\nBOB JONES\nCALL TO ORDER\n"
+    assert _names(parse_roster(caps)) == ["ALICE SMITH", "BOB JONES"]
+    case_change = "PRESENT:\nAlice Smith\nNEW SECTION HEADING\n"
+    assert _names(parse_roster(case_change)) == ["Alice Smith"]
+    assert parse_roster("PRESENT:\nPUBLIC COMMENT\n") == []
+
+
+def test_prose_roster_keeps_semicolon_separated_names():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith; Bob Roe were "
+        "present."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Roe", "Ann Lee"]
+
+
+def test_roster_keeps_reading_a_vertical_list_past_a_suffix_period():
+    text = "PRESENT:\nAlice Smith Jr.\nBob Jones\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith Jr", "Bob Jones"]
+    initial = "PRESENT:\nRobert J.\nBob Jones\n"
+    assert "Bob Jones" in _names(parse_roster(initial))
+
+
+def test_prose_roster_keeps_a_full_name_that_ends_in_a_role_word_after_a_comma():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Mark Manager, and "
+        "Bob Roe were present."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Mark Manager", "Bob Roe", "Ann Lee"]
+    staff = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Shane Mize, Parks "
+        "Director, and Bob Roe were present."
+    )
+    assert _names(parse_roster(staff)) == ["Alice Smith", "Bob Roe", "Ann Lee"]
+    acronym = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith, Amy Madison, PCDC "
+        "Executive Director, and Bob Roe were present."
+    )
+    assert _names(parse_roster(acronym)) == ["Alice Smith", "Bob Roe", "Ann Lee"]
+
+
+def test_prose_roster_rejects_a_prefixed_guest_label():
+    text = (
+        "Chair Ann Lee called the meeting to order. Invited guests Alice Smith and Bob Roe were "
+        "in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee"]
+    staff = (
+        "Chair Ann Lee called the meeting to order. City staff Alice Smith and Bob Roe were in "
+        "attendance."
+    )
+    assert _names(parse_roster(staff)) == ["Ann Lee"]
+
+
+def test_prose_roster_drops_a_leading_department_title():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Parks Director "
+        "Bob Roe were present."
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Ann Lee"]
+
+
+def test_roster_reads_an_all_caps_list_that_continues_after_a_comma():
+    text = "PRESENT: ALICE SMITH,\nBOB JONES, CAROL BROWN\nABSENT: NONE\n"
+    assert _names(parse_roster(text)) == ["ALICE SMITH", "BOB JONES", "CAROL BROWN"]
+
+
+def test_roster_ignores_printed_line_numbers_on_a_vertical_list():
+    text = "10 PRESENT:\n11 Alice Smith\n12 Bob Jones\n13 ABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+
+
+def test_roster_rejects_a_vertical_list_cut_off_by_the_lookahead_limit():
+    from citypods.agenda_text import _HEADING_LOOKAHEAD_CHARS
+
+    clipped = (
+        "PRESENT:\n" + " " * (_HEADING_LOOKAHEAD_CHARS - 4) + "Alice Smith\nBob Jones\n" + "x" * 50
+    )
+    assert parse_roster(clipped) == []
+    short = "PRESENT:\nAlice Smith\nBob Jones\n"
+    assert _names(parse_roster(short)) == ["Alice Smith", "Bob Jones"]
+
+
+def test_roster_splits_an_ampersand_between_wrapped_names():
+    assert _names(parse_roster("PRESENT: Alice Smith &\nBob Jones\nABSENT: None\n")) == [
+        "Alice Smith",
+        "Bob Jones",
+    ]
+
+
+def test_prose_roster_does_not_infer_membership_from_presence_alone():
+    visitors = (
+        "Chair Ann Lee called the meeting to order. Jane Doe and Bob Roe were present to give "
+        "public comment."
+    )
+    assert _names(parse_roster(visitors)) == ["Ann Lee"]
+    untitled = "Chair Ann Lee called the meeting to order. Jane Doe and Bob Roe were in attendance."
+    assert _names(parse_roster(untitled)) == ["Ann Lee"]
+    members = (
+        "Chair Ann Lee called the meeting to order. Commissioners Jane Doe and Bob Roe were "
+        "present."
+    )
+    assert _names(parse_roster(members)) == ["Jane Doe", "Bob Roe", "Ann Lee"]
+
+
+def test_roster_keeps_reading_after_a_members_initial():
+    text = "PRESENT: Council Member Robert J.\nSmith, Alice Brown\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Robert J. Smith", "Alice Brown"]
+
+
+def test_roster_rejects_the_whole_heading_when_a_wrapped_list_is_truncated():
+    from citypods.agenda_text import _MAX_ROSTER_CONTINUATION_LINES
+
+    lines = [f"Member{chr(65 + i)} Person," for i in range(_MAX_ROSTER_CONTINUATION_LINES + 2)]
+    assert parse_roster("PRESENT: Alice Smith,\n" + "\n".join(lines) + "\n") == []
+
+
+def test_roster_stops_a_vertical_list_at_a_standalone_none():
+    assert parse_roster("PRESENT:\nNone\nMotion Carried\n") == []
+    assert _names(parse_roster("PRESENT:\nAlice Smith\nNone\nMotion Carried\n")) == ["Alice Smith"]
+    assert _names(parse_roster("PRESENT:\nAlice Smith\nBob Jones\n")) == [
+        "Alice Smith",
+        "Bob Jones",
+    ]
+
+
+def test_roster_evidence_for_a_vertical_list_includes_the_source_lines():
+    rows = parse_roster("PRESENT:\nAlice Smith\nBob Jones\nPUBLIC COMMENT\n")
+    assert [row["name"] for row in rows] == ["Alice Smith", "Bob Jones"]
+    assert all("Alice Smith" in row["evidence"] and "Bob Jones" in row["evidence"] for row in rows)
+    assert all("PUBLIC COMMENT" not in row["evidence"] for row in rows)
+    inline = parse_roster("PRESENT: Alice Smith, Bob Jones\nABSENT: None\n")
+    assert inline[0]["evidence"] == "PRESENT: Alice Smith, Bob Jones"
+
+
+def test_prose_window_anchors_on_a_real_call_to_order():
+    front = "A motion to order supplies was filed. " + "Background item text. " * 150
+    text = (
+        front
+        + "Chair Ann Lee called the meeting to order at 7:00pm. Commissioners Bob Roe and Cy Poe "
+        "were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Bob Roe", "Cy Poe", "Ann Lee"]
+    heading = "Call to Order1. Chair Ann Lee opened it. Commissioners Bob Roe were in attendance."
+    assert "Bob Roe" in _names(parse_roster(heading))
+
+
+def test_prose_roster_checks_a_guest_label_that_encloses_a_qualified_list():
+    text = (
+        "Chair Ann Lee called the meeting to order. Guests: Commissioners in attendance: Jane "
+        "Doe and Bob Roe."
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee"]
+    plain = (
+        "Chair Ann Lee called the meeting to order. Commissioners in attendance: Jane Doe and "
+        "Bob Roe."
+    )
+    assert sorted(_names(parse_roster(plain))) == ["Ann Lee", "Bob Roe", "Jane Doe"]
+
+
+def test_structured_roster_does_not_enrol_a_staff_titled_entry_under_a_member_heading():
+    text = "PRESENT:\nAlice Smith\nCity Attorney Bob Roe\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    inline = "PRESENT: Alice Smith, Deputy City Manager Cy Poe, Di Moe\n"
+    assert _names(parse_roster(inline)) == ["Alice Smith", "Di Moe"]
+    staff = "ALSO PRESENT: City Attorney Bob Roe\n"
+    assert [r["name"] for r in parse_roster(staff) if r.get("section") == "staff"] == ["Bob Roe"]
+
+
+def test_an_all_caps_given_name_is_not_a_staff_acronym():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners ALICE SMITH, MARK MANAGER, and "
+        "BOB ROE were present."
+    )
+    assert _names(parse_roster(text)) == ["ALICE SMITH", "MARK MANAGER", "BOB ROE", "Ann Lee"]
+
+
+def test_roster_keeps_reading_an_all_caps_line_after_a_comma_in_a_mixed_case_list():
+    text = "PRESENT:\nAlice Smith,\nBOB JONES, CAROL BROWN\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "BOB JONES", "CAROL BROWN"]
+
+
+def test_a_boards_own_secretary_is_a_member_but_a_city_secretary_is_staff():
+    text = (
+        "ABSENT: Chair Ann Lee, Secretary Thomas Plock, Bob Roe\n"
+        "PRESENT: City Secretary Di Moe, Cy Poe\n"
+    )
+    rows = parse_roster(text)
+    assert _names(rows, "absent") == ["Ann Lee", "Thomas Plock", "Bob Roe"]
+    assert _names(rows) == ["Cy Poe"]
+
+
+def test_prose_presider_does_not_swallow_the_header_line_above_it():
+    text = (
+        "City Council Minutes\nMayor Jane Doe called the meeting to order at 7:00pm. "
+        "Councilmembers Ann Lee and Bob Roe were in attendance.\n"
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Jane Doe"]
+    wrapped = (
+        "City of Springfield Minutes\nMayor Pro Tem\nKimberly Holiday called the meeting to "
+        "order. Councilmembers Ann Lee were in attendance."
+    )
+    assert "Kimberly Holiday" in _names(parse_roster(wrapped))
+
+
+def test_roster_does_not_read_a_motion_result_as_a_continued_name():
+    text = "PRESENT: Alice Smith,\nMotion Carried.\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    vertical = "PRESENT:\nAlice Smith\nMotion Carried\n"
+    assert _names(parse_roster(vertical)) == ["Alice Smith"]
+
+
+def test_directors_stay_members_under_an_explicit_member_label():
+    text = "Directors Present: Director Alice Smith, Bob Roe\nAlso Present: City Attorney Cy Poe\n"
+    rows = parse_roster(text)
+    assert [r["name"] for r in rows if r.get("section") == "members"] == ["Alice Smith", "Bob Roe"]
+    unlabeled = "PRESENT: City Attorney Cy Poe, Di Moe\n"
+    assert _names(parse_roster(unlabeled)) == ["Di Moe"]
+
+
+def test_roster_stops_a_member_list_at_an_explicit_staff_label():
+    text = "PRESENT: Alice Smith,\nStaff: Jane Doe\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    vertical = "PRESENT:\nAlice Smith\nBob Jones\nAlso present: Jane Doe, Clerk\n"
+    members = [r["name"] for r in parse_roster(vertical) if r.get("section") != "staff"]
+    assert members == ["Alice Smith", "Bob Jones"]  # Jane Doe is read, but as staff
+    guests = "PRESENT: Alice Smith,\nGuests: Jane Doe\n"
+    assert _names(parse_roster(guests)) == ["Alice Smith"]
+
+
+def test_a_structured_absence_does_not_hide_prose_that_names_who_was_present():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Jane Doe were "
+        "present.\nABSENT: Bob Jones\n"
+    )
+    rows = parse_roster(text)
+    assert sorted(_names(rows)) == ["Alice Smith", "Ann Lee", "Jane Doe"]
+    assert _names(rows, "absent") == ["Bob Jones"]
+
+
+def test_a_structured_list_stays_authoritative_for_the_statuses_it_covers():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioners Alice Smith and Minutes "
+        "Planning were present.\nPRESENT: Alice Smith, Bob Jones\n"
+    )
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+
+
+def test_an_all_caps_heading_before_a_numbered_item_is_not_a_member():
+    text = "PRESENT:\nALICE SMITH\nFINANCIAL UPDATE\n1. Discussion\n"
+    rows = parse_roster(text)
+    assert _names(rows) == ["ALICE SMITH"]
+    assert "FINANCIAL UPDATE" not in rows[0]["evidence"]
