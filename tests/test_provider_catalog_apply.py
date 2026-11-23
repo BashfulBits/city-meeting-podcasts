@@ -1602,3 +1602,76 @@ def test_a_busy_recheck_says_what_it_saw_instead_of_no_test_result():
     assert "inconclusive (HTTP 429), after retries" in busy and "tick stays" in busy
     assert "catalog" in _recheck_gap(decision, Report(), object())
     assert "daily run tests it" in _recheck_gap(decision, report, None)
+
+
+def test_a_command_that_hangs_is_stopped_and_reported(monkeypatch):
+    """A hung subprocess once held /apply for its whole 120-minute job timeout, silently."""
+    import subprocess
+    import sys
+
+    from scripts import provider_catalog_commands as commands
+
+    monkeypatch.setattr(commands, "COMMAND_TIMEOUT_SECONDS", 1)
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        commands.run([sys.executable, "-c", "import time; time.sleep(30)"])
+    text = commands.describe_failed_command(raised.value)
+    assert "did not finish within 1s and was stopped" in text
+    assert "validation script" in text
+    assert "fix the cause" in text
+
+
+def test_tests_get_a_longer_limit_than_other_commands(monkeypatch):
+    import subprocess
+    import sys
+
+    from scripts import provider_catalog_commands as commands
+
+    seen = []
+
+    def fake_run(args, **kwargs):
+        seen.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(args, 0, stdout="ok")
+
+    monkeypatch.setattr(commands.subprocess, "run", fake_run)
+    commands.run([sys.executable, "-m", "pytest", "-q"])
+    commands.run(["git", "fetch", "origin", "main"])
+    assert seen == [commands.TEST_TIMEOUT_SECONDS, commands.COMMAND_TIMEOUT_SECONDS]
+    assert commands.TEST_TIMEOUT_SECONDS > commands.COMMAND_TIMEOUT_SECONDS
+
+
+def test_a_stalled_gh_call_is_retried_then_fails(monkeypatch):
+    import subprocess
+
+    from citypods.provider_catalog import evidence
+
+    calls = []
+
+    def stalled(cmd, **kwargs):
+        calls.append(kwargs["timeout"])
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+    monkeypatch.setattr(evidence.subprocess, "check_output", stalled)
+    monkeypatch.setattr(evidence, "_sleep", lambda _s: None)
+    # The final timeout is a CalledProcessError, which the history loaders turn into a gap.
+    with pytest.raises(subprocess.CalledProcessError):
+        evidence._gh_api("repos/x/y")
+    assert calls == [evidence.GH_CALL_TIMEOUT_SECONDS] * evidence.GH_ATTEMPTS
+
+
+def test_a_stalled_gh_call_that_recovers_succeeds(monkeypatch):
+    import subprocess
+
+    from citypods.provider_catalog import evidence
+
+    attempts = []
+
+    def flaky(cmd, **kwargs):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+        return b"{}"
+
+    monkeypatch.setattr(evidence.subprocess, "check_output", flaky)
+    monkeypatch.setattr(evidence, "_sleep", lambda _s: None)
+    assert evidence._gh_api("repos/x/y") == b"{}"
+    assert len(attempts) == 2

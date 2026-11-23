@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -73,9 +74,41 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
 )
 from scripts.reconcile_provider_routes import _control  # noqa: E402
 
+# Every command is bounded: a hung subprocess (a stalled download, a test that never returns) held
+# the whole /apply job until its 120-minute timeout, with nothing logged, because output is captured
+# (2026-11-23). A timeout fails the command like any other error and is reported on the issue.
+COMMAND_TIMEOUT_SECONDS = 300
+TEST_TIMEOUT_SECONDS = 1200
+
+
+def _step_label(cmd):
+    """A fixed, secret-free name for a command (program/script names only, never arguments)."""
+    cmd = [str(part) for part in (cmd if isinstance(cmd, list | tuple) else [cmd])]
+    if len(cmd) > 1 and cmd[0] == sys.executable and cmd[1] == "-m":
+        return "tests (" + " ".join(cmd[2:4]) + ")"
+    if len(cmd) > 1 and cmd[0] == sys.executable:
+        return f"validation script {Path(cmd[1]).name}"
+    if cmd and cmd[0] == "git":
+        return "git " + (cmd[1] if len(cmd) > 1 else "")
+    if cmd and cmd[0] == "gh":
+        return "gh " + " ".join(cmd[1:3])
+    return Path(cmd[0]).name if cmd else "a command"
+
+
+def _progress(message):
+    print(f"[apply] {message}", file=sys.stderr, flush=True)
+
 
 def run(args):
-    return subprocess.run(args, cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+    label = _step_label(args)
+    timeout = TEST_TIMEOUT_SECONDS if label.startswith("tests") else COMMAND_TIMEOUT_SECONDS
+    started = time.monotonic()
+    _progress(f"start {label}")
+    out = subprocess.run(
+        args, cwd=ROOT, check=True, capture_output=True, text=True, timeout=timeout
+    ).stdout.strip()
+    _progress(f"done {label} in {time.monotonic() - started:.0f}s")
+    return out
 
 
 _FAILED_TEST = re.compile(
@@ -90,20 +123,15 @@ def describe_failed_command(exc):
     pytest node IDs (matched against a strict pattern) are repeated.
     """
     cmd = [str(part) for part in (exc.cmd if isinstance(exc.cmd, list | tuple) else [exc.cmd])]
-    if len(cmd) > 1 and cmd[0] == sys.executable and cmd[1] == "-m":
-        step = "tests (" + " ".join(cmd[2:4]) + ")"
-    elif len(cmd) > 1 and cmd[0] == sys.executable:
-        step = f"validation script {Path(cmd[1]).name}"
-    elif cmd and cmd[0] == "git":
-        step = "git " + (cmd[1] if len(cmd) > 1 else "")
-    elif cmd and cmd[0] == "gh":
-        step = "gh " + " ".join(cmd[1:3])
+    step = _step_label(cmd)
+    if isinstance(exc, subprocess.TimeoutExpired):
+        detail = f"{step} did not finish within {exc.timeout:.0f}s and was stopped"
+        failed = []
     else:
-        step = Path(cmd[0]).name if cmd else "a command"
-    detail = f"{step} failed with exit code {exc.returncode}"
-    failed = list(
-        dict.fromkeys(_FAILED_TEST.findall(exc.stdout if isinstance(exc.stdout, str) else ""))
-    )
+        detail = f"{step} failed with exit code {exc.returncode}"
+        failed = list(
+            dict.fromkeys(_FAILED_TEST.findall(exc.stdout if isinstance(exc.stdout, str) else ""))
+        )
     if failed:
         detail += "; failing tests: " + ", ".join(f"`{item}`" for item in failed[:5])
         if len(failed) > 5:
@@ -203,6 +231,7 @@ def prepare(body, base_commit, proposal_kind=None):
             repository = os.environ.get("GITHUB_REPOSITORY")
             if not repository:
                 raise ValueError("route additions require authenticated discovery provenance")
+            _progress("downloading evidence history")
             references = discover_discovery_references(repository=repository, now=now)
             discovery_history, accepted, discovery_history_gaps = verified_discovery_history(
                 references,
@@ -254,6 +283,7 @@ def prepare_limits(base_commit, *, selected=(), automatic=False):
         base_commit,
         now.date(),
     )
+    _progress("downloading evidence history")
     references = discover_rate_references(repository=os.environ["GITHUB_REPOSITORY"], now=now)
     observations, accepted, deferred = verified_rate_history(
         references,
@@ -286,6 +316,7 @@ def prepare_context(base_commit, *, selected=()):
     limits = load_config(texts[SOURCE_PATHS[0]])
     now = datetime.now(UTC)
     repository = os.environ["GITHUB_REPOSITORY"]
+    _progress("downloading evidence history")
     references = discover_context_references(repository=repository, now=now)
     history, _accepted, deferred = verified_context_history(
         references, limits, repository=repository, now=now
@@ -445,7 +476,14 @@ def file_producer_reviews(plan, *, run_fn=run):
                     command += ["--label", label]
                 url = run_fn(command).strip()
             lines.append(f"Producer review for `{change[0]}` {change[1]}: {url}")
-        except (subprocess.CalledProcessError, OSError, ValueError, KeyError, TypeError) as exc:
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+        ) as exc:
             lines.append(
                 f"Producer review issue for `{change[0]}` {change[1]} could not be filed "
                 f"({type(exc).__name__}); file it by hand: {title}"
@@ -803,6 +841,7 @@ def main(argv=None):
         TypeError,
         KeyError,
         subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
         DispatchPauseError,
     ) as exc:
         # Never include subprocess stdout/stderr (could contain provider secrets).
@@ -814,7 +853,7 @@ def main(argv=None):
                 if isinstance(exc, DispatchPauseError)
                 else (
                     describe_failed_command(exc)
-                    if isinstance(exc, subprocess.CalledProcessError)
+                    if isinstance(exc, subprocess.CalledProcessError | subprocess.TimeoutExpired)
                     else str(exc)
                 )
             ),
