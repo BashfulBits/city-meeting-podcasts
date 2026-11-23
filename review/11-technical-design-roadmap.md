@@ -332,6 +332,12 @@ dispositions and may reference the resulting report. Reuse review/49's JEV adapt
 DeepSeek to `beatapi_deepseek_v4_1_flash_free`; JEV currently has only one catalog route. These are
 design decisions, not an activated schedule or route change.
 
+**P3 offline exercise (#2280, 2026-11-23).** A synthetic consensus now traverses the real
+publication validator and planner, creates a proposal against a local bare Git repository and
+fake GitHub, and verifies duplicate planning and missed-feedback reconciliation in an in-memory
+ledger. The feed mutation and verification are stubbed. No provider, production GitHub or
+production storage is contacted. This does not establish production behavior or model quality.
+
 ### Active reliability follow-up: interactive remedy (#1231)
 
 Maintainer-directed, 2026-09-05; implementation in progress: direct-only, same-Actions-run remedy
