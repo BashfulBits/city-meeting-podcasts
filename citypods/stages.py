@@ -4676,9 +4676,11 @@ class MinutesTextStage:
     """Fetch effective minutes documents and publish deterministic vote/roster sidecars."""
 
     name = "minutes_text"
+    # "3": scanned minutes (a PDF with no text layer) are OCR'd now, so markers certifying an empty
+    # extraction are dirty and re-fetch once.
     # "2": completion markers stamped before sibling-host Granicus viewers were unwrapped certify a
     # stored viewer shell; a new version makes them dirty so process() re-fetches those episodes.
-    version = "2"
+    version = "3"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -4686,7 +4688,13 @@ class MinutesTextStage:
         import json as _json
         from datetime import UTC, datetime
 
-        from citypods.agenda_text import extract_document, parse_roster, parse_votes
+        from citypods.agenda_text import (
+            _member_rows,
+            _pdf_page_count,
+            extract_minutes_document,
+            parse_roster,
+            parse_votes,
+        )
         from citypods.http import fetch_document_bytes, make_session
         from citypods.records import minutes_text_backoff_until, source_key
 
@@ -4707,6 +4715,8 @@ class MinutesTextStage:
                 stats.reused += 1
                 continue
             cached_text: str | None = None
+            page_count: int | None = None
+            stored_method = "native"
             if (
                 ep.minutes_text_url == minutes_url
                 and ep.minutes_votes_url
@@ -4724,7 +4734,9 @@ class MinutesTextStage:
                 # extracted and stored. That is what makes a bump cheap -- no provider fetch and,
                 # for a scanned PDF, no second OCR pass over the whole archive. Falling through
                 # to `None` re-fetches, which is correct when the sidecar is unreadable.
-                cached_text = _stored_minutes_text(ctx, ep)
+                stored = _stored_minutes(ctx, ep)
+                if stored is not None:
+                    cached_text, page_count, stored_method = stored
             now = datetime.now(UTC)
             if minutes_text_backoff_until(ep) and minutes_text_backoff_until(ep) > now:
                 stats.defer("minutes-text-backoff")
@@ -4737,13 +4749,36 @@ class MinutesTextStage:
                     content, content_type = fetch_document_bytes(
                         session, _validated_document_url(city, minutes_url), timeout=30
                     )
-                    text, _ = extract_document(
+                    text, _, text_method = extract_minutes_document(
                         content,
                         content_type=content_type,
                         source_url=minutes_url,
+                        # OCR is the expensive, restartable part: a fetch that crossed the stop
+                        # cutoff must not start up to minutes of scanning (deferred, not failed).
+                        ocr_allowed=lambda: ctx.stop is None or not ctx.stop(),
                     )
+                    if text_method in {"retry", "deferred"} and not _member_rows(text):
+                        # OCR could not run and the native text names nobody; caching that as an
+                        # empty roster would hide a scan a healthy later run can read. (Native
+                        # text that does hold a roster is kept: it is the document, just short.)
+                        if text_method == "retry":
+                            # Count the failed attempt so the stage's own backoff spaces it out;
+                            # otherwise scans that always time out would take the OCR budget at
+                            # the head of every run and starve readable scans behind them. A
+                            # budget stop is not a failure and is not counted.
+                            ep.minutes_text_attempts += 1
+                            ep.minutes_text_last_attempt = datetime.now(UTC).isoformat()
+                        stats.defer(
+                            "minutes-ocr-retry" if text_method == "retry" else "wall-clock-budget",
+                            sample=ep.uid or ep.guid,
+                        )
+                        continue
+                    if text_method == "ocr":
+                        stats.quality("minutes-text-ocr")
+                    page_count = _pdf_page_count(content) or None
                 else:
                     text = cached_text
+                    text_method = stored_method
                 roster = parse_roster(text)
                 # Downstream, "no minutes published yet" and "minutes published but the roster did
                 # not parse" are indistinguishable -- both are an empty `minutes_roster` -- yet
@@ -4795,6 +4830,8 @@ class MinutesTextStage:
                     {
                         "version": MINUTES_TEXT_PIPELINE_VERSION,
                         "source_url": minutes_url,
+                        "page_count": page_count,
+                        "method": text_method,
                         "text": text,
                     },
                     sort_keys=True,
@@ -4957,18 +4994,25 @@ AGENDA_TEXT_PIPELINE_VERSION = "3"
 # re-assessed during normal enrichment; old artifacts remain available until a replacement is
 # accepted, and suspicious PDFs alone invoke OCR.
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
-MINUTES_TEXT_PIPELINE_VERSION = "1"
+# "2": the payload records the PDF's page count and was produced by the page-aware extractor. A "1"
+# payload may be a scan's stray text layer whose density cannot be judged, so it is re-fetched once.
+MINUTES_TEXT_PIPELINE_VERSION = "2"
 
 
-def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
-    """Return the minutes text this stage already extracted, or None if it cannot be read.
+def _stored_minutes(ctx: StageContext, ep: Episode) -> tuple[str, int | None, str] | None:
+    """The minutes text this stage already extracted, its page count and how it was obtained
+    ("native" or "ocr"), or None if unusable.
 
     Re-parsing a stored extraction is what keeps a `MINUTES_ROSTER_PARSER_VERSION` bump cheap:
     the expensive half of this stage is the provider fetch and, for a scanned PDF, OCR -- both of
     which produced this artifact in the first place and neither of which needs repeating when
-    only the roster parser changed.
+    only the roster parser changed. None sends the caller back to the provider.
     """
-    from citypods.agenda_text import classify_agenda_text
+    from citypods.agenda_text import (
+        classify_agenda_text,
+        minutes_text_is_sparse,
+        states_members_or_votes,
+    )
 
     key = (ep.links or {}).get("minutes_text_artifact_key")
     if not key or ctx.storage is None:
@@ -4980,14 +5024,37 @@ def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
         payload = json.loads(raw.decode())
     except (UnicodeDecodeError, ValueError):
         return None
-    text = payload.get("text") if isinstance(payload, dict) else None
+    if not isinstance(payload, dict) or payload.get("version") != MINUTES_TEXT_PIPELINE_VERSION:
+        return None  # an older extractor's output: its density cannot be judged, so re-fetch
+    text = payload.get("text")
     if not isinstance(text, str) or not text.strip():
         return None
+    page_count = payload.get("page_count")
+    page_count = page_count if isinstance(page_count, int) and page_count > 0 else None
+    stored_method = payload.get("method")
+    method = (
+        stored_method if isinstance(stored_method, str) and stored_method == "ocr" else "native"
+    )
+    # A sparse extraction ("City Council Minutes\nPage 1", one text page over a 40-page scan) is
+    # a scan's stray text layer, not the document; reusing it would skip the OCR that can read it.
+    # Text that OCR produced was accepted on its confidence, so a short confident scan is reused
+    # rather than OCR'd again on every parser upgrade.
+    # Native text that states the roll call or votes was accepted on purpose (the extractor skips
+    # OCR for it), so it is reused too even when sparse.
+    accepted = method == "ocr" or states_members_or_votes(text)
+    if not accepted and minutes_text_is_sparse(text, page_count, cached=page_count is None):
+        return None
     # A viewer shell ("Loading...") stored as if it were the document would otherwise be re-parsed
-    # forever; None sends the caller back to the provider for the real document.
+    # forever.
     if classify_agenda_text(text) in {"viewer-placeholder", "unpublished-placeholder"}:
         return None
-    return text
+    return text, page_count, method
+
+
+def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
+    """The stored minutes text alone (see :func:`_stored_minutes`)."""
+    stored = _stored_minutes(ctx, ep)
+    return stored[0] if stored else None
 
 
 MINUTES_VOTES_PIPELINE_VERSION = "1"

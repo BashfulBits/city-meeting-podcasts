@@ -3,6 +3,8 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from citypods.agenda_text import (
     OCR_FULL_SECONDS_PER_PAGE,
     AgendaTitleCandidate,
@@ -893,6 +895,136 @@ def test_roster_keeps_each_repeated_attendance_fact_once():
     assert _names(parse_roster(block * 3)) == ["Ann Lee", "Bob Roe"]
 
 
+def test_roster_strips_hyphenated_and_ocr_spaced_vice_chair_and_members_labels():
+    text = "PRESENT: Vice-Chair Ann Lee, Vice- Chair Bob Roe, Members Cy Poe, Chair Pro Tem Di Moe"
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe", "Cy Poe", "Di Moe"]
+
+
+_SCANNED_PDF = b"%PDF-1.4 scanned"
+
+
+def _scanned(monkeypatch, pages=3):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: ("", []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: pages)
+    return agenda_text
+
+
+def test_minutes_ocr_reads_a_scanned_pdf_with_confident_text(monkeypatch):
+    agenda_text = _scanned(monkeypatch)
+    seen = {}
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        seen.update(pages=pages, timeout=timeout, preserve_lines=preserve_lines)
+        return "PRESENT: Mayor Ann Lee, Bob Roe\n" + "Minutes of the regular meeting. " * 20, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "ocr"
+    assert text.startswith("PRESENT:")
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe"]
+    assert seen["pages"] == [1, 2, 3] and seen["preserve_lines"] is True
+    assert seen["timeout"] >= agenda_text.OCR_FULL_SECONDS_PER_PAGE * 3
+
+
+def test_minutes_ocr_discards_unconfident_text_but_keeps_failures_retryable(monkeypatch):
+    agenda_text = _scanned(monkeypatch)
+    body = "Minutes of the regular meeting. " * 20
+
+    def blurry(content, pages, *, timeout, preserve_lines):
+        return body, 60.0
+
+    def missing(content, pages, *, timeout, preserve_lines):
+        raise agenda_text.OcrUnavailableError
+
+    def too_slow(content, pages, *, timeout, preserve_lines):
+        raise subprocess.TimeoutExpired("ocr", timeout)
+
+    outcomes = {}
+    for name, runner in (("blurry", blurry), ("missing", missing), ("too_slow", too_slow)):
+        text, _, method = agenda_text.extract_minutes_document(
+            _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+        )
+        outcomes[name] = (text, method)
+    # A deliberate quality rejection is final; a tool failure must be retried, not cached.
+    assert outcomes == {
+        "blurry": ("", "none"),
+        "missing": ("", "retry"),
+        "too_slow": ("", "retry"),
+    }
+
+
+def test_minutes_ocr_is_deferred_when_the_run_budget_is_spent(monkeypatch):
+    agenda_text = _scanned(monkeypatch)
+
+    def runner(*args, **kwargs):
+        raise AssertionError("OCR must not start once the budget is spent")
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF,
+        content_type="application/pdf",
+        ocr_runner=runner,
+        ocr_allowed=lambda: False,
+    )
+    assert (text, method) == ("", "deferred")
+
+
+def test_minutes_ocr_is_not_attempted_when_native_text_exists_or_the_document_is_html(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    def runner(*args, **kwargs):
+        raise AssertionError("OCR must not run")
+
+    native = "Minutes of the regular meeting of the council. " * 60
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert (text, method) == (native, "native")
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: ("", []))
+    _, _, method = agenda_text.extract_minutes_document(
+        b"<html></html>", content_type="text/html", ocr_runner=runner
+    )
+    assert method == "none"
+
+
+def test_ocr_can_keep_tesseract_line_breaks(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    header = "\t".join(
+        "level page_num block_num par_num line_num word_num left top width height conf text".split()
+    )
+
+    def row(block, line, word, conf, text):
+        return f"5\t1\t{block}\t1\t{line}\t{word}\t0\t0\t1\t1\t{conf}\t{text}"
+
+    tsv = "\n".join(
+        [
+            header,
+            row(1, 1, 1, 96, "PRESENT:"),
+            row(1, 1, 2, 96, "Ann"),
+            row(1, 1, 3, 96, "Lee"),
+            row(1, 2, 1, 94, "ABSENT:"),
+            row(1, 2, 2, 94, "None"),
+        ]
+    )
+
+    def fake_run(command, **kwargs):
+        stdout = tsv if command[0] == "tesseract" else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(agenda_text.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(agenda_text.subprocess, "run", fake_run)
+    flat, _ = agenda_text._ocr_pdf_pages(b"%PDF", [1], timeout=30)
+    lined, confidence = agenda_text._ocr_pdf_pages(b"%PDF", [1], timeout=30, preserve_lines=True)
+    assert flat == "PRESENT: Ann Lee ABSENT: None"
+    assert lined == "PRESENT: Ann Lee\nABSENT: None"
+    assert confidence == pytest.approx(95.2)
+
+
 def test_prose_roster_checks_a_staff_or_guest_label_before_stripping_it():
     staff = (
         "Chair Ann Lee called the meeting to order. Staff: Jane Doe and Bob Roe were in attendance."
@@ -1143,6 +1275,33 @@ def test_roster_rejects_the_whole_heading_when_a_wrapped_list_is_truncated():
     assert parse_roster("PRESENT: Alice Smith,\n" + "\n".join(lines) + "\n") == []
 
 
+def test_minutes_ocr_runs_when_the_only_selectable_text_is_a_repeated_page_header(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    header = "City Council Meeting Minutes - Regular Meeting\n" * 8
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (header, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 8)
+    assert agenda_text._alpha_chars(header) >= agenda_text.OCR_MIN_ALPHA_CHARS  # clears the floor
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "PRESENT: Mayor Ann Lee, Bob Roe\n" + "Minutes of the regular meeting. " * 20, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "ocr" and text.startswith("PRESENT:")
+
+
+def test_minutes_text_sparseness_uses_pages_and_repeated_lines():
+    from citypods.agenda_text import minutes_text_is_sparse
+
+    real = "The council discussed the budget and approved the consent agenda items. " * 40
+    assert not minutes_text_is_sparse(real, 3)
+    assert minutes_text_is_sparse(real, 40)  # a page or two of text spread over 40 pages
+    assert minutes_text_is_sparse("City Council Minutes\n" * 20 + "x" * 10)
+    assert minutes_text_is_sparse("City Council Minutes\nPage 1")
+
+
 def test_roster_stops_a_vertical_list_at_a_standalone_none():
     assert parse_roster("PRESENT:\nNone\nMotion Carried\n") == []
     assert _names(parse_roster("PRESENT:\nAlice Smith\nNone\nMotion Carried\n")) == ["Alice Smith"]
@@ -1186,6 +1345,25 @@ def test_prose_roster_checks_a_guest_label_that_encloses_a_qualified_list():
     assert sorted(_names(parse_roster(plain))) == ["Ann Lee", "Bob Roe", "Jane Doe"]
 
 
+def test_minutes_ocr_keeps_a_native_roster_the_scan_body_missed(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text, "extract_document", lambda *a, **k: ("PRESENT: Mayor Ann Lee, Bob Roe", [])
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "Minutes of the regular meeting. " * 30, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    # OCR missed the attendance line, so the text layer wins; the sources are never joined.
+    assert (text, method) == ("PRESENT: Mayor Ann Lee, Bob Roe", "native")
+    assert _names(parse_roster(text)) == ["Ann Lee", "Bob Roe"]
+
+
 def test_structured_roster_does_not_enrol_a_staff_titled_entry_under_a_member_heading():
     text = "PRESENT:\nAlice Smith\nCity Attorney Bob Roe\nABSENT: None\n"
     assert _names(parse_roster(text)) == ["Alice Smith"]
@@ -1218,6 +1396,36 @@ def test_a_boards_own_secretary_is_a_member_but_a_city_secretary_is_staff():
     assert _names(rows) == ["Cy Poe"]
 
 
+def test_minutes_ocr_keeps_a_native_member_roster_when_ocr_finds_only_staff(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text, "extract_document", lambda *a, **k: ("PRESENT: Mayor Ann Lee, Bob Roe", [])
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "STAFF PRESENT: Jane Doe\n" + "Minutes of the regular meeting. " * 30, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert method == "native"
+    members = [r["name"] for r in parse_roster(text) if r.get("section") != "staff"]
+    assert members == ["Ann Lee", "Bob Roe"]
+
+
+def test_a_cached_extract_below_the_cached_floor_is_sparse_but_a_fresh_one_may_not_be():
+    from citypods.agenda_text import minutes_text_is_sparse
+
+    one_text_page = "The council discussed the budget and approved the consent agenda. " * 5
+    assert not minutes_text_is_sparse(one_text_page, 1)  # a real one-page document
+    assert minutes_text_is_sparse(one_text_page, 5)  # the same text spread over a 5-page scan
+    assert minutes_text_is_sparse(one_text_page, cached=True)  # page count lost: re-fetch
+    real = "The council discussed the budget and approved the consent agenda. " * 40
+    assert not minutes_text_is_sparse(real, cached=True)
+
+
 def test_prose_presider_does_not_swallow_the_header_line_above_it():
     text = (
         "City Council Minutes\nMayor Jane Doe called the meeting to order at 7:00pm. "
@@ -1246,6 +1454,26 @@ def test_directors_stay_members_under_an_explicit_member_label():
     assert _names(parse_roster(unlabeled)) == ["Di Moe"]
 
 
+def test_minutes_ocr_keeps_native_members_that_ocr_only_partly_recovered(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text,
+        "extract_document",
+        lambda *a, **k: ("PRESENT: Alice Smith, Bob Roe", []),
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "PRESENT: Alice Smith\n" + "Minutes of the regular meeting. " * 30, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert (text, method) == ("PRESENT: Alice Smith, Bob Roe", "native")
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Roe"]
+
+
 def test_roster_stops_a_member_list_at_an_explicit_staff_label():
     text = "PRESENT: Alice Smith,\nStaff: Jane Doe\nABSENT: None\n"
     assert _names(parse_roster(text)) == ["Alice Smith"]
@@ -1254,6 +1482,44 @@ def test_roster_stops_a_member_list_at_an_explicit_staff_label():
     assert members == ["Alice Smith", "Bob Jones"]  # Jane Doe is read, but as staff
     guests = "PRESENT: Alice Smith,\nGuests: Jane Doe\n"
     assert _names(parse_roster(guests)) == ["Alice Smith"]
+
+
+def test_minutes_ocr_keeps_the_native_text_when_ocr_reads_opposite_statuses(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    native = "PRESENT: Alice Smith\nABSENT: Bob Jones"
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "PRESENT: Bob Jones\nABSENT: Alice Smith\n" + "Minutes of the meeting. " * 40, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert (text, method) == (native, "native")
+    assert {(r["name"], r["status"]) for r in parse_roster(text)} == {
+        ("Alice Smith", "present"),
+        ("Bob Jones", "absent"),
+    }
+
+
+def test_minutes_ocr_keeps_a_native_vote_line_ocr_missed(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    native = "Present: Alice Smith, Bob Jones\nVote: Yes: Alice Smith; No: Bob Jones"
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+
+    def runner(content, pages, *, timeout, preserve_lines):
+        return "Present: Alice Smith, Bob Jones\n" + "Minutes of the meeting. " * 40, 95.0
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+    )
+    assert (text, method) == (native, "native")
+    votes = {(v["member"], v["value"]) for v in agenda_text.parse_votes(text)}
+    assert ("Alice Smith", "yes") in votes and ("Bob Jones", "no") in votes
 
 
 def test_a_structured_absence_does_not_hide_prose_that_names_who_was_present():
@@ -1279,3 +1545,119 @@ def test_an_all_caps_heading_before_a_numbered_item_is_not_a_member():
     rows = parse_roster(text)
     assert _names(rows) == ["ALICE SMITH"]
     assert "FINANCIAL UPDATE" not in rows[0]["evidence"]
+
+
+def test_minutes_ocr_runs_when_the_text_layer_states_no_members_or_votes(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    native = "STAFF PRESENT: Jane Doe, City Clerk"  # staff only: no member roll call, no vote
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *a, **k: (native, []))
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+    body = "PRESENT: Alice Smith, Bob Jones\n" + "Minutes of the meeting. " * 40
+
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF,
+        content_type="application/pdf",
+        ocr_runner=lambda *a, **k: (body, 95.0),
+    )
+    assert (text, method) == (body, "ocr")
+
+
+def test_minutes_ocr_does_not_run_when_the_text_layer_already_states_members_or_votes(
+    monkeypatch,
+):
+    import citypods.agenda_text as agenda_text
+
+    def runner(*args, **kwargs):
+        raise AssertionError("OCR must not run: the text layer already states the roll call")
+
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+    for native in (
+        "PRESENT: Alice Smith, Bob Jones",
+        "Present: Alice Smith, Bob Jones\nVote: Yes: Alice Smith; No: Bob Jones",
+        "Vote: Yes: Alice Smith; No: Bob Jones",
+    ):
+        monkeypatch.setattr(
+            agenda_text, "extract_document", lambda *a, native=native, **k: (native, [])
+        )
+        text, _, method = agenda_text.extract_minutes_document(
+            _SCANNED_PDF, content_type="application/pdf", ocr_runner=runner
+        )
+        assert (text, method) == (native, "native")
+
+
+def test_prose_roster_ignores_attendance_at_a_previous_meeting():
+    text = (
+        "Chair Ann Lee called the meeting to order. Commissioner Bob Jones was absent from the "
+        "previous meeting. Commissioners Cy Poe and Di Moe were present at the last meeting. "
+        "Commissioners Ed Foe and Flo Roe were in attendance."
+    )
+    rows = parse_roster(text)
+    assert sorted(_names(rows)) == ["Ann Lee", "Ed Foe", "Flo Roe"]
+    assert _names(rows, "absent") == []
+
+
+def test_roster_does_not_extend_a_complete_inline_list_from_a_heading_with_a_comma():
+    text = "PRESENT: Alice Smith, Bob Jones\nBudget, Finance and Policy\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+    wrapped = "PRESENT: Mayor Ann Lee and Council Members Keely\nBriggs, Jesse Davis\n"
+    assert _names(parse_roster(wrapped)) == ["Ann Lee", "Keely Briggs", "Jesse Davis"]
+
+
+def test_structured_roster_drops_a_name_followed_by_a_staff_title():
+    text = "PRESENT: Alice Smith, Jane Doe, City Attorney, Bob Jones\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Jones"]
+    vertical = "PRESENT:\nAlice Smith\nJane Doe, City Attorney\n"
+    assert _names(parse_roster(vertical)) == ["Alice Smith"]
+    staff = "ALSO PRESENT: Jane Doe, City Attorney\n"
+    assert [r["name"] for r in parse_roster(staff) if r.get("section") == "staff"] == ["Jane Doe"]
+
+
+def test_roster_parsing_is_fast_on_a_long_document_with_many_attendance_cues():
+    import time
+
+    sentence = "The council reviewed the item and Mayor Ann Lee and Bob Roe were in attendance. "
+    text = "Mayor Ann Lee called the meeting to order at 7:00pm. " + sentence * 4 + "x. " * 4000
+    text = "PRESENT: Mayor Ann Lee, Bob Roe\n" + text + ("Item text. " * 40 + "\n") * 1500
+    started = time.monotonic()
+    for _ in range(5):
+        parse_roster(text)
+    assert time.monotonic() - started < 3  # about 1 ms a document in practice
+
+
+def test_an_aggregate_vote_tally_does_not_suppress_ocr(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    monkeypatch.setattr(
+        agenda_text, "extract_document", lambda *a, **k: ("Vote: Yes: 5; No: 0", [])
+    )
+    monkeypatch.setattr(agenda_text, "_pdf_page_count", lambda content: 3)
+    body = "PRESENT: Alice Smith, Bob Jones\n" + "Minutes of the meeting. " * 40
+    text, _, method = agenda_text.extract_minutes_document(
+        _SCANNED_PDF, content_type="application/pdf", ocr_runner=lambda *a, **k: (body, 95.0)
+    )
+    assert (text, method) == (body, "ocr")
+    assert agenda_text.states_members_or_votes("Vote: Yes: Alice Smith; No: Bob Jones")
+    assert not agenda_text.states_members_or_votes("Vote: Yes: 5; No: 0")
+
+
+def test_a_page_header_does_not_make_a_guest_list_look_like_members():
+    text = (
+        "Chair Ann Lee called the meeting to order.\nCity Council Minutes\nInvited guests Jane Doe "
+        "and Bob Roe were in attendance."
+    )
+    assert _names(parse_roster(text)) == ["Ann Lee"]
+
+
+def test_roster_keeps_a_two_word_all_caps_name_but_stops_at_a_heading():
+    text = "PRESENT:\nAlice Smith\nBOB JONES\nABSENT: None\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "BOB JONES"]
+    heading = "PRESENT:\nAlice Smith\nNEW SECTION HEADING\n"
+    assert _names(parse_roster(heading)) == ["Alice Smith"]
+
+
+def test_staff_titles_under_an_explicit_member_heading_are_dropped_but_its_own_office_stays():
+    text = "Council Members Present: Alice Smith, City Attorney Bob Roe\n"
+    assert _names(parse_roster(text)) == ["Alice Smith"]
+    directors = "Directors Present: Director Alice Smith, Bob Roe\n"
+    assert _names(parse_roster(directors)) == ["Alice Smith", "Bob Roe"]

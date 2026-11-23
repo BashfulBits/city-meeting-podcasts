@@ -2721,6 +2721,16 @@ class _MinutesTextStorage:
         return True
 
 
+def _minutes_payload(text, *, version="2", page_count=3):
+    from citypods.stages import MINUTES_TEXT_PIPELINE_VERSION
+
+    return {
+        "version": MINUTES_TEXT_PIPELINE_VERSION if version == "2" else version,
+        "page_count": page_count,
+        "text": text,
+    }
+
+
 def _minutes_ctx(storage):
     from types import SimpleNamespace
 
@@ -2737,19 +2747,27 @@ def test_stored_minutes_text_returns_the_real_document():
     from citypods.stages import _stored_minutes_text
 
     text = "City Council Meeting MINUTES. Present: Mayor Smith, Council Member Jones. " * 20
-    ctx = _minutes_ctx(_MinutesTextStorage({"text": text}))
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(text)))
     assert _stored_minutes_text(ctx, _minutes_episode()) == text
 
 
-def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetched():
+def test_stored_minutes_text_discards_a_viewer_shell_so_the_document_is_refetched(monkeypatch):
+    import citypods.agenda_text as agenda_text
     from citypods.stages import _stored_minutes_text
 
-    for shell in (
-        "3804_M_City_Council_Minutes_-_Final.pdf\nLoading…",
-        "DocumentViewer.php\nLoading…",
-    ):
-        ctx = _minutes_ctx(_MinutesTextStorage({"text": shell}))
+    filler = " Please wait while the document loads in the viewer on this page."
+    # Long enough, on one page, to clear the sparseness check: only the placeholder check rejects.
+    shells = (
+        "3804_M_City_Council_Minutes_-_Final.pdf\nLoading\u2026" + filler * 3,
+        "DocumentViewer.php\nLoading\u2026" + filler * 3,
+    )
+    for shell in shells:
+        ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(shell, page_count=1)))
         assert _stored_minutes_text(ctx, _minutes_episode()) is None
+    # Proof that the placeholder check is what rejected them: stub it out and the text is reused.
+    monkeypatch.setattr(agenda_text, "classify_agenda_text", lambda text: "complete")
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(shells[0], page_count=1)))
+    assert _stored_minutes_text(ctx, _minutes_episode()) == shells[0]
 
 
 def test_minutes_text_completion_markers_from_before_the_viewer_fix_are_dirty():
@@ -2763,3 +2781,169 @@ def test_minutes_text_completion_markers_from_before_the_viewer_fix_are_dirty():
     marker = {"state": "complete", "input_fingerprint": fingerprint, "output": None}
     ep.stage_completion = {stage.name: {**marker, "version": "1"}}
     assert stage_is_dirty(stage, ep, city) is True
+
+
+def test_stored_minutes_text_discards_a_sparse_scan_text_layer_so_ocr_can_run():
+    from citypods.stages import _stored_minutes_text
+
+    sparse = "City Council Minutes\nPage 1"
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(sparse)))
+    assert _stored_minutes_text(ctx, _minutes_episode()) is None
+
+
+def _run_minutes_stage_with_text(monkeypatch, text, outcome):
+    import citypods.agenda_text as agenda_text
+
+    stats, ep, _ = _run_minutes_stage(monkeypatch, outcome, extracted_text=text)
+    return stats, ep, agenda_text
+
+
+def _run_minutes_stage(monkeypatch, outcome, *, stop_after_fetch=False, extracted_text=""):
+    import citypods.agenda_text as agenda_text
+    import citypods.http as http
+    import citypods.stages as stages
+
+    monkeypatch.setattr(http, "make_session", lambda: object())
+    monkeypatch.setattr(
+        http, "fetch_document_bytes", lambda *a, **k: (b"%PDF-1.4", "application/pdf")
+    )
+    monkeypatch.setattr(stages, "_validated_document_url", lambda city, url: url)
+    seen = {}
+
+    def fake_extract(content, **kwargs):
+        seen["ocr_allowed"] = kwargs["ocr_allowed"]()
+        return extracted_text, [], outcome
+
+    monkeypatch.setattr(agenda_text, "extract_minutes_document", fake_extract)
+    # The stage's own per-episode check passes; the budget is spent during the fetch.
+    calls = iter([False] + [stop_after_fetch] * 5)
+    ctx = StageContext(
+        storage=object(), ffmpeg=None, max_kbps=96, dry_run=False, stop=lambda: next(calls)
+    )
+    ep = _ep("m1")
+    ep.links = {"minutes": "https://city.granicus.com/MinutesViewer.php?view_id=1&clip_id=2"}
+    stats = stages.MinutesTextStage().process(None, _city(), [ep], ctx)
+    return stats, ep, seen
+
+
+def test_minutes_stage_defers_an_episode_whose_ocr_must_be_retried(monkeypatch):
+    stats, ep, _ = _run_minutes_stage(monkeypatch, "retry")
+    assert stats.skipped == 1 and stats.errors == []
+    assert ep.minutes_roster_status is None  # nothing was persisted as an empty roster
+
+
+def test_minutes_stage_tells_the_extractor_whether_the_run_budget_is_spent(monkeypatch):
+    _, _, seen = _run_minutes_stage(monkeypatch, "deferred", stop_after_fetch=True)
+    assert seen["ocr_allowed"] is False
+    _, _, seen = _run_minutes_stage(monkeypatch, "deferred", stop_after_fetch=False)
+    assert seen["ocr_allowed"] is True
+
+
+def test_stored_minutes_text_discards_repeated_page_headers_so_ocr_can_run():
+    from citypods.stages import _stored_minutes_text
+
+    headers = "City Council Meeting Minutes - Regular Meeting\n" * 8
+    # One page keeps the density floor below the header text, so only repetition can reject it.
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(headers, page_count=1)))
+    assert _stored_minutes_text(ctx, _minutes_episode()) is None
+    varied = "".join(
+        f"Item {i}: the council discussed a different matter at length.\n" for i in range(8)
+    )
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(varied, page_count=1)))
+    assert _stored_minutes_text(ctx, _minutes_episode()) is not None
+
+
+def test_minutes_stage_keeps_a_usable_native_roster_when_ocr_must_retry(monkeypatch):
+    import citypods.agenda_text as agenda_text
+    import citypods.http as http
+    import citypods.stages as stages
+
+    monkeypatch.setattr(http, "make_session", lambda: object())
+    monkeypatch.setattr(http, "fetch_document_bytes", lambda *a, **k: (b"%PDF", "application/pdf"))
+    monkeypatch.setattr(stages, "_validated_document_url", lambda city, url: url)
+    monkeypatch.setattr(
+        agenda_text,
+        "extract_minutes_document",
+        lambda *a, **k: ("PRESENT: Mayor Ann Lee, Bob Roe", [], "retry"),
+    )
+    stored = {}
+    monkeypatch.setattr(
+        stages,
+        "_store_document",
+        lambda ctx, src, uid, kind, payload, mime: stored.update({kind: payload}) or kind,
+    )
+    ctx = StageContext(storage=object(), ffmpeg=None, max_kbps=96, dry_run=False)
+    ep = _ep("m1")
+    ep.links = {"minutes": "https://city.granicus.com/MinutesViewer.php?view_id=1&clip_id=2"}
+    stats = stages.MinutesTextStage().process(None, _city(), [ep], ctx)
+    assert stats.skipped == 0  # not deferred: the native text is the document
+    assert "minutes-roster" in stored
+
+
+def test_stored_minutes_text_from_an_older_extractor_is_refetched():
+    from citypods.stages import _stored_minutes_text
+
+    real = "The council discussed the budget and approved the consent agenda items. " * 60
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(real, version="1")))
+    assert _stored_minutes_text(ctx, _minutes_episode()) is None
+
+
+def test_stored_minutes_text_uses_the_recorded_page_count_to_spot_a_mostly_blank_scan():
+    from citypods.stages import _stored_minutes
+
+    one_page = "The council discussed the budget and approved the consent agenda items. " * 30
+    assert len(one_page) > 2000  # clears the cached floor on its own
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(one_page, page_count=40)))
+    assert _stored_minutes(ctx, _minutes_episode()) is None  # one text page over 40 pages
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(one_page, page_count=2)))
+    assert _stored_minutes(ctx, _minutes_episode()) == (one_page, 2, "native")
+
+
+def test_stored_minutes_that_ocr_produced_are_reused_when_short_but_confident():
+    from citypods.stages import _stored_minutes
+
+    short_scan = "The council met briefly, took no action on any item, and adjourned early. " * 3
+    payload = {**_minutes_payload(short_scan, page_count=4), "method": "ocr"}
+    ctx = _minutes_ctx(_MinutesTextStorage(payload))
+    assert _stored_minutes(ctx, _minutes_episode()) == (short_scan, 4, "ocr")
+    native = _minutes_payload(short_scan, page_count=4)  # same text, but a native text layer
+    ctx = _minutes_ctx(_MinutesTextStorage(native))
+    assert _stored_minutes(ctx, _minutes_episode()) is None  # sparse over 4 pages: re-fetched
+
+
+def test_sparse_native_text_that_states_the_roll_call_is_reused():
+    from citypods.stages import _stored_minutes
+
+    roll_call = "PRESENT: Mayor Ann Lee, Bob Roe. The council met briefly and adjourned early. " * 2
+    ctx = _minutes_ctx(_MinutesTextStorage(_minutes_payload(roll_call, page_count=3)))
+    assert _stored_minutes(ctx, _minutes_episode()) == (roll_call, 3, "native")
+
+
+def test_a_retried_scan_backs_off_instead_of_taking_the_ocr_budget_every_run(monkeypatch):
+    from datetime import UTC, datetime
+
+    from citypods.records import minutes_text_backoff_until
+
+    stats, ep, _ = _run_minutes_stage(monkeypatch, "retry")
+    assert stats.skipped == 1
+    assert ep.minutes_text_attempts == 1
+    assert minutes_text_backoff_until(ep) > datetime.now(UTC)  # the next run skips it for a while
+    stats, ep, _ = _run_minutes_stage(monkeypatch, "deferred")
+    assert ep.minutes_text_attempts == 0  # a budget stop is not a failure
+
+
+def test_stored_minutes_ignores_a_malformed_method_instead_of_aborting_the_stage():
+    from citypods.stages import _stored_minutes
+
+    real = "The council discussed the budget and approved the consent agenda items. " * 60
+    payload = {**_minutes_payload(real, page_count=2), "method": []}
+    ctx = _minutes_ctx(_MinutesTextStorage(payload))
+    assert _stored_minutes(ctx, _minutes_episode()) == (real, 2, "native")
+
+
+def test_minutes_stage_keeps_a_staff_only_scan_eligible_for_ocr_after_a_retry(monkeypatch):
+    stats, ep, _ = _run_minutes_stage_with_text(
+        monkeypatch, "STAFF PRESENT: Jane Doe, City Clerk", "retry"
+    )
+    assert stats.skipped == 1  # deferred: the member roll call still needs OCR
+    assert ep.minutes_roster_status is None
