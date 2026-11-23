@@ -13,6 +13,11 @@ on:
         required: false
         default: "5"
         type: string
+      purpose:
+        description: "Lane purpose registered at the Worker (city-onboarding is not, so it is refused)"
+        required: false
+        default: "topic-tags:tagger"
+        type: string
       poll_seconds:
         description: "Seconds between result polls"
         required: false
@@ -46,6 +51,7 @@ jobs:
       - name: Time queued jobs at both priorities
         env:
           CALLS: ${{ inputs.calls }}
+          PURPOSE: ${{ inputs.purpose }}
           POLL_SECONDS: ${{ inputs.poll_seconds }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
@@ -62,7 +68,9 @@ jobs:
         run: |
           [[ "$CALLS" =~ ^[0-9]{1,2}$ ]] || { echo "calls must be a number" >&2; exit 1; }
           [[ "$POLL_SECONDS" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "bad poll_seconds" >&2; exit 1; }
-          python scripts/llm_queue_latency_probe.py --calls "$CALLS" --poll-seconds "$POLL_SECONDS"
+          [[ "$PURPOSE" =~ ^[a-z0-9:_-]{3,60}$ ]] || { echo "bad purpose" >&2; exit 1; }
+          python scripts/llm_queue_latency_probe.py --calls "$CALLS" --poll-seconds "$POLL_SECONDS" \
+            --purpose "$PURPOSE"
 
       - name: Upload results
         if: always()

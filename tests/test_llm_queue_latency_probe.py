@@ -12,14 +12,13 @@ probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 
 
-def test_the_probe_job_is_a_queue_only_city_onboarding_request_at_the_asked_priority():
+def test_the_probe_job_is_a_queue_only_free_tier_request_at_the_asked_priority():
     for priority in (0, 1):
         job = probe.make_job(priority, "run:0", "gemini/test-model")
         policy = job.inputs["llm_policy"]
         assert policy.priority == priority and policy.queue_only and policy.timeout_class == "fast"
-        assert policy.purpose == "city-onboarding" and policy.allowed_models == (
-            "gemini/test-model",
-        )
+        assert policy.purpose == probe.PURPOSE
+        assert policy.allowed_models == ("gemini/test-model",)
         assert not policy.require_direct and not policy.allow_paid
         assert job.inputs["max_tokens"] <= 16
     # A fresh recipe per call and per priority: the registry would answer a repeat from a result.
@@ -51,3 +50,11 @@ def test_summary_reports_each_priority_and_counts_failures():
 def test_an_all_failed_priority_still_summarizes():
     summary = probe.summarize([{"priority": 0, "outcome": "submit_error", "error": "X"}])
     assert summary["0"] == {"calls": 1, "completed": 0, "outcomes": {"submit_error": 1}}
+
+
+def test_the_default_purpose_is_a_registered_lane_not_a_non_dispatching_one():
+    # The Worker refuses a purpose with no lane (`purpose_not_registered`); city-onboarding is one.
+    from citypods.compute.llm_lanes import NON_DISPATCHING_PURPOSES, load_lanes
+
+    assert probe.PURPOSE in load_lanes() and probe.PURPOSE not in NON_DISPATCHING_PURPOSES
+    assert load_lanes()[probe.PURPOSE].models

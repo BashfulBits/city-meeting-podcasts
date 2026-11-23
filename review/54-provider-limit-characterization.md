@@ -485,6 +485,16 @@ differ in what they cost:
 | **A. Queue at priority 0** (interactive remedy, onboarding, and the evaluators submit to the v2 Worker and wait for the result) | No new endpoint. Callers use `queue_only` with `priority=0` and poll. | One ledger already: the Worker's. The double-spend gap closes for those callers by construction. | Round-trip latency per call. Onboarding makes many sequential calls, so each call's pickup-to-result time multiplies. Unmeasured. |
 | **B. Reserve and settle against the Worker** (§8.15.D) | Two Worker endpoints, a second backend in `select_and_reserve`, and the seeding and rollback steps of §8.15.E. | One authority, with direct calls still synchronous. | More surface to build and test; more write cost per call. |
 
+**First finding on route A (2026-11-23): onboarding's purpose cannot be queued today.**
+`city-onboarding` is deliberately in `NON_DISPATCHING_PURPOSES` (`citypods/compute/llm_lanes.py`):
+it has no `llm_lanes` entry, so the ingress Worker refuses a queued job for it as
+`purpose_not_registered` (all ten probe submissions were refused that way). Route A therefore needs
+a registered lane first: an `llm_lanes` entry for onboarding with its free models and submission
+caps, compiled into the Worker, and the Python side's `require_direct=True` replaced by a queued
+policy at priority 0. That is a config and Worker-registry change with its own tests
+(`tests/test_llm_lanes.py` asserts the split), not just a flag on the caller. The round trip is
+measured on a registered lane instead (see below); the lane does not change the queue mechanics.
+
 **Recommendation: measure route A first.** Submit a small priority 0 job to the live Worker from a
 workflow, with the routes onboarding uses, and record queue wait and total time for ten sequential
 calls under idle and under backlog. If the sequential round trip is short enough for onboarding's
