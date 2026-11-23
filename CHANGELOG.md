@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Queue round trip measured for the #2249 design (review/54 §8.15.G).** The latency probe shows
+  a queued job takes about 60 seconds at priority 0 and at priority 1 alike, because the Worker
+  claims jobs on a one-minute cron and priority only orders jobs within a tick. One-call callers
+  (city onboarding, interactive remedy) fit route A with a registered lane; the provider catalog's
+  limit-measuring searches do not, and already coordinate through the dispatch pause.
+  The probe's backlog readout now reads `jobs.by_state`.
+
 - **Queue latency probe uses a registered lane and reports why a submission is refused (#2249).**
   The Worker refuses `city-onboarding` jobs as `purpose_not_registered` because that purpose is
   deliberately non-dispatching, so the first probe run measured nothing. The probe now defaults to a
