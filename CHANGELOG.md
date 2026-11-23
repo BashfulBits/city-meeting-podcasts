@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **`/apply` can now re-check routes on the second Gemini account.** The apply workflow had
+  `GEMINI_API_KEY` but not `GEMINI_API_KEY_SECONDARY`, so a re-check of a secondary-account Gemini
+  route could not authenticate. The reconcile workflow already had both.
+
 - **LLM budget monitor advice.** Reservation alerts now ask maintainers to check the applicable
   output-counting token quota before tuning, and to preserve route eligibility when increasing a
   reservation. An output above the reservation alone does not establish a TPM constraint.
