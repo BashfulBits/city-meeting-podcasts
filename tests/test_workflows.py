@@ -956,16 +956,19 @@ def test_deploy_is_render_only():
     assert "citypods enrich" not in runs, "deploy.yml must not run the heavy enrich phase (H11b)"
     assert "apt-get install -y ffmpeg" not in runs, "render-only deploy needs no ffmpeg"
     assert "prepare_whisper" not in runs, "render-only deploy needs no Whisper model"
-    # The graceful-yield token is only for the time-bounded enrich phase, which moved out.
-    assert "actions" not in (wf.get("permissions") or {}), (
-        "deploy.yml must drop `actions: read` once enrich (the only Actions-API caller) moves out"
-    )
+    # The graceful-yield token is only for the time-bounded enrich phase, which moved out. The one
+    # remaining Actions-API use is the render job's cross-run download of a staged search index, so
+    # `actions: read` stays scoped to that job and never reaches the workflow or the deploy job.
+    assert "actions" not in (wf.get("permissions") or {})
+    assert (wf["jobs"]["render"].get("permissions") or {}).get("actions") == "read"
+    assert "actions" not in (wf["jobs"]["deploy"].get("permissions") or {})
     render = _step_index(job, "citypods build --phase render --no-refresh")
     deploy_job = wf["jobs"]["deploy"]
     deploy = _step_index(deploy_job, "actions/deploy-pages")
     assert render >= 0 and deploy >= 0, "render and deploy steps required"
-    assert wf["jobs"]["search"]["needs"] == "render"
-    assert deploy_job["needs"] == "search"
+    # Search builds in its own workflow (search.yml) so a 2h index build can't gate the publish.
+    assert set(wf["jobs"]) == {"render", "deploy"}
+    assert deploy_job["needs"] == "render"
     uses = " ".join(str(s.get("uses", "")) for s in deploy_job["steps"])
     # The Pages plumbing stays on deploy, not enrich.
     assert "actions/upload-pages-artifact" in uses and "actions/deploy-pages" in uses

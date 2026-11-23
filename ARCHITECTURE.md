@@ -1937,8 +1937,10 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
    - *Primary Candidates:* `google/gemma-4-31b-it` (Free), `deepseek/deepseek-v4-flash` via SiliconFlow ($0.049/M input) or DeepSeek Prompt Cache ($0.0028/M input).
 
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
-  downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron;
-  retries `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),
+  downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push; retries
+  `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),
+  `search.yml` (bounded static-search index build, 4h, staged as an artifact and published by
+  `deploy.yml`; own `pages-search` group so a multi-hour build never holds the `pages` slot),
   `audio.yml` (preflighted dynamic source-sharded audio materialization, 4h cron; own `audio` concurrency group),
   `asr.yml` (shared-ledger faster-whisper pull workers, every 5h; own `asr` concurrency group) — the
   two heavy record-writers, with `audio.yml` still a `--shard K/N` × `--lane` matrix while `asr.yml`
@@ -2322,11 +2324,16 @@ Dallas2017 bond publication uses source-bound GUID exceptions where the provider
 TownHall label for a formal taskforce meeting and two public-input sessions. Exact official
 agenda hashes establish the distinction; raw provider labels/audio/UIDs remain unchanged (#2083).
 
-Static search has a separate bounded deployment coordinator (#2084). Render hands off the
-same-run generated site, feed context and source record JSONs; search reads hosted sidecars
-without provider refresh or record/storage writes. It stages the complete site, preserving
-prior public bytes on deferred/error builds. Complete search publishes navigation/meta together.
-Existing20minute indexing ceiling and60minute job ceiling remain; deployment alone writes Pages.
+Static search has a separate bounded deployment coordinator (#2084), owned by `search.yml` since the
+search/deploy split: that workflow renders its own same-run inputs, then reads hosted sidecars
+without provider refresh or record/storage writes, preserving prior public bytes on deferred/error
+builds. It never publishes — a completed index is staged as an artifact and `deploy.yml` is asked to
+publish it, overlaying it before rendering so a two-hour-old render can't overwrite a newer site and
+index plus content go out together. Every publish resolves the index from the newest successful
+search run rather than trusting the evictable `build-state-` cache, so eviction can't drop search
+from the site. The 120-minute indexing budget and the 180-minute job ceiling around it apply to
+`search.yml` alone; it persists its resumable checkpoint explicitly, so an upload or dispatch
+failure after indexing never discards the run's progress.
 
 Fort Worth EMSISD Board participant feed reuses the existing Granicus source and exact joint
 institution label. Council ownership and original whole recording UID/audio are preserved.
