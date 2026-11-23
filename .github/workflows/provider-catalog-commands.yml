@@ -9,8 +9,24 @@ on:
 
 permissions: {}
 
+# Only a real writer waits for the shared writer lock: an authorised `/apply` on the catalog issue,
+# or the success of a scheduled run on main. Every other comment on any issue or PR, and every other
+# reconciliation completion, also starts this workflow and then skips all jobs; if those entered the
+# group they would replace a queued `/apply` (GitHub keeps one pending run per group), as happened to
+# the 2026-11-22 apply that waited behind a manual weekly run. They get a group of their own.
 concurrency:
-  group: provider-catalog-writers
+  group: >-
+    ${{ ((github.event_name == 'issue_comment' && github.event.issue.pull_request == null &&
+          github.event.comment.body == '/apply' &&
+          contains(github.event.issue.body, '<!-- citypods:provider-catalog v=') &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+            github.event.comment.author_association)) ||
+        (github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'schedule' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository)) &&
+      'provider-catalog-writers' || format('provider-catalog-ignored-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
