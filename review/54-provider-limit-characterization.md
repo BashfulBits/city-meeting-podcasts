@@ -495,7 +495,43 @@ policy at priority 0. That is a config and Worker-registry change with its own t
 (`tests/test_llm_lanes.py` asserts the split), not just a flag on the caller. The round trip is
 measured on a registered lane instead (see below); the lane does not change the queue mechanics.
 
-**Recommendation: measure route A first.** Submit a small priority 0 job to the live Worker from a
+**Measured round trip (2026-11-23, `LLM queue latency probe`, run 45110555516).** Five pairs of
+tiny sequential jobs on the `topic-tags:tagger` lane (`gemini/gemini-3.5-flash-lite`, free tier),
+alternating the two priorities:
+
+| Priority | Calls | Submit (median) | Total to result (median) | Range |
+|---|---|---|---|---|
+| 0 | 5 | 2.1 s | **60.1 s** | 59.3 to 62.2 s |
+| 1 | 5 | 2.1 s | **59.1 s** | 11.9 to 108.0 s |
+
+Priority does not change the round trip. The Worker claims jobs on a one-minute cron
+(`"crons": ["* * * * *"]` in `wrangler.jsonc`), so a job waits for the next tick whatever its
+priority; the faster calls (12 to 20 s) were submitted just before a tick and the 108 s one missed
+one. Priority only orders jobs within a tick, which matters when a tick cannot claim everything
+queued (57 jobs were queued when the stats were read). So a sequential caller pays about a minute
+per call, queued.
+
+What that means for the callers #2249 names:
+- **One or a few calls** (city onboarding's classification, interactive remedy classification):
+  about one to two minutes each, which meets the maintainer's bound (10 to 30 minutes pending,
+  finishing inside the job's timeout). These suit route A once they have a registered lane.
+- **Limit measuring** (the provider catalog's size searches, dozens of sequential calls): a minute
+  per call is 10 to 15 minutes per axis for a short search and 100 minutes for a long one, which is
+  too slow. These do not use the CAS ledger: they pause the provider at the Worker
+  (`control.paused`) and charge canaries through `control.reserve`, so the Worker already
+  coordinates them. They should stay direct.
+- **Evaluation scripts** (`scripts/eval_remedy.py`, manual): the only direct callers left on the
+  Python CAS ledger would be these; a manual run could stay direct with a note, or queue.
+
+**Revised recommendation:** route A for city onboarding and interactive remedy classification
+(register a lane for each, queue at priority 0, accept about a minute per call), leave limit
+measuring as it is, and drop route B (reserve/settle endpoints, seeded cutover) unless a caller
+with many sequential calls turns up that is not already coordinated by the dispatch pause. That
+leaves the Python CAS ledger with only manual evaluations to serve. The lane registrations are the
+work; each needs its models, submission caps and a test that the purpose is no longer in
+`NON_DISPATCHING_PURPOSES`. Not started: it is a maintainer decision.
+
+**Recommendation (before the measurement): measure route A first.** Submit a small priority 0 job to the live Worker from a
 workflow, with the routes onboarding uses, and record queue wait and total time for ten sequential
 calls under idle and under backlog. If the sequential round trip is short enough for onboarding's
 whole probe sequence to finish inside its job timeout with margin (the maintainer's 10 to 30 minute
