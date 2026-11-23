@@ -103,31 +103,110 @@ def test_cli_wires_readonly_command_and_rejects_wrong_phase(monkeypatch):
         cli.main(["build", "--skip-search"])
 
 
-def test_workflow_same_run_handoff_and_privileges():
+def test_deploy_workflow_publishes_the_render_without_waiting_for_search():
     workflow = yaml.safe_load(Path(".github/workflows/deploy.yml").read_text())
     jobs = workflow["jobs"]
-    assert jobs["search"]["needs"] == "render"
-    assert jobs["deploy"]["needs"] == "search"
-    assert jobs["render"]["permissions"] == {"contents": "read", "pages": "read"}
+    # Search builds in its own workflow: a 2h index build must never gate a merge-driven publish.
+    assert set(jobs) == {"render", "deploy"}
+    assert jobs["deploy"]["needs"] == "render"
+    assert workflow["concurrency"] == {"group": "pages", "cancel-in-progress": False}
+    # The one Actions-API use is the cross-run staged-index download, scoped to the render job.
+    assert jobs["render"]["permissions"] == {
+        "contents": "read",
+        "pages": "read",
+        "actions": "read",
+    }
+    assert "actions" not in (workflow.get("permissions") or {})
+    inputs = (workflow.get("on") or workflow.get(True))["workflow_dispatch"]["inputs"]
+    assert inputs["search_run_id"]["type"] == "string"
+    assert inputs["search_run_id"]["required"] is False
+    # The index is resolved from the search workflow, not trusted from the evictable `docs` cache.
+    resolve = next(
+        s for s in jobs["render"]["steps"] if s.get("name") == "Resolve search index run"
+    )
+    assert "gh run list --workflow search.yml" in resolve["run"]
+    # Dispatch input travels via env, never inlined into shell text.
+    assert resolve["env"]["SEARCH_RUN_ID"] == "${{ inputs.search_run_id }}"
+    assert "$SEARCH_RUN_ID" in resolve["run"]
+    staged = next(
+        s for s in jobs["render"]["steps"] if s.get("name") == "Stage completed search index"
+    )
+    assert staged["with"]["name"] == "search-index"
+    assert staged["with"]["path"] == "docs"
+    assert "steps.index.outputs.run_id" in staged["if"]
+    # Staged *before* the render, which is what makes the entry point and shard counts match.
+    names = [s.get("name") for s in jobs["render"]["steps"]]
+    assert names.index("Stage completed search index") < names.index("Render feeds")
     pages = next(s for s in jobs["render"]["steps"] if s.get("name") == "Configure Pages")
     assert pages["with"]["enablement"] is False
-    assert jobs["search"]["permissions"] == {"contents": "read"}
     assert jobs["deploy"]["permissions"] == {"pages": "write", "id-token": "write"}
-    assert jobs["search"]["timeout-minutes"] == 150
     assert jobs["render"]["timeout-minutes"] == jobs["deploy"]["timeout-minutes"] == 60
     handoff = next(s for s in jobs["render"]["steps"] if s.get("name") == "Upload render handoff")
     assert ".citypods-state/sources/*/episodes.json" in handoff["with"]["path"]
     assert handoff["with"]["include-hidden-files"] is True
+    # The handoff carries `docs/` plus search inputs, so it lands in a scratch dir and only
+    # `staging/docs` is published.
+    site = next(
+        s for s in jobs["deploy"]["steps"] if s.get("name") == "Download same-run rendered site"
+    )
+    assert site["with"]["name"] == "render-search-input"
+    assert site["with"]["path"] == "staging"
+    artifact = next(s for s in jobs["deploy"]["steps"] if s.get("name") == "Upload Pages artifact")
+    assert artifact["with"]["path"] == "staging/docs"
+
+
+def test_search_workflow_stages_the_index_and_requests_a_publish():
+    path = Path(".github/workflows/search.yml")
+    workflow = yaml.safe_load(path.read_text())
+    jobs = workflow["jobs"]
+    # One publisher only: deploy.yml owns the Pages deployment, so search stages and dispatches.
+    assert set(jobs) == {"build"}
+    assert "deploy-pages" not in path.read_text()
+    assert "upload-pages-artifact" not in path.read_text()
+    assert workflow["concurrency"] == {"group": "pages-search", "cancel-in-progress": False}
+    build = jobs["build"]
+    assert build["permissions"] == {"contents": "read", "pages": "read", "actions": "write"}
+    # Well above the 120-minute indexing budget so the graceful deferral always wins.
+    assert build["timeout-minutes"] == 180
+    render = next(s for s in build["steps"] if s.get("name") == "Render feeds")
+    assert "--skip-search" in render["run"] and "--search-context-output" in render["run"]
     checkpoint = next(
-        s for s in jobs["search"]["steps"] if s.get("name") == "Restore resumable search checkpoint"
+        s for s in build["steps"] if s.get("name") == "Restore resumable search checkpoint"
     )
     assert checkpoint["with"]["path"] == ".citypods-search-checkpoint"
     assert checkpoint["with"]["restore-keys"] == "search-checkpoint-\n"
     assert "github.run_attempt" in checkpoint["with"]["key"]
-    build = next(s for s in jobs["search"]["steps"] if s.get("name") == "Build bounded search")
-    assert build["shell"] == "bash"  # GitHub supplies pipefail for explicitly selected Bash.
-    assert "Restored checkpoint:" in build["run"]
-    assert '| tee -a "$GITHUB_STEP_SUMMARY"' in build["run"]
+    assert "actions/cache/restore@" in checkpoint["uses"]
+    # Saved explicitly: the cache action's implicit post-step save is skipped on job failure.
+    saved = next(s for s in build["steps"] if s.get("name") == "Save resumable search checkpoint")
+    assert "actions/cache/save@" in saved["uses"]
+    assert saved["if"] == "always()"
+    assert saved["with"]["key"] == checkpoint["with"]["key"]
+    search = next(s for s in build["steps"] if s.get("name") == "Build bounded search")
+    assert search["shell"] == "bash"  # GitHub supplies pipefail for explicitly selected Bash.
+    assert "Restored checkpoint:" in search["run"]
+    assert '| tee -a "$GITHUB_STEP_SUMMARY"' in search["run"]
+    artifact = next(s for s in build["steps"] if s.get("name") == "Upload search index")
+    assert artifact["with"]["name"] == "search-index"
+    paths = artifact["with"]["path"]
+    # The search payload only: the deploy run re-renders everything else from current state.
+    assert "docs/data/search" in paths and "docs/search" in paths
+    assert "docs/index.html" not in paths
+    dispatch = next(
+        s for s in build["steps"] if s.get("name") == "Request a publish that includes this index"
+    )
+    assert "gh workflow run deploy.yml" in dispatch["run"]
+    assert "search_run_id=${GITHUB_RUN_ID}" in dispatch["run"]
+    assert dispatch["env"]["GH_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
+
+
+def test_search_workflow_schedule_matches_site_config_publish_cadence():
+    workflow = yaml.safe_load(Path(".github/workflows/search.yml").read_text())
+    triggers = workflow.get("on") or workflow.get(True)
+    site = yaml.safe_load(Path("config/site_config.yml").read_text())
+    # The 4h production publish cadence lives in both places; keep them from drifting apart.
+    assert [item["cron"] for item in triggers["schedule"]] == [site["schedule_cron"]]
+    assert "workflow_dispatch" in triggers
 
 
 @pytest.mark.parametrize("budget", [1, 120])
