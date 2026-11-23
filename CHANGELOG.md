@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **City onboarding's queued classification may use its fallback models (#2249).** The first live
+  run asked for Gemini 3.7 alone, which allows 20 requests a day per account, and waited the full
+  ten minutes for capacity. It now lets the Worker choose among 3.7 and its three vetted fallbacks.
+
 - **City onboarding and the remedy classifier queue on one `interactive-classify` lane (#2249).**
   Both called Gemini directly, spending quota the Worker's ledger could not see. They now submit at
   priority 0 and wait for the result in the same run (about a minute per call), through
