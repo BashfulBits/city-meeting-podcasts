@@ -128,8 +128,10 @@ def usage_findings(usage: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
                     "kind": "reservation_too_small",
                     "detail": f"{over} of {measured} calls wrote more than the {reserved}-token "
                     f"reservation (p90 {p90})",
-                    "suggestion": f"Raise `{lane}`'s output reservation toward its p90 ({p90}) so "
-                    "TPM admission reflects real use.",
+                    "suggestion": "Check whether this route or its provider has an "
+                    f"output-counting token quota before changing `{lane}`'s reservation. "
+                    "If it does, consider "
+                    f"the p90 ({p90}) and verify that any increase preserves route eligibility.",
                 }
             )
         elif p90 < UNDER_USE_RATIO * reserved:
@@ -138,8 +140,10 @@ def usage_findings(usage: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
                     **base,
                     "kind": "reservation_too_large",
                     "detail": f"p90 output {p90} vs a {reserved}-token reservation",
-                    "suggestion": f"Lower `{lane}`'s output reservation toward {max(p90, 1024)} "
-                    "to free TPM for other jobs (the route's own limit is still what is sent).",
+                    "suggestion": "Check whether this route or its provider has an "
+                    f"output-counting token quota before changing `{lane}`'s reservation. "
+                    "If it does, consider "
+                    f"{max(p90, 1024)}; with route_max the route's own limit is still sent.",
                 }
             )
     return findings

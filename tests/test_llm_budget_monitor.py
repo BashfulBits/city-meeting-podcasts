@@ -124,6 +124,15 @@ def test_usage_findings_appear_in_the_report_even_without_failures():
     assert "reservation_too_large" in report and "Reservations and latency" in report
 
 
+def test_reservation_advice_checks_token_quota_and_route_eligibility_before_changes():
+    [over] = mon.usage_findings([_usage(over_reservation_calls=10)])
+    [under] = mon.usage_findings([_usage(output_tokens_p90=2000)])
+    assert "output-counting token quota" in over["suggestion"]
+    assert "route eligibility" in over["suggestion"]
+    assert "output-counting token quota" in under["suggestion"]
+    assert "route_max" in under["suggestion"]
+
+
 def test_unmeasured_calls_do_not_make_a_lane_look_over_reserved():
     # 30 calls, but only 5 returned usage: too few measurements to judge the reservation.
     row = _usage(calls=30, measured_calls=5, output_tokens_p90=10)
