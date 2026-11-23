@@ -1846,7 +1846,10 @@ def test_provider_catalog_commands_use_trusted_base_permissions_and_shared_lock(
         "issues": "write",
         "actions": "read",
     }
-    assert wf["concurrency"] == observe["concurrency"]
+    # The same writer lock as the reconciliation; only real writers take it (see
+    # test_only_real_writers_share_the_provider_catalog_writer_lock).
+    assert wf["concurrency"]["cancel-in-progress"] == observe["concurrency"]["cancel-in-progress"]
+    assert f"'{observe['concurrency']['group']}'" in wf["concurrency"]["group"]
     condition = job["if"]
     assert "pull_request == null" in condition and "body == '/apply'" in condition
     assert "author_association" in condition
@@ -1919,7 +1922,12 @@ def test_route_removals_run_only_after_weekly_full_reconcile_under_writer_lock()
     assert "head_repository.full_name == github.repository" in job["if"]
     assert "conclusion == 'success'" in job["if"] and "event == 'schedule'" in job["if"]
     assert job["permissions"] == {"contents": "write", "pull-requests": "write", "actions": "read"}
-    assert workflow["concurrency"] == producer["concurrency"]
+    # The reconciliation's writer lock; the commands workflow lets only real writers take it.
+    assert (
+        workflow["concurrency"]["cancel-in-progress"]
+        == producer["concurrency"]["cancel-in-progress"]
+    )
+    assert f"'{producer['concurrency']['group']}'" in workflow["concurrency"]["group"]
     assert "--automatic-retirements" in job["steps"][-1]["run"]
     assert job["timeout-minutes"] == 120
     env = job["steps"][-1]["env"]
@@ -2336,3 +2344,24 @@ def test_constraints_drift_gate_is_bounded_and_never_skips_silently():
     # --pip-args would land in the generated header and so in the drift diff.
     code = [ln for ln in script.splitlines() if not ln.lstrip().startswith("#")]
     assert not any("--pip-args" in ln for ln in code)
+
+
+def test_only_real_writers_share_the_provider_catalog_writer_lock():
+    # A skipped comment or reconciliation event in the shared group would replace a queued
+    # `/apply` (one pending run per group) and cancel it.
+    wf = yaml.safe_load(Path(".github/workflows/provider-catalog-commands.yml").read_text())
+    group = wf["concurrency"]["group"]
+    assert wf["concurrency"]["cancel-in-progress"] is False
+    assert "'provider-catalog-writers'" in group
+    assert "provider-catalog-ignored-{0}" in group and "github.run_id" in group
+    # The same conditions that let the apply job run decide who may take the lock.
+    for needle in (
+        "github.event.comment.body == '/apply'",
+        "<!-- citypods:provider-catalog v=",
+        "github.event.comment.author_association",
+        "github.event.workflow_run.event == 'schedule'",
+        "github.event.workflow_run.head_branch == 'main'",
+    ):
+        assert needle in group
+    reconcile = yaml.safe_load(Path(".github/workflows/provider-catalog-reconcile.yml").read_text())
+    assert reconcile["concurrency"]["group"] == "provider-catalog-writers"
