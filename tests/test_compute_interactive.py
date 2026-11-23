@@ -107,12 +107,29 @@ def test_a_replayed_permanent_failure_is_retried_under_a_new_recipe_hash():
     assert backend.seen == [JOB.recipe_hash, f"{JOB.recipe_hash}-retry-1"]
 
 
-def test_a_second_permanent_failure_is_raised():
+def test_the_walk_is_bounded_and_raises_the_last_failure():
     backend = RecordingBackend([HANDLE, HANDLE])
     backend.polls = [LLMDispatchTerminalError("one"), LLMDispatchTerminalError("two")]
     with pytest.raises(LLMDispatchTerminalError, match="two"):
-        run(backend)
+        run(backend, terminal_retries=1)
     assert len(backend.seen) == 2
+
+
+def test_a_later_run_walks_past_hashes_that_already_failed_permanently():
+    failed = {JOB.recipe_hash, f"{JOB.recipe_hash}-retry-1", f"{JOB.recipe_hash}-retry-2"}
+
+    class Worker(RecordingBackend):
+        def poll_batch(self, handles):
+            return {
+                handles[0].ref: LLMDispatchTerminalError("replayed")
+                if self.seen[-1] in failed
+                else RESULT
+            }
+
+    backend = Worker([HANDLE] * 4)
+    assert run(backend) is RESULT
+    assert backend.seen[-1] == f"{JOB.recipe_hash}-retry-3"
+    assert len(backend.seen) == 4
 
 
 def test_other_job_errors_are_not_retried():
