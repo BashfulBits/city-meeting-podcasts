@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Remedy P3 offline exercise.** Add a synthetic integration test covering publication
+  validation, isolated local Git proposal creation, duplicate planning and feedback recovery.
+  Fake GitHub and storage keep the exercise offline; production publication and model admission
+  remain unchanged and their end-to-end production behavior remains unverified.
+
 - **`/apply` can no longer hang silently until the job timeout.** A run on 2026-11-23 sat in the
   apply step for the whole 120 minutes with nothing logged, because every command ran with its
   output captured and no time limit. Each command now has one (5 minutes, 20 for tests), each
