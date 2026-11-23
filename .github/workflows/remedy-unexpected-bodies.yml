@@ -152,8 +152,11 @@ jobs:
         id: classify
         timeout-minutes: 40
         env:
-          # Direct provider HTTP may use AI Gateway analytics, never the dispatch Worker.
           LLM_SAFE_DIAGNOSTICS: "1"
+          # Classification is queued on the Worker's interactive lane (#2249); the Worker holds
+          # the provider keys and meters the quota.
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}

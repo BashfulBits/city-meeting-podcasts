@@ -121,7 +121,7 @@ llm_lane_budget:
   fixed_rows_per_day: 1500
   # Jobs reserved a day for all live lanes (`live: true`), split among them by reservation_ratio.
   # Their rows come off DO_ROWS_ENQUEUE_STOP first; the other lanes split what is left.
-  live_reservation_jobs: 100
+  live_reservation_jobs: 150
   queue_days: 2
 llm_lanes:
   # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
@@ -285,6 +285,23 @@ llm_lanes:
     # Reservation ratio (review/58 section 12.11) = the jobs/day reserved and tested in #2677.
     # Contested subjects plus the 3% calibration sample, ~0.5 packets per judged meeting.
     reservation_ratio: 10
+  # Semi-realtime classification (review/54 section 8.15.G, #2249): city onboarding's classifier
+  # and the unexpected-body remedy classifier submit here at priority 0 and wait for the result in
+  # the same run (about a minute per call: the Worker claims jobs on a one-minute cron). Both used
+  # to call Gemini directly and so spent quota the Worker's ledger could not see. One lane serves
+  # both because their routes, volumes and latency needs match; a live lane because a person or a
+  # triggered workflow is waiting on it. Routes are the union of the two callers' allowlists.
+  interactive-classify:
+    telemetry: {producer: interactive, unit: request, completion: consumed, scope: sample}
+    models:
+      - "gemini/gemini-3.6-flash"
+      - "gemini/gemini-3.7-flash"
+      - "gemini/gemini-3.8-flash"
+      - "gemini/gemini-3.5-flash"
+      - "gemini/gemini-3.5-flash-lite"
+    live: true
+    # 50 of the 150 live jobs a day (remedy:p3 keeps its 100).
+    reservation_ratio: 0.5
   remedy:p3:
     telemetry: {producer: remedy, unit: finding, completion: consumed, scope: sample}
     # P3 consensus is daily but remains closed until config/remedy.yml admits each exact route.
@@ -301,9 +318,9 @@ llm_lanes:
 # Purposes deliberately absent from `llm_lanes`, because neither reaches the v2 ingress Worker:
 #   `topic-tags:rules`  -- rule-engine bookkeeping recorded via `remember_call_attempt` with a
 #                          `rule:<version>` pseudo-model; no LLM call is ever made.
-#   `city-onboarding`   -- R12 city discovery sets `require_direct=True` (review/41), so it calls
-#                          the provider from the runner and never enqueues.
-# Both are asserted in tests/test_llm_lanes.py so a future change that starts dispatching them
+#   (`city-onboarding` was here until #2249: R12 city discovery now queues on the
+#   `interactive-classify` lane, like the remedy classifier.)
+# The remaining one is asserted in tests/test_llm_lanes.py so a future change that starts dispatching them
 # fails there rather than silently consuming unreserved ingress headroom.
 # R6 grounded moments. Candidate calls are free-only and shadow/manual by default. Council feeds
 # use the two lower-quota long-context Gemini routes; the stage filters this allowlist by family.

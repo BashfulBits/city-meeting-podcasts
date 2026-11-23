@@ -40,10 +40,10 @@ DEFAULT_SITE_CONFIG_PATH = _REPO_ROOT / "config" / "site_config.yml"
 
 # Purposes that deliberately have no lane entry because they never reach the ingress Worker.
 # `topic-tags:rules` is rule-engine bookkeeping recorded with a `rule:<version>` pseudo-model and
-# makes no LLM call at all; `city-onboarding` sets `require_direct=True` (review/41) so R12 city
-# discovery calls the provider from the runner. Listed explicitly -- rather than simply omitted --
-# so `tests/test_llm_lanes.py` can assert the split stays true if either ever starts dispatching.
-NON_DISPATCHING_PURPOSES = frozenset({"topic-tags:rules", "city-onboarding"})
+# makes no LLM call at all. (`city-onboarding` was also listed until #2249, when city discovery
+# moved onto the `interactive-classify` lane.) Listed explicitly -- rather than simply omitted --
+# so `tests/test_llm_lanes.py` can assert the split stays true if it ever starts dispatching.
+NON_DISPATCHING_PURPOSES = frozenset({"topic-tags:rules"})
 
 
 class UnregisteredLaneError(LookupError):

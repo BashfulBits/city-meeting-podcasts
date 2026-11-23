@@ -681,27 +681,30 @@ class ReplyBackend:
         self.replies = iter(replies)
         self.jobs = []
 
-    def run_immediate(self, job):
+    def enqueue_batch(self, jobs):
+        (job,) = jobs
         self.jobs.append(job)
-        return JobResult(
-            task=job.task,
-            recipe_hash=job.recipe_hash,
-            output={"choices": [{"message": {"content": next(self.replies)}}]},
-            model="gemini/gemini-3.6-flash",
-        )
+        return [
+            JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": next(self.replies)}}]},
+                model="gemini/gemini-3.6-flash",
+            )
+        ]
 
 
-def test_classify_direct_contract_and_resolves_local_identifiers(evidence):
+def test_classify_queues_on_the_interactive_lane_and_resolves_local_identifiers(evidence):
     payload = decision_payload(evidence)
     payload["proposals"][0].update(action="single_uid_inclusion", all_observed_episodes=True)
     backend = ReplyBackend([f"```json\n{json.dumps(payload)}\n```"])
     out = classify_unexpected_bodies(evidence, backend=backend)
     job = backend.jobs[0]
     policy = job.inputs["llm_policy"]
-    assert policy.require_direct and not policy.queue_only and not policy.allow_dispatch_overflow
+    # Queued on the interactive lane at priority 0 (#2249), never sent to a provider directly.
+    assert policy.queue_only and not policy.require_direct
+    assert policy.purpose == "interactive-classify" and policy.priority == 0
     assert job.inputs["structured_output"] == DECISION_CONTRACT
-    assert job.inputs["timeout"] <= 45
-    assert job.inputs["num_retries"] == 0
     assert out.proposals[0].source_key == evidence["source_key"]
     assert out.proposals[0].provider_guids == [
         e["provider_guid"] for e in evidence["unexpected_findings"][0]["episodes"]

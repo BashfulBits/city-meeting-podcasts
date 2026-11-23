@@ -11,9 +11,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult
-from citypods.compute.llm import TASK_VERSIONS
-from citypods.compute.llm_policy import LLMRequestPolicy
+from citypods.compute.base import InferenceJob
+from citypods.compute.interactive import InteractiveTimeout, interactive_policy, submit_and_wait
+from citypods.compute.llm import TASK_VERSIONS, LiteLLMBackend
 from citypods.compute.structured import register_response_model
 from citypods.discovery.config import discovery_allowed_models
 from citypods.discovery.models import (
@@ -267,7 +267,7 @@ def parse_classification(
 
 
 def classify(
-    backend: Backend,
+    backend: LiteLLMBackend,
     request: DiscoveryRequest,
     results: list[SearchResult],
     *,
@@ -275,22 +275,13 @@ def classify(
 ) -> Classification:
     """Classify evidence through the backend's Instructor/Pydantic output contract.
 
-    City discovery acts on the result immediately (continuing an issue-comment cycle) rather than
-    tolerating a later async completion, so this asks only for a *free* route -- `allow_paid=False`
-    -- with no `deadline_at`: there is nothing to wait out or fall back to paid for.
-    `require_direct=True` is explicit and load-bearing, not redundant with the default: the
-    Worker's dispatch transport is *always* asynchronous (a 202 plus a later poll, by design --
-    review/27 §9.3), so a policy that let this call dispatch could never complete within this same
-    process even when the target route has ample quota. A prior version of this code relied on
-    `allow_dispatch_overflow` defaulting to False rather than stating the requirement here
-    directly; that left the workflow's dispatch Worker configuration (set for a different reason)
-    free to silently flip this call onto the Worker the moment a future change made overflow
-    opt-in the default somewhere upstream. Stating `require_direct=True` here means this call can
-    never dispatch regardless of what the backend's transport configuration or global defaults do.
-    If nothing free is eligible right now (today that's just Gemini; a future free+direct route
-    would also qualify with no code change here), `run_inference` returns a `JobHandle` the same
-    as it would for a genuinely in-flight dispatch -- this defers the *whole* discovery cycle to
-    the next scheduled run, exactly as it already did before R13.
+    Discovery acts on the result immediately (continuing an issue-comment cycle), so this asks
+    only for a *free* route and waits for the answer in this process. The call is queued on the
+    Worker's ``interactive-classify`` lane at priority 0 rather than sent to the provider directly
+    (#2249): the Worker's ledger then sees the quota it spends. A queued job takes about a minute
+    (the Worker claims jobs on a one-minute cron), so the wait is bounded and a classification not
+    finished in time raises :class:`ClassificationDeferred`; the job stays queued and the next
+    discovery run finds its result by the stable recipe hash.
     """
     job = InferenceJob(
         task="classify-civic-platforms",
@@ -303,21 +294,18 @@ def classify(
             # chapter-agenda/chapter-locator/prelabeler incident that default exists to cushion,
             # not to be relied on for an open-ended schema).
             "max_tokens": 2048,
-            "llm_policy": LLMRequestPolicy(
-                # The scheduler expands this primary through the compiled model_routing map,
-                # preserving primary-first ordering while still allowing vetted overflow routes.
-                allowed_models=allowed_models or (discovery_allowed_models()[0],),
-                allow_paid=False,
-                require_direct=True,
-                purpose="city-onboarding",
-                timeout_class="fast",
+            # Queued on the interactive lane at priority 0 (#2249): the call is counted by the
+            # Worker's ledger, and this process waits for the answer.
+            "llm_policy": interactive_policy(
+                allowed_models or (discovery_allowed_models()[0],), timeout_class="fast"
             ),
         },
         recipe_hash=recipe_hash(request, results),
     )
-    outcome = backend.run_inference(job)
-    if isinstance(outcome, JobHandle):
-        raise ClassificationDeferred("classification is queued; retry it on the next discovery run")
-    if not isinstance(outcome, JobResult):
-        raise ClassificationError("classification backend returned an unsupported result")
+    try:
+        outcome = submit_and_wait(backend, job)
+    except InteractiveTimeout as exc:
+        raise ClassificationDeferred(
+            "classification is queued; retry it on the next discovery run"
+        ) from exc
     return parse_classification(outcome.output, request, results)

@@ -54,6 +54,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          # Classification is queued on the Worker's interactive lane (#2249); the Worker holds
+          # the provider keys and meters the quota.
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
@@ -140,6 +144,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          # Classification is queued on the Worker's interactive lane (#2249); the Worker holds
+          # the provider keys and meters the quota.
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

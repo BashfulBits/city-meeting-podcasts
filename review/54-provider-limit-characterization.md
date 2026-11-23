@@ -531,6 +531,16 @@ leaves the Python CAS ledger with only manual evaluations to serve. The lane reg
 work; each needs its models, submission caps and a test that the purpose is no longer in
 `NON_DISPATCHING_PURPOSES`. Not started: it is a maintainer decision.
 
+**Implemented 2026-11-23 (#2249, route A).** Maintainer decision: one lane type for these
+semi-realtime calls, used by both city onboarding and the remedy flow at priority 0. It is
+`interactive-classify`, a live lane (50 of the 150 live jobs a day; `remedy:p3` keeps its 100) over
+the union of the two callers' Gemini routes. `citypods/compute/interactive.py` provides
+`interactive_policy` and `submit_and_wait` (enqueue, poll, `InteractiveTimeout` after the wait). City
+onboarding's classifier waits up to ten minutes and raises `ClassificationDeferred` on timeout (the
+job stays queued; the stable recipe hash lets the next run find it); the remedy classifier gets a
+ten-minute deadline per call. `city-onboarding` left `NON_DISPATCHING_PURPOSES`, and the two
+workflows now carry `LLM_DISPATCH_V2_URL` and `_AUTH_TOKEN`. Limit measuring stays direct.
+
 **Recommendation (before the measurement): measure route A first.** Submit a small priority 0 job to the live Worker from a
 workflow, with the routes onboarding uses, and record queue wait and total time for ten sequential
 calls under idle and under backlog. If the sequential round trip is short enough for onboarding's

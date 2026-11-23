@@ -3,12 +3,12 @@
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
   "global_write_budget": 38400,
-  "reserved_total": 23446,
+  "reserved_total": 23512,
   "reservations": {
     "chapter-agenda": {
-      "reserved_write_units": 2004,
-      "daily_write_units": 23446,
-      "max_queued_jobs": 668,
+      "reserved_write_units": 1974,
+      "daily_write_units": 23512,
+      "max_queued_jobs": 658,
       "models": [
         "nvidia/nemotron-3-ultra-550b-a55b:free",
         "tencent/hy3",
@@ -26,9 +26,9 @@
       "write_units_per_job": 6
     },
     "chapter-locator": {
-      "reserved_write_units": 2004,
-      "daily_write_units": 23446,
-      "max_queued_jobs": 668,
+      "reserved_write_units": 1974,
+      "daily_write_units": 23512,
+      "max_queued_jobs": 658,
       "models": [
         "deepseek/deepseek-v4-flash",
         "minimaxai/minimax-m3.1-flash",
@@ -44,10 +44,27 @@
       "reasoning": {},
       "write_units_per_job": 6
     },
+    "interactive-classify": {
+      "reserved_write_units": 400,
+      "daily_write_units": 23512,
+      "max_queued_jobs": 100,
+      "models": [
+        "gemini/gemini-3.6-flash",
+        "gemini/gemini-3.7-flash",
+        "gemini/gemini-3.8-flash",
+        "gemini/gemini-3.5-flash",
+        "gemini/gemini-3.5-flash-lite"
+      ],
+      "backup_models": [],
+      "backup_after_attempts": null,
+      "dispatch_shape": "pooled",
+      "reasoning": {},
+      "write_units_per_job": 8
+    },
     "judge:adjudicator": {
-      "reserved_write_units": 1336,
-      "daily_write_units": 23446,
-      "max_queued_jobs": 668,
+      "reserved_write_units": 1316,
+      "daily_write_units": 23512,
+      "max_queued_jobs": 658,
       "models": [
         "zai/glm-5.3-flash",
         "deepseek/deepseek-v4.1-flash"
@@ -61,9 +78,9 @@
       "write_units_per_job": 4
     },
     "judge:anchor": {
-      "reserved_write_units": 2672,
-      "daily_write_units": 23446,
-      "max_queued_jobs": 1336,
+      "reserved_write_units": 2632,
+      "daily_write_units": 23512,
+      "max_queued_jobs": 1316,
       "models": [
         "gemini/gemini-decision-1",
         "perplexity/pplx-decider-v1.3"
@@ -75,9 +92,9 @@
       "write_units_per_job": 4
     },
     "judge:sibling": {
-      "reserved_write_units": 4008,
-      "daily_write_units": 23446,
-      "max_queued_jobs": 2004,
+      "reserved_write_units": 3952,
+      "daily_write_units": 23512,
+      "max_queued_jobs": 1976,
       "models": [
         "openrouter/nvidia/nemotron-3.5-super-vl:free",
         "qwen/qwen3.8-27b"
@@ -89,9 +106,9 @@
       "write_units_per_job": 4
     },
     "r6-moments": {
-      "reserved_write_units": 1670,
-      "daily_write_units": 23446,
-      "max_queued_jobs": 668,
+      "reserved_write_units": 1645,
+      "daily_write_units": 23512,
+      "max_queued_jobs": 658,
       "models": [
         "zai/glm-5.3-flash",
         "deepseek/deepseek-v4-flash"
@@ -110,7 +127,7 @@
     },
     "remedy:p3": {
       "reserved_write_units": 400,
-      "daily_write_units": 23446,
+      "daily_write_units": 23512,
       "max_queued_jobs": 200,
       "models": [
         "openai/gpt-6.1-sol",
@@ -125,9 +142,9 @@
       "write_units_per_job": 4
     },
     "topic-tags:tagger": {
-      "reserved_write_units": 9352,
-      "daily_write_units": 23446,
-      "max_queued_jobs": 2672,
+      "reserved_write_units": 9219,
+      "daily_write_units": 23512,
+      "max_queued_jobs": 2634,
       "models": [
         "gemini/gemini-3.5-flash-lite",
         "openrouter/nvidia/nemotron-3.5-super-vl:free",

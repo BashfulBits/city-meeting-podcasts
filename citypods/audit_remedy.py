@@ -28,7 +28,7 @@ import json
 import re
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -39,8 +39,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from citypods.bodies import body_key, matches_exact_body_label
 from citypods.compute.base import InferenceJob
+from citypods.compute.interactive import interactive_policy, submit_and_wait
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMStructuredOutputError
-from citypods.compute.llm_policy import LLMRequestPolicy, estimate_tokens
+from citypods.compute.llm_policy import estimate_tokens
 from citypods.compute.structured import register_response_model
 from citypods.feed_yaml_edit import add_body_any, add_body_include, assert_only_addition
 from citypods.models import City, Episode
@@ -1102,14 +1103,16 @@ def classify_unexpected_bodies(
     storage: Any = None,
     *,
     backend: LiteLLMBackend | None = None,
-    deadline_minutes: float = 2,
+    deadline_minutes: float = 10,
     deadline_at: datetime | None = None,
 ) -> RemedyOutput:
-    """Direct-only classification; own a bounded corrective retry in this Actions process.
+    """Queued classification on the interactive lane; own a bounded corrective retry here.
 
-    No completed-cache lookup and no pending registry write occur. Schema retries inside the
-    backend and one evidence-contract retry here both finish in this run. A shared run deadline
-    bounds admission; the workflow's process timeout provides the final wall-clock guard.
+    Each call is submitted to the Worker's ``interactive-classify`` lane at priority 0 and waited
+    for in this process (#2249), so the Worker's ledger counts the quota it spends. A queued job
+    takes about a minute (the Worker claims jobs on a one-minute cron), which is why the default
+    deadline is ten minutes. One evidence-contract retry runs here as a second queued call. A
+    shared run deadline bounds each wait; the workflow's process timeout is the final guard.
     """
     register_response_model(DECISION_CONTRACT, BodyDecisions)
     compact = _compact_evidence(evidence)
@@ -1119,14 +1122,7 @@ def classify_unexpected_bodies(
         deadline_at or datetime.max.replace(tzinfo=UTC),
         datetime.now(UTC) + timedelta(minutes=deadline_minutes),
     )
-    policy = LLMRequestPolicy(
-        allow_paid=False,
-        allowed_models=REMEDY_MODELS,
-        purpose="audit-remedy",
-        require_direct=True,
-        timeout_class="long",
-        deadline_at=deadline,
-    )
+    policy = interactive_policy(REMEDY_MODELS, timeout_class="long", deadline_at=deadline)
     messages = [
         {
             "role": "user",
@@ -1135,7 +1131,11 @@ def classify_unexpected_bodies(
     ]
     if backend is None:
         backend = LiteLLMBackend(
-            LLMBackendConfig(model=REMEDY_MODELS[0], additional_models=REMEDY_MODELS[1:]),
+            replace(
+                LLMBackendConfig.from_env(),
+                model=REMEDY_MODELS[0],
+                additional_models=REMEDY_MODELS[1:],
+            ),
             storage=storage,
         )
     for attempt in range(2):
@@ -1149,13 +1149,11 @@ def classify_unexpected_bodies(
                 "structured_output": DECISION_CONTRACT,
                 "llm_policy": policy,
                 "max_tokens": 8192,
-                "timeout": min(45, remaining / 2),
-                "num_retries": 0,
             },
             recipe_hash=f"{evidence_recipe_hash(evidence)}-repair-{attempt}",
         )
-        # The backend owns schema parsing/retry and quota accounting; no dispatch or cache path.
-        result = backend.run_immediate(job)
+        # The Worker owns schema parsing/retry and quota accounting; this waits for the result.
+        result = submit_and_wait(backend, job, timeout_seconds=remaining)
         try:
             content = result.output["choices"][0]["message"]["content"]
             decisions = BodyDecisions.model_validate_json(_strip_code_fence(content))
