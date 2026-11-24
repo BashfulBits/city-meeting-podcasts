@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- The input-size search accepts a model answer wrapped in one markdown code fence when grading
+  the sentinels. Gemini `flash-lite` fenced its JSON, so every probe failed verification and the
+  search stalled at a stale ~85k lower bound.
+
 - A planned size search now retries its reachability check after spaced waits when the provider
   answers busy (429, 503, timeout), instead of losing the day's session to one overloaded response
   (Gemini `hydrogen` and `flash-latest` were skipped this way).
