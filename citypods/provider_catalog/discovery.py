@@ -1112,17 +1112,31 @@ def run_discovery(
                 )
 
             if axis == "input" and token_ledger is not None and positive(token_budget):
+                if any(
+                    spent is not None
+                    and (
+                        spent.calls + 1 > spent.max_calls
+                        or spent.input_tokens + request.input_tokens > spent.max_input
+                    )
+                    for spent in (budget, shared_budget)
+                ):
+                    # Out of allowance: let admission reject it, rather than waiting first.
+                    reason = bracket.reason = "budget_exhausted"
+                    break
                 token_ledger.budget = token_budget
-                pace = token_ledger.wait_for(input_tokens, clock())
+                # `target` is in provider tokens; the local reservation is a different unit.
+                paced_from = clock()
+                pace = token_ledger.wait_for(target, paced_from)
                 if pace > 0:
-                    if clock() + pace >= deadline:
+                    until = paced_from + pace
+                    if until >= deadline:
                         reason = bracket.reason = "token_budget_pacing_deferred"
                         break
-                    until = clock() + pace
                     try:
-                        while clock() < until:
+                        renew()
+                        while (left := until - clock()) > 0:
+                            sleep(min(30, left))
                             renew()
-                            sleep(min(30, until - clock()))
                     except Exception:
                         reason = bracket.reason = "pause_lost"
                         break
@@ -1158,11 +1172,9 @@ def run_discovery(
                 )
             observations.append(observation)
             axis_calls += 1
-            if (
-                axis == "input"
-                and token_ledger is not None
-                and (observation.response_status == 200 or observation.outcome == "admitted")
-            ):
+            if token_ledger is not None and observation.outcome != "quota":
+                # Every axis sends a prompt; a probe that was not rejected as rate-limited (a
+                # transport failure may follow acceptance) is counted as spent.
                 token_ledger.record(
                     observation.reported_input
                     if positive(observation.reported_input)

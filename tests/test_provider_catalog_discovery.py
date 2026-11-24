@@ -173,13 +173,14 @@ def observation(req, count, admitted=True, **kwargs):
 
 def execute(tmp_path, adapter, **kwargs):
     supported_axes = kwargs.pop("supported_axes", AXES)
+    renew = kwargs.pop("renew", lambda: None)
     return run_discovery(
         session_id="session",
         identity="physical",
         parser_version="parser-v1",
         supported_axes=supported_axes,
         measure=adapter,
-        renew=lambda: None,
+        renew=renew,
         journal=DiscoveryJournal(tmp_path / "journal.json", {"identity": "physical"}),
         **kwargs,
     )
@@ -532,6 +533,36 @@ def test_input_search_paces_probes_under_the_token_budget(tmp_path):
     fitting = [(t, n, r) for t, n, r in calls if n <= budget]
     assert fitting and all(recent + target <= budget for _, target, recent in fitting)
     assert any(now > 0 for now, _, _ in calls)  # it waited instead of draining the minute
+
+
+def test_pacing_survives_a_renewal_that_crosses_the_wait_and_counts_other_axes(tmp_path):
+    from citypods.provider_catalog.discovery import TokenLedger
+
+    now, slept = [0.0], []
+    ledger = TokenLedger(100_000, window=60)
+    ledger.record(90_000, 0.0)  # e.g. an output probe's prompt in the same minute
+
+    def renew():
+        now[0] += 100  # renewal itself outlasts the wait
+
+    def measure(req, admit, timeout):
+        admit()
+        return observation(req, req.target, True, reported_input=req.input_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        seeds={"input": 40_000},
+        token_budget=100_000,
+        token_ledger=ledger,
+        renew=renew,
+        clock=lambda: now[0],
+        sleep=lambda seconds: slept.append(seconds),
+        deadline=100_000.0,
+    )
+    assert result.reason != "pause_lost"
+    assert all(seconds > 0 for seconds in slept)
 
 
 def test_quota_without_a_token_budget_still_waits_then_defers(tmp_path):

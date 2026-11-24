@@ -1790,7 +1790,9 @@ def reconcile(
                         deadline=(run_started + discovery_time_budget_seconds if timed else None),
                         fresh_run_budget=timed,
                         token_budget=(budget := provider_token_budget(provider_routes)),
-                        token_ledger=ledger_for(provider, None, budget),
+                        token_ledger=ledger_for(
+                            provider, ((cfg.get("accounts") or [{}])[0]).get("id"), budget
+                        ),
                     )
                     carried = carried_discovery.get(candidate.key) or {}
                     if carried.get("identity") not in (None, identity):
