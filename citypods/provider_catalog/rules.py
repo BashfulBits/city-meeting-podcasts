@@ -807,6 +807,19 @@ def _chat_input_capacity(payload, response, *, require_content=True):
     )
 
 
+_JSON_FENCE = re.compile(
+    r"\A\s*```(?:json)?[ \t]*\r?\n(.*?)\r?\n?```\s*\Z", re.DOTALL | re.IGNORECASE
+)
+
+
+def _unfenced_json(content):
+    """The answer without one surrounding markdown code fence (some models wrap their JSON).
+
+    Only the wrapper is removed; the sentinels inside must still match exactly."""
+    fenced = _JSON_FENCE.match(content)
+    return fenced.group(1) if fenced else content
+
+
 def _discovery_sentinel_verification(request, transient, payload):
     """Grade completed retrieval independently of the provider's usage-count evidence."""
     if (
@@ -846,7 +859,7 @@ def _discovery_sentinel_verification(request, transient, payload):
     if len(expected) != 3:
         return "not_checked"
     try:
-        actual = strict_context_json(content)
+        actual = strict_context_json(_unfenced_json(content))
     except ValueError:
         return "failed"
     return "passed" if actual == expected else "failed"
