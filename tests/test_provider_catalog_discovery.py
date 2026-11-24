@@ -442,6 +442,70 @@ def test_rate_rejection_never_establishes_upper(tmp_path):
     assert result.brackets[0]["refused"] is None
 
 
+def test_input_search_steps_down_on_429_at_the_token_budget(tmp_path):
+    """A 429 on a probe at or over the per-minute token budget is a size problem, not a wait."""
+    budget = 250_000
+
+    def measure(req, admit, timeout):
+        admit()
+        if req.target >= budget:
+            return DiscoveryObservation(req, STAMP, outcome="quota", retry_after_seconds=36)
+        return observation(req, req.target, True, reported_input=req.input_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        seeds={"input": MAX_INPUT},
+        token_budget=budget,
+    )
+    assert result.reason != "quota_deferred"
+    bracket = next(b for b in result.brackets if b["axis"] == "input")
+    assert bracket["admitted"] and bracket["admitted"] < budget
+
+
+def test_token_budget_does_not_cap_a_route_that_admits_more(tmp_path):
+    """`tpm` only seeds and guides; a provider that admits larger requests is measured past it."""
+    budget, limit = 50_000, 400_000
+    calls = []
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        return observation(req, req.target, req.target <= limit, reported_input=req.input_tokens)
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        seeds={"input": 30_000},
+        token_budget=budget,
+    )
+    assert max(calls) > budget
+    bracket = next(b for b in result.brackets if b["axis"] == "input")
+    assert bracket["admitted"] > budget
+
+
+def test_quota_without_a_token_budget_still_waits_then_defers(tmp_path):
+    calls = []
+    now = [0.0]
+
+    def measure(req, admit, timeout):
+        admit()
+        calls.append(req.target)
+        return DiscoveryObservation(req, STAMP, outcome="quota", retry_after_seconds=3)
+
+    result = execute(
+        tmp_path,
+        measure,
+        supported_axes=("input",),
+        clock=lambda: now[0],
+        sleep=lambda seconds: now.__setitem__(0, now[0] + seconds),
+    )
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert result.reason == "quota_deferred"
+
+
 @pytest.mark.parametrize("outcome", ["daily", "outage"])
 def test_account_errors_stop_all_axes(tmp_path, outcome):
     def measure(req, admit, timeout):

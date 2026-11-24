@@ -88,6 +88,12 @@ OUTAGE_BACKOFF_SECONDS = 15
 # tokens, every run) is more likely too large than down: halve it this many times before ending
 # the axis as an outage. Like a timeout, this guides smaller probes and is never a refused bound.
 MAX_OUTAGE_STEPDOWNS = 4
+# A 429 on a probe larger than the account's per-minute token budget is a size refusal in practice
+# (the request can never fit), so the search steps down instead of waiting out Retry-After.
+MAX_QUOTA_STEPDOWNS = 4
+# The first input probe starts at this share of the per-minute token budget, leaving room for the
+# provider's own token count to differ from our estimate.
+TOKEN_BUDGET_SEED_PERCENT = 75
 # Only a plain 500 says "this request broke me"; 502/503/504 are gateways and overload, which a
 # smaller body does not cure, so those still end the axis as an outage.
 STEPDOWN_STATUSES = {500}
@@ -570,6 +576,7 @@ def run_discovery(
     sleep=time.sleep,
     deadline=None,
     recheck_upper=False,
+    token_budget=None,
 ):
     """Inject transport, pause renewal and time; no provider calls without a charged receipt.
 
@@ -793,6 +800,7 @@ def run_discovery(
         recent_output_cost = None
         outage_retries = 0
         outage_stepdowns = 0
+        quota_stepdowns = 0
         clipped_count = None
         clipped_recheck = None
         early_stop_retries = 0
@@ -1195,6 +1203,22 @@ def run_discovery(
                 outage_stepdowns += 1
                 time_upper = min(time_upper or target, target)
                 outage_retries = MAX_OUTAGE_RETRIES - 1  # one retry per smaller size
+                continue
+            if (
+                observation.outcome == "quota"
+                and axis == "input"
+                and not supporting
+                and positive(token_budget)
+                and max(target, input_tokens) >= token_budget * TOKEN_BUDGET_SEED_PERCENT // 100
+                and quota_stepdowns < MAX_QUOTA_STEPDOWNS
+                and target // 2 >= MIN_INPUT_PROBE
+            ):
+                # Over the token budget: smaller next, no Retry-After wait that cannot help.
+                quota_stepdowns += 1
+                time_upper = min(time_upper or target, target)
+                # Old history or a pending upper check must not pin the next probe to this size.
+                upper_recheck = clipped_recheck = None
+                fresh_successes = max(fresh_successes, required_fresh)
                 continue
             if observation.outcome in {"outage", "daily"}:
                 reason = observation.outcome
