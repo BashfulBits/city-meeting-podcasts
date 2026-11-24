@@ -1005,7 +1005,7 @@ def reconcile(
                     recheck_upper=bool(confirm),
                     max_attempts=allowance if allowance is not None else quota_cap,
                     token_budget=provider_token_budget(
-                        [r for r in routes if r.get("provider") == provider]
+                        [r for r in routes if r.get("provider") == provider], route
                     ),
                 )
             except Exception as exc:  # advisory, like new-route discovery
@@ -2633,14 +2633,20 @@ def _litellm_discovery_limits(provider, model):
     }
 
 
-def provider_token_budget(routes) -> int | None:
-    """Largest per-minute token budget (`tpm`) among a provider's configured routes, if any."""
-    budgets = [
-        r["tpm"]
-        for r in routes
-        if isinstance(r, Mapping) and type(r.get("tpm")) is int and r["tpm"] > 0
-    ]
-    return max(budgets) if budgets else None
+def provider_token_budget(routes, route=None) -> int | None:
+    """Per-minute token budget (`tpm`) a size search must stay under.
+
+    The route's own `tpm` when it has one; otherwise the smallest among the provider's configured
+    routes, so a candidate is never aimed past the tightest limit the provider is known to enforce.
+    """
+
+    def valid(row):
+        return isinstance(row, Mapping) and type(row.get("tpm")) is int and row["tpm"] > 0
+
+    if valid(route):
+        return route["tpm"]
+    budgets = [r["tpm"] for r in routes if valid(r)]
+    return min(budgets) if budgets else None
 
 
 def _discovery_starting_points(record, litellm):

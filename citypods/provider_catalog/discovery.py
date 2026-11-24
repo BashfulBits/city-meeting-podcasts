@@ -1218,13 +1218,16 @@ def run_discovery(
                 and axis == "input"
                 and not supporting
                 and positive(token_budget)
-                and (target >= token_budget or input_tokens > token_budget)
+                and max(target, input_tokens) >= token_budget * TOKEN_BUDGET_SEED_PERCENT // 100
                 and quota_stepdowns < MAX_QUOTA_STEPDOWNS
                 and target // 2 >= MIN_INPUT_PROBE
             ):
                 # Over the token budget: smaller next, no Retry-After wait that cannot help.
                 quota_stepdowns += 1
                 time_upper = min(time_upper or target, target)
+                # Old history or a pending upper check must not pin the next probe to this size.
+                upper_recheck = clipped_recheck = None
+                fresh_successes = max(fresh_successes, required_fresh)
                 continue
             if observation.outcome in {"outage", "daily"}:
                 reason = observation.outcome

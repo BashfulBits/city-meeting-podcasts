@@ -3800,11 +3800,12 @@ def test_remeasure_stops_when_its_own_time_budget_is_spent(monkeypatch):
     assert any("budget" in (s.get("note") or "") for s in report.remeasure_sessions)
 
 
-def test_provider_token_budget_and_seed_start_below_it():
+def test_provider_token_budget_prefers_route_then_tightest():
     from citypods.provider_catalog.reconcile import provider_token_budget
 
     assert provider_token_budget([]) is None
     assert provider_token_budget([{"tpm": 0}, {"tpm": True}, {}]) is None
-    assert (
-        provider_token_budget([{"tpm": 250_000}, {"tpm": 1_000_000}, {"tpm": 90_000}]) == 1_000_000
-    )
+    routes = [{"tpm": 250_000}, {"tpm": 1_000_000}, {"tpm": 90_000}]
+    assert provider_token_budget(routes) == 90_000
+    assert provider_token_budget(routes, {"tpm": 250_000}) == 250_000
+    assert provider_token_budget(routes, {"route_id": "no-tpm"}) == 90_000
