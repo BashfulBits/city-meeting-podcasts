@@ -4799,3 +4799,33 @@ def test_a_session_call_cap_is_a_hard_stop_before_the_call_that_would_exceed_it(
     )
     assert len(seen) == 3
     assert result.reason in {"partial", "discovery_budget_exhausted"} or result.brackets
+
+
+@pytest.mark.parametrize(
+    ("fence", "verdict"),
+    [
+        ("```json\n{}\n```", "passed"),
+        ("```\n{}\n```", "passed"),
+        ("```json\n{}```", "passed"),
+        ("Here it is:\n```json\n{}\n```", "failed"),
+        ("```json\n{}\n``` trailing", "failed"),
+    ],
+)
+def test_sentinel_check_accepts_one_markdown_fence_around_exact_json(fence, verdict):
+    import json
+    import re
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("openrouter")
+    expected = dict(
+        re.findall(r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"])
+    )
+    content = fence.replace("{}", json.dumps(expected))
+    body = {
+        "object": "chat.completion",
+        "usage": {"prompt_tokens": 1900, "completion_tokens": 64, "total_tokens": 1964},
+        "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+    }
+    observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert observed.sentinel_verification == verdict
