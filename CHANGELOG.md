@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Input-size probes accept a usage block whose total includes reasoning tokens that
+  `completion_tokens` leaves out (Gemini thinking models such as `hydrogen`), which were rejected
+  as `total_invalid` so no size was ever recorded.
+- The daily plan re-measures an input axis that stalled (every probe failed verification) instead
+  of treating its kept lower bound as a finished measurement (`flash-lite`, ~85k).
+
 - The input-size search accepts a model answer wrapped in one markdown code fence when grading
   the sentinels. Gemini `flash-lite` fenced its JSON, so every probe failed verification and the
   search stalled at a stale ~85k lower bound.
