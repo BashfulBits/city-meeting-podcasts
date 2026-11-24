@@ -604,3 +604,21 @@ def test_measurement_plan_remeasures_a_partial_input_bound_left_by_a_drained_sea
     assert plan == {"gemini/drained": "input"}
     state["canaries"]["gemini/drained"]["measure_attempts"] = 4
     assert measurement_plan(state, 10.0, 16, per_provider=False) == {}
+
+
+def test_measurement_plan_remeasures_an_input_bound_that_stalled():
+    from citypods.provider_catalog.reconcile import measurement_plan
+
+    def cand(model, axis_reason):
+        discovery = {
+            "reason": "partial",
+            "retryable": True,
+            "axes": [
+                {"axis": "input", "admitted": 84_950, "reason": axis_reason},
+                {"axis": "output", "published": 8192},
+            ],
+        }
+        return {"provider": "gemini", "model": model, "score": None, "discovery": discovery}
+
+    state = {"last_full": {"candidates": [cand("stuck", "stalled"), cand("edge", "complete")]}}
+    assert measurement_plan(state, 10.0, 16, per_provider=False) == {"gemini/stuck": "input"}

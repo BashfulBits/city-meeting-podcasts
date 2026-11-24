@@ -759,7 +759,23 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
     return None
 
 
-def _chat_input_capacity(payload, response, *, require_content=True):
+def _usage_total(usage):
+    """The total a usage block must report: prompt + completion, plus the reasoning tokens a
+    provider (Gemini thinking models) counts in the total but not in ``completion_tokens``."""
+    expected = usage["prompt_tokens"] + usage["completion_tokens"]
+    details = usage.get("completion_tokens_details")
+    reasoning = details.get("reasoning_tokens") if isinstance(details, dict) else None
+    if (
+        type(reasoning) is int
+        and reasoning > 0
+        and type(usage.get("total_tokens")) is int
+        and usage["total_tokens"] == expected + reasoning
+    ):
+        return expected + reasoning
+    return expected
+
+
+def _chat_input_capacity(payload, response, *, require_content=True, reasoning_in_total=False):
     """API input admission; text retrieval accuracy is deliberately a separate signal."""
     if response.status != 200 or response.timed_out or response.transport_error:
         return False
@@ -773,10 +789,15 @@ def _chat_input_capacity(payload, response, *, require_content=True):
     counts = [usage.get(key) for key in ("prompt_tokens", "completion_tokens", "total_tokens")]
     if any(type(count) is not int or not 0 <= count <= 2**53 - 1 for count in counts):
         return False
-    if counts[0] <= 0 or counts[1] <= 0 or counts[2] != counts[0] + counts[1]:
+    expected_total = _usage_total(usage) if reasoning_in_total else counts[0] + counts[1]
+    if counts[0] <= 0 or counts[1] <= 0 or counts[2] != expected_total:
         return False
     for key, token_key, limit in (
-        ("completion_tokens_details", "reasoning_tokens", counts[1]),
+        (
+            "completion_tokens_details",
+            "reasoning_tokens",
+            counts[1] if counts[2] == counts[0] + counts[1] else counts[2] - counts[0] - counts[1],
+        ),
         ("prompt_tokens_details", "cached_tokens", counts[0]),
     ):
         details = usage.get(key)
@@ -1115,7 +1136,20 @@ def chat_discovery_observation(
             values["diagnostic"] = f"combined_output_stopped_early:actual_total={actual}"
         return DiscoveryObservation(request, stamp, **values)
     if request.axis == "input":
-        if _chat_input_capacity(payload, response):
+        if _chat_input_capacity(payload, response, reasoning_in_total=True):
+            # Input admission rests on prompt_tokens alone; a provider that counts reasoning in
+            # the total but not in completion_tokens (Gemini thinking models) is accepted here
+            # only, and its validated counts are kept.
+            extra = usage["total_tokens"] - usage["prompt_tokens"] - usage["completion_tokens"]
+            details = usage.get("completion_tokens_details")
+            thought = details.get("reasoning_tokens") if isinstance(details, dict) else None
+            kept = {
+                "reported_input": usage["prompt_tokens"],
+                "reported_output": usage["completion_tokens"] + extra,
+                "usage_state": "valid",
+            }
+            if extra and type(thought) is int and thought == extra:
+                kept["reasoning_tokens"] = thought
             return DiscoveryObservation(
                 request,
                 stamp,
@@ -1123,7 +1157,7 @@ def chat_discovery_observation(
                 coordinate=usage["prompt_tokens"],
                 count_basis="input",
                 verified=True,
-                **(values | {"diagnostic": "api_input_admitted"}),
+                **(values | kept | {"diagnostic": "api_input_admitted"}),
             )
         if observation.outcome == "verified" or usage_state in {"total_missing", "total_invalid"}:
             values["diagnostic"] = "api_input_usage_incomplete"

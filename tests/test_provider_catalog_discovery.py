@@ -4830,3 +4830,60 @@ def test_sentinel_check_accepts_one_markdown_fence_around_exact_json(fence, verd
     }
     observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
     assert observed.sentinel_verification == verdict
+
+
+@pytest.mark.parametrize(
+    ("completion", "reasoning", "total", "admitted"),
+    [
+        (64, 0, 1964, True),
+        (64, 500, 2464, True),  # Gemini thinking models: reasoning counted in the total only
+        (64, 40, 1964, True),  # reasoning inside completion_tokens, as before
+        (64, 500, 2400, False),  # the total matches neither accounting
+    ],
+)
+def test_input_admission_accepts_reasoning_tokens_counted_only_in_the_total(
+    completion, reasoning, total, admitted
+):
+    import json
+    import re
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("openrouter")
+    expected = dict(
+        re.findall(r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"])
+    )
+    usage = {"prompt_tokens": 1900, "completion_tokens": completion, "total_tokens": total}
+    if reasoning:
+        usage["completion_tokens_details"] = {"reasoning_tokens": reasoning}
+    body = {
+        "object": "chat.completion",
+        "usage": usage,
+        "choices": [{"message": {"content": json.dumps(expected)}, "finish_reason": "stop"}],
+    }
+    observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert (observed.outcome == "admitted") is admitted
+    if admitted:
+        assert observed.reported_input == 1900 and observed.usage_state == "valid"
+
+
+def test_reasoning_only_in_the_total_does_not_admit_an_output_probe():
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("openrouter")
+    out = replace(req, axis="output", control="output:v4")
+    usage = {
+        "prompt_tokens": 1900,
+        "completion_tokens": 64,
+        "total_tokens": 2464,
+        "completion_tokens_details": {"reasoning_tokens": 500},
+    }
+    body = {
+        "object": "chat.completion",
+        "usage": usage,
+        "choices": [{"message": {"content": "x"}, "finish_reason": "length"}],
+    }
+    observed = rules.discovery_observation(Response(200, body=json.dumps(body)), out, transient)
+    assert observed.outcome != "admitted"
