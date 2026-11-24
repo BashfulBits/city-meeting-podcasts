@@ -40,6 +40,7 @@ from citypods.provider_catalog.discovery import (
     MAX_ARTIFACT_SESSIONS,
     MAX_AUTO_MEASURE_ATTEMPTS,
     MAX_RUN_SESSIONS,
+    TokenLedger,
 )
 from citypods.provider_catalog.evidence import (
     CatalogEvidence,
@@ -736,6 +737,16 @@ def reconcile(
         report.observations.append(f"quality: {quality.error}; every candidate is unscored")
 
     routes = [r for r in limits.get("routes") or [] if isinstance(r, dict)]
+    token_ledgers: dict[tuple[str, str], TokenLedger] = {}
+
+    def ledger_for(provider_name, account_id, budget):
+        """One shared per-minute token ledger per provider account, for this whole run."""
+        if not budget:
+            return None
+        return token_ledgers.setdefault(
+            (str(provider_name), str(account_id or "")), TokenLedger(budget)
+        )
+
     incumbents = lane_incumbent_scores(lanes, routes, quality)
     report.floor, report.floor_source = production_floor(incumbents, quality)
     report.ceiling = max((x for scores in incumbents.values() for x in scores), default=None)
@@ -1004,9 +1015,12 @@ def reconcile(
                     seeds=seeds,
                     recheck_upper=bool(confirm),
                     max_attempts=allowance if allowance is not None else quota_cap,
-                    token_budget=provider_token_budget(
-                        [r for r in routes if r.get("provider") == provider], route
+                    token_budget=(
+                        budget := provider_token_budget(
+                            [r for r in routes if r.get("provider") == provider], route
+                        )
                     ),
+                    token_ledger=ledger_for(provider, route.get("account_id"), budget),
                 )
             except Exception as exc:  # advisory, like new-route discovery
                 row["note"] = f"search stopped safely ({type(exc).__name__})"
@@ -1775,7 +1789,10 @@ def reconcile(
                         sleep=sleep,
                         deadline=(run_started + discovery_time_budget_seconds if timed else None),
                         fresh_run_budget=timed,
-                        token_budget=provider_token_budget(provider_routes),
+                        token_budget=(budget := provider_token_budget(provider_routes)),
+                        token_ledger=ledger_for(
+                            provider, ((cfg.get("accounts") or [{}])[0]).get("id"), budget
+                        ),
                     )
                     carried = carried_discovery.get(candidate.key) or {}
                     if carried.get("identity") not in (None, identity):
@@ -2933,6 +2950,7 @@ def _discover_candidate_caps(
     recheck_upper=False,
     max_attempts=None,
     token_budget=None,
+    token_ledger=None,
 ):
     """Run the separate, charged size search only after candidate reachability is proven.
 
@@ -3086,6 +3104,7 @@ def _discover_candidate_caps(
                 deadline=deadline,
                 recheck_upper=recheck_upper,
                 token_budget=token_budget,
+                token_ledger=token_ledger,
             )
         except Exception as exc:
             # Preserve charged attempts even if orchestration fails after admission.

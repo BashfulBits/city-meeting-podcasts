@@ -94,6 +94,46 @@ MAX_QUOTA_STEPDOWNS = 4
 # The first input probe starts at this share of the per-minute token budget, leaving room for the
 # provider's own token count to differ from our estimate.
 TOKEN_BUDGET_SEED_PERCENT = 75
+# Provider per-minute token windows are not exact; leave a little slack past 60 s.
+TOKEN_WINDOW_SECONDS = 62
+
+
+class TokenLedger:
+    """Tokens a provider account admitted in the last minute, shared by every search on it.
+
+    A search's own probes count against the account's per-minute token budget, so back-to-back
+    large probes drain it and later ones get a 429 that says nothing about request size.
+    """
+
+    def __init__(self, budget: int, window: float = TOKEN_WINDOW_SECONDS):
+        self.budget = budget
+        self.window = window
+        self.rows: list[tuple[float, int]] = []
+
+    def _prune(self, now: float) -> None:
+        self.rows = [(t, n) for t, n in self.rows if now - t < self.window]
+
+    def wait_for(self, tokens: int, now: float) -> float:
+        """Seconds until `tokens` fit under the budget (0 when they fit now)."""
+        self._prune(now)
+        need = min(tokens, self.budget)
+        used = sum(count for _, count in self.rows)
+        if used + need <= self.budget:
+            return 0.0
+        wait = 0.0
+        for stamp, count in sorted(self.rows):
+            used -= count
+            wait = stamp + self.window - now
+            if used + need <= self.budget:
+                break
+        return max(0.0, wait)
+
+    def record(self, tokens: int, now: float) -> None:
+        if tokens > 0:
+            self._prune(now)
+            self.rows.append((now, tokens))
+
+
 # Only a plain 500 says "this request broke me"; 502/503/504 are gateways and overload, which a
 # smaller body does not cure, so those still end the axis as an outage.
 STEPDOWN_STATUSES = {500}
@@ -577,6 +617,7 @@ def run_discovery(
     deadline=None,
     recheck_upper=False,
     token_budget=None,
+    token_ledger=None,
 ):
     """Inject transport, pause renewal and time; no provider calls without a charged receipt.
 
@@ -1070,6 +1111,35 @@ def run_discovery(
                     deadline,
                 )
 
+            if axis == "input" and token_ledger is not None and positive(token_budget):
+                if any(
+                    spent is not None
+                    and (
+                        spent.calls + 1 > spent.max_calls
+                        or spent.input_tokens + request.input_tokens > spent.max_input
+                    )
+                    for spent in (budget, shared_budget)
+                ):
+                    # Out of allowance: let admission reject it, rather than waiting first.
+                    reason = bracket.reason = "budget_exhausted"
+                    break
+                token_ledger.budget = token_budget
+                # `target` is in provider tokens; the local reservation is a different unit.
+                paced_from = clock()
+                pace = token_ledger.wait_for(target, paced_from)
+                if pace > 0:
+                    until = paced_from + pace
+                    if until >= deadline:
+                        reason = bracket.reason = "token_budget_pacing_deferred"
+                        break
+                    try:
+                        renew()
+                        while (left := until - clock()) > 0:
+                            sleep(min(30, left))
+                            renew()
+                    except Exception:
+                        reason = bracket.reason = "pause_lost"
+                        break
             call_started = clock()
             try:
                 renew()
@@ -1102,6 +1172,15 @@ def run_discovery(
                 )
             observations.append(observation)
             axis_calls += 1
+            if token_ledger is not None and observation.outcome != "quota":
+                # Every axis sends a prompt; a probe that was not rejected as rate-limited (a
+                # transport failure may follow acceptance) is counted as spent.
+                token_ledger.record(
+                    observation.reported_input
+                    if positive(observation.reported_input)
+                    else input_tokens,
+                    clock(),
+                )
             if axis == "input" and (
                 observation.diagnostic in TIMEOUT_DIAGNOSTICS
                 or observation.diagnostic == SLOW_INPUT_DIAGNOSTIC
