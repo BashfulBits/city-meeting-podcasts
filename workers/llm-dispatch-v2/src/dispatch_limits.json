@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 60,
+    "routes_count": 61,
     "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -3268,6 +3268,54 @@
       "structured_output_schema_strip_keys": [],
       "request_params": null,
       "reasoning_controls": null
+    },
+    "nvidia_stepfun_ai_step_5_preview": {
+      "route_id": "nvidia_stepfun_ai_step_5_preview",
+      "stream_response": null,
+      "ai_gateway_max_attempts": null,
+      "model": "stepfun-ai/step-5-preview",
+      "provider": "nvidia",
+      "upstream_model": "stepfun-ai/step-5-preview",
+      "input_context_limit": 967974,
+      "output_context_limit": 4080,
+      "hard_input_ceiling": 967773,
+      "hard_input_ceiling_tolerance": null,
+      "response_timeout_seconds": 720,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": null,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "tpm_window_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": null,
+      "tier": null,
+      "api_shape": null,
+      "request_path": null,
+      "api_base": null,
+      "ai_gateway_slug": null,
+      "ai_gateway_chat_path": null,
+      "chat_path": null,
+      "yields_to": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
     }
   },
   "model_routes_map": {
@@ -3398,6 +3446,9 @@
     ],
     "z-ai/glm-5.3-flash": [
       "nvidia_z_ai_glm_5_3_flash"
+    ],
+    "stepfun-ai/step-5-preview": [
+      "nvidia_stepfun_ai_step_5_preview"
     ]
   },
   "model_aliases": {
@@ -3508,7 +3559,9 @@
     "openrouter/inclusionai/ling-3.2-flash:free": "inclusionai/ling-3.2-flash",
     "z-ai/glm-5.3-flash": "z-ai/glm-5.3-flash",
     "nvidia/z-ai/glm-5.3-flash": "z-ai/glm-5.3-flash",
-    "kilo/inclusionai/ling-3.2-flash:free": "inclusionai/ling-3.2-flash"
+    "kilo/inclusionai/ling-3.2-flash:free": "inclusionai/ling-3.2-flash",
+    "stepfun-ai/step-5-preview": "stepfun-ai/step-5-preview",
+    "nvidia/stepfun-ai/step-5-preview": "stepfun-ai/step-5-preview"
   },
   "model_routing": {
     "gemini/gemini-3.7-flash": [

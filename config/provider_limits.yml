@@ -1915,3 +1915,26 @@ routes:
     free: true
     response_timeout_seconds: 720
     output_context_limit: 262144
+  # Input cap evidence: 967773 provider-counted input tokens admitted; 201 output tokens
+  # generated in the same request (control input:v2).
+  # The hard_input_ceiling is the admitted input lower bound; the estimated rejection is not
+  # used as a cap.
+  # Provider/catalog input_context_limit claim: not published; source:
+  # https://integrate.api.nvidia.com/v1/models. Operational context is at least the empirically
+  # observed input plus generated output.
+  # Output context: configured value 4080 is sourced from a measured output search (a verified
+  # lower bound, not a proven maximum).
+  - route_id: nvidia_stepfun_ai_step_5_preview
+    model: stepfun-ai/step-5-preview
+    provider: nvidia
+    upstream_model: stepfun-ai/step-5-preview
+    account_id: primary
+    input_context_limit: 967974
+    hard_input_ceiling: 967773
+    structured_output_method: json_schema
+    structured_output_verified_on: '2026-11-23'
+    rpm: 1
+    concurrency: 1
+    free: true
+    response_timeout_seconds: 720
+    output_context_limit: 4080
