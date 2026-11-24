@@ -4863,3 +4863,27 @@ def test_input_admission_accepts_reasoning_tokens_counted_only_in_the_total(
     }
     observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
     assert (observed.outcome == "admitted") is admitted
+    if admitted:
+        assert observed.reported_input == 1900 and observed.usage_state == "valid"
+
+
+def test_reasoning_only_in_the_total_does_not_admit_an_output_probe():
+    import json
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("openrouter")
+    out = replace(req, axis="output", control="output:v4")
+    usage = {
+        "prompt_tokens": 1900,
+        "completion_tokens": 64,
+        "total_tokens": 2464,
+        "completion_tokens_details": {"reasoning_tokens": 500},
+    }
+    body = {
+        "object": "chat.completion",
+        "usage": usage,
+        "choices": [{"message": {"content": "x"}, "finish_reason": "length"}],
+    }
+    observed = rules.discovery_observation(Response(200, body=json.dumps(body)), out, transient)
+    assert observed.outcome != "admitted"
