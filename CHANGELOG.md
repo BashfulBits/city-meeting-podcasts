@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- The input-limit search now starts below the route's per-minute token budget (`tpm`) and steps
+  down on a 429 at that size, instead of probing 1M tokens and giving up. `tpm` only seeds and
+  guides the search; it never caps a route that admits larger requests. Gemini free-tier routes
+  such as `gemini-flash-lite-latest` and `gemini-4-hydrogen` could never be measured before.
+
 - **A re-run of city onboarding or the remedy classifier is no longer stuck on an old failure.**
   The Worker keeps a permanently failed queued job under its recipe hash and replays that failure
   to every later submission, so a retry after a transient cause (a full route) failed again at
