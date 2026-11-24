@@ -90,6 +90,9 @@ DEFINITIVE_VERDICTS = ANOMALY_VERDICTS | {"proven"}
 APPLY_RECHECK_WAITS_SECONDS = (20, 60)
 # An `/apply` re-check that stayed rate-limited: the route answered, but not with a completion.
 RATE_LIMITED_VERDICT = "rate_limited"
+# A planned size search whose reachability check hit a busy provider (429, 503, timeout) retries
+# after these spaced waits instead of losing the day's session to one overloaded response.
+PLANNED_CANARY_WAITS_SECONDS = (30, 90, 180)
 
 
 def _rate_limited(result: Classification) -> bool:
@@ -370,6 +373,9 @@ DEFERRED_DISCOVERY_REASONS = (
     "automatic_discovery_deferred_run_budget",
     "automatic_discovery_deferred_pause_contended",
 )
+# A search cut short by 429s: its admitted size is only a lower bound drained by the search's own
+# budget use, so the input axis still needs measuring.
+PARTIAL_INPUT_REASONS = ("quota_deferred",)
 
 
 def measurement_plan(
@@ -411,7 +417,10 @@ def measurement_plan(
         if not discovery or discovery.get("reason") in DEFERRED_DISCOVERY_REASONS:
             axis = "input"
         elif (
-            not (axes.get("input") or {}).get("admitted")
+            (
+                not (axes.get("input") or {}).get("admitted")
+                or discovery.get("reason") in PARTIAL_INPUT_REASONS
+            )
             and discovery.get("reason") not in STUB_DISCOVERY_REASONS
             and attempts < MAX_AUTO_MEASURE_ATTEMPTS
         ):
@@ -1865,7 +1874,13 @@ def reconcile(
                 # `/apply` re-checks the routes the maintainer ticked while production shares the
                 # provider (no drain), so a 429 or timeout there is expected. Each re-check gets a
                 # couple of spaced retries; scheduled runs keep one attempt.
-                waits = APPLY_RECHECK_WAITS_SECONDS if candidate_keys is not None else ()
+                waits = (
+                    APPLY_RECHECK_WAITS_SECONDS
+                    if candidate_keys is not None
+                    else PLANNED_CANARY_WAITS_SECONDS
+                    if model in measure_names
+                    else ()
+                )
                 for attempt in range(len(waits) + 1):
                     if attempt:
                         pause.renew()
