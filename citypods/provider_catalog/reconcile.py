@@ -1004,6 +1004,9 @@ def reconcile(
                     seeds=seeds,
                     recheck_upper=bool(confirm),
                     max_attempts=allowance if allowance is not None else quota_cap,
+                    token_budget=provider_token_budget(
+                        [r for r in routes if r.get("provider") == provider]
+                    ),
                 )
             except Exception as exc:  # advisory, like new-route discovery
                 row["note"] = f"search stopped safely ({type(exc).__name__})"
@@ -1746,6 +1749,7 @@ def reconcile(
                 cfg=cfg,
                 quota_waits=quota_waits,
                 resume_queue=resume_queue,
+                provider_routes=provider_routes,
             ):
                 """One size-search session; a 429 without Retry-After is queued for a retry."""
                 model = candidate.model
@@ -1771,6 +1775,7 @@ def reconcile(
                         sleep=sleep,
                         deadline=(run_started + discovery_time_budget_seconds if timed else None),
                         fresh_run_budget=timed,
+                        token_budget=provider_token_budget(provider_routes),
                     )
                     carried = carried_discovery.get(candidate.key) or {}
                     if carried.get("identity") not in (None, identity):
@@ -2628,6 +2633,16 @@ def _litellm_discovery_limits(provider, model):
     }
 
 
+def provider_token_budget(routes) -> int | None:
+    """Largest per-minute token budget (`tpm`) among a provider's configured routes, if any."""
+    budgets = [
+        r["tpm"]
+        for r in routes
+        if isinstance(r, Mapping) and type(r.get("tpm")) is int and r["tpm"] > 0
+    ]
+    return max(budgets) if budgets else None
+
+
 def _discovery_starting_points(record, litellm):
     """Catalog claims seed experiments, never pre-populate a passing or refused boundary."""
     from citypods.provider_catalog.discovery import (
@@ -2911,6 +2926,7 @@ def _discover_candidate_caps(
     seeds=None,
     recheck_upper=False,
     max_attempts=None,
+    token_budget=None,
 ):
     """Run the separate, charged size search only after candidate reachability is proven.
 
@@ -2923,6 +2939,7 @@ def _discover_candidate_caps(
 
     from citypods.provider_catalog.discovery import (
         INPUT_OUTPUT_COUNTERPART,
+        TOKEN_BUDGET_SEED_PERCENT,
         DiscoveryBudget,
         DiscoveryJournal,
         discovery_identity,
@@ -2981,6 +2998,11 @@ def _discover_candidate_caps(
     }
     litellm = _litellm_discovery_limits(candidate.provider, candidate.model)
     seeds = {**_discovery_starting_points(record, litellm), **(seeds or {})}
+    if token_budget and seeds.get("input"):
+        # Start under the account's per-minute token budget: a larger request cannot be admitted.
+        seeds["input"] = min(
+            seeds["input"], max(1, token_budget * TOKEN_BUDGET_SEED_PERCENT // 100)
+        )
     counterparts = {
         axis: min(INPUT_OUTPUT_COUNTERPART, seeds["output"])
         for axis in ("input", "total_input_heavy")
@@ -3057,6 +3079,7 @@ def _discover_candidate_caps(
                 sleep=sleep,
                 deadline=deadline,
                 recheck_upper=recheck_upper,
+                token_budget=token_budget,
             )
         except Exception as exc:
             # Preserve charged attempts even if orchestration fails after admission.

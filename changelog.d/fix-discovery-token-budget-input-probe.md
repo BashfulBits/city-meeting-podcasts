@@ -1,0 +1,4 @@
+### Fixed
+- The input-limit search now starts below the provider's per-minute token budget (`tpm`) and steps
+  down on a 429 at that size, instead of probing 1M tokens and giving up. Gemini free-tier routes
+  such as `gemini-flash-lite-latest` and `gemini-4-hydrogen` could never be measured before.
