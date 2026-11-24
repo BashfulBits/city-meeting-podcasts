@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- The input-limit search now paces its probes against the account's per-minute token budget
+  (`tpm`), sharing one rolling one-minute ledger per provider account across the run. Probes used
+  to drain the budget themselves, so Gemini routes got 429s at every size and stayed unmeasured.
+
 - The input-limit search now starts below the route's per-minute token budget (`tpm`) and steps
   down on a 429 at that size, instead of probing 1M tokens and giving up. `tpm` only seeds and
   guides the search; it never caps a route that admits larger requests. Gemini free-tier routes
