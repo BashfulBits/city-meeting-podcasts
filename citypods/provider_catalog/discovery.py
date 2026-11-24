@@ -969,15 +969,6 @@ def run_discovery(
                         bracket.reason = "minimum_output_probe_too_slow"
                         break
                     target = min(target, min(failed) // 2)
-            if axis == "input" and positive(token_budget) and not supporting:
-                # A request above the per-minute token budget cannot be admitted, so never aim
-                # past it; once the admitted size is within the bracket tolerance of it, stop.
-                if bracket.lower is not None and bracket.lower >= token_budget - max(
-                    1, math.ceil(token_budget / 200)
-                ):
-                    bracket.reason = "token_budget_lower_bound"
-                    break
-                target = min(target, token_budget)
             if axis == "input" and bracket.lower is None and bracket.upper is not None:
                 target = max(target, MIN_INPUT_PROBE)
             if request_ceiling is not None and target > request_ceiling:
