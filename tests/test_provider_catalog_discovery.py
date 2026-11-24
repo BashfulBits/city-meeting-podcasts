@@ -4807,6 +4807,7 @@ def test_a_session_call_cap_is_a_hard_stop_before_the_call_that_would_exceed_it(
         ("```json\n{}\n```", "passed"),
         ("```\n{}\n```", "passed"),
         ("```json\n{}```", "passed"),
+        ("```json\r\n{}\r\n```", "passed"),
         ("Here it is:\n```json\n{}\n```", "failed"),
         ("```json\n{}\n``` trailing", "failed"),
     ],

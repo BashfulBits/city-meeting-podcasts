@@ -807,7 +807,9 @@ def _chat_input_capacity(payload, response, *, require_content=True):
     )
 
 
-_JSON_FENCE = re.compile(r"\A\s*```(?:json)?[ \t]*\n(.*?)\n?```\s*\Z", re.DOTALL | re.IGNORECASE)
+_JSON_FENCE = re.compile(
+    r"\A\s*```(?:json)?[ \t]*\r?\n(.*?)\r?\n?```\s*\Z", re.DOTALL | re.IGNORECASE
+)
 
 
 def _unfenced_json(content):
