@@ -759,6 +759,22 @@ def _chat_discovery_size_refusal(response, request, payload, *, reasoning_basis)
     return None
 
 
+def _usage_total(usage):
+    """The total a usage block must report: prompt + completion, plus the reasoning tokens a
+    provider (Gemini thinking models) counts in the total but not in ``completion_tokens``."""
+    expected = usage["prompt_tokens"] + usage["completion_tokens"]
+    details = usage.get("completion_tokens_details")
+    reasoning = details.get("reasoning_tokens") if isinstance(details, dict) else None
+    if (
+        type(reasoning) is int
+        and reasoning > 0
+        and type(usage.get("total_tokens")) is int
+        and usage["total_tokens"] == expected + reasoning
+    ):
+        return expected + reasoning
+    return expected
+
+
 def _chat_input_capacity(payload, response, *, require_content=True):
     """API input admission; text retrieval accuracy is deliberately a separate signal."""
     if response.status != 200 or response.timed_out or response.transport_error:
@@ -773,10 +789,14 @@ def _chat_input_capacity(payload, response, *, require_content=True):
     counts = [usage.get(key) for key in ("prompt_tokens", "completion_tokens", "total_tokens")]
     if any(type(count) is not int or not 0 <= count <= 2**53 - 1 for count in counts):
         return False
-    if counts[0] <= 0 or counts[1] <= 0 or counts[2] != counts[0] + counts[1]:
+    if counts[0] <= 0 or counts[1] <= 0 or counts[2] != _usage_total(usage):
         return False
     for key, token_key, limit in (
-        ("completion_tokens_details", "reasoning_tokens", counts[1]),
+        (
+            "completion_tokens_details",
+            "reasoning_tokens",
+            counts[1] if counts[2] == counts[0] + counts[1] else counts[2] - counts[0],
+        ),
         ("prompt_tokens_details", "cached_tokens", counts[0]),
     ):
         details = usage.get(key)
@@ -957,10 +977,7 @@ def chat_discovery_observation(
             usage_state = "completion_invalid"
         elif "total_tokens" not in usage:
             usage_state = "total_missing"
-        elif (
-            type(usage["total_tokens"]) is not int
-            or usage["total_tokens"] != usage["prompt_tokens"] + usage["completion_tokens"]
-        ):
+        elif type(usage["total_tokens"]) is not int or usage["total_tokens"] != _usage_total(usage):
             usage_state = "total_invalid"
         else:
             usage_state = "valid"

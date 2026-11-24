@@ -4830,3 +4830,36 @@ def test_sentinel_check_accepts_one_markdown_fence_around_exact_json(fence, verd
     }
     observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
     assert observed.sentinel_verification == verdict
+
+
+@pytest.mark.parametrize(
+    ("completion", "reasoning", "total", "admitted"),
+    [
+        (64, 0, 1964, True),
+        (64, 500, 2464, True),  # Gemini thinking models: reasoning counted in the total only
+        (64, 40, 1964, True),  # reasoning inside completion_tokens, as before
+        (64, 500, 2400, False),  # the total matches neither accounting
+    ],
+)
+def test_input_admission_accepts_reasoning_tokens_counted_only_in_the_total(
+    completion, reasoning, total, admitted
+):
+    import json
+    import re
+
+    from citypods.provider_catalog.rules import Response
+
+    rules, req, transient = _chat_discovery_fixture("openrouter")
+    expected = dict(
+        re.findall(r"(start|middle|tail)_sentinel=([a-f0-9]{32})", transient.messages[0]["content"])
+    )
+    usage = {"prompt_tokens": 1900, "completion_tokens": completion, "total_tokens": total}
+    if reasoning:
+        usage["completion_tokens_details"] = {"reasoning_tokens": reasoning}
+    body = {
+        "object": "chat.completion",
+        "usage": usage,
+        "choices": [{"message": {"content": json.dumps(expected)}, "finish_reason": "stop"}],
+    }
+    observed = rules.discovery_observation(Response(200, body=json.dumps(body)), req, transient)
+    assert (observed.outcome == "admitted") is admitted

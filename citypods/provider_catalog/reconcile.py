@@ -376,6 +376,9 @@ DEFERRED_DISCOVERY_REASONS = (
 # A search cut short by 429s: its admitted size is only a lower bound drained by the search's own
 # budget use, so the input axis still needs measuring.
 PARTIAL_INPUT_REASONS = ("quota_deferred",)
+# An input axis that stopped without converging on a bound (every probe failed verification, or
+# 429s drained it): the admitted size it kept is a lower bound only.
+PARTIAL_INPUT_AXIS_REASONS = ("stalled", "quota_deferred")
 
 
 def measurement_plan(
@@ -420,6 +423,7 @@ def measurement_plan(
             (
                 not (axes.get("input") or {}).get("admitted")
                 or discovery.get("reason") in PARTIAL_INPUT_REASONS
+                or (axes.get("input") or {}).get("reason") in PARTIAL_INPUT_AXIS_REASONS
             )
             and discovery.get("reason") not in STUB_DISCOVERY_REASONS
             and attempts < MAX_AUTO_MEASURE_ATTEMPTS
