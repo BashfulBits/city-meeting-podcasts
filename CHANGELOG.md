@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- A planned size search now retries its reachability check after spaced waits when the provider
+  answers busy (429, 503, timeout), instead of losing the day's session to one overloaded response
+  (Gemini `hydrogen` and `flash-latest` were skipped this way).
+- A partial input bound left by a search cut short by 429s (`quota_deferred`) is re-measured by the
+  daily plan, not treated as a finished input measurement (`flash-lite` kept an ~85k lower bound).
+
 - The input-limit search now paces its probes against the account's per-minute token budget
   (`tpm`), sharing one rolling one-minute ledger per provider account across the run. Probes used
   to drain the budget themselves, so Gemini routes got 429s at every size and stayed unmeasured.
