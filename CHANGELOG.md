@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Search index OOM & runner-loss recovery.** Externalized per-source partial caches from the
+  monolithic `.search-cache.json` into `.search-partials/<source>.json` (with automatic migration
+  of legacy checkpoints), bounded the in-memory sidecar `artifact_cache` to 64 MiB with per-source
+  cleanup, added incremental working checkpoints per completed source, handled `SIGTERM` for
+  graceful deferral, and added a 150-minute step timeout to `Build bounded search` in
+  `.github/workflows/search.yml` so `Save resumable search checkpoint` always runs.
+
 - Minutes rosters (#2804): titles that a scan split at a stray space ("Council Me mber Johnson",
   "Pr o Tem Gregory", "Ma yor Pro Tem Kamp") are recognised and stripped, "Alternate Member" is
   stripped, and staff acronyms ("ACM", "CIP") and slash-joined offices ("Engineering
