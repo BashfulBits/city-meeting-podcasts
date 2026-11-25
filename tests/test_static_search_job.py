@@ -407,3 +407,120 @@ def test_deferral_without_complete_index_is_explicit(tmp_path, monkeypatch):
     monkeypatch.setattr(search, "build_search_index", lambda *_a, **_k: None)
     assert search.build_search_site(**args) == "deferred: no complete search index available"
     assert _bytes(output) == before
+
+
+def test_bounded_artifact_cache_evicts_oldest_and_skips_oversized():
+    cache = search._BoundedArtifactCache(max_bytes=10)
+    cache["a"] = b"12345"
+    cache["b"] = b"67890"
+    assert "a" in cache and "b" in cache
+    # Touch 'a' so 'b' becomes least-recently-used, then insert 'c'.
+    assert cache["a"] == b"12345"
+    cache["c"] = b"abcde"
+    assert "a" in cache and "c" in cache and "b" not in cache
+    # Entries larger than max_bytes are not retained.
+    cache["huge"] = b"x" * 11
+    assert "huge" not in cache
+
+
+def test_legacy_partials_migrate_to_per_source_files_and_slim_cache(tmp_path, monkeypatch):
+    from citypods.models import City
+    from citypods.records import source_key
+
+    output, args = _site(tmp_path, monkeypatch)
+    city = City(
+        slug="city-0",
+        provider="faketest",
+        source={"url": "https://example.test/0"},
+        podcast_title="City 0",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="Meetings",
+    )
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda *_: [city])
+    _seed_records(args, [city])
+
+    # Build once to produce a valid partial record entry, then move it into legacy cache format.
+    assert search.build_search_site(**args) == "complete"
+    src_key = source_key(city)
+    working = tmp_path / ".citypods-search-checkpoint/working"
+    valid_partial = json.loads((working / f".search-partials/{src_key}.json").read_text())
+    assert "u1" in valid_partial["records"]
+    (working / f".search-partials/{src_key}.json").unlink()
+    legacy_cache = {
+        "shards": {},
+        "partials": {
+            src_key: valid_partial,
+            "retired-source": {"version": search.SEARCH_CACHE_VERSION, "hash": "x", "records": {}},
+        },
+    }
+    (working / ".search-cache.json").write_text(json.dumps(legacy_cache))
+
+    monkeypatch.setattr(
+        search,
+        "_record_to_document",
+        lambda *_a, **_kw: pytest.fail("should reuse migrated partial document"),
+    )
+    assert search.build_search_site(**args) == "complete"
+    saved_cache = json.loads((working / ".search-cache.json").read_text())
+    assert "partials" not in saved_cache
+    migrated = json.loads((working / f".search-partials/{src_key}.json").read_text())
+    assert migrated["records"]["u1"] == valid_partial["records"]["u1"]
+    assert not (working / ".search-partials/retired-source.json").exists()
+
+
+def test_sigterm_stops_search_gracefully_and_saves_checkpoint(tmp_path, monkeypatch):
+    import os
+    import signal
+    from datetime import UTC, datetime
+
+    from citypods.models import City, Episode
+    from citypods.records import episode_to_record, save_records, source_key
+
+    output, args = _site(tmp_path, monkeypatch)
+    city = City(
+        slug="city-0",
+        provider="faketest",
+        source={"url": "https://example.test/0"},
+        podcast_title="City 0",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="Meetings",
+    )
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda *_: [city])
+    src_key = source_key(city)
+    save_records(
+        args["state_dir"],
+        src_key,
+        {
+            uid: episode_to_record(
+                Episode(
+                    guid=f"g-{uid}",
+                    uid=uid,
+                    title=f"Council {uid}",
+                    published=datetime(2026, 1, 1, tzinfo=UTC),
+                    video_url="https://example.test/video",
+                )
+            )
+            for uid in ("u1", "u2")
+        },
+    )
+
+    def send_sigterm(*_a, **_kw):
+        os.kill(os.getpid(), signal.SIGTERM)
+        return None
+
+    monkeypatch.setattr(search, "_record_to_document", send_sigterm)
+    result = search.build_search_site(**args)
+    assert result.startswith("deferred")
+    working = tmp_path / ".citypods-search-checkpoint/working"
+    assert (working / ".search-cache.json").is_file()
+    partial = json.loads((working / f".search-partials/{src_key}.json").read_text())
+    assert len(partial["records"]) == 1
+
+
+def test_search_workflow_build_step_has_timeout_below_job():
+    workflow = yaml.safe_load(Path(".github/workflows/search.yml").read_text())
+    build = workflow["jobs"]["build"]
+    step = next(s for s in build["steps"] if s.get("name") == "Build bounded search")
+    assert step["timeout-minutes"] < build["timeout-minutes"]
