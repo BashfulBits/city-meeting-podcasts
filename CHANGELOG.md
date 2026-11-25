@@ -15,6 +15,18 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Minutes rosters (#2804): titles that a scan split at a stray space ("Council Me mber Johnson",
+  "Pr o Tem Gregory", "Ma yor Pro Tem Kamp") are recognised and stripped, "Alternate Member" is
+  stripped, and staff acronyms ("ACM", "CIP") and slash-joined offices ("Engineering
+  Director/City Engineer") are no longer read as members. On the stored Denton City Council
+  minutes this repairs 238 of 248 damaged rosters, which had made real members look disjoint from
+  their body's prior meetings. `MINUTES_ROSTER_PARSER_VERSION` is "5", so affected episodes
+  re-parse their stored text once, with no re-fetch and no second OCR pass.
+  Staff acronyms match only as printed in capitals, so surnames "Cao" and "Pio" survive, and split
+  titles are repaired only for the reviewed office spellings, so "Al Derman" is not "Alderman". A
+  parenthetical attendance note ("Alice Smith (via phone)") is dropped from the stored name so the
+  member matches the registry's bare name.
+
 - Re-arming a dispatch pause now retries a stalled Worker three times, after 2, 5 and 10 s,
   instead of once and at once. A single `ReadTimeout` pair on a pause renewal aborted run
   45550037105 after 15 minutes and discarded its state and evidence. Resume and status keep their
