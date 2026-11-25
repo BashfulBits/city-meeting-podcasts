@@ -1738,3 +1738,8 @@ def test_roster_keeps_a_comma_inside_a_parenthetical_note_out_of_the_members():
 def test_roster_strips_a_plural_title_a_scan_split():
     text = "PRESENT: Council Me mbers Johnson, Alice Smith\n"
     assert _names(parse_roster(text)) == ["Johnson", "Alice Smith"]
+
+
+def test_roster_closes_up_a_parenthetical_nickname_inside_a_name():
+    text = "PRESENT: Robert (Bob) Smith, Alice Jones (via phone)  Dana Lee\n"
+    assert _names(parse_roster(text)) == ["Robert Smith", "Alice Jones", "Dana Lee"]

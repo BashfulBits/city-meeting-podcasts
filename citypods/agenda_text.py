@@ -1628,18 +1628,20 @@ def _repair_ocr_split_titles(value: str) -> str:
 # Carter/ex-officio)") describes the attendance, not the person. Kept in the name it would never
 # equal the registry's bare display name, so the member would match nothing. An unclosed one
 # (a scan that lost the bracket) runs to the end of the span.
-_PAREN_NOTE_RE = re.compile(r"\([^()]*(?:\)|$)")
-_CLOSED_PAREN_NOTE_RE = re.compile(r"\([^()]*\)")
+_PAREN_NOTE_RE = re.compile(r"\([^()]{0,80}(?:\)|$)")
+_CLOSED_PAREN_NOTE_RE = re.compile(r"[ \t]*\([^()]{0,80}\)")
 
 
 def _normalize_roster_text(names_text: str) -> str:
     """Prepare a whole attendance span before it is split into entries.
 
     A closed parenthetical can hold a comma ("Alice Smith (remote, via Zoom)") that the entry
-    split would cut in two, leaving the tail as a member. Scan-split titles are repaired here too,
+    split would cut in two, leaving the tail as a member. The note and the space before it are
+    deleted, not blanked, so "Robert (Bob) Smith" closes up instead of reading as a column gap.
+    Scan-split titles are repaired here too,
     so a broken plural ("Council Me mbers") reaches the plural-title removal as "Council Members".
     """
-    return _repair_ocr_split_titles(_CLOSED_PAREN_NOTE_RE.sub(" ", names_text))
+    return _repair_ocr_split_titles(_CLOSED_PAREN_NOTE_RE.sub("", names_text))
 
 
 def _clean_roster_name(raw: str) -> str | None:
