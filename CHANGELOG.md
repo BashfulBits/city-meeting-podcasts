@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- Re-arming a dispatch pause now retries a stalled Worker three times, after 2, 5 and 10 s,
+  instead of once and at once. A single `ReadTimeout` pair on a pause renewal aborted run
+  45550037105 after 15 minutes and discarded its state and evidence. Resume and status keep their
+  single immediate retry, and admission and reservation calls still never retry.
+
 - A 429 backoff now stops after three waits when the last session's halved retry was refused too
   (`gemini-4-hydrogen` and `hy4-flash-free` repeated seven sessions on a spent quota), instead of
   walking the whole 30 s to 10 min ladder.
