@@ -2876,6 +2876,23 @@ def test_reset_generation_survives_failure_and_does_not_reuse_old_job_key():
         storage, snapshot_deferred_handles(storage, [first]), first, LLMDispatchTerminalError("bad")
     )
     assert _read_json(storage, deferred_failure_key("reset-test"))["retry_generation"] == generation
-    backend.enqueue_batch([job])
+    second = backend.enqueue_batch([job])[0]
     key = session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"]
     assert key.endswith(f":recovery:reset-{generation}-terminal-1")
+
+    from dataclasses import replace
+
+    from citypods.compute.llm_deferred import record_schema_correction, write_deferred
+
+    corrected = replace(second, ref="corrected-job")
+    write_deferred(storage, job.recipe_hash, corrected)
+    record_schema_correction(storage, corrected, RuntimeError("invalid schema"))
+    session.post.reset_mock()
+    assert backend.enqueue_batch([job])[0] == corrected
+    session.post.assert_not_called()
+
+    from citypods.compute.llm_deferred import deferred_key
+
+    storage.delete(deferred_key(job.recipe_hash))
+    assert isinstance(backend.enqueue_batch([job])[0], LLMBackendError)
+    session.post.assert_not_called()
