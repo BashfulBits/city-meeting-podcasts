@@ -106,6 +106,9 @@ jobs:
             search-checkpoint-
 
       - name: Build bounded search
+        # Step-level timeout below the 180m job timeout so a stuck build fails this step and still
+        # runs `Save resumable search checkpoint` (`if: always()`) instead of cancelling the job.
+        timeout-minutes: 150
         shell: bash
         env:
           # Existing storage credentials are used only to read hosted sidecars.
@@ -125,12 +128,35 @@ jobs:
           import json
           from pathlib import Path
 
-          path = Path(".citypods-search-checkpoint/working/.search-cache.json")
-          cache = json.loads(path.read_text()) if path.exists() else {}
-          print(f"Restored checkpoint: {len(cache.get('shards', {}))} completed sources")
-          for key, partial in sorted(cache.get("partials", {}).items()):
-              count = len(partial.get("records", {}))
-              print(f"Resuming source {key}: {count} saved records")
+          working = Path(".citypods-search-checkpoint/working")
+          path = working / ".search-cache.json"
+          try:
+              raw_cache = json.loads(path.read_text()) if path.exists() else {}
+              cache = raw_cache if isinstance(raw_cache, dict) else {}
+          except (OSError, ValueError):
+              cache = {}
+          shards = cache.get("shards")
+          print(f"Restored checkpoint: {len(shards) if isinstance(shards, dict) else 0} completed sources")
+          partials_dir = working / ".search-partials"
+          if partials_dir.is_dir():
+              for pfile in sorted(partials_dir.glob("*.json")):
+                  try:
+                      partial = json.loads(pfile.read_text())
+                  except (OSError, ValueError):
+                      continue
+                  if not isinstance(partial, dict):
+                      continue
+                  records = partial.get("records")
+                  count = len(records) if isinstance(records, dict) else 0
+                  print(f"Resuming source {pfile.stem}: {count} saved records")
+          legacy_partials = cache.get("partials")
+          if isinstance(legacy_partials, dict):
+              for key, partial in sorted(legacy_partials.items()):
+                  if not isinstance(partial, dict):
+                      continue
+                  records = partial.get("records")
+                  count = len(records) if isinstance(records, dict) else 0
+                  print(f"Resuming legacy source {key}: {count} saved records")
           PYTHON
           citypods search-index --context-path search-context.json | tee -a "$GITHUB_STEP_SUMMARY"
 

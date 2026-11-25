@@ -7,13 +7,17 @@ publishes one bounded JSON shard per source for lazy browser loading.
 
 from __future__ import annotations
 
+import gc
 import gzip
 import hashlib
 import json
 import logging
 import re
 import shutil
+import signal
 import tempfile
+import threading
+from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -56,6 +60,39 @@ SHARD_HARD_GZIP_BYTES = 2_000_000
 _MAX_TRANSCRIPT_SEGMENTS = 20_000
 _MAX_TRANSCRIPT_TEXT_CHARS = 200_000
 _MAX_TEXT_CHARS = 200_000
+_MAX_ARTIFACT_CACHE_BYTES = 64 * 1024 * 1024
+
+
+class _BoundedArtifactCache:
+    """In-memory byte cache bounded by total payload size to prevent runner OOM."""
+
+    def __init__(self, max_bytes: int = _MAX_ARTIFACT_CACHE_BYTES) -> None:
+        self._max_bytes = max(0, max_bytes)
+        self._entries: OrderedDict[str, bytes] = OrderedDict()
+        self._total_bytes = 0
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._entries
+
+    def __getitem__(self, key: str) -> bytes:
+        self._entries.move_to_end(key)
+        return self._entries[key]
+
+    def __setitem__(self, key: str, value: bytes) -> None:
+        if len(value) > self._max_bytes:
+            return
+        prior = self._entries.pop(key, None)
+        if prior is not None:
+            self._total_bytes -= len(prior)
+        self._entries[key] = value
+        self._total_bytes += len(value)
+        while self._total_bytes > self._max_bytes and self._entries:
+            _, evicted = self._entries.popitem(last=False)
+            self._total_bytes -= len(evicted)
+
+    def clear(self) -> None:
+        self._entries.clear()
+        self._total_bytes = 0
 
 
 def _clean(value: Any, limit: int = _MAX_TEXT_CHARS) -> str:
@@ -96,7 +133,9 @@ def _text_values(value: Any) -> list[str]:
     return []
 
 
-def _read_artifact(storage: Any, key: str | None, *, cache: dict[str, bytes]) -> bytes | None:
+def _read_artifact(
+    storage: Any, key: str | None, *, cache: dict[str, bytes] | _BoundedArtifactCache
+) -> bytes | None:
     """Read a sidecar once without retaining temporary files or touching a provider endpoint."""
     if not key or storage is None or not hasattr(storage, "get_file"):
         return None
@@ -247,7 +286,7 @@ def _record_to_document(
     *,
     base_url: str,
     storage: Any,
-    artifact_cache: dict[str, bytes],
+    artifact_cache: dict[str, bytes] | _BoundedArtifactCache,
 ) -> dict[str, Any] | None:
     # The aggregate is a discovery/reconciliation view.  A suppressed overlap already has a
     # durable canonical record in its dedicated source, so indexing it would recreate duplicates.
@@ -482,6 +521,48 @@ def _write_search_asset(output_dir: Path) -> None:
         shutil.copyfile(source, target)
 
 
+def _partial_cache_path(partials_dir: Path, src_key: str) -> Path:
+    return partials_dir / f"{src_key}.json"
+
+
+def _load_source_partial(partials_dir: Path, src_key: str) -> dict[str, Any] | None:
+    path = _partial_cache_path(partials_dir, src_key)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _save_source_partial(partials_dir: Path, src_key: str, partial: dict[str, Any]) -> None:
+    partials_dir.mkdir(parents=True, exist_ok=True)
+    path = _partial_cache_path(partials_dir, src_key)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(partial, sort_keys=True) + "\n")
+    tmp.replace(path)
+
+
+def _migrate_legacy_partials(
+    cache: dict[str, Any] | None,
+    partials_dir: Path | None,
+    valid_sources: Iterable[str],
+) -> None:
+    if cache is None or partials_dir is None:
+        return
+    legacy = cache.pop("partials", None)
+    if not isinstance(legacy, dict) or not legacy:
+        return
+    valid = set(valid_sources)
+    for src_key in list(legacy):
+        entry = legacy.pop(src_key)
+        if src_key in valid and isinstance(entry, dict):
+            dest = _partial_cache_path(partials_dir, src_key)
+            if not dest.exists():
+                _save_source_partial(partials_dir, src_key, entry)
+
+
 def build_search_index(
     state_dir: str | Path,
     cities: Iterable[City],
@@ -491,6 +572,8 @@ def build_search_index(
     storage: Any = None,
     cache: dict[str, Any] | None = None,
     stop: Callable[[], bool] | None = None,
+    partials_dir: str | Path | None = None,
+    on_checkpoint: Callable[[], None] | None = None,
 ) -> dict[str, Any] | None:
     """Build deterministic source shards and return the small public manifest.
 
@@ -527,9 +610,15 @@ def build_search_index(
         logging.getLogger(__name__).warning("Search archive visibility held: %s", exc)
         return None
     search_dir.mkdir(parents=True, exist_ok=True)
+    resolved_partials_dir = Path(partials_dir) if partials_dir is not None else None
+    _migrate_legacy_partials(cache, resolved_partials_dir, representatives)
     cache_shards = cache.setdefault("shards", {}) if cache is not None else {}
-    partials = cache.setdefault("partials", {}) if cache is not None else {}
-    artifact_cache: dict[str, bytes] = {}
+    partials = (
+        cache.setdefault("partials", {})
+        if cache is not None and resolved_partials_dir is None
+        else {}
+    )
+    artifact_cache = _BoundedArtifactCache()
     manifest: list[dict[str, Any]] = []
     wanted_names = {"manifest.json"}
 
@@ -573,7 +662,11 @@ def build_search_index(
             selection=plan,
             archive_hash=archive_policy_hash(archive_index, src_key),
         )
-        partial = partials.get(src_key)
+        partial = (
+            _load_source_partial(resolved_partials_dir, src_key)
+            if resolved_partials_dir is not None
+            else partials.get(src_key)
+        )
         if (
             not isinstance(partial, dict)
             or partial.get("version") != SEARCH_CACHE_VERSION
@@ -581,7 +674,8 @@ def build_search_index(
             or not isinstance(partial.get("records"), dict)
         ):
             partial = {"version": SEARCH_CACHE_VERSION, "hash": partial_hash, "records": {}}
-            partials[src_key] = partial
+            if resolved_partials_dir is None:
+                partials[src_key] = partial
         processed = partial["records"]
         documents: list[dict[str, Any]] = []
         public_records = [
@@ -631,6 +725,8 @@ def build_search_index(
                     documents.append(document)
                 continue
             if stop is not None and stop():
+                if resolved_partials_dir is not None:
+                    _save_source_partial(resolved_partials_dir, src_key, partial)
                 if cache is not None:
                     cache["last_deferred"] = {
                         "source_key": src_key,
@@ -704,6 +800,13 @@ def build_search_index(
         }
         manifest.append(entry)
         cache_shards[src_key] = {"version": SEARCH_CACHE_VERSION, "hash": digest, "manifest": entry}
+        if resolved_partials_dir is not None:
+            _save_source_partial(resolved_partials_dir, src_key, partial)
+        artifact_cache.clear()
+        del partial, processed, documents
+        gc.collect()
+        if on_checkpoint is not None:
+            on_checkpoint()
         # Retain per-record documents so later source edits reuse unchanged sidecars.
 
     # Cached docs survive deploys.  Remove deleted-source shards and their cache entries so neither
@@ -718,6 +821,10 @@ def build_search_index(
     for src_key in list(partials):
         if src_key not in representatives:
             del partials[src_key]
+    if resolved_partials_dir is not None and resolved_partials_dir.is_dir():
+        for partial_file in resolved_partials_dir.glob("*.json"):
+            if partial_file.stem not in representatives:
+                partial_file.unlink()
     if cache is not None:
         cache.pop("last_deferred", None)
     manifest.sort(key=lambda shard: (shard["city_label"].casefold(), shard["source_key"]))
@@ -776,6 +883,7 @@ def build_search_site(
         f"assets/{SEARCH_ASSET}",
         f"assets/{SEARCH_LICENSE}",
         ".search-cache.json",
+        ".search-partials",
     )
 
     def overlay(source: Path, target: Path) -> None:
@@ -849,6 +957,21 @@ def build_search_site(
             cache = {}
         enabled = bool(defaults.get("search", True))
         manifest: dict[str, Any] = {"shards": []}
+        stop_signal_received = threading.Event()
+        previous_handlers: dict[int, Any] = {}
+        if threading.current_thread() is threading.main_thread():
+
+            def _handle_stop_signal(_signum: int, _frame: Any) -> None:
+                stop_signal_received.set()
+
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                previous_handlers[sig] = signal.getsignal(sig)
+                signal.signal(sig, _handle_stop_signal)
+
+        def persist_working() -> None:
+            cache_path.write_text(json.dumps(cache, sort_keys=True) + "\n")
+            save_checkpoint(staged, "working")
+
         try:
             if enabled:
                 built = build_search_index(
@@ -858,10 +981,11 @@ def build_search_site(
                     resolved_base,
                     storage=make_storage(config, resolved_base, staged),
                     cache=cache,
-                    stop=lambda: time.monotonic() >= deadline,
+                    stop=lambda: stop_signal_received.is_set() or time.monotonic() >= deadline,
+                    partials_dir=staged / ".search-partials",
+                    on_checkpoint=persist_working,
                 )
-                cache_path.write_text(json.dumps(cache, sort_keys=True) + "\n")
-                save_checkpoint(staged, "working")
+                persist_working()
                 if built is None:
                     status = prior_publication()
                     progress = cache.get("last_deferred")
@@ -882,6 +1006,7 @@ def build_search_site(
                 shutil.rmtree(staged / "data" / "search", ignore_errors=True)
                 (staged / "assets" / SEARCH_ASSET).unlink(missing_ok=True)
                 (staged / "assets" / SEARCH_LICENSE).unlink(missing_ok=True)
+                shutil.rmtree(staged / ".search-partials", ignore_errors=True)
                 cache_path.unlink(missing_ok=True)
             (staged / "index.html").write_text(
                 render_index(
@@ -895,6 +1020,9 @@ def build_search_site(
         except Exception:
             logging.getLogger(__name__).exception("Search staging failed; retaining prior site")
             return prior_publication()
+        finally:
+            for sig, handler in previous_handlers.items():
+                signal.signal(sig, handler)
         # Both renames stay on the same filesystem. Restore the original on publication failure.
         backup = Path(temporary) / "prior-site"
         output.rename(backup)
