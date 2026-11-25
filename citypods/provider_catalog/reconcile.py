@@ -1833,6 +1833,7 @@ def reconcile(
                             automatic_candidate,
                             quota_waits,
                             resume_queue,
+                            session_record["artifact"],
                         )
                 except Exception as exc:
                     # Discovery is advisory; preserve the proven reachability result.
@@ -1847,12 +1848,24 @@ def reconcile(
                     }
 
             def _schedule_quota_retry(
-                candidate, record, selected_axes, automatic_candidate, quota_waits, resume_queue
+                candidate,
+                record,
+                selected_axes,
+                automatic_candidate,
+                quota_waits,
+                resume_queue,
+                artifact,
             ):
-                """Back off after an unpaced 429; give up after one that follows the 10-min wait."""
+                """Back off after an unpaced 429; give up after one that follows the 10-min wait.
+
+                A session whose halved retry was also refused, repeated after
+                `QUOTA_SPENT_AFTER_WAITS` waits, means a spent quota that waiting will not clear.
+                """
                 waited = quota_waits.get(candidate.key, 0)
                 last_wait = _quota_wait_seconds(waited - 1) if waited else 0
-                if last_wait >= QUOTA_BACKOFF_MAX_SECONDS:
+                if last_wait >= QUOTA_BACKOFF_MAX_SECONDS or (
+                    waited >= QUOTA_SPENT_AFTER_WAITS and _refused_even_when_halved(artifact)
+                ):
                     candidate.discovery["quota_gave_up"] = True
                     candidate.discovery["quota_waits"] = waited
                     return
@@ -2410,6 +2423,21 @@ QUOTA_BACKOFF_MAX_SECONDS = 600
 def _quota_wait_seconds(step: int) -> int:
     """Wait before retry number `step` + 1 after a 429: 30 s, doubling, capped at 10 minutes."""
     return min(QUOTA_BACKOFF_MAX_SECONDS, QUOTA_BACKOFF_START_SECONDS * 2 ** max(0, step))
+
+
+QUOTA_SPENT_AFTER_WAITS = 3
+
+
+def _refused_even_when_halved(artifact: Mapping[str, Any]) -> bool:
+    """The last two answers were both 429s, the second to a smaller input than the first."""
+    rows = [
+        (a.get("request") or {}, a.get("observation") or {}) for a in artifact.get("attempts") or []
+    ][-2:]
+    return (
+        len(rows) == 2
+        and all(obs.get("outcome") == "quota" for _, obs in rows)
+        and (rows[1][0].get("target") or 0) < (rows[0][0].get("target") or 0)
+    )
 
 
 def _ended_on_unpaced_429(artifact: Mapping[str, Any]) -> bool:

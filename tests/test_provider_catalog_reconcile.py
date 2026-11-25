@@ -2798,6 +2798,52 @@ def test_429_without_retry_after_backs_off_then_gives_up_after_the_ten_minute_wa
     assert k9.discovery["quota_waits"] == 6
 
 
+def test_429_that_refuses_the_halved_retry_too_gives_up_after_three_waits(monkeypatch):
+    import citypods.provider_catalog.reconcile as module
+
+    now = [0.0]
+    visits = []
+
+    def discover(candidate, *_args, **_kwargs):
+        record = _stub_session(candidate)
+        if candidate.model.endswith("k9:free"):
+            visits.append(now[0])
+            quota = {"outcome": "quota", "retry_after_seconds": None}
+            record["artifact"]["attempts"] = [
+                {"request": {"target": 12000}, "observation": quota},
+                {"request": {"target": 6000}, "observation": quota},
+            ]
+        return record
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(module, "_discover_candidate_caps", discover)
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY_K9_UNSCORED,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
+        canary_fn=lambda *args, **kwargs: OK,
+        discovery_enabled=True,
+        discovery_run_id="backoff-run",
+        discovery_time_budget_seconds=7_200,
+        discovery_clock=lambda: now[0],
+        sleep=sleep,
+    )
+    # Three waits (30, 60, 120 s) and a fourth refusal of even the halved size: the quota is spent.
+    assert len(visits) == 4
+    k9 = next(c for c in report.candidates if c.model.endswith("k9:free"))
+    assert k9.discovery["quota_gave_up"] is True
+    assert k9.discovery["quota_waits"] == 3
+
+
 def test_quota_backoff_helpers():
     from citypods.provider_catalog.reconcile import (
         _ended_on_unpaced_429,

@@ -123,6 +123,15 @@ def test_timeouts_and_transport_errors_are_never_evidence():
         )
 
 
+def test_an_unmatched_5xx_is_named_a_provider_server_error_not_an_unrecognized_response():
+    for rules in all_rules().values():
+        result = classify(Response(status=503, body="overloaded"), rules)
+        if result.reason.startswith("provider server error"):
+            assert result.verdict == "inconclusive" and result.status == 503
+            return
+    pytest.fail("no provider left a 503 unmatched by its signals")
+
+
 def test_a_200_whose_first_event_is_an_error_is_not_proven():
     response = Response(status=200, body="data: {}", first_event_error=True)
     for rules in all_rules().values():
