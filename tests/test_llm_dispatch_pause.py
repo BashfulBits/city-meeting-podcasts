@@ -40,7 +40,9 @@ class FakeSession:
 
 
 def _client(session: FakeSession) -> DispatchPauseClient:
-    return DispatchPauseClient("https://worker.test", "tok", session=session)
+    return DispatchPauseClient(
+        "https://worker.test", "tok", session=session, sleep=lambda seconds: None
+    )
 
 
 def _paths(session: FakeSession) -> list[str]:
@@ -353,11 +355,19 @@ def test_pause_transport_retry_is_bounded_and_excludes_admission():
 
     session = TimeoutSession([0])
     client = _client(session)
-    for path, count in [("v2/dispatch:pause", 2), ("v2/dispatch:reserve", 1)]:
+    waits = []
+    client.sleep = waits.append
+    for path, count in [
+        ("v2/dispatch:pause", 4),
+        ("v2/dispatch:resume", 2),
+        ("v2/dispatch:reserve", 1),
+    ]:
         session.calls.clear()
         with pytest.raises(DispatchPauseError, match="ReadTimeout"):
             client._request("POST", path, {})
         assert len(session.calls) == count
+    # Only the pause is spaced; resume keeps its single immediate retry.
+    assert waits == [2.0, 5.0, 10.0, 0.0]
 
 
 def test_pause_transport_retry_can_recover_without_repeating_other_operations(caplog):
