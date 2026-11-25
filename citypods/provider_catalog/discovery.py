@@ -1505,7 +1505,11 @@ def run_discovery(
                     observation.outcome == "admitted"
                     and (pending.basis is None or observation.count_basis == pending.basis)
                     and (pending.control is None or observation.request.control == pending.control)
-                    and observation.coordinate >= (pending.lower or 0)
+                    # The provider's own count of the same-sized prompt varies by a few tokens
+                    # per call, so a re-test of the carried bound lands just under it about half
+                    # the time. Anything within the bound's own width confirms it.
+                    and observation.coordinate
+                    >= (pending.lower or 0) - max(1, math.ceil((pending.lower or 0) / 200))
                 )
                 if compatible:
                     fresh_successes += 1
@@ -1522,7 +1526,21 @@ def run_discovery(
                         # with current evidence taking precedence over contradicted old limits.
                         bracket = Bracket(axis, bracket.seed)
                         brackets[-1] = bracket
+                        # A fresh count under the carried bound confirms it within tolerance only;
+                        # the bound must not be reported above what a fresh probe admitted.
+                        fresh_best = max(
+                            (
+                                item.coordinate
+                                for item in observations
+                                if item.request.axis == axis
+                                and item.request.control == control
+                                and item.outcome == "admitted"
+                            ),
+                            default=0,
+                        )
                         for item in previous:
+                            if item.outcome == "admitted" and item.coordinate > fresh_best:
+                                continue
                             bracket.observe(item)
                         for item in observations:
                             if item.request.axis == axis and item.request.control == control:

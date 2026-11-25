@@ -1069,7 +1069,11 @@ def test_unverified_json_candidate_is_not_proven_or_remembered(monkeypatch):
         structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "empty"}},
     )
     assert not report.candidates
-    assert report.state["canaries"]["groq/meta-llama/llama-new"]["verdict"] == "inconclusive"
+    memory = report.state["canaries"]["groq/meta-llama/llama-new"]
+    assert memory["verdict"] == "inconclusive"
+    # The cause survives in state, so a route stuck inconclusive can be diagnosed afterwards.
+    assert memory["reason"] == "JSON not verified"
+    assert memory["status"] == 200
 
 
 def test_scarce_schema_attempts_cannot_exceed_remaining_quota(monkeypatch):
@@ -3743,7 +3747,9 @@ def test_a_route_whose_extra_health_check_fails_is_not_measured(monkeypatch):
     monkeypatch.setattr(
         module,
         "classify",
-        lambda response, rules: type("C", (), {"verdict": "inconclusive", "reason": "test"})(),
+        lambda response, rules: type(
+            "C", (), {"verdict": "inconclusive", "status": 200, "reason": "test"}
+        )(),
     )
     report, measured, _canaried, _control = _verify_run(
         monkeypatch, routes=[first, second], providers=TWO_ACCOUNTS

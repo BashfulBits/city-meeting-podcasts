@@ -988,6 +988,38 @@ def test_resume_requires_two_fresh_successes(tmp_path):
     assert result.brackets[0]["status"] == "converged"
 
 
+def test_resume_confirms_a_carried_bound_despite_small_provider_count_jitter(tmp_path):
+    history = [observation(request(), 4000, reported_input=4000)]
+    seen = []
+
+    def measure(req, admit, timeout):
+        admit()
+        seen.append(req.target)
+        # The provider counts the identical prompt a few tokens under the carried bound.
+        count = 4000 - 3 if len(seen) <= 2 else req.input_tokens
+        return observation(req, count, count <= 4600, reported_input=count)
+
+    execute(tmp_path, measure, history=history)
+    # Two jittered confirmations count as fresh, so the search moves on instead of re-testing.
+    assert seen[:2] == [4000, 4000]
+    assert seen[2] > 4000
+
+
+def test_jittered_confirmation_does_not_restore_a_bound_above_the_fresh_counts(tmp_path):
+    history = [
+        observation(request(), 4000, reported_input=4000),
+        observation(request(attempt="b"), 4010, False, reported_input=4010),
+    ]
+
+    def measure(req, admit, timeout):
+        admit()
+        count = 3997 if req.target <= 4000 else req.input_tokens
+        return observation(req, count, count <= 3997, reported_input=count)
+
+    result = execute(tmp_path, measure, history=history)
+    assert result.brackets[0]["admitted"] <= 3997
+
+
 def test_pause_loss_and_reported_overrun_stop(tmp_path):
     journal = DiscoveryJournal(tmp_path / "pause.json", {})
     result = run_discovery(

@@ -1928,6 +1928,10 @@ def reconcile(
                     "method": method,
                     "structured_results": _evidence,
                 }
+                if result.verdict != "proven":
+                    # Report-safe note and status (never a body): why a route stays inconclusive.
+                    canary_memory[f"{provider}/{model}"]["reason"] = result.reason
+                    canary_memory[f"{provider}/{model}"]["status"] = result.status
                 if discovery_pending_on:
                     canary_memory[f"{provider}/{model}"]["discovery_pending_on"] = (
                         discovery_pending_on
