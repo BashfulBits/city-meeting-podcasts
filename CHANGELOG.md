@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- A 429 backoff now stops after three waits when the last session's halved retry was refused too
+  (`gemini-4-hydrogen` and `hy4-flash-free` repeated seven sessions on a spent quota), instead of
+  walking the whole 30 s to 10 min ladder.
+- A canary answered with an unmatched 5xx is reported as a provider server error rather than an
+  unrecognized response (`gemini-flash-latest` returns 503 for days).
+
 - **Expose audited tag recovery in Actions.** The terminal-failure maintenance workflow can now
   inventory and reset exhausted tag markers with a fresh retry generation, using production
   coordination credentials. Apply remains restricted to main and dry-run remains the default.
