@@ -56,9 +56,9 @@ class Selection:
         return {"scope": self.scope, "target": self.target}
 
 
-# Pause re-arming is idempotent, so a stalled Worker gets a few spaced retries rather than one
+# Re-arming a pause is idempotent, so a stalled Worker gets a few spaced retries rather than one
 # immediate one: a single ReadTimeout pair used to abort a whole discovery run.
-RETRY_WAITS_SECONDS = (2.0, 5.0, 10.0)
+PAUSE_RETRY_WAITS_SECONDS = (2.0, 5.0, 10.0)
 
 
 @dataclass
@@ -214,7 +214,16 @@ class DispatchPauseClient:
             ("GET", "v2/dispatch:pause-status"),
             ("GET", "v2/stats"),
         }
-        waits = RETRY_WAITS_SECONDS if retryable else ()
+        # Only re-arming the pause earns spaced retries. A delayed resume could clear a newer
+        # pause, and a delayed status read could outlast the window it is checking, so those keep
+        # the single immediate retry.
+        waits = (
+            PAUSE_RETRY_WAITS_SECONDS
+            if (method, operation) == ("POST", "v2/dispatch:pause")
+            else (0.0,)
+            if retryable
+            else ()
+        )
         attempts = len(waits) + 1
         for attempt in range(attempts):
             try:
