@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Recover exhausted topic tags with actionable failure evidence.** Allow up to 200 suggestions per
+  multi-chapter response without changing the tag recipe or invalidating existing results. Terminal
+  dispatch markers retain the safe route, model, HTTP status, outcome, class, and attempt count.
+  An audited, generation-fenced reset requeues exhausted tag recipes without replaying old failed
+  Worker jobs; deploy the producer and Worker before running the reset. Existing stored tag
+  artifacts remain valid and are not automatically backfilled.
+
 - Discovery confirms a carried input bound when the provider's count of the re-tested prompt falls
   within the bound's width, not only at or above it. The provider counts an identical prompt a few
   tokens differently per call, so `gemini-flash-lite-latest` spent a whole six-probe session
