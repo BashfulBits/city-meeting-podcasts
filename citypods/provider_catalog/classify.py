@@ -33,4 +33,6 @@ def classify(response: Response, rules: ProviderRules) -> Classification:
     for signal in rules.signals:
         if signal.matches(response):
             return Classification(signal.verdict, status, signal.note or signal.verdict)
+    if status is not None and status >= 500:
+        return Classification("inconclusive", status, "provider server error (never evidence)")
     return Classification("inconclusive", status, "unrecognized response")
