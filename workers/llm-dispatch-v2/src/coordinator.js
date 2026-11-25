@@ -511,6 +511,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           "table:context_manual_weeks", "table:context_manual_attempts"].includes(item) ||
         item === "column:jobs.quota_excluded_routes" ||
         item === "column:jobs.response_timeout_routes" ||
+        item === "column:jobs.terminal_diagnostic" ||
         (item.startsWith("column:scheduler.") &&
           (Object.hasOwn(PACKED_STATE_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length)) ||
             Object.hasOwn(ROUTE_HEALTH_SCHEDULER_COLUMNS, item.slice("column:scheduler.".length)) ||
@@ -532,6 +533,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         if (readiness.missing.includes("column:jobs.response_timeout_routes")) {
           this._ensureColumn("jobs", "response_timeout_routes", "TEXT");
+        }
+        if (readiness.missing.includes("column:jobs.terminal_diagnostic")) {
+          this._ensureColumn("jobs", "terminal_diagnostic", "TEXT");
         }
         for (const [column, definition] of Object.entries({
           ...PACKED_STATE_SCHEDULER_COLUMNS, ...ROUTE_HEALTH_SCHEDULER_COLUMNS,
