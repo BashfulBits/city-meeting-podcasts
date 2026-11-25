@@ -40,8 +40,18 @@ on:
         required: false
         type: string
         default: ""
+      read_concurrency:
+        description: "Concurrent marker reads (default: 8)"
+        required: false
+        type: string
+        default: "8"
+      reset_tag_exhausted:
+        description: "Archive and reset exhausted tag markers with a fresh retry generation"
+        required: false
+        type: boolean
+        default: false
       apply:
-        description: "Actually delete failure markers from storage (unchecked = dry-run)"
+        description: "Actually change failure markers (unchecked = dry-run)"
         required: false
         type: boolean
         default: false
@@ -91,6 +101,8 @@ jobs:
           CAUSE_INPUT: ${{ inputs.last_error_contains }}
           MAX_CLEAR_INPUT: ${{ inputs.max_clear }}
           APPLY_INPUT: ${{ inputs.apply }}
+          RESET_TAG_EXHAUSTED_INPUT: ${{ inputs.reset_tag_exhausted }}
+          READ_CONCURRENCY_INPUT: ${{ inputs.read_concurrency }}
           GIT_REF: ${{ github.ref }}
         run: |
           ARGS=()
@@ -100,6 +112,8 @@ jobs:
           if [ -n "$RECIPE_HASH_INPUT" ]; then ARGS+=(--recipe-hash "$RECIPE_HASH_INPUT"); fi
           if [ -n "$CAUSE_INPUT" ]; then ARGS+=(--last-error-contains "$CAUSE_INPUT"); fi
           if [ -n "$MAX_CLEAR_INPUT" ]; then ARGS+=(--max-clear "$MAX_CLEAR_INPUT"); fi
+          if [ -n "$READ_CONCURRENCY_INPUT" ]; then ARGS+=(--concurrency "$READ_CONCURRENCY_INPUT"); fi
+          if [ "$RESET_TAG_EXHAUSTED_INPUT" = "true" ]; then ARGS+=(--reset-tag-exhausted); fi
           if [ "$APPLY_INPUT" = "true" ]; then
             if [ "$GIT_REF" != "refs/heads/main" ]; then
               echo "::error::apply can only mutate state from main"
