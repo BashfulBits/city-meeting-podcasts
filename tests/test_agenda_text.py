@@ -1703,4 +1703,28 @@ def test_roster_drops_two_offices_joined_by_a_slash():
 
 def test_roster_keeps_a_member_whose_entry_carries_a_slash_note():
     text = "PRESENT: Alice Smith, Erin Carney (previously Erin Carter/ex-officio), Bob Roe\n"
-    assert "Erin Carney (previously Erin Carter/ex-officio)" in _names(parse_roster(text))
+    assert _names(parse_roster(text)) == ["Alice Smith", "Erin Carney", "Bob Roe"]
+
+
+def test_roster_drops_an_attendance_note_in_parentheses_from_the_name():
+    text = (
+        "PRESENT: Alice Smith (via phone), Mayor Pro Tem Kamp (remote), Bob Roe (arrived 6:15), "
+        "Dana Lee (Chair), Joe Public (late\n"
+    )
+    assert _names(parse_roster(text)) == [
+        "Alice Smith",
+        "Kamp",
+        "Bob Roe",
+        "Dana Lee",
+        "Joe Public",
+    ]
+
+
+def test_roster_keeps_surnames_that_spell_a_staff_acronym():
+    text = "PRESENT: Alice Cao, Cao, Bob Pio, Pio, CAO, Keely Briggs\n"
+    assert _names(parse_roster(text)) == ["Alice Cao", "Cao", "Bob Pio", "Pio", "Keely Briggs"]
+
+
+def test_roster_does_not_read_an_ordinary_name_as_a_split_title():
+    text = "PRESENT: Al Derman, Ma yor Pro Tem Kamp, Alice Smith\n"
+    assert _names(parse_roster(text)) == ["Al Derman", "Kamp", "Alice Smith"]
