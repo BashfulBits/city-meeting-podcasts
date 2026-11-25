@@ -2370,3 +2370,12 @@ def test_only_real_writers_share_the_provider_catalog_writer_lock():
         assert needle in group
     reconcile = yaml.safe_load(Path(".github/workflows/provider-catalog-reconcile.yml").read_text())
     assert reconcile["concurrency"]["group"] == "provider-catalog-writers"
+
+
+def test_clear_terminal_failures_exposes_safe_tag_reset_on_main_only():
+    wf, job = _job("clear-terminal-failures.yml")
+    assert _on(wf)["workflow_dispatch"]["inputs"]["reset_tag_exhausted"]["default"] is False
+    step = next(s for s in job["steps"] if s.get("name") == "Clear terminal failure markers")
+    assert step["env"]["RESET_TAG_EXHAUSTED_INPUT"] == "${{ inputs.reset_tag_exhausted }}"
+    assert "--reset-tag-exhausted" in step["run"]
+    assert '"$GIT_REF" != "refs/heads/main"' in step["run"]
