@@ -1406,9 +1406,14 @@ _ROSTER_NAME_TITLES: tuple[tuple[str, ...], ...] = tuple(
             ("chair", "pro", "tern"),
             ("members",),
             ("member",),
+            ("alternate", "members"),
+            ("alternate", "member"),
             ("mayor", "pro", "tem"),
             # OCR/scan variant that shows up in real minutes ("Mayor Pro Tern Paul Meltzer").
             ("mayor", "pro", "tern"),
+            # The bare office, as scanned minutes print it before a surname ("Pro Tem Gregory").
+            ("pro", "tem"),
+            ("pro", "tern"),
             ("deputy", "mayor"),
             ("vice", "mayor"),
             ("vice", "chair"),
@@ -1538,6 +1543,17 @@ _GENERIC_ROSTER_WORDS = frozenset(
         "commission",
         "commissioner",
         "commissioners",
+        # Staff-office and program acronyms that trail a name in scanned attendance lists
+        # ("Mario Canizares, ACM, Mark Nelson, Todd Estes, CIP"). They are never a person.
+        "acm",
+        "dcm",
+        "icm",
+        "cip",
+        "cao",
+        "cfo",
+        "coo",
+        "pio",
+        "dpw",
         "jr",
         "sr",
         "ii",
@@ -1553,6 +1569,44 @@ _MAX_ROSTER_NAME_CHARS = 60
 # "Vice-Chair" and the OCR'd "Vice- Chair" are the same title as "Vice Chair".
 _VICE_CHAIR_HYPHEN_RE = re.compile(r"\bvice\s*-\s*chair\b", re.I)
 
+# Scanned minutes split title words at a stray space ("Council Me mber Johnson", "Counci l
+# Member Briggs", "Pro Te m Gregory"). Left alone, the broken title is not recognised as a title,
+# so it is enrolled as part of the person's name and matches no spoken name. Only the closed set
+# of title words is repaired, and only on these exact splits, so ordinary names are untouched.
+_OCR_SPLIT_TITLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern, re.I), replacement)
+    for pattern, replacement in (
+        (r"\bcou\s?n\s?c\s?i\s?l\b", "Council"),
+        (r"\bme\s?m\s?b\s?e\s?r(s?)\b", r"Member\1"),
+        (r"\bpro\s+t\s*e\s*(m|rn)\b", r"Pro Te\1"),
+    )
+)
+
+
+def _fragmented_title_length(lowered: tuple[str, ...], title: tuple[str, ...]) -> int:
+    """Words a title occupies when a scan broke it mid-word ("Ma yor Pro Tem", "Pr o Tem").
+
+    Compared with every space and hyphen removed, so it needs no per-title spelling list. Long
+    titles only: joining two short words must never be able to spell "Dr" or "Ms".
+    """
+    target = "".join(title)
+    if len(target) < 5:
+        return 0
+    joined = ""
+    for count, word in enumerate(lowered, start=1):
+        joined += word.replace("-", "")
+        if joined == target:
+            return count
+        if not target.startswith(joined):
+            return 0
+    return 0
+
+
+def _repair_ocr_split_titles(value: str) -> str:
+    for pattern, replacement in _OCR_SPLIT_TITLE_FIXES:
+        value = pattern.sub(replacement, value)
+    return value
+
 
 def _clean_roster_name(raw: str) -> str | None:
     """Return a bare person name, or ``None`` when the span is not name-shaped.
@@ -1564,7 +1618,9 @@ def _clean_roster_name(raw: str) -> str | None:
     suppresses correct naming for the whole meeting, which is strictly worse than extracting
     nothing: an empty roster already means "make no correction".
     """
-    name = _VICE_CHAIR_HYPHEN_RE.sub("Vice Chair", _WHITESPACE_RE.sub(" ", raw)).strip(" .,:;")
+    name = _VICE_CHAIR_HYPHEN_RE.sub(
+        "Vice Chair", _repair_ocr_split_titles(_WHITESPACE_RE.sub(" ", raw))
+    ).strip(" .,:;")
     if not name or len(name) > _MAX_ROSTER_NAME_CHARS or any(char.isdigit() for char in name):
         return None
     words = name.split(" ")
@@ -1573,6 +1629,10 @@ def _clean_roster_name(raw: str) -> str | None:
         for title in _ROSTER_NAME_TITLES:
             if lowered[: len(title)] == title:
                 words = words[len(title) :]
+                break
+            consumed = _fragmented_title_length(lowered, title)
+            if consumed:
+                words = words[consumed:]
                 break
         else:
             # Staff titles are open-ended phrases ("City Manager", "Interim Assistant Planning
@@ -1585,6 +1645,16 @@ def _clean_roster_name(raw: str) -> str | None:
                 continue
             break
     if not 0 < len(words) <= _MAX_ROSTER_NAME_WORDS:
+        return None
+    # A slash between office words joins two offices ("Engineering Director/City Engineer"), which
+    # is never a person. A slash elsewhere ("Erin Carter/ex-officio") is left to the rest of the
+    # checks: dropping it would silently lose a real member.
+    if any(
+        part.casefold().strip(".,()") in _STAFF_ROLE_WORDS
+        for word in words
+        if "/" in word
+        for part in word.split("/")
+    ):
         return None
     if any(word.casefold().strip(".") in _NON_NAME_TOKENS for word in words):
         return None

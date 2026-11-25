@@ -1661,3 +1661,46 @@ def test_staff_titles_under_an_explicit_member_heading_are_dropped_but_its_own_o
     assert _names(parse_roster(text)) == ["Alice Smith"]
     directors = "Directors Present: Director Alice Smith, Bob Roe\n"
     assert _names(parse_roster(directors)) == ["Alice Smith", "Bob Roe"]
+
+
+def test_roster_repairs_titles_a_scan_split_at_a_stray_space():
+    text = (
+        "PRESENT: Council Me mber Johnson, Counci l Member Briggs, Pro Te m Gregory, "
+        "Mayor Pro Te rn Meltzer, Alice Smith\nABSENT: None\n"
+    )
+    assert _names(parse_roster(text)) == ["Johnson", "Briggs", "Gregory", "Meltzer", "Alice Smith"]
+
+
+def test_roster_does_not_read_staff_acronyms_as_members():
+    text = "PRESENT: Mario Canizares, ACM, Mark Nelson, Todd Estes, CIP, Keely Briggs\n"
+    assert _names(parse_roster(text)) == [
+        "Mario Canizares",
+        "Mark Nelson",
+        "Todd Estes",
+        "Keely Briggs",
+    ]
+
+
+def test_roster_repairs_titles_a_scan_broke_mid_word_and_alternate_prefixes():
+    text = (
+        "PRESENT: Ma yor Pro Tem Kamp, Pr o Tem Gregory, C ouncil Member Duff, Pro-Tem Ryan, "
+        "Alternate Member David Zoltner, Alice Smith\nABSENT: None\n"
+    )
+    assert _names(parse_roster(text)) == [
+        "Kamp",
+        "Gregory",
+        "Duff",
+        "Ryan",
+        "David Zoltner",
+        "Alice Smith",
+    ]
+
+
+def test_roster_drops_two_offices_joined_by_a_slash():
+    text = "PRESENT: Alice Smith, Engineering Director/City Engineer, Bob Roe\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Roe"]
+
+
+def test_roster_keeps_a_member_whose_entry_carries_a_slash_note():
+    text = "PRESENT: Alice Smith, Erin Carney (previously Erin Carter/ex-officio), Bob Roe\n"
+    assert "Erin Carney (previously Erin Carter/ex-officio)" in _names(parse_roster(text))
