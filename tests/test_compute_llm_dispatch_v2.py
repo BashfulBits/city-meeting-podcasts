@@ -1013,6 +1013,7 @@ def test_poll_batch_returns_terminal_error_for_failed_job():
                     "state": "failed",
                     "error": "sensitive provider response body",
                     "attempts": 3,
+                    "terminal_diagnostic": {"status": 400, "failure_class": "request_defect"},
                 }
             ]
         },
@@ -1030,6 +1031,7 @@ def test_poll_batch_returns_terminal_error_for_failed_job():
     assert isinstance(results["j1"], LLMDispatchTerminalError)
     assert "failed permanently" in str(results["j1"])
     assert "sensitive provider response body" not in str(results["j1"])
+    assert results["j1"].diagnostic == {"status": 400, "failure_class": "request_defect"}
 
 
 @pytest.mark.parametrize("reason", ["route_retired", "unadmissible"])
@@ -2830,3 +2832,50 @@ def test_terminal_retry_uses_new_stable_idempotency_generation():
     assert second_key.endswith(":recovery:terminal-1")
     backend.enqueue_batch([job])
     assert session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"] == second_key
+
+
+def test_reset_generation_survives_failure_and_does_not_reuse_old_job_key():
+    from citypods.compute.llm_deferred import (
+        _read_json,
+        _write_json,
+        deferred_failure_key,
+        discard_terminal_failure,
+        snapshot_deferred_handles,
+    )
+
+    storage = MockStorage()
+    generation = "a" * 32
+    marker = {
+        "task": "tag",
+        "status": "retryable",
+        "failure_count": 0,
+        "retry_generation": generation,
+    }
+    _write_json(storage, deferred_failure_key("reset-test"), json.dumps(marker).encode())
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3.5-flash-lite", dispatch_v2_url="https://worker"),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        recipe_hash="reset-test",
+        inputs={
+            "messages": [{"role": "user", "content": "classify"}],
+            "llm_policy": LLMRequestPolicy(
+                allowed_models=("gemini/gemini-3.5-flash-lite",), queue_only=True
+            ),
+        },
+    )
+    first = backend.enqueue_batch([job])[0]
+    key = session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"]
+    assert key.endswith(f":recovery:reset-{generation}-terminal-0")
+    discard_terminal_failure(
+        storage, snapshot_deferred_handles(storage, [first]), first, LLMDispatchTerminalError("bad")
+    )
+    assert _read_json(storage, deferred_failure_key("reset-test"))["retry_generation"] == generation
+    backend.enqueue_batch([job])
+    key = session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"]
+    assert key.endswith(f":recovery:reset-{generation}-terminal-1")

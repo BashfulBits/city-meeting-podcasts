@@ -1680,3 +1680,14 @@ def test_accepted_routes_cover_the_lane_models_and_retired_primaries():
     assert "litellm:p/second" in routes
     assert set(TAG_RETIRED_PRIMARY_ROUTES) <= set(routes)
     assert tag_accepted_routes(None) == ()
+
+
+def test_tag_response_accepts_many_chapter_suggestions():
+    from citypods.tags import ensure_llm_contract
+
+    model = ensure_llm_contract()
+    tags = [
+        {"id": "rezoning", "chapter_id": f"ch-{i}", "confidence": 0.9, "explanation": "match"}
+        for i in range(75)
+    ]
+    assert len(model.model_validate({"tags": tags}).tags) == 75

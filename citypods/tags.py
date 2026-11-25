@@ -1102,7 +1102,8 @@ def ensure_llm_contract():
 
     class Response(BaseModel):
         model_config = ConfigDict(extra="forbid")
-        tags: list[Suggestion] = Field(default_factory=list, max_length=20)
+        # One response may cover many chapters; this bound is per batch, not per chapter.
+        tags: list[Suggestion] = Field(default_factory=list, max_length=200)
 
     model = register_response_model(LLM_CONTRACT, Response)
     ensure_llm_contract.model = model

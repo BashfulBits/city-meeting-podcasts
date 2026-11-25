@@ -326,8 +326,10 @@ class LLMDispatchTerminalError(LLMBackendError):
         *,
         terminal_reason: str | None = None,
         terminal_catalog_digest: str | None = None,
+        diagnostic: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
+        self.diagnostic = diagnostic or {}
         # Unknown future reasons retain generic failure semantics. A structural disposition
         # requires both recognized metadata and a nonempty catalog identity.
         self.terminal_reason = (
@@ -2204,7 +2206,10 @@ class LiteLLMBackend(Backend):
                     continue
                 if marker.get("status") == "retryable":
                     retry_count = marker.get("failure_count")
-                    if type(retry_count) is int and retry_count > 0:
+                    reset = marker.get("retry_generation")
+                    if isinstance(reset, str) and re.fullmatch(r"[0-9a-f]{32}", reset):
+                        recovery_generations[i] = f"reset-{reset}-terminal-{retry_count or 0}"
+                    elif type(retry_count) is int and retry_count > 0:
                         recovery_generations[i] = f"terminal-{retry_count}"
                 if marker.get("status") == "structural_blocked":
                     generation = terminal_recovery_generation(
@@ -2878,6 +2883,7 @@ class LiteLLMBackend(Backend):
                     f"LLM dispatch v2 job {h.ref} failed permanently",
                     terminal_reason=st.get("terminal_reason"),
                     terminal_catalog_digest=st.get("terminal_catalog_digest"),
+                    diagnostic=st.get("terminal_diagnostic"),
                 )
             else:
                 results[h.ref] = None

@@ -403,6 +403,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
   jobs: [
     "terminal_reason",
     "terminal_catalog_digest",
+    "terminal_diagnostic",
     "queue_models",
     "size_excluded_routes",
     "quota_excluded_routes",
@@ -1206,6 +1207,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         result_key                  TEXT,
         terminal_reason             TEXT,
         terminal_catalog_digest     TEXT,
+        terminal_diagnostic         TEXT,
         lease_token                 TEXT,
         lease_route_id              TEXT,
         lease_expires_at            INTEGER,
@@ -1421,6 +1423,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
     this._ensureColumn("jobs", "terminal_reason", "TEXT");
     this._ensureColumn("jobs", "terminal_catalog_digest", "TEXT");
+    this._ensureColumn("jobs", "terminal_diagnostic", "TEXT");
     // Before the clustering migration and the trigger replacement below: both create the
     // priority trigger, whose body reads queue_models.
     this._ensureColumn("jobs", "queue_models", "TEXT");
@@ -1731,6 +1734,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["catalog_rescue_complete", "INTEGER NOT NULL DEFAULT 0"],
       ["terminal_reason", "TEXT"],
       ["terminal_catalog_digest", "TEXT"],
+      ["terminal_diagnostic", "TEXT"],
       ["queue_models", "TEXT"],
       ["size_excluded_routes", "TEXT"],
       ["quota_excluded_routes", "TEXT"],
@@ -4435,7 +4439,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const placeholders = chunk.map(() => "?").join(",");
       const rows = [...sql.exec(
         `SELECT id, state, result_key, payload_key, attempts, lease_route_id,
-                terminal_reason, terminal_catalog_digest FROM jobs
+                terminal_reason, terminal_catalog_digest, terminal_diagnostic FROM jobs
          WHERE id IN (${placeholders})`,
         ...chunk
       )];
@@ -4450,6 +4454,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           error: row.state === "failed" ? "job_failed" : null,
           terminal_reason: row.state === "failed" ? row.terminal_reason : null,
           terminal_catalog_digest: row.state === "failed" ? row.terminal_catalog_digest : null,
+          terminal_diagnostic: row.state === "failed" && row.terminal_diagnostic
+            ? JSON.parse(row.terminal_diagnostic) : null,
           attempts: row.attempts,
           model:
             row.state === "completed"
@@ -8008,7 +8014,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         } else {
           sql.exec(
             `UPDATE jobs SET state=?, attempts = MAX(0, attempts - ?), updated_at=?,
-                             terminal_reason = COALESCE(?, terminal_reason),
+                             terminal_reason = COALESCE(?, terminal_reason), terminal_diagnostic=?,
                              quota_excluded_routes=?,
                              response_timeout_routes=?
              WHERE id=?`,
@@ -8027,6 +8033,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 : isSizeRejection && newState === "failed" ? "input_too_large"
                 : newState === "failed" && /^[a-z0-9_]{1,60}$/.test(result.failure_class || "")
                   ? `provider_${result.failure_class}` : null,
+            newState === "failed" ? JSON.stringify({
+              outcome: result.outcome,
+              status: Number.isInteger(result.provider_status_code)
+                ? result.provider_status_code : null,
+              failure_class: /^[a-z0-9_]{1,60}$/.test(result.failure_class || "")
+                ? result.failure_class : null,
+              route_id: job.lease_route_id || null,
+              model: leasedModel || null,
+              attempts: job.attempts,
+            }) : null,
             nextQuotaExcludedRoutes,
             nextResponseTimeoutRoutes,
             result.job_id

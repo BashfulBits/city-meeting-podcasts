@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
 
@@ -1483,8 +1484,35 @@ def test_terminal_failure_marker_preserves_safe_worker_failure_class():
     handle = JobHandle(task="tag", recipe_hash="failure-class", backend="llm-dispatch-v2", ref="j1")
     write_deferred(storage, handle.recipe_hash, handle, now=NOW)
     snapshot = snapshot_deferred_handles(storage, [handle])
-    error = LLMDispatchTerminalError("failed", terminal_reason="provider_server_error")
+    error = LLMDispatchTerminalError(
+        "failed",
+        terminal_reason="provider_server_error",
+        diagnostic={
+            "status": 503,
+            "outcome": "terminal_error",
+            "route_id": "route-1",
+            "model": "gemini/model",
+            "untrusted_body": "sensitive content",
+        },
+    )
     discard_terminal_failure(storage, snapshot, handle, error, now=NOW)
     marker = _read_json(storage, deferred_failure_key(handle.recipe_hash))
     assert marker["failure_class"] == "server_error"
+    assert marker["diagnostic"] == {
+        "status": 503,
+        "outcome": "terminal_error",
+        "route_id": "route-1",
+        "model": "gemini/model",
+    }
     assert error.structural is False
+
+
+def test_schema_correction_preserves_manual_retry_generation():
+    storage = MemStorage()
+    handle = _pending_handle("reset-schema")
+    generation = "a" * 32
+    marker = {"status": "retryable", "failure_count": 0, "retry_generation": generation}
+    _write_json(storage, deferred_failure_key(handle.recipe_hash), json.dumps(marker).encode())
+    record_schema_correction(storage, handle, RuntimeError("schema failure"), now=NOW)
+    saved = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert saved["retry_generation"] == generation

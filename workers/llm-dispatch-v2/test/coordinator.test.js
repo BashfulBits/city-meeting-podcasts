@@ -4769,4 +4769,8 @@ test("terminal provider failure retains a bounded diagnostic class on its job", 
   )[0];
   assert.equal(row.state, "failed");
   assert.equal(row.terminal_reason, "provider_request_defect");
+  const result = await coordinator.pollBatch(["terminal-diagnostic-job"]);
+  assert.equal(result.statuses[0].terminal_diagnostic.status, 400);
+  assert.equal(result.statuses[0].terminal_diagnostic.failure_class, "request_defect");
+  assert.equal(result.statuses[0].terminal_diagnostic.route_id, "shared-route");
 });
