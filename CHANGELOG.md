@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 <!-- NOTICE: Do NOT edit this section directly in pull requests! Add a fragment file in
      changelog.d/<slug>.md instead. A GitHub Action compiles fragments into CHANGELOG.md
      upon merge to main, preventing rebase merge conflicts. See CONTRIBUTING.md. -->
+- **Expose audited tag recovery in Actions.** The terminal-failure maintenance workflow can now
+  inventory and reset exhausted tag markers with a fresh retry generation, using production
+  coordination credentials. Apply remains restricted to main and dry-run remains the default.
+
 - **Recover exhausted topic tags with actionable failure evidence.** Allow up to 200 suggestions per
   multi-chapter response without changing the tag recipe or invalidating existing results. Terminal
   dispatch markers retain the safe route, model, HTTP status, outcome, class, and attempt count.
