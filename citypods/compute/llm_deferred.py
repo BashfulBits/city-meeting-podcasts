@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import tempfile
 import time
 import uuid
@@ -555,9 +556,13 @@ def _marker_diagnostic(error: BaseException) -> dict[str, Any] | None:
     for key in ("stage", "finish_reason", "error_type"):
         if isinstance(raw.get(key), str):
             out[key] = raw[key][:60]
-    for key in ("completion_tokens", "content_chars"):
+    for key in ("completion_tokens", "content_chars", "status", "attempts"):
         if isinstance(raw.get(key), int) and not isinstance(raw.get(key), bool):
             out[key] = raw[key]
+    for key in ("outcome", "failure_class", "route_id", "model"):
+        value = raw.get(key)
+        if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_./:+-]{1,160}", value):
+            out[key] = value
     if isinstance(raw.get("ends_closed"), bool):
         out["ends_closed"] = raw["ends_closed"]
     errors = raw.get("validation_errors")
@@ -592,6 +597,8 @@ def record_schema_correction(storage, handle: JobHandle, error: BaseException, *
         "schema_correction_attempted": True,
         "status": "corrective_retry_submitted",
     }
+    if isinstance(prior, Mapping) and prior.get("retry_generation"):
+        marker["retry_generation"] = prior["retry_generation"]
     if diagnostic := _marker_diagnostic(error):
         marker["diagnostic"] = diagnostic
     _write_json(
@@ -713,6 +720,8 @@ def _discard_terminal_failure_locked(
     if quota_blocked:
         marker["status"] = "quota_blocked"
         marker["terminal_reason"] = "quota_recovery_exhausted"
+    if isinstance(prior, Mapping) and prior.get("retry_generation"):
+        marker["retry_generation"] = prior["retry_generation"]
     if diagnostic := _marker_diagnostic(error):
         marker["diagnostic"] = diagnostic
     if failure_class := getattr(error, "failure_class", None):

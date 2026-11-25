@@ -4769,4 +4769,56 @@ test("terminal provider failure retains a bounded diagnostic class on its job", 
   )[0];
   assert.equal(row.state, "failed");
   assert.equal(row.terminal_reason, "provider_request_defect");
+  const result = await coordinator.pollBatch(["terminal-diagnostic-job"]);
+  assert.equal(result.statuses[0].terminal_diagnostic.status, 400);
+  assert.equal(result.statuses[0].terminal_diagnostic.failure_class, "request_defect");
+  assert.equal(result.statuses[0].terminal_diagnostic.route_id, "shared-route");
+});
+
+
+test("diagnostic column upgrades compact and packed authority without rebuilding jobs", async t => {
+  for (const mode of ["compact_queue_active", "packed_state_active"]) {
+    await t.test(mode, async () => {
+      const fixture = createRecordingSqlStorage();
+      const env = { MAX_JOBS_PER_UTC_DAY: "100" };
+      const { coordinator, sql, storage } = makeCoordinator(env, fixture);
+      await coordinator.enqueueBatch([pauseJob("diagnostic-upgrade")]);
+      if (mode === "compact_queue_active") {
+        storage.transactionSync(() => {
+          const plan = planCompactMigration(sql, {
+            maxJobs: 10, maxModelRows: 20, maxGroups: 20, maxWrites: 30,
+          });
+          buildCompactMigration(sql, plan);
+          sql.exec("DROP TRIGGER trg_jobs_priority_sync");
+        });
+      } else {
+        sql.exec("CREATE TABLE packed_telemetry (shard INTEGER PRIMARY KEY, json TEXT NOT NULL)");
+      }
+      sql.exec(`UPDATE scheduler SET ${mode}=1 WHERE id=1`);
+      sql.exec("ALTER TABLE jobs DROP COLUMN terminal_diagnostic");
+      fixture.recorder.start();
+      makeCoordinator(env, fixture);
+      const writes = fixture.recorder.statements.filter(({ query }) =>
+        !/^(SELECT|PRAGMA|EXPLAIN)\b/i.test(query)).map(({ query }) => query);
+      assert.deepEqual(writes, ["ALTER TABLE jobs ADD COLUMN terminal_diagnostic TEXT"]);
+      const [row] = [...sql.exec("SELECT state, terminal_diagnostic FROM jobs WHERE id=?", "diagnostic-upgrade")];
+      assert.equal(row.state, "queued");
+      assert.equal(row.terminal_diagnostic, null);
+    });
+  }
+});
+
+test("long tag reset keys are preserved and replay to the same canonical job", async () => {
+  const { validateEnqueueJob } = await import("../src/protocol.js");
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const key = `${"a".repeat(64)}:durable-queue-v2:recovery:reset-${"b".repeat(32)}-terminal-0`;
+  const job = { id: "reset-one", idempotency_key: key, request_digest: "digest",
+    policy_json: "{}", prompt_family: "tag", input_token_estimate: 100,
+    max_output_token_estimate: 50, payload_key: "payloads/reset-one" };
+  assert.equal(validateEnqueueJob(job).valid, true);
+  const first = await coordinator.enqueueBatch([job]);
+  const second = await coordinator.enqueueBatch([{ ...job, id: "reset-two" }]);
+  assert.deepEqual(first.accepted, [{ id: "reset-one", submitted_id: "reset-one" }]);
+  assert.deepEqual(second.accepted, [{ id: "reset-one", submitted_id: "reset-two" }]);
+  assert.equal([...sql.exec("SELECT idempotency_key FROM jobs WHERE id=?", "reset-one")][0].idempotency_key, key);
 });

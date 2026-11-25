@@ -2524,3 +2524,8 @@ without claiming general AA or holdout qualification. Runtime/policy/evidence ch
 ordinary qualification remains unchanged. Existing budgets, freshness checks and R2 CAS remain.
 Qualified alias types stay empty and remedy PRs require human merge. Authorization does not itself
 establish a successful deployment or completed production cycle; review/51 owns operational status.
+
+Terminal dispatch failure markers may include bounded, text-free outcome, status, route, model and
+attempt diagnostics. Exhausted tag-marker resets archive the previous marker and assign a fresh
+retry generation, so existing completed artifacts remain valid and a reset cannot replay a failed
+Worker idempotency key. Deploy both the producer and dispatcher before applying such a reset.

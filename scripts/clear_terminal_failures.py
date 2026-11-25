@@ -16,6 +16,11 @@ Usage:
     # Apply deletion of tag failure markers from object storage:
     python scripts/clear_terminal_failures.py --task tag --apply
 
+    # After the generation-aware producer and dispatcher are deployed, archive and reset every
+    # exhausted tag marker under a fresh idempotency generation:
+    python scripts/clear_terminal_failures.py --task tag --status exhausted --days 0 \
+        --reset-tag-exhausted --max-clear 10000 --apply
+
     # Clear a single specific recipe hash:
     python scripts/clear_terminal_failures.py --recipe-hash <hash> --apply
 
@@ -37,6 +42,7 @@ import argparse
 import json
 import re
 import sys
+import uuid
 from collections import Counter
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -50,12 +56,13 @@ from citypods.compute.llm_deferred import (
     _write_json,
     clear_terminal_failure,
     deferred_failure_key,
+    look_up_deferred,
 )
 from citypods.config import load_site_config
 from citypods.storage import make_storage
 
 AUDIT_PREFIX = "state/llm_failure_marker_audits/"
-_VARIABLE = re.compile(r"[0-9a-fA-F]{8,}|\d+")
+_VARIABLE = re.compile(r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}|[0-9a-fA-F]{8,}|\d+")
 
 
 def cause_of(marker: Mapping[str, Any]) -> str:
@@ -110,6 +117,34 @@ def clear_with_audit(
         return "cleared" if clear_terminal_failure(storage, recipe_hash) else "clear-failed"
 
 
+def reset_exhausted_tag(storage: Any, recipe_hash: str, expected: Mapping[str, Any]) -> str:
+    """Archive and reset one exhausted tag marker without reusing a failed worker key."""
+    with _deferred_record_lock(storage, recipe_hash):
+        marker = _read_json(storage, deferred_failure_key(recipe_hash))
+        if (
+            marker != dict(expected)
+            or marker.get("task") != "tag"
+            or marker.get("status") != "exhausted"
+        ):
+            return "marker-changed"
+        if look_up_deferred(storage, recipe_hash) is not None:
+            return "canonical-record-present"
+        generation = uuid.uuid4().hex
+        audit_key = f"{AUDIT_PREFIX}tag-reset/{generation}/{recipe_hash}.json"
+        _write_json(storage, audit_key, json.dumps(marker, sort_keys=True).encode())
+        updated = {
+            "recipe_hash": recipe_hash,
+            "task": "tag",
+            "status": "retryable",
+            "failure_count": 0,
+            "schema_correction_attempted": False,
+            "retry_generation": generation,
+            "reset_audit_key": audit_key,
+        }
+        _write_json(storage, deferred_failure_key(recipe_hash), json.dumps(updated).encode())
+        return "reset"
+
+
 def _safe_read_json(storage: Any, key: str) -> Mapping[str, Any] | None:
     """Read a JSON object safely, catching transient storage or parse errors."""
     try:
@@ -162,12 +197,21 @@ def main(argv: list[str] | None = None) -> int:
         help="concurrent worker threads for reading markers (default: 8)",
     )
     parser.add_argument(
+        "--reset-tag-exhausted",
+        action="store_true",
+        help="archive and reset exhausted tag markers with a new idempotency generation",
+    )
+    parser.add_argument(
         "--apply",
         action="store_true",
         help="actually delete matching failure markers from storage (dry run by default)",
     )
 
     args = parser.parse_args(argv)
+    if args.reset_tag_exhausted and (
+        args.task != "tag" or args.status != "exhausted" or args.recipe_hash
+    ):
+        parser.error("--reset-tag-exhausted requires --task tag --status exhausted and no recipe")
     site_config = load_site_config(args.site_config)
     storage = make_storage(site_config, "", "docs")
 
@@ -236,10 +280,12 @@ def main(argv: list[str] | None = None) -> int:
 
     matched: list[tuple[str, str, dict[str, Any]]] = []
     checked = 0
+    unreadable: list[str] = []
 
     def _check_key(key: str) -> tuple[str, str, dict[str, Any]] | None:
         data = _safe_read_json(storage, key)
         if not isinstance(data, Mapping):
+            unreadable.append(key)
             return None
         task = data.get("task")
         status = data.get("status")
@@ -284,6 +330,12 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
 
+    if unreadable:
+        print(f"Could not inspect {len(unreadable)} listed markers.", flush=True)
+        if args.apply and args.reset_tag_exhausted:
+            print("Refusing reset with incomplete inventory.", flush=True)
+            return 1
+
     if not matched:
         print("Nothing to clear.", flush=True)
         return 0
@@ -299,8 +351,10 @@ def main(argv: list[str] | None = None) -> int:
             )
         if len(matched) > 5:
             print(f"  ... and {len(matched) - 5} more", flush=True)
+        operation = "reset" if args.reset_tag_exhausted else "clear"
         print(
-            f"\nDry-run complete. Run with --apply to clear all {len(matched)} failure markers.",
+            f"\nDry-run complete. Run with --apply to {operation} "
+            f"all {len(matched)} failure markers.",
             flush=True,
         )
         return 0
@@ -312,6 +366,12 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
         return 1
+    if args.reset_tag_exhausted:
+        outcomes = Counter(
+            reset_exhausted_tag(storage, r_hash, data) for _, r_hash, data in matched
+        )
+        print(f"Reset {outcomes['reset']}/{len(matched)} failure markers: {dict(outcomes)}.")
+        return 0 if outcomes["reset"] == len(matched) else 1
     outcomes = Counter(
         clear_with_audit(storage, r_hash, expected=data) for _key, r_hash, data in matched
     )

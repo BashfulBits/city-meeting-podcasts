@@ -230,3 +230,32 @@ def test_a_marker_replaced_after_the_scan_is_not_cleared(monkeypatch):
 
     assert ctf.clear_with_audit(storage, "r1", expected=scanned) == "marker-changed"
     assert storage.exists(ctf.deferred_failure_key("r1"))
+
+
+def test_reset_exhausted_tag_archives_and_changes_generation():
+    storage = MemStorage()
+    marker = _seed(storage, "r-reset", "tag", "provider failure")
+    assert ctf.reset_exhausted_tag(storage, "r-reset", marker) == "reset"
+    updated = ctf._read_json(storage, ctf.deferred_failure_key("r-reset"))
+    assert updated["status"] == "retryable"
+    assert updated["failure_count"] == 0
+    assert len(updated["retry_generation"]) == 32
+    assert ctf._read_json(storage, updated["reset_audit_key"]) == marker
+    assert ctf.reset_exhausted_tag(storage, "r-reset", marker) == "marker-changed"
+
+
+def test_cause_groups_different_worker_job_ids():
+    first = {
+        "task": "tag",
+        "status": "exhausted",
+        "last_error": (
+            "LLM dispatch v2 job 050e8730-6c28-4f91-938a-7eb29210a0ca failed permanently"
+        ),
+    }
+    second = {
+        **first,
+        "last_error": (
+            "LLM dispatch v2 job 7b364054-f289-4fdb-91f9-129b49121bbb failed permanently"
+        ),
+    }
+    assert ctf.cause_of(first) == ctf.cause_of(second)
