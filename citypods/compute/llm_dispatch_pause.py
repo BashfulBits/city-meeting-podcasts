@@ -56,6 +56,11 @@ class Selection:
         return {"scope": self.scope, "target": self.target}
 
 
+# Pause re-arming is idempotent, so a stalled Worker gets a few spaced retries rather than one
+# immediate one: a single ReadTimeout pair used to abort a whole discovery run.
+RETRY_WAITS_SECONDS = (2.0, 5.0, 10.0)
+
+
 @dataclass
 class PauseOutcome:
     """What the caller needs to interpret its probe results.
@@ -168,6 +173,7 @@ class DispatchPauseClient:
         *,
         session: requests.Session | None = None,
         timeout: float = 20,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.url = (
             url
@@ -191,6 +197,7 @@ class DispatchPauseClient:
                 )
         self.session = session or requests.Session()
         self.timeout = timeout
+        self.sleep = sleep
 
     def _request(self, method: str, path: str, body: Mapping[str, Any] | None = None) -> dict:
         headers = {
@@ -207,7 +214,8 @@ class DispatchPauseClient:
             ("GET", "v2/dispatch:pause-status"),
             ("GET", "v2/stats"),
         }
-        attempts = 2 if retryable else 1
+        waits = RETRY_WAITS_SECONDS if retryable else ()
+        attempts = len(waits) + 1
         for attempt in range(attempts):
             try:
                 response = self.session.request(
@@ -218,12 +226,14 @@ class DispatchPauseClient:
                 if attempt + 1 < attempts and isinstance(
                     exc, (requests.Timeout, requests.ConnectionError)
                 ):
+                    # A struggling Worker is not helped by an immediate second request.
                     logging.getLogger(__name__).warning(
                         "pause_control_transport_retry operation=%s error=%s attempt=%d",
                         path,
                         type(exc).__name__,
                         attempt + 1,
                     )
+                    self.sleep(waits[attempt])
                     continue
                 raise DispatchPauseError(
                     f"{path} request failed: {type(exc).__name__}",
