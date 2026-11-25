@@ -1526,7 +1526,21 @@ def run_discovery(
                         # with current evidence taking precedence over contradicted old limits.
                         bracket = Bracket(axis, bracket.seed)
                         brackets[-1] = bracket
+                        # A fresh count under the carried bound confirms it within tolerance only;
+                        # the bound must not be reported above what a fresh probe admitted.
+                        fresh_best = max(
+                            (
+                                item.coordinate
+                                for item in observations
+                                if item.request.axis == axis
+                                and item.request.control == control
+                                and item.outcome == "admitted"
+                            ),
+                            default=0,
+                        )
                         for item in previous:
+                            if item.outcome == "admitted" and item.coordinate > fresh_best:
+                                continue
                             bracket.observe(item)
                         for item in observations:
                             if item.request.axis == axis and item.request.control == control:
