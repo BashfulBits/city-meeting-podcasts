@@ -1629,6 +1629,17 @@ def _repair_ocr_split_titles(value: str) -> str:
 # equal the registry's bare display name, so the member would match nothing. An unclosed one
 # (a scan that lost the bracket) runs to the end of the span.
 _PAREN_NOTE_RE = re.compile(r"\([^()]*(?:\)|$)")
+_CLOSED_PAREN_NOTE_RE = re.compile(r"\([^()]*\)")
+
+
+def _normalize_roster_text(names_text: str) -> str:
+    """Prepare a whole attendance span before it is split into entries.
+
+    A closed parenthetical can hold a comma ("Alice Smith (remote, via Zoom)") that the entry
+    split would cut in two, leaving the tail as a member. Scan-split titles are repaired here too,
+    so a broken plural ("Council Me mbers") reaches the plural-title removal as "Council Members".
+    """
+    return _repair_ocr_split_titles(_CLOSED_PAREN_NOTE_RE.sub(" ", names_text))
 
 
 def _clean_roster_name(raw: str) -> str | None:
@@ -2079,7 +2090,9 @@ def _prose_roster_rows(names_text: str, status: str, section: str | None, eviden
     """
     # Prose is already single-spaced, so the gap left by a removed title must be closed or it would
     # read as a column break and split "City Councilmembers Wayne Cooper" into "City" and a name.
-    names_text = _WHITESPACE_RE.sub(" ", _PLURAL_ROSTER_TITLE_RE.sub(" ", names_text))
+    names_text = _WHITESPACE_RE.sub(
+        " ", _PLURAL_ROSTER_TITLE_RE.sub(" ", _normalize_roster_text(names_text))
+    )
     pieces = _ATTENDANCE_SPLIT_CAPTURE_RE.split(names_text)
     kept: list[str | None] = []
     for index in range(0, len(pieces), 2):
@@ -2310,7 +2323,9 @@ def parse_roster(text: str) -> list[dict]:
             if below is None:
                 continue
             names_text, evidence_end = below
-        names_text = _PLURAL_ROSTER_TITLE_RE.sub(" ", _INLINE_LABEL_RE.sub(" ", names_text))
+        names_text = _PLURAL_ROSTER_TITLE_RE.sub(
+            " ", _INLINE_LABEL_RE.sub(" ", _normalize_roster_text(names_text))
+        )
         for raw_name in _member_entries(names_text, section, qualifier):
             name = _clean_roster_name(raw_name)
             if not name:

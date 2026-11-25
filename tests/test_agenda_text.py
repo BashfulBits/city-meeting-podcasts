@@ -1728,3 +1728,13 @@ def test_roster_keeps_surnames_that_spell_a_staff_acronym():
 def test_roster_does_not_read_an_ordinary_name_as_a_split_title():
     text = "PRESENT: Al Derman, Ma yor Pro Tem Kamp, Alice Smith\n"
     assert _names(parse_roster(text)) == ["Al Derman", "Kamp", "Alice Smith"]
+
+
+def test_roster_keeps_a_comma_inside_a_parenthetical_note_out_of_the_members():
+    text = "PRESENT: Alice Smith (remote, via Zoom), Bob Roe\n"
+    assert _names(parse_roster(text)) == ["Alice Smith", "Bob Roe"]
+
+
+def test_roster_strips_a_plural_title_a_scan_split():
+    text = "PRESENT: Council Me mbers Johnson, Alice Smith\n"
+    assert _names(parse_roster(text)) == ["Johnson", "Alice Smith"]
