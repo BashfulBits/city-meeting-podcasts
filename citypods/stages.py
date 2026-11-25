@@ -5069,7 +5069,9 @@ MINUTES_VOTES_PIPELINE_VERSION = "1"
 # Granicus viewer redirects were unwrapped (Pflugerville minutes were all stored as "Loading...").
 # "4": prose attendance sentences, line-numbered and "IN PERSON/VIRTUALLY" headings, and names on
 # the line below a heading are read now, and generic office fragments ("Council") are dropped.
-MINUTES_ROSTER_PARSER_VERSION = "4"
+# "5": scanned titles split at a stray space ("Council Me mber", "Pro Te m") are recognised and
+# staff acronyms ("ACM", "CIP") are no longer read as members.
+MINUTES_ROSTER_PARSER_VERSION = "5"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
