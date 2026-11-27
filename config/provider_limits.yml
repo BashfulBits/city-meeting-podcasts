@@ -1146,50 +1146,6 @@ routes:
   # `nvidia_deepseek_v4_1_flash_free` is removed; deepseek/deepseek-v4.1-flash stays served by
   # the two BeatAPI legs below.
 
-  - route_id: nvidia_gemma_4_31b_it_free
-    model: google/gemma-4-31b-it
-    # Pools with Google AI Studio's two direct accounts and OpenRouter's free leg -- a third
-    # independent pool for the same logical model.
-    provider: nvidia
-    upstream_model: google/gemma-4-31b-it
-    response_timeout_seconds: 720
-    input_context_limit: 262144
-    output_context_limit: 32768
-    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
-    input_token_ratio: 1.2
-    account_id: primary
-    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
-    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
-    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
-    # showed up immediately as a drop in dispatched jobs.
-    rpm: 4
-    # Paused 2026-09-23: 172s median / 531s p90 calls occupied shared NVIDIA concurrency
-    # needed by Nemotron 3 Ultra. Maintainer-approved reopening at 20 RPD, 2026-10-09, for
-    # health monitoring and calibration; raised to 800 RPD on 2026-10-16 to absorb the judge
-    # sibling's packets that AI Studio's 14,400-token window cannot admit. The route holds at most
-    # ONE of the provider's three concurrency slots (below), so slow Gemma calls cannot take the
-    # slots Nemotron Ultra, DeepSeek V4.1 and the adjudicator need; at the 172 s median that is
-    # about 500 calls a day, so 800 is a ceiling, not a target.
-    rpd: 800
-    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
-    # queueing it. Successful calls on these models run 41s median / 77s p90 /
-    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE, 4 then; 1 since 2026-10-23) stack up to 6 in flight
-    # on one model and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
-    # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier. Held at 1 on 2026-10-16 (with the 800 RPD raise),
-    # 2 on 2026-10-17 to drain the judge sibling backlog, and back to 1 on 2026-10-19: with two
-    # slots the share of this route's calls that ran into the 720 s limit rose from 3% (2026-10-17
-    # morning) to 14% (10-18 09:47), 26% (19:45) and 28% (23:33), and 40 to 70% in the later
-    # intervals, each hung call holding half of the route for 12 minutes. Normal calls run under
-    # a minute (median output ~700 tokens).
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-09"
-    observed_burst: 0
-    upstream_429_default: upstream_capacity
 
   - route_id: nvidia_nemotron_3_ultra_550b_a55b_free
     model: nvidia/nemotron-3-ultra-550b-a55b
